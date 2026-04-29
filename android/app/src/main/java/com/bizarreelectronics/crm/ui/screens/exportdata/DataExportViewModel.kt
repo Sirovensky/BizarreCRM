@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.ExportApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.ZipEncryptor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,6 +62,13 @@ data class DataExportUiState(
     val toastMessage: String? = null,
     /** True while the "Cancel export?" ConfirmDialog is visible. */
     val showCancelConfirm: Boolean = false,
+    // §51.4 — optional AES-256 ZIP password
+    /** Whether the user has enabled ZIP password protection. */
+    val zipPasswordEnabled: Boolean = false,
+    /** Plaintext password typed by the user; only used locally, never sent to server. */
+    val zipPassword: String = "",
+    /** True while the password field contents should be obscured (toggle show/hide). */
+    val zipPasswordVisible: Boolean = false,
 )
 
 /**
@@ -123,6 +131,28 @@ class DataExportViewModel @Inject constructor(
         _state.value = _state.value.copy(emailOnReady = value)
     }
 
+    // §51.4 — ZIP password controls
+
+    /** Toggle whether the downloaded archive will be AES-256 password protected. */
+    fun setZipPasswordEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(
+            zipPasswordEnabled = enabled,
+            // Reset password text when toggling off so stale secrets aren't kept in state.
+            zipPassword = if (enabled) _state.value.zipPassword else "",
+            zipPasswordVisible = false,
+        )
+    }
+
+    /** Update the plaintext password as the user types. */
+    fun setZipPassword(password: String) {
+        _state.value = _state.value.copy(zipPassword = password)
+    }
+
+    /** Toggle show/hide of the password field. */
+    fun toggleZipPasswordVisibility() {
+        _state.value = _state.value.copy(zipPasswordVisible = !_state.value.zipPasswordVisible)
+    }
+
     fun clearToast() {
         _state.value = _state.value.copy(toastMessage = null)
     }
@@ -162,15 +192,21 @@ class DataExportViewModel @Inject constructor(
     // ── SAF download ───────────────────────────────────────────────────────────
 
     /**
-     * §51.3 — Stream the export archive from [downloadUrl] into [destUri] using
-     * the existing authenticated OkHttpClient so that the auth interceptor adds
-     * the Bearer token automatically.
+     * §51.3 / §51.4 — Stream the export archive from [downloadUrl] into [destUri]
+     * using the existing authenticated OkHttpClient so that the auth interceptor
+     * adds the Bearer token automatically.
+     *
+     * When [DataExportUiState.zipPasswordEnabled] is true the raw server stream is
+     * piped through [ZipEncryptor.encryptToSafUri] before landing on disk, producing
+     * an AES-256 password-protected ZIP.  The password is used as a [CharArray] and
+     * immediately zeroed after the archive is written.
      *
      * Written to the SAF URI via [Context.contentResolver] so no external storage
      * permission is required (ACTION_CREATE_DOCUMENT hands us the URI).
      */
     fun downloadTo(context: Context, destUri: Uri) {
         val url = _state.value.downloadUrl ?: return
+        val snap = _state.value
         viewModelScope.launch {
             _state.value = _state.value.copy(isDownloading = true, error = null)
             try {
@@ -182,14 +218,40 @@ class DataExportViewModel @Inject constructor(
                         }
                         val body = response.body
                             ?: throw IllegalStateException("Empty response body")
-                        context.contentResolver.openOutputStream(destUri)?.use { out ->
-                            body.byteStream().copyTo(out)
-                        } ?: throw IllegalStateException("Could not open output stream")
+
+                        if (snap.zipPasswordEnabled && snap.zipPassword.isNotBlank()) {
+                            // §51.4 — AES-256 path: wrap the server stream in an
+                            // encrypted ZIP entry.  Password lives as a CharArray so
+                            // the caller can zero it once zip4j has consumed it.
+                            val passwordChars = snap.zipPassword.toCharArray()
+                            try {
+                                val entryName = buildEntryName(snap.selectedFormat.apiValue)
+                                ZipEncryptor.encryptToSafUri(
+                                    sourceStream = body.byteStream(),
+                                    entryName = entryName,
+                                    password = passwordChars,
+                                    resolver = context.contentResolver,
+                                    destUri = destUri,
+                                )
+                            } finally {
+                                passwordChars.fill(' ')
+                            }
+                        } else {
+                            // §51.3 — Plain path: stream directly to SAF URI.
+                            context.contentResolver.openOutputStream(destUri)?.use { out ->
+                                body.byteStream().copyTo(out)
+                            } ?: throw IllegalStateException("Could not open output stream")
+                        }
                     }
+                }
+                val savedMsg = if (snap.zipPasswordEnabled && snap.zipPassword.isNotBlank()) {
+                    "Encrypted export saved."
+                } else {
+                    "Export saved."
                 }
                 _state.value = _state.value.copy(
                     isDownloading = false,
-                    toastMessage = "Export saved.",
+                    toastMessage = savedMsg,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -199,6 +261,9 @@ class DataExportViewModel @Inject constructor(
             }
         }
     }
+
+    /** Build the entry file name used inside the ZIP archive. */
+    private fun buildEntryName(formatApiValue: String): String = "export_$formatApiValue.$formatApiValue"
 
     // ── Export request ─────────────────────────────────────────────────────────
 

@@ -335,6 +335,12 @@ dependencies {
     // app is a thin client that proxies all terminal calls through the CRM
     // server via BlockChypApi (Retrofit) + BlockChypClient. No SDK dep needed.
 
+    // §51.4 — zip4j: AES-256 encrypted ZIP for optional password protection of
+    // exported data archives. Pure-Java; no native code; no network egress.
+    // Password is never transmitted — encryption happens locally before the
+    // file is written to the SAF URI the user chose.
+    implementation(libs.zip4j)
+
     // §20.12 — LeakCanary: debug-only heap-leak detector. Automatically no-op on
     // release builds (LeakCanary ships a release no-op artifact automatically;
     // debugImplementation ensures it is only included in debug APKs).

@@ -21,6 +21,10 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,10 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
+import com.bizarreelectronics.crm.util.ZipEncryptor
 
 /**
  * §51 — Data Export Screen
@@ -81,11 +88,16 @@ fun DataExportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    // §51.3 — SAF document-create launcher: streams the export archive from the
-    // server directly into the user-chosen file location.  No external-storage
-    // permission needed — the Uri is granted by ACTION_CREATE_DOCUMENT.
+    // §51.3 / §51.4 — SAF document-create launcher.
+    // When ZIP password is enabled the MIME type switches to "application/zip"
+    // so the file manager opens with a .zip extension.
+    val safMimeType = if (state.zipPasswordEnabled && state.zipPassword.isNotBlank()) {
+        "application/zip"
+    } else {
+        state.selectedFormat.mimeType
+    }
     val saveLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument(state.selectedFormat.mimeType),
+        ActivityResultContracts.CreateDocument(safMimeType),
     ) { destUri: Uri? ->
         if (destUri != null) {
             viewModel.downloadTo(context, destUri)
@@ -151,9 +163,15 @@ fun DataExportScreen(
                     ExportProgressContent(
                         state = state,
                         onDownload = {
-                            // Build a default file name: e.g. "export_csv.csv"
+                            // §51.4 — use .zip name when encryption is on.
                             val ext = state.selectedFormat.apiValue
-                            saveLauncher.launch("export_$ext.$ext")
+                            val rawName = "export_$ext.$ext"
+                            val suggestedName = if (state.zipPasswordEnabled && state.zipPassword.isNotBlank()) {
+                                ZipEncryptor.suggestZipName(rawName)
+                            } else {
+                                rawName
+                            }
+                            saveLauncher.launch(suggestedName)
                         },
                         onCancelExport = viewModel::promptCancelExport,
                         onReset = viewModel::resetJob,
@@ -167,6 +185,9 @@ fun DataExportScreen(
                     onSetDateTo = viewModel::setDateTo,
                     onSetActiveOnly = viewModel::setActiveOnly,
                     onSetEmailOnReady = viewModel::setEmailOnReady,
+                    onSetZipPasswordEnabled = viewModel::setZipPasswordEnabled,
+                    onSetZipPassword = viewModel::setZipPassword,
+                    onToggleZipPasswordVisibility = viewModel::toggleZipPasswordVisibility,
                     onRequestExport = viewModel::requestExport,
                 )
             }
@@ -186,6 +207,9 @@ private fun ExportConfigContent(
     onSetDateTo: (String) -> Unit,
     onSetActiveOnly: (Boolean) -> Unit,
     onSetEmailOnReady: (Boolean) -> Unit,
+    onSetZipPasswordEnabled: (Boolean) -> Unit,
+    onSetZipPassword: (String) -> Unit,
+    onToggleZipPasswordVisibility: () -> Unit,
     onRequestExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -260,6 +284,79 @@ private fun ExportConfigContent(
             onCheckedChange = onSetEmailOnReady,
         )
 
+        HorizontalDivider()
+
+        // §51.4 — Optional AES-256 ZIP password protection
+        SectionHeader(stringResource(R.string.export_zip_password_section))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = if (state.zipPasswordEnabled) Icons.Default.Lock else Icons.Default.LockOpen,
+                    contentDescription = null,
+                    tint = if (state.zipPasswordEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Text(
+                    text = stringResource(R.string.export_zip_password_toggle),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(
+                checked = state.zipPasswordEnabled,
+                onCheckedChange = onSetZipPasswordEnabled,
+            )
+        }
+        if (state.zipPasswordEnabled) {
+            OutlinedTextField(
+                value = state.zipPassword,
+                onValueChange = onSetZipPassword,
+                label = { Text(stringResource(R.string.export_zip_password_label)) },
+                placeholder = { Text(stringResource(R.string.export_zip_password_placeholder)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = if (state.zipPasswordVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = onToggleZipPasswordVisibility) {
+                        Icon(
+                            imageVector = if (state.zipPasswordVisible) {
+                                Icons.Default.VisibilityOff
+                            } else {
+                                Icons.Default.Visibility
+                            },
+                            contentDescription = stringResource(
+                                if (state.zipPasswordVisible) {
+                                    R.string.cd_hide_password
+                                } else {
+                                    R.string.cd_show_password
+                                },
+                            ),
+                        )
+                    }
+                },
+                isError = state.zipPasswordEnabled && state.zipPassword.isBlank(),
+                supportingText = if (state.zipPasswordEnabled && state.zipPassword.isBlank()) {
+                    { Text(stringResource(R.string.export_zip_password_required)) }
+                } else {
+                    null
+                },
+            )
+        }
+
         state.error?.let { msg ->
             Text(
                 text = msg,
@@ -273,7 +370,10 @@ private fun ExportConfigContent(
         Button(
             onClick = onRequestExport,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.isLoading && state.selectedEntities.isNotEmpty(),
+            enabled = !state.isLoading &&
+                state.selectedEntities.isNotEmpty() &&
+                // §51.4 — block submit if ZIP is toggled on but password is blank
+                !(state.zipPasswordEnabled && state.zipPassword.isBlank()),
         ) {
             if (state.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))

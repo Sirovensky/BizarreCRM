@@ -675,6 +675,21 @@
     <string name="export_unsupported">Export is not configured on this server.</string>
     <!-- TalkBack content description for the export-complete icon -->
     <string name="cd_export_ready">Export complete</string>
+    <!-- §51.4 — ZIP password protection strings -->
+    <!-- TalkBack: show password contents in the field -->
+    <string name="cd_show_password">Show password</string>
+    <!-- TalkBack: hide password contents in the field -->
+    <string name="cd_hide_password">Hide password</string>
+    <!-- Section header for the optional ZIP password row -->
+    <string name="export_zip_password_section">Encryption (optional)</string>
+    <!-- Toggle label for enabling AES-256 ZIP password -->
+    <string name="export_zip_password_toggle">Protect archive with AES-256 password</string>
+    <!-- Label for the password input field -->
+    <string name="export_zip_password_label">ZIP password</string>
+    <!-- Placeholder hint inside the password field -->
+    <string name="export_zip_password_placeholder">Enter a strong password</string>
+    <!-- Validation error when ZIP is enabled but password is empty -->
+    <string name="export_zip_password_required">Password is required when encryption is on</string>
 
     <!-- §57 Kiosk / Lock-Task Single-Task Modes -->
     <!-- §57.2 Customer check-in -->

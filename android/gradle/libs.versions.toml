@@ -59,6 +59,8 @@ androidx-window = "1.3.0"
 play-integrity = "1.3.0"
 # §20.12 — LeakCanary: debug-only memory-leak detection
 leakcanary = "2.14"
+# §51.4 — zip4j: AES-256 ZIP password protection for data exports
+zip4j = "2.11.5"
 
 [libraries]
 # Core Android
@@ -193,6 +195,8 @@ play-integrity = { group = "com.google.android.play", name = "integrity", versio
 
 # §20.12 — LeakCanary: debug-only heap-leak detection (no-op on release builds)
 leakcanary-android = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "leakcanary" }
+# §51.4 — zip4j: AES-256 encrypted ZIP for data export password protection
+zip4j = { group = "net.lingala.zip4j", name = "zip4j", version.ref = "zip4j" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

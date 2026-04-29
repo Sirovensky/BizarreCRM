@@ -4874,7 +4874,7 @@ _Server endpoints: `POST /exports/start`, `GET /exports/:id/download`._
 - [x] FCM push on ready.
 
 ### 51.4 Encryption
-- [ ] Optional ZIP password; AES-256 via `net.lingala.zip4j`. <!-- NOTE-defer: zip4j (net.lingala.zip4j:zip4j) not yet added to app/build.gradle.kts; UI toggle + password field + ZipHelper wrapper needed once dependency is declared. -->
+- [x] Optional ZIP password; AES-256 via `net.lingala.zip4j`. (session 2026-04-28 — `zip4j 2.11.5` added to `libs.versions.toml` + `app/build.gradle.kts`; `util/ZipEncryptor.kt` wraps `net.lingala.zip4j.io.outputstream.ZipOutputStream` with `AES_KEY_STRENGTH_256`; `DataExportUiState` gains `zipPasswordEnabled`/`zipPassword`/`zipPasswordVisible`; `DataExportViewModel` adds `setZipPasswordEnabled`/`setZipPassword`/`toggleZipPasswordVisibility` + `downloadTo` branches on encryption flag — pipes server stream through `ZipEncryptor.encryptToSafUri`, zeroes `CharArray` after write; `DataExportScreen` config form gains "Encryption (optional)" section with Lock/LockOpen icon + `Switch` toggle + `OutlinedTextField` with show/hide eye icon + blank-password validation; SAF launcher switches to `application/zip` MIME and suggested `.zip` name when encryption is on; "Request Export" button disabled when ZIP enabled but password blank; 9 new strings added to `strings.xml`.)
 
 ---
 ## 52. Audit Logs Viewer
