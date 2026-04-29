@@ -2046,7 +2046,49 @@ fun TicketDetailScreen(
                             onDeletePhoto = { viewModel.deletePhoto(it) },
                             onBenchStart = { viewModel.startBenchTimer() },
                             onBenchStop = { viewModel.stopBenchTimer() },
-                            content = existingRowBody,
+                            // T-C3 — left pane = existing TicketDetailContent (single
+                            // column squeezed into 38 % width). Phases T-C4..T-C7
+                            // replace this slot one card at a time. The Rail no
+                            // longer renders on tablet — its photos role moves
+                            // into the new PhotosCard in T-C7.
+                            leftPaneContent = {
+                                TicketDetailContent(
+                                    modifier = Modifier.fillMaxSize(),
+                                    ticket = ticket,
+                                    ticketId = ticketId,
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedContentScope = animatedContentScope,
+                                    ticketDetail = state.ticketDetail,
+                                    devices = state.devices,
+                                    notes = state.notes,
+                                    history = state.history,
+                                    photos = state.photos,
+                                    statuses = state.statuses,
+                                    payments = state.ticketDetail?.payments ?: emptyList(),
+                                    employees = state.employees,
+                                    isActionInProgress = state.isActionInProgress,
+                                    isBenchTimerRunning = state.isBenchTimerRunning,
+                                    reduceMotion = reduceMotion,
+                                    padding = padding,
+                                    onNavigateToCustomer = onNavigateToCustomer,
+                                    onEditDevice = onEditDevice,
+                                    onAddPhotos = onAddPhotos,
+                                    serverUrl = viewModel.serverUrl,
+                                    onStatusSelected = { viewModel.changeStatus(it) },
+                                    onAddNote = { viewModel.addNote(it) },
+                                    onNavigateToSms = onNavigateToSms,
+                                    onDeletePhoto = { viewModel.deletePhoto(it) },
+                                    onBenchStart = { viewModel.startBenchTimer() },
+                                    onBenchStop = { viewModel.stopBenchTimer() },
+                                )
+                            },
+                            // T-C3 — right pane placeholder until T-C8 (Activity
+                            // feed) and T-C9 (compose bar) land.
+                            rightPaneContent = {
+                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.TabletPanePlaceholder(
+                                    label = "Activity feed lands in T-C8 · compose bar lands in T-C9",
+                                )
+                            },
                         )
                     }
                 }

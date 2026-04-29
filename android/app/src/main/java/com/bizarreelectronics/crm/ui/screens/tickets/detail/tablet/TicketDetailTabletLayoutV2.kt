@@ -3,16 +3,24 @@ package com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.PaymentSummary
@@ -24,12 +32,23 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 
 /**
- * Tablet (sw >= 600 dp) ticket-detail layout — phase T-C2.
+ * Tablet (sw >= 600 dp) ticket-detail layout — phase T-C3.
  *
- * Adds the cream Status pill in a tablet-styled top app bar plus the
- * `ModalBottomSheet` status picker (Option B). The body is still the
- * pass-through `content` slot, so subsequent phases (T-C3 onward)
- * replace the body without touching the top-bar surface.
+ * 2-pane scaffold with the cream Status pill in a tablet-styled top
+ * app bar plus the `ModalBottomSheet` status picker (Option B). The
+ * left pane (38 % width, scrollable) hosts the meta cards (Device,
+ * Customer, Quote, Photos, Bench Timer); the right pane (62 % width,
+ * Column) hosts the Activity timeline + a pinned compose bar at its
+ * bottom.
+ *
+ * For T-C3 the panes are filled by caller-supplied slots so each
+ * subsequent phase (T-C4 onward) replaces one card or feed segment at
+ * a time without churning this scaffold. The current call site fills
+ * the left pane with the existing single-column `TicketDetailContent`
+ * (effectively cramming the legacy stack into 38 % of the screen) and
+ * the right pane with a build-out placeholder. Both will be swapped
+ * for the redesigned cards/feed/compose-bar from
+ * `mockups/android-tablet-ticket-detail.html` in later phases.
  *
  * Phones (sw < 600 dp) MUST NOT call this composable — gate at the
  * call site with `isCompactWidth()` from `util/WindowSize.kt`.
@@ -45,7 +64,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
  * @param notes notes list (kept for future timeline).
  * @param history history list (kept for future timeline).
  * @param photos photos list (kept for future cards).
- * @param statuses available next statuses; populates [StatusPickerSheet].
+ * @param statuses available statuses; populates [StatusPickerSheet].
  * @param payments payments list (kept for future quote card).
  * @param employees employees list (kept for future assignment card).
  * @param isActionInProgress disable interactive surfaces while server
@@ -73,9 +92,14 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
  * @param onBenchStart (kept for future card).
  * @param onBenchStop (kept for future card).
  * @param modifier root modifier.
- * @param content pass-through slot — current call site supplies the
- *   existing `Row { TicketDetailContent + TicketRelatedRail }` block.
- *   Phases T-C3 onward shrink what this lambda owns until it disappears.
+ * @param leftPaneContent slot rendered inside the 38 %-weight left
+ *   pane. Phase T-C3 wires this to the existing `TicketDetailContent`;
+ *   phases T-C4 through T-C7 progressively replace the body with the
+ *   redesigned cards from the mockup.
+ * @param rightPaneContent slot rendered inside the 62 %-weight right
+ *   pane. Phase T-C3 wires this to a build-out placeholder; phases
+ *   T-C8 + T-C9 fill it with the Activity feed and the pinned compose
+ *   bar.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -112,7 +136,8 @@ internal fun TicketDetailTabletLayoutV2(
     @Suppress("UNUSED_PARAMETER") onBenchStart: () -> Unit = {},
     @Suppress("UNUSED_PARAMETER") onBenchStop: () -> Unit = {},
     @Suppress("UNUSED_PARAMETER") modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    leftPaneContent: @Composable () -> Unit,
+    rightPaneContent: @Composable () -> Unit,
 ) {
     var showStatusSheet by remember { mutableStateOf(false) }
 
@@ -124,7 +149,33 @@ internal fun TicketDetailTabletLayoutV2(
             onStatusPillClick = { showStatusSheet = true },
             actions = topBarActions,
         )
-        content()
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Left meta pane — Device / Customer / Quote / Photos / Bench Timer
+            // (filled by host slot; cards wired one at a time in T-C4 .. T-C7).
+            Box(
+                modifier = Modifier
+                    .weight(0.38f)
+                    .fillMaxHeight(),
+            ) {
+                leftPaneContent()
+            }
+
+            VerticalDivider(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                thickness = 1.dp,
+                modifier = Modifier.fillMaxHeight(),
+            )
+
+            // Right pane — Activity feed + pinned compose bar (T-C8 + T-C9).
+            Box(
+                modifier = Modifier
+                    .weight(0.62f)
+                    .fillMaxHeight(),
+            ) {
+                rightPaneContent()
+            }
+        }
     }
 
     if (showStatusSheet) {
@@ -136,6 +187,26 @@ internal fun TicketDetailTabletLayoutV2(
                 showStatusSheet = false
             },
             onDismiss = { showStatusSheet = false },
+        )
+    }
+}
+
+/**
+ * Build-out placeholder for slots not yet wired in the current phase.
+ * Renders a centered hint message in the surface-variant tint so the
+ * tablet shell visibly shows progress without faking content. Replaced
+ * with real cards / feed / compose bar in subsequent commits.
+ */
+@Composable
+internal fun TabletPanePlaceholder(label: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
