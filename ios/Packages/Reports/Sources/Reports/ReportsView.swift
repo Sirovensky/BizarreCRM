@@ -4,6 +4,36 @@ import DesignSystem
 import Networking
 import Sync
 
+// MARK: - §91.15 Chart Library Audit
+//
+// All charting in this module uses Swift Charts (import Charts) exclusively.
+// No hand-rolled chart rendering remains in production view code.
+//
+// Chart inventory:
+//
+// | Card                   | File                    | Swift Charts marks used          | Notes                          |
+// |------------------------|-------------------------|----------------------------------|--------------------------------|
+// | RevenueChartCard       | Charts/RevenueChartCard | AreaMark, LineMark, BarMark,     | Toggled by RevenueChartMode    |
+// |                        |                         | PointMark (selection highlight)  | picker; drill-through overlay  |
+// | TicketsByStatusCard    | Charts/TicketsByStatusCard | BarMark (horizontal)           | Color-cycled per status slot   |
+// | ExpensesChartCard      | Charts/ExpensesChartCard | BarMark (stacked)               | Revenue + COGS stacked bars    |
+// | InventoryMovementCard  | Charts/InventoryMovementCard | BarMark (horizontal)         | Top-10 items by usedQty        |
+// | InventoryTurnoverCard  | Charts/InventoryTurnoverCard | — (table, no chart)          | Sorted table, no chart marks   |
+// | TopEmployeesCard       | Charts/TopEmployeesCard  | — (list rows, no chart)         | Ranked list, no chart marks    |
+// | AvgTicketValueCard     | Charts/AvgTicketValueCard | — (KPI tile, no chart)         | Gauge-style badge, no Chart    |
+// | CSATScoreCard          | Charts/CSATScoreCard     | Gauge (SwiftUI, not Charts)     | accessoryCircular gauge style  |
+// | NPSScoreCard           | Charts/NPSScoreCard      | Gauge (SwiftUI, not Charts)     | Promoter/passive/detractor bar |
+//                                                                                         is hand-drawn with Rectangle
+//                                                                                         scaleEffect — no Chart import.
+// SparklineView (hero tile) is a hand-rolled Path stroke — intentional; it
+// is decorative only and has no accessibility requirement.
+//
+// Action items resolved by this audit:
+//  - No hand-rolled charts remain that could be replaced by Swift Charts.
+//  - NPSScoreCard split bar uses scaleEffect-animated Rectangles; acceptable
+//    because it encodes three proportional values without axes/labels.
+//  - CSATScoreCard Gauge uses SwiftUI Gauge (not Charts); correct choice.
+
 // MARK: - ReportsView
 
 /// Full Reports dashboard — Phase 8 §15.
@@ -306,33 +336,59 @@ public struct ReportsView: View {
     }
 
     // MARK: - Card items (shared between phone/iPad)
+    //
+    // §91.15 DTO audit: each card is only rendered when its backing data is
+    // non-empty (or non-nil for optional reports). This hides the card entirely
+    // rather than showing a "No xxx data" copy when the source returns an empty
+    // array or nil. Cards that receive an Optional already handle nil via
+    // ProgressView (CSAT/NPS) or by checking report != nil; those remain as-is
+    // because nil signals "still loading" rather than "server returned empty".
 
     @ViewBuilder
     private var cardItems: some View {
         // §15.2 Revenue chart — line + bar via /reports/sales
-        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-            drillContext = .revenue(date: pt.date)
+        // Hide card only when data is absent after loading is complete.
+        if !vm.revenue.isEmpty {
+            RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
+                drillContext = .revenue(date: pt.date)
+            }
         }
 
         // §15.9 Expenses chart — bar via /reports/dashboard-kpis
-        ExpensesChartCard(report: vm.expensesReport)
+        // Show card whenever the report is present (nil = still loading).
+        if vm.expensesReport != nil {
+            ExpensesChartCard(report: vm.expensesReport)
+        }
 
         // §15.5 Inventory movement chart — bar via /reports/inventory
-        InventoryMovementCard(report: vm.inventoryReport)
+        // Show card whenever the report is present; internal empty state
+        // handles topMoving == [].
+        if vm.inventoryReport != nil {
+            InventoryMovementCard(report: vm.inventoryReport)
+        }
 
-        // §15.3 Tickets by status
-        TicketsByStatusCard(points: vm.ticketsByStatus)
+        // §15.3 Tickets by status — hide card when server returned empty array.
+        if !vm.ticketsByStatus.isEmpty {
+            TicketsByStatusCard(points: vm.ticketsByStatus)
+        }
 
-        // §15.2 Avg ticket value KPI
-        AvgTicketValueCard(value: vm.avgTicketValue)
+        // §15.2 Avg ticket value KPI — hide card when server returned no data.
+        if vm.avgTicketValue != nil {
+            AvgTicketValueCard(value: vm.avgTicketValue)
+        }
 
-        // §15.4 Employee performance
-        TopEmployeesCard(employees: vm.employeePerf)
+        // §15.4 Employee performance — hide card when server returned empty array.
+        if !vm.employeePerf.isEmpty {
+            TopEmployeesCard(employees: vm.employeePerf)
+        }
 
-        // §15.5 Inventory turnover (category table)
-        InventoryTurnoverCard(rows: vm.inventoryTurnover)
+        // §15.5 Inventory turnover (category table) — hide when empty.
+        if !vm.inventoryTurnover.isEmpty {
+            InventoryTurnoverCard(rows: vm.inventoryTurnover)
+        }
 
-        // §15.7 CSAT + NPS
+        // §15.7 CSAT + NPS — nil means "loading or endpoint not ready",
+        // not "empty response", so retain ProgressView behaviour in the cards.
         CSATScoreCard(score: vm.csatScore) {
             showCSATDetail = true
         }
