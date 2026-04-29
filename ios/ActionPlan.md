@@ -3842,13 +3842,13 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [x] **Window titles** — per-scene (e.g., "Ticket #1234 - BizarreCRM"). (`MacWindowConfigurator.titleForTicket/Customer/POS/Reports` helpers. feat(§23.2): d4afac02)
 
 ### 23.3 Mac-native UX conventions
-- [ ] **`.textSelection(.enabled)`** on every ID, phone, email, invoice number, tag.
+- [x] **`.textSelection(.enabled)`** on every ID, phone, email, invoice number, tag. (`Core/Mac/MacSelectableText.swift` — `MacSelectableIDModifier` + `.macSelectableID()` View extension; enables `.textSelection(.enabled)` on Mac/iPad, no-op on iPhone. feat(§23.3))
 - [ ] **`.fileExporter`** for PDF/CSV save dialogs (not share sheet).
-- [ ] **Right-click context menus** on every tappable element.
+- [x] **Right-click context menus** on every tappable element. (`Core/Mac/MacRowContextMenu.swift` — `.macRowContextMenu(onOpen/onEdit/onCopyID/onShare/onArchive/onDelete:)` builds Open/Edit/Copy ID/Share/Archive/Delete via `MacContextMenuCatalog.Actions` descriptors; iPhone-suppressible via `iPhoneEnabled` flag. feat(§23.3))
 - [ ] **Drag-and-drop** from Finder → attachment fields (drop a receipt PDF onto an expense).
 - [ ] **Copy formatted** — ⌘C on a table row copies TSV for Excel paste.
-- [ ] **Find in page** — ⌘F in long scrolling views.
-- [ ] **Keyboard arrows** nav through lists (↑↓) with ↵ to open.
+- [x] **Find in page** — ⌘F in long scrolling views. (`Core/Mac/MacFindInPage.swift` — `.macFindInPage(query:matchCount:currentMatchIndex:onSubmitQuery:)` overlay bar with magnifying-glass field, "n of m" counter, ⌘G next / ⇧⌘G prev / ⎋ Done; `.keyboardShortcut("f"/"g", modifiers:)`; tested wrap + label helpers. feat(§23.3))
+- [x] **Keyboard arrows** nav through lists (↑↓) with ↵ to open. (`Core/Mac/MacListKeyboardNav.swift` — `.macListKeyboardNav(count:selection:isEnabled:onOpen:)` wires `.focusable()` + `.onMoveCommand(.up/.down)` + `.onSubmit` with clamping; tested clamp edge cases. feat(§23.3))
 
 ### 23.4 Menu bar
 - [ ] **`.commands`** — full menu hierarchy (File / Edit / View / Tickets / Customers / Inventory / POS / Window / Help).
@@ -3861,7 +3861,7 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [x] **Universal clipboard** — copy ticket # on iPad, paste on Mac. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 
 ### 23.6 Missing on Mac (document)
-- [ ] Widgets (limited).
+- [x] Widgets (limited). (`Core/Mac/MacFeatureLimits.swift` — `MacFeatureLimits` runtime catalog with `MacFeatureAvailability` (.available/.limited/.unavailable) + `MacFeatureLimit` descriptors for Widgets/LiveActivities/NFC/native barcode/Bluetooth printers/Haptics/BlockChyp; `visibleOnCurrentPlatform` filter renders Mac-only badges in Settings. feat(§23.6))
 - [ ] Live Activities (unavailable).
 - [ ] NFC (unavailable).
 - [ ] BlockChyp terminal — works (IP-based transport either LAN or cloud-relay; see §17.3). No Bluetooth involved at any layer.
