@@ -339,8 +339,12 @@ class TicketDetailViewModel @Inject constructor(
     private fun loadStatuses() {
         viewModelScope.launch {
             try {
-                val response = settingsApi.getStatuses()
-                val statuses = response.data?.statuses ?: emptyList()
+                // Server returns `data: [...]` array directly. The legacy
+                // `getStatuses()` wrapper expects `{ statuses: [...] }` nested
+                // shape and returns null on the array path; use the flat-list
+                // variant `getStatusList()` (added in §19.16) instead.
+                val response = settingsApi.getStatusList()
+                val statuses = response.data ?: emptyList()
                 _state.value = _state.value.copy(statuses = statuses)
             } catch (_: Exception) {
                 // Non-critical; status dropdown will be empty
@@ -2226,12 +2230,59 @@ fun TicketDetailScreen(
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                                IconButton(onClick = { showOverflowMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                Box {
+                                    IconButton(onClick = { showOverflowMenu = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                    }
+                                    DropdownMenu(
+                                        expanded = showOverflowMenu,
+                                        onDismissRequest = { showOverflowMenu = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Copy link") },
+                                            leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                ClipboardUtil.copy(context, "Ticket link", "bizarrecrm://tickets/$ticketId")
+                                                scope.launch { snackbarHostState.showSnackbar("Link copied") }
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Copy order ID") },
+                                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                val orderId = ticket?.orderId ?: "T-$ticketId"
+                                                ClipboardUtil.copy(context, "Order ID", orderId)
+                                                scope.launch { snackbarHostState.showSnackbar("Order ID copied") }
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Check warranty") },
+                                            leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.showWarrantyDialog()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Device history") },
+                                            leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.showDeviceHistory()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Pin to dashboard") },
+                                            leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.pinToDashboard()
+                                            },
+                                        )
+                                    }
                                 }
-                                // Reuse the existing overflow DropdownMenu from the phone path
-                                // by hosting it once at the tablet root in a future commit.
-                                // For T-C2 a placeholder snackbar so the icon isn't dead.
                             },
                             onNavigateToCustomer = onNavigateToCustomer,
                             onEditDevice = onEditDevice,

@@ -278,7 +278,7 @@ private fun EventRow(event: TicketHistory) {
             }
             event.description?.takeIf { it.isNotBlank() }?.let {
                 Text(
-                    it,
+                    stripHtml(it),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -360,6 +360,16 @@ private fun formatTime(iso: String?): String {
         }
     }.getOrDefault(iso)
 }
+
+private val HTML_TAG_RE = Regex("<[^>]+>")
+private fun stripHtml(s: String): String =
+    s.replace(HTML_TAG_RE, "")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .trim()
 
 private fun formatDayShort(iso: String?): String {
     if (iso.isNullOrBlank()) return ""

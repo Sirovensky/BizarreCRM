@@ -152,6 +152,9 @@ internal fun TicketDetailTabletLayoutV2(
             deviceChipLabel = deviceChipLabel,
         )
 
+        // Lifecycle progress strip (Created → In Progress → Ready → Picked up).
+        LifecycleStrip(currentStatusName = currentStatusName)
+
         Row(modifier = Modifier.fillMaxSize()) {
             // Left meta pane — Device / Customer / Quote / Photos / Bench Timer
             // (filled by host slot; cards wired one at a time in T-C4 .. T-C7).
