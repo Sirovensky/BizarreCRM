@@ -3886,11 +3886,14 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 
 ### 24.10 Complications (watchOS stretch)
 - [ ] Circular ticket count on Apple Watch face.
-- [ ] Intents catalog: `CreateTicketIntent` (customerName?, deviceTemplate?, reportedIssue?), `LookupTicketIntent`, `ClockInIntent` / `ClockOutIntent`, `StartSaleIntent`, `ScanBarcodeIntent`, `TakePaymentIntent`, `SendTextIntent`, `NewAppointmentIntent`, `StartBreakIntent` / `EndBreakIntent`, `TodayRevenueIntent` (read-only speak), `PendingTicketsCountIntent` (read-only speak), `SearchInventoryIntent`.
-- [ ] Donate via `INInteraction` on each use so Siri suggests context-aware shortcuts ("Clock in" near 9am at shop).
+- [x] `CreateNewTicketIntent` (customerName?, device?, reportedIssue?) — parameterised, opens `bizarrecrm://tickets/new`; Siri dialog + snippet card. (`App/Intents/ShortcutsIntents.swift`; `CreateNewTicketIntent`; feat(§64): create-new-ticket intent, today-revenue, open-POS, voice-phrase donation, confirmation card)
+- [x] `TodayRevenueIntent` — read-only speak; reads App Group shared-defaults `widget.todayRevenue`; formatted via `NumberFormatter`; snippet card. (`App/Intents/ShortcutsIntents.swift`; feat(§64))
+- [x] `OpenPOSIntent` — "open POS / start a sale / go to register"; opens `bizarrecrm://pos`; snippet card. (`App/Intents/ShortcutsIntents.swift`; feat(§64))
+- [ ] Remaining catalog: `LookupTicketIntent`, `ClockInIntent` / `ClockOutIntent`, `TakePaymentIntent`, `SendTextIntent`, `NewAppointmentIntent`, `StartBreakIntent` / `EndBreakIntent`, `PendingTicketsCountIntent`, `SearchInventoryIntent`.
+- [x] Donate via `INInteraction` on each use so Siri suggests context-aware shortcuts ("Clock in" near 9am at shop). (`donateInteraction(intentTitle:)` called in every `perform()`; `App/Intents/ShortcutsIntents.swift`; feat(§64))
 - [ ] Focus-aware (§13): `SendTextIntent` disabled in DND unless urgent.
 - [ ] Parameter disambiguation: ambiguous customer → Siri "Which John?"; fuzzy match via §18 FTS5.
-- [ ] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output.
+- [x] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output. (`IntentConfirmationCard` — symbol + tint + title + body; `.regularMaterial` bg + `RoundedRectangle`; used in all 3 §64 intents; `App/Intents/ShortcutsIntents.swift`; feat(§64))
 - [ ] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32).
 - [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
