@@ -4370,6 +4370,7 @@ Rules:
 - [ ] **Warm launch** < 500ms.
 
 ### 29.2 Scroll & render
+<<<<<<< HEAD
 - [x] **List scroll** — 120fps on iPad Pro M; 60fps min on iPhone SE (no drops > 2 frames). (Documented in `ScrollPerformance.swift`; enforced via XCTMetric benchmarks in `Tests/Performance/`; `MemoryPressureHandler` flushes caches on warning. feat(§29.2))
 - [x] **`List` (not `LazyVStack`)** for long scrolling lists; UITableView cell reuse. (Architecture convention documented in `Core/Performance/ScrollPerformance.swift`; SwiftLint rule `prefer_list_over_lazyvstack` enforced in CI. feat(§29.2))
 - [x] **Stable IDs** — server `id` (never `UUID()` per render); `.id(server.id)` on rows. (`StableIdentifiable` marker protocol in `Core/Performance/ScrollPerformance.swift`; all entity models conform; SwiftLint `forbid_uuid_in_foreach` rule. feat(§29.2))
@@ -4377,6 +4378,15 @@ Rules:
 - [x] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless. (Convention documented; `@Observable` pattern enforced via `ios/scripts/ux-polish-lint.sh` anti-pattern rule. feat(§29.2))
 - [x] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks. (Convention documented in `ScrollPerformance.swift`; lint rule `no_strong_self_in_viewbuilder` in CI. feat(§29.2))
 - [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug. (`.debugPrintChanges(label:)` View modifier in `Core/Performance/ScrollPerformance.swift` — `#if DEBUG` only, no-op in release. feat(§29.2))
+=======
+- [ ] **List scroll** — 120fps on iPad Pro M; 60fps min on iPhone SE (no drops > 2 frames).
+- [ ] **`List` (not `LazyVStack`)** for long scrolling lists; UITableView cell reuse.
+- [ ] **Stable IDs** — server `id` (never `UUID()` per render); `.id(server.id)` on rows.
+- [x] **`EquatableView`** wrapper on complex row content.
+- [ ] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless.
+- [ ] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks.
+- [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
+>>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 
 ### 29.3 Image loading
 
@@ -4427,10 +4437,14 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Steady state** < 120 MB on iPhone SE for baseline (Dashboard + 1 list loaded).
 - [ ] **Heavy list** (1000+ rows) < 220 MB.
 - [ ] **POS with catalog** < 300 MB.
-- [ ] **Memory warnings** — flush image cache + Nuke memcache + GRDB page cache.
+- [x] **Memory warnings** — flush image cache + Nuke memcache + GRDB page cache.
 
 ### 29.7 Networking
+<<<<<<< HEAD
 - [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo). (timeout 15/30s, urlCache nil, reloadIgnoringLocalCache, cellular/constrained/expensive all allowed. feat(§29.7): 7ae3cd0c)
+=======
+- [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
+>>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 - [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
 - [ ] **Request coalescing** — dedupe concurrent same-URL requests.
 - [ ] **Timeout** — 15s default; 30s for large uploads.
@@ -4483,7 +4497,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Jump-to: iPad sidebar letter rail A-Z for fast jump; jump preserves filters
 - [ ] Estimated sizes: provide estimated height when rows vary so scrollbar is accurate
 - [ ] Diffable: use `Identifiable` models with stable IDs; never reuse IDs across deletions
-- [ ] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
+- [x] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
 - [ ] Behavior: halve background refresh cadence; disable push-registered silent pushes; pause image prefetch (§29.4); cap animations to 0.2s duration; reduce Glass intensity (swap to thin material)
 - [ ] User override: Settings toggle "Use normal sync even in Low Power"
 - [ ] Resume: on exiting LPM, kick off full sync

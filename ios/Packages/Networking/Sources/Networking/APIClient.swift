@@ -89,15 +89,19 @@ public actor APIClientImpl: APIClient {
     private var session: URLSession {
         if let s = _session { return s }
         let cfg = URLSessionConfiguration.default
-        // §29.7 — HTTP/2 is the default on iOS; we additionally:
-        //   • Disable URLCache for data calls (GRDB is the cache, not NSURLCache).
-        //   • Force 15s per-request + 30s per-resource timeouts.
-        //   • Allow cellular (tenant may be self-hosted, not wi-fi-only).
-        //   • Accept gzip + brotli compression.
-        cfg.timeoutIntervalForRequest = 15      // §29.7 15s default
-        cfg.timeoutIntervalForResource = 30     // keep-alive max
+        // §29.7 Networking — HTTP/2 default on iOS; we additionally:
+        //   • Disable URLCache for data calls (GRDB / repo layer is the cache).
+        //   • 15 s per-request, 5 min per-resource (was 30 s) — supports
+        //     longer uploads / chunked PDFs while keeping fast-fail on UI calls.
+        //   • Keep-alive pool of 6 connections per host (HTTP/2 multiplexes).
+        //   • Allow cellular for self-hosted tenants.
+        //   • Accept gzip + brotli compression (URLSession decompresses).
+        cfg.timeoutIntervalForRequest = 15          // §29.7: 15 s default (was 30)
+        cfg.timeoutIntervalForResource = 300        // 5 min outer resource limit
         cfg.waitsForConnectivity = true
-        cfg.urlCache = nil                      // GRDB owns caching — not NSURLCache
+        cfg.httpShouldUsePipelining = false         // HTTP/2 multiplexes; pipelining not needed
+        cfg.httpMaximumConnectionsPerHost = 6       // keep-alive pool; enough for H/2 streams
+        cfg.urlCache = nil                          // data calls handled by repo layer (§29.7)
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.allowsCellularAccess = true
         cfg.allowsConstrainedNetworkAccess = true   // cautious cellular is fine for API
@@ -105,7 +109,8 @@ public actor APIClientImpl: APIClient {
         cfg.httpAdditionalHeaders = [
             "X-Origin": "ios",
             "Accept": "application/json",
-            "Accept-Encoding": "gzip, br"           // §29.7 compression
+            // §29.7 Compression — request gzip and brotli; URLSession decompresses transparently.
+            "Accept-Encoding": "gzip, br"
         ]
         let s: URLSession
         if pinnedSPKIBase64.isEmpty {
