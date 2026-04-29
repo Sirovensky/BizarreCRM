@@ -93,6 +93,12 @@ public struct StalenessIndicator: View {
             .accessibilityLabel(logic.a11yLabel)
     }
 
+    // §91.9-3: All sync-state pills now use a solid filled capsule so that
+    // "Synced / Just now" and "N min ago" carry equal visual weight to the
+    // "Never synced" attention chip. On-pill foreground is always black for
+    // contrast (same pattern as StatusPill). Glass is kept only when
+    // Reduce Transparency is off AND the level is fresh/warning, because
+    // those are informational — but the fill still provides clear shape.
     @ViewBuilder
     private var chipContent: some View {
         let level = logic.stalenessLevel
@@ -105,12 +111,21 @@ public struct StalenessIndicator: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .foregroundStyle(level.color)
+        .foregroundStyle(pillForeground(for: level))
         .padding(.horizontal, BrandSpacing.sm)
         .padding(.vertical, BrandSpacing.xxs)
-        .brandGlass(.clear, tint: level.color.opacity(0.15))
+        .background(level.color, in: Capsule())
         .transition(chipTransition)
         .animation(chipAnimation, value: logic.label)
+    }
+
+    /// Returns contrasting foreground for the solid pill fill.
+    private func pillForeground(for level: StalenessLevel) -> Color {
+        // Fresh (teal) and warning (amber) have dark fills — use black text.
+        // Stale/never (error rose) — also dark fill, use black text.
+        // Using `.primary` here would invert in dark mode; hard-code black for
+        // consistency with StatusPill treatment.
+        return .black
     }
 
     private func iconName(for level: StalenessLevel) -> String {
@@ -138,14 +153,27 @@ public struct StalenessIndicator: View {
 // MARK: - Preview
 
 #if DEBUG
-#Preview("All states") {
-    VStack(spacing: BrandSpacing.base) {
+
+private func stalePillStack() -> some View {
+    VStack(alignment: .leading, spacing: BrandSpacing.sm) {
         StalenessIndicator(lastSyncedAt: nil)
         StalenessIndicator(lastSyncedAt: Date().addingTimeInterval(-30))
         StalenessIndicator(lastSyncedAt: Date().addingTimeInterval(-600))
         StalenessIndicator(lastSyncedAt: Date().addingTimeInterval(-7_200))
         StalenessIndicator(lastSyncedAt: Date().addingTimeInterval(-20_000))
     }
-    .padding()
+    .padding(BrandSpacing.base)
+}
+
+#Preview("Staleness pills — dark") {
+    stalePillStack()
+        .background(Color(.systemBackground))
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Staleness pills — light") {
+    stalePillStack()
+        .background(Color(.systemBackground))
+        .preferredColorScheme(.light)
 }
 #endif

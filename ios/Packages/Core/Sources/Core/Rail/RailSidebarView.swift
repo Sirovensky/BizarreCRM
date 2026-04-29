@@ -78,6 +78,8 @@ private struct RailItemButton: View {
     let isExpanded: Bool
     let pillBackground: Color
     let pillForeground: Color
+    /// §91.9-2: Optional 1pt outline drawn over the active pill in light mode.
+    let pillOutlineColor: Color?
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -89,6 +91,13 @@ private struct RailItemButton: View {
                     Capsule()
                         .fill(pillBackground)
                         .frame(width: isExpanded ? 180 : 48, height: 48)
+                        .overlay {
+                            // §91.9 — light-mode outline so active pill reads against material.
+                            if let outline = pillOutlineColor {
+                                Capsule()
+                                    .strokeBorder(outline, lineWidth: 1)
+                            }
+                        }
                         .animation(
                             reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.28),
                             value: isExpanded
@@ -235,12 +244,20 @@ public struct RailSidebarView: View {
     // MARK: - Pill colours (TODO: replace with `theme.primary` / `theme.primarySoft` once Core
     //         imports DesignSystem and Agent A's posTheme env is available here)
 
-    // §91.7-4: Bumped cream/orange saturation — opaque-ish fill so selected item
-    // reads clearly against .regularMaterial background.
+    // §91.7-4 + §91.9-2: Saturated cream/orange fill so selected item reads against
+    // .regularMaterial. Light mode pairs with the strokeBorder outline (above) for
+    // unmistakable active state.
     private var pillBackground: Color {
         colorScheme == .dark
-            ? Color(red: 253/255, green: 238/255, blue: 208/255, opacity: 0.30)  // cream, stronger
-            : Color(red: 194/255, green: 65/255,  blue: 12/255,  opacity: 0.20)  // orange, stronger
+            ? Color(red: 253/255, green: 238/255, blue: 208/255, opacity: 0.30)  // cream
+            : Color(red: 194/255, green: 65/255,  blue: 12/255,  opacity: 0.20)  // deep orange
+    }
+
+    /// §91.9-2 — light-mode outline color for active pill (nil in dark mode).
+    private var pillOutlineColor: Color? {
+        colorScheme == .light
+            ? Color(red: 194/255, green: 65/255, blue: 12/255).opacity(0.85)
+            : nil
     }
 
     private var pillForeground: Color {
@@ -287,7 +304,8 @@ public struct RailSidebarView: View {
                             isSelected: selection == item.destination,
                             isExpanded: isExpanded,
                             pillBackground: pillBackground,
-                            pillForeground: pillForeground
+                            pillForeground: pillForeground,
+                            pillOutlineColor: pillOutlineColor
                         ) {
                             selection = item.destination
                             AppLog.ui.debug("Rail selected: \(item.destination.rawValue)")
