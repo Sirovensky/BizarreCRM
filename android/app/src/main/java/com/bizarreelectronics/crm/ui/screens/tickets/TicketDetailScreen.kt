@@ -1938,10 +1938,56 @@ fun TicketDetailScreen(
                     }
                 }
                 ticket != null -> {
-                    // L677 — tablet split-pane: content + related rail side-by-side
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        TicketDetailContent(
-                            modifier = Modifier.weight(1f),
+                    // Width gate — tablet (sw >= 600 dp) routes through the
+                    // new TicketDetailTabletLayoutV2 so subsequent phases of
+                    // the redesign (T-C2 onward, plan at
+                    // ~/.claude/plans/tablet-ticket-detail-redesign.md) can
+                    // replace the body one card at a time. Phone keeps the
+                    // existing single-column layout via the same Row block
+                    // unchanged. T-C1 is a transparent pass-through — no
+                    // visual change on either form factor.
+                    val existingRowBody: @Composable () -> Unit = {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            TicketDetailContent(
+                                modifier = Modifier.weight(1f),
+                                ticket = ticket,
+                                ticketId = ticketId,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedContentScope = animatedContentScope,
+                                ticketDetail = state.ticketDetail,
+                                devices = state.devices,
+                                notes = state.notes,
+                                history = state.history,
+                                photos = state.photos,
+                                statuses = state.statuses,
+                                payments = state.ticketDetail?.payments ?: emptyList(),
+                                employees = state.employees,
+                                isActionInProgress = state.isActionInProgress,
+                                isBenchTimerRunning = state.isBenchTimerRunning,
+                                reduceMotion = reduceMotion,
+                                padding = padding,
+                                onNavigateToCustomer = onNavigateToCustomer,
+                                onEditDevice = onEditDevice,
+                                onAddPhotos = onAddPhotos,
+                                serverUrl = viewModel.serverUrl,
+                                onStatusSelected = { viewModel.changeStatus(it) },
+                                onAddNote = { viewModel.addNote(it) },
+                                onNavigateToSms = onNavigateToSms,
+                                onDeletePhoto = { viewModel.deletePhoto(it) },
+                                onBenchStart = { viewModel.startBenchTimer() },
+                                onBenchStop = { viewModel.stopBenchTimer() },
+                            )
+                            // L677 — Related rail: tablet only; phone gets zero-size stub
+                            TicketRelatedRail(
+                                photos = state.photos,
+                                serverUrl = viewModel.serverUrl,
+                            )
+                        }
+                    }
+                    if (com.bizarreelectronics.crm.util.isCompactWidth()) {
+                        existingRowBody()
+                    } else {
+                        com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.TicketDetailTabletLayoutV2(
                             ticket = ticket,
                             ticketId = ticketId,
                             sharedTransitionScope = sharedTransitionScope,
@@ -1968,11 +2014,7 @@ fun TicketDetailScreen(
                             onDeletePhoto = { viewModel.deletePhoto(it) },
                             onBenchStart = { viewModel.startBenchTimer() },
                             onBenchStop = { viewModel.stopBenchTimer() },
-                        )
-                        // L677 — Related rail: tablet only; phone gets zero-size stub
-                        TicketRelatedRail(
-                            photos = state.photos,
-                            serverUrl = viewModel.serverUrl,
+                            content = existingRowBody,
                         )
                     }
                 }
