@@ -311,12 +311,19 @@ public struct InvoiceListView: View {
             }
             .tint(.bizarreSuccess)
         }
-        .swipeActions(edge: .trailing) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 showVoidAlert = inv.id
             } label: {
                 Label("Void", systemImage: "xmark.circle")
             }
+            Button {
+                showReceiptSheet = inv.id
+            } label: {
+                Label("Email", systemImage: "envelope")
+            }
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Email receipt for invoice \(inv.displayId)")
         }
         .onTapGesture {
             if vm.isBulkMode { vm.toggleSelection(id: inv.id) }
@@ -501,12 +508,71 @@ public struct InvoiceListView: View {
 
     private var emptyState: some View {
         VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "doc.text").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+            Image(systemName: emptyStateIcon)
+                .font(.system(size: 52))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
-            Text(searchText.isEmpty ? "No invoices" : "No results")
-                .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            Text(emptyStateTitle)
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(emptyStateSubtitle)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
+            // Clear search / filter shortcut
+            if !searchText.isEmpty || vm.hasActiveFilter {
+                Button {
+                    if !searchText.isEmpty { searchText = "" }
+                    if vm.hasActiveFilter { Task { await vm.applyAdvancedFilter(InvoiceListFilter()) } }
+                    Task { await vm.applyStatusTab(.all) }
+                } label: {
+                    Label("Clear filters", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Clear all search filters and show all invoices")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(emptyStateTitle). \(emptyStateSubtitle)")
+    }
+
+    private var emptyStateIcon: String {
+        if !searchText.isEmpty { return "magnifyingglass" }
+        switch vm.statusTab {
+        case .overdue: return "exclamationmark.circle"
+        case .paid:    return "checkmark.circle"
+        case .void_:   return "xmark.circle"
+        default:       return "doc.text"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        if !searchText.isEmpty { return "No results for "\(searchText)"" }
+        if vm.hasActiveFilter { return "No invoices match your filters" }
+        switch vm.statusTab {
+        case .all:     return "No invoices yet"
+        case .unpaid:  return "No unpaid invoices"
+        case .partial:  return "No partially-paid invoices"
+        case .overdue: return "No overdue invoices"
+        case .paid:    return "All caught up"
+        case .void_:   return "No voided invoices"
+        }
+    }
+
+    private var emptyStateSubtitle: String {
+        if !searchText.isEmpty { return "Try a different search term or clear filters." }
+        if vm.hasActiveFilter { return "Adjust or remove your filters to see more results." }
+        switch vm.statusTab {
+        case .all:     return "Create your first invoice to get started."
+        case .unpaid:  return "No invoices are awaiting payment."
+        case .partial:  return "No invoices have a partial payment."
+        case .overdue: return "No overdue invoices — great work!"
+        case .paid:    return "No paid invoices in the current period."
+        case .void_:   return "No voided invoices on record."
+        }
     }
 
     private func errorState(message: String) -> some View {
