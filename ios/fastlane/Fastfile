@@ -36,13 +36,66 @@ platform :ios do
     UI.success("Preflight passed. Safe to proceed.")
   end
 
-  desc "Run unit tests"
-  lane :tests do
+  # ── Test lane (§31) ─────────────────────────────────────────────────────
+  # Full §31 test suite: unit + integration + UI.
+  #
+  # Subsets:
+  #   bundle exec fastlane test               # all targets, default device matrix
+  #   bundle exec fastlane test only_unit:true
+  #   bundle exec fastlane test only_ui:true
+  #   bundle exec fastlane test device:"iPhone SE (3rd generation)"
+  #
+  # CI usage: called by ios-ci.yml after `preflight`. Results land in
+  # fastlane/test_output/ (JUnit XML + HTML). Code coverage report is
+  # written to fastlane/coverage/ and posted to PR by the CI step.
+  #
+  # §31 device matrix (subset — full matrix in §31.10):
+  #   iPhone SE (3rd generation) — compact, iOS 17
+  #   iPhone 16 Pro              — 6.3", iOS 18
+  #   iPad Air (M2)              — regular, split-view
+  desc "§31 test lane: unit + UI tests with coverage and JUnit output"
+  lane :test do |options|
+    only_unit = options.fetch(:only_unit, false)
+    only_ui   = options.fetch(:only_ui, false)
+    device    = options.fetch(:device, "iPhone 16 Pro")
+
+    # Resolve which test plan to run
+    test_plan = if only_unit
+      "UnitTests"
+    elsif only_ui
+      "UITests"
+    else
+      "AllTests"
+    end
+
+    UI.message("§31 running test plan '#{test_plan}' on #{device}")
+
     run_tests(
-      scheme: "BizarreCRM",
-      devices: ["iPhone 16 Pro"],
-      clean: true
+      scheme:                    "BizarreCRM",
+      devices:                   [device],
+      testplan:                  test_plan,
+      clean:                     true,
+      code_coverage:             true,
+      output_directory:          "fastlane/test_output",
+      output_files:              "junit.xml,report.html",
+      result_bundle:             true,
+      result_bundle_path:        "fastlane/test_output/BizarreCRM.xcresult",
+      fail_build:                true,         # non-zero exit on any failure
+      xcargs:                    "-maximum-test-execution-time-allowance 60",
     )
+
+    # Extract coverage report to fastlane/coverage/ (xcresulttool available in Xcode 15+)
+    sh("xcrun xcresulttool export --type directory " \
+       "--path fastlane/test_output/BizarreCRM.xcresult " \
+       "--output-path fastlane/coverage/ 2>/dev/null || true")
+
+    UI.success("§31 tests complete. Results in fastlane/test_output/, coverage in fastlane/coverage/")
+  end
+
+  # Legacy alias kept for scripts that call the old lane name.
+  desc "Run unit tests (alias for :test lane; use :test for full §31 support)"
+  lane :tests do
+    test(only_unit: true)
   end
 
   # ── Screenshots ──────────────────────────────────────────────────────────

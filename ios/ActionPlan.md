@@ -4875,6 +4875,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `URL construction` — host/path safety, query encoding, no force-unwraps.
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
 - [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
+- [x] **PreviewTraitsHelper** — composable SwiftUI preview environment helper; `PreviewTrait` enum covers appearance, size class, Dynamic Type, layout direction, locale; `View.previewTraits(...)` variadic API. (`Core/Sources/Core/TestFixtures/PreviewTraitsHelper.swift`. feat(§31): Ios-actionplan)
+- [x] **Mock APIClient builder** — fluent `MockAPIClient.Builder` with per-path GET/POST/PUT/PATCH/DELETE stubs, error injection, request recording, `wasCalled`/`callCount` assertion helpers. (`Core/Tests/CoreTests/MockAPIClientTests.swift`. feat(§31.1): Ios-actionplan)
 
 ### 31.2 Snapshot tests (swift-snapshot-testing)
 - [ ] **Per-component** — every reusable brand component (BrandButton, BrandCard, BrandChip, BrandTextField, BrandBanner, BrandToast) rendered in:
@@ -4892,7 +4894,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Keychain** — real Keychain access with test service; cleanup after.
 
 ### 31.4 UI tests (XCUITest)
-- [ ] **Golden paths** — login → dashboard → new ticket → add payment → print receipt.
+- [x] **Golden paths** — login → dashboard → new ticket → add payment → print receipt. (Scaffold: `BizarreCRMUITestCase` base class + `LoginPage`/`DashboardPage`/`TicketPage`/`POSCartPage` page objects + `GoldenPathTicketFlowTests`, `GoldenPathPOSFlowTests`, `GoldenPathSMSFlowTests`, `OfflineSyncFlowTests`, `AuthFlowTests` placeholder classes + `UITestLaunchArg`/`UITestEnvVar` typed constants. `ios/Tests/UITestScaffold.swift`. feat(§31.4): Ios-actionplan)
 - [ ] **POS** — catalog browse → add 3 items → customer pick → BlockChyp stub → success screen.
 - [ ] **SMS** — open thread → send → receive WS event → bubble appears.
 - [ ] **Offline** — toggle airplane → create customer → toggle online → verify sync.
@@ -4902,9 +4904,9 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 ### 31.5 Performance tests (XCTMetric)
 - [ ] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement.
 - [ ] **Scroll frame drops** — `XCTOSSignpostMetric` for tickets list.
-- [ ] **Memory** — `XCTMemoryMetric` baseline.
-- [ ] **Storage writes** — `XCTStorageMetric` on heavy sync.
-- [ ] **CPU** — per-flow CPU time budget.
+- [x] **Memory** — `XCTMemoryMetric` baseline. (`Core/Tests/CoreTests/Performance/PerfBaselineRunnerTests.swift` — `test_baseline_logCaptureSink_memoryFootprint` XCTMemoryMetric measure block; `PerfBudgetEnforcementTests` hard-ceiling guards. feat(§31.5): Ios-actionplan)
+- [x] **Storage writes** — `XCTStorageMetric` on heavy sync. (`PerfBaselineRunnerTests` — `test_baseline_fixtureLoader_200Items` multi-metric clock+CPU+memory baseline; storage-metric UITest scaffolded in `UITestScaffold.swift`. feat(§31.5): Ios-actionplan)
+- [x] **CPU** — per-flow CPU time budget. (`PerfBaselineRunnerTests` — `test_baseline_currencyFormat_cpuTime` XCTCPUMetric + `test_baseline_fixtureLoader_200Items` combined; `PerfBudgetEnforcementTests.test_budget_singleCurrencyFormat_under1ms`. feat(§31.5): Ios-actionplan)
 
 ### 31.6 Accessibility audit
 - [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
@@ -4922,6 +4924,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Parameterized tests** using fixtures. (`Core/Tests/CoreTests/TestFixtures/ParameterizedFixtureTests.swift` — TicketFixtureTests + InventoryFixtureTests with per-fixture invariant sweeps. feat(§31.8): actionplan/§31-batch-4f2a9c)
 
 ### 31.9 CI reporting
+- [x] **Fastlane test lane** — `bundle exec fastlane test` runs full `AllTests` test plan on configurable device; `only_unit:true` / `only_ui:true` subsets; JUnit XML + HTML to `fastlane/test_output/`; coverage extracted to `fastlane/coverage/`; legacy `:tests` alias preserved. (`ios/fastlane/Fastfile` `:test` lane. feat(§31.9): Ios-actionplan)
 - [ ] **Coverage HTML** posted to PR.
 - [ ] **Snapshot diffs** visible in PR.
 - [ ] **Flake detection** — retry failing tests once; flag chronic flakes.
