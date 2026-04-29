@@ -291,6 +291,8 @@ private enum DiagnosticsTab: String, CaseIterable, Identifiable {
 
 private struct LogViewerSection: View {
     @Bindable var vm: DiagnosticsViewModel
+    @State private var showLogExport = false
+    @State private var exportText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -302,6 +304,22 @@ private struct LogViewerSection: View {
                     .font(.brandMono(size: 12))
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("diagnostics.logFilter")
+                Spacer()
+                // §19.25 — log-export toggle: share the currently-visible log
+                // entries as a plain-text file via the system share sheet.
+                if !vm.filteredLogs.isEmpty {
+                    Button {
+                        exportText = buildLogExportText(from: vm.filteredLogs)
+                        showLogExport = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(.bizarreOrange)
+                            .font(.system(size: 15))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Export logs")
+                    .accessibilityIdentifier("diagnostics.exportLogs")
+                }
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.vertical, BrandSpacing.sm)
@@ -327,6 +345,66 @@ private struct LogViewerSection: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+            }
+        }
+        .sheet(isPresented: $showLogExport) {
+            LogExportSheet(text: exportText)
+        }
+    }
+
+    // MARK: - Private
+
+    private func buildLogExportText(from entries: [LogEntry]) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm:ss.SSS"
+        var lines: [String] = [
+            "=== Bizarre CRM Log Export ===",
+            "Generated: \(Date())",
+            "Version: \(Platform.appVersion) (\(Platform.buildNumber))",
+            "Entries: \(entries.count)",
+            vm.logFilter.isEmpty ? "" : "Filter: \"\(vm.logFilter)\"",
+            "",
+        ]
+        for entry in entries {
+            lines.append("[\(fmt.string(from: entry.date))] [\(entry.levelLabel)] \(entry.subsystem) — \(entry.message)")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Log export share sheet
+
+private struct LogExportSheet: View {
+    let text: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(text)
+                    .font(.brandMono(size: 10))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+                    .padding(BrandSpacing.base)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            .navigationTitle("Log export")
+            #if canImport(UIKit)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: text, subject: Text("Bizarre CRM Logs"),
+                              message: Text("Attached: \(Platform.appVersion) log export")) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("diagnostics.exportLogs.share")
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                        .accessibilityIdentifier("diagnostics.exportLogs.done")
+                }
             }
         }
     }

@@ -21,6 +21,8 @@ public final class ProfileSettingsViewModel: Sendable {
     /// §19.1 — read-only unless admin; comes from server `/auth/me`.
     var username: String = ""
     var isAdmin: Bool = false
+    /// §19 batch2 — transient copy-confirmation state for the slug copy button.
+    var slugCopied: Bool = false
 
     // MARK: §19.1 Avatar
     var avatarURL: String?
@@ -286,6 +288,7 @@ public struct ProfileSettingsPage: View {
                     .accessibilityIdentifier("profile.jobTitle")
 
                 // §19.1 Username / slug — read-only unless admin.
+                // §19 batch2: copy-to-clipboard button for quick slug sharing.
                 if !vm.username.isEmpty {
                     HStack {
                         Text("Username")
@@ -304,6 +307,24 @@ public struct ProfileSettingsPage: View {
                                 .accessibilityLabel("Username: \(vm.username), read-only")
                                 .accessibilityIdentifier("profile.username")
                         }
+                        // Copy slug to clipboard — useful for sharing tenant URLs.
+                        Button {
+                            #if canImport(UIKit)
+                            UIPasteboard.general.string = vm.username
+                            #endif
+                            vm.slugCopied = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                vm.slugCopied = false
+                            }
+                        } label: {
+                            Image(systemName: vm.slugCopied ? "checkmark" : "doc.on.doc")
+                                .foregroundStyle(vm.slugCopied ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+                                .font(.system(size: 14))
+                                .animation(BrandMotion.snappy, value: vm.slugCopied)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(vm.slugCopied ? "Copied" : "Copy username")
+                        .accessibilityIdentifier("profile.copyUsername")
                     }
                 }
             }
