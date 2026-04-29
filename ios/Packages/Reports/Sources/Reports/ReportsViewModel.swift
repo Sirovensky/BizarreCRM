@@ -42,6 +42,8 @@ public final class ReportsViewModel {
     public var expensesReport: ExpensesReport?
     public var csatScore: CSATScore?
     public var npsScore: NPSScore?
+    /// nil = not yet loaded / endpoint not implemented; hasBreaches drives card visibility.
+    public var slaBreaches: SLABreachReport?
     public var lastSyncedAt: Date?
     /// §15.4 Technician performance (GET /reports/technician-performance)
     public var technicianPerf: [TechnicianPerfRow] = []
@@ -156,6 +158,7 @@ public final class ReportsViewModel {
             group.addTask { await self.loadTicketsTrend() }
             group.addTask { await self.loadBusyHours() }
             group.addTask { await self.loadSLASummary() }
+            group.addTask { await self.loadSLABreaches() } // §91.3
             // §15.7 Insights
             group.addTask { await self.loadWarrantyClaims() }
             group.addTask { await self.loadDeviceModelsRepaired() }
@@ -554,5 +557,20 @@ public final class ReportsViewModel {
                 from: fromDateString, to: toDateString
             )
         } catch { shrinkageReport = nil }
+    }
+
+    // MARK: - §91.3 SLA breaches → GET /api/v1/reports/sla-breaches
+
+    private func loadSLABreaches() async {
+        do {
+            slaBreaches = try await repository.getSLABreaches(
+                from: fromDateString, to: toDateString
+            )
+        } catch let err as ReportsRepositoryError {
+            // Suppress stub error — card stays hidden until server implements the endpoint.
+            _ = err
+        } catch {
+            errorMessage = "SLA: \(error.localizedDescription)"
+        }
     }
 }

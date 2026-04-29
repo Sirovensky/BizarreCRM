@@ -16,13 +16,18 @@ public struct TopEmployeesCard: View {
         Array(employees.sorted { $0.revenueCents > $1.revenueCents }.prefix(maxCount))
     }
 
+    /// §91.3 fix 5: hide chart content when every technician has zero tickets.
+    private var allZeroTickets: Bool {
+        employees.allSatisfy { $0.ticketsClosed == 0 && $0.ticketsAssigned == 0 }
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            if topEmployees.isEmpty {
-                ContentUnavailableView("No Employee Data",
+            if topEmployees.isEmpty || allZeroTickets {
+                ContentUnavailableView("Not Enough Data",
                                        systemImage: "person.3",
-                                       description: Text("No employee performance data for this period."))
+                                       description: Text("No technician ticket data for this period."))
             } else {
                 ForEach(topEmployees.indices, id: \.self) { idx in
                     employeeRow(topEmployees[idx], rank: idx + 1)

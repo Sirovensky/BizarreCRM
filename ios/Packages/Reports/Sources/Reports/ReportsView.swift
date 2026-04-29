@@ -572,6 +572,9 @@ public struct ReportsView: View {
             // §15.9 Labor utilization by tech
             LaborUtilizationCard(rows: vm.laborUtilization)
         }
+
+        // §91.3 fix 6: SLA Breaches card — hidden when zero breaches (card handles nil/zero guard).
+        SLABreachesCard(report: vm.slaBreaches)
     }
 
     // MARK: - Export
