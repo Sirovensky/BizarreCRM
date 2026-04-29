@@ -188,6 +188,9 @@ private struct Header: View {
                 }
             }
 
+            // §5 Customer-since badge — localised "Member since {date}" label.
+            CustomerSinceBadge(createdAt: detail.createdAt)
+
             // §44.3 Churn risk badge — shown below the tier row
             let churnInput = ChurnInput(
                 daysSinceLastVisit: analytics?.daysSinceLastVisit ?? {
@@ -437,7 +440,8 @@ private struct TagsCard: View {
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             } else {
-                FlowTags(tagItems: tagItems)
+                // §5 Accessibility-labelled tag chips
+                AccessibleTagChips(tagItems: tagItems)
             }
         }
         .cardBackground()
