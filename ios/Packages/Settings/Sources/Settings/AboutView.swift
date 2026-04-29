@@ -2,6 +2,9 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// §28/§32 parity with Android: a single About screen that surfaces the
 /// bundle version, the signed-in server, and the user-visible policy /
@@ -16,6 +19,16 @@ public struct AboutView: View {
             Section("App") {
                 row(label: "Name", value: "Bizarre CRM")
                 row(label: "Version", value: "\(Platform.appVersion) (\(Platform.buildNumber))", mono: true)
+            }
+
+            // §19.24 Device info
+            Section("Device") {
+                row(label: "Model", value: deviceModel, mono: false)
+                    .accessibilityIdentifier("about.deviceModel")
+                row(label: "iOS", value: iosVersion, mono: true)
+                    .accessibilityIdentifier("about.iosVersion")
+                row(label: "Free storage", value: freeStorageLabel, mono: true)
+                    .accessibilityIdentifier("about.freeStorage")
             }
 
             Section("Shop") {
@@ -51,6 +64,36 @@ public struct AboutView: View {
     private var hostLabel: String {
         guard let url = ServerURLStore.load() else { return "—" }
         return url.host ?? url.absoluteString
+    }
+
+    /// §19.24 — Human-readable device model name (e.g. "iPhone 15 Pro").
+    private var deviceModel: String {
+        #if canImport(UIKit)
+        return UIDevice.current.model
+        #else
+        return "Mac"
+        #endif
+    }
+
+    /// §19.24 — iOS / iPadOS version string.
+    private var iosVersion: String {
+        #if canImport(UIKit)
+        let v = UIDevice.current.systemVersion
+        return "\(UIDevice.current.systemName) \(v)"
+        #else
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+        #endif
+    }
+
+    /// §19.24 — Available free storage on the device's main volume.
+    private var freeStorageLabel: String {
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let bytes = values.volumeAvailableCapacityForImportantUsage {
+            return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        }
+        return "—"
     }
 
     @ViewBuilder

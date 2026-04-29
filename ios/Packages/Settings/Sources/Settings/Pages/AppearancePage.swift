@@ -2,6 +2,9 @@ import SwiftUI
 import Observation
 import Core
 import DesignSystem
+#if canImport(UIKit)
+import UIKit
+#endif
 // POSThemeOverride is defined in DesignSystem (POSThemeModifier.swift)
 
 // MARK: - Models
@@ -63,11 +66,16 @@ public final class AppearanceViewModel: Sendable {
     var isCompact: Bool = false
     var fontScale: Double = 1.0
     var reduceMotion: Bool = false
-    /// §wave-5 — persists to `@AppStorage("pos.theme.override")` so
+    /// §19.4 — overrides system "Reduce Transparency" accessibility setting for this app only.
+    var reduceTransparency: Bool = false
+    /// §19.4 — persists to `@AppStorage("pos.theme.override")` so
     /// `POSThemeModifier` in `RootView` resolves the right token set.
     var posThemeOverride: POSThemeOverride = .system
 
     private let defaults: UserDefaults
+    /// §19.4 Sounds + Haptics — backed by HapticsSettings (DesignSystem).
+    var soundsEnabled: Bool = true
+    var hapticsEnabled: Bool = true
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -80,7 +88,10 @@ public final class AppearanceViewModel: Sendable {
         isCompact = defaults.bool(forKey: "appearance.compact")
         fontScale = defaults.object(forKey: "appearance.fontScale") as? Double ?? 1.0
         reduceMotion = defaults.bool(forKey: "appearance.reduceMotion")
+        reduceTransparency = defaults.bool(forKey: "appearance.reduceTransparency")
         posThemeOverride = POSThemeOverride(rawValue: defaults.string(forKey: "pos.theme.override") ?? "") ?? .system
+        soundsEnabled = HapticsSettings.shared.soundsEnabled
+        hapticsEnabled = HapticsSettings.shared.hapticsEnabled
     }
 
     func save() {
@@ -89,7 +100,10 @@ public final class AppearanceViewModel: Sendable {
         defaults.set(isCompact, forKey: "appearance.compact")
         defaults.set(fontScale, forKey: "appearance.fontScale")
         defaults.set(reduceMotion, forKey: "appearance.reduceMotion")
+        defaults.set(reduceTransparency, forKey: "appearance.reduceTransparency")
         defaults.set(posThemeOverride.rawValue, forKey: "pos.theme.override")
+        HapticsSettings.shared.soundsEnabled = soundsEnabled
+        HapticsSettings.shared.hapticsEnabled = hapticsEnabled
 
         #if canImport(UIKit)
         applyTheme()
@@ -184,9 +198,32 @@ public struct AppearancePage: View {
                 Text("Font size")
             }
 
-            Section("Motion") {
+            Section {
                 Toggle("Reduce motion (override system)", isOn: $vm.reduceMotion)
                     .accessibilityIdentifier("appearance.reduceMotion")
+                Toggle("Reduce transparency (override system)", isOn: $vm.reduceTransparency)
+                    .accessibilityIdentifier("appearance.reduceTransparency")
+            } header: {
+                Text("Motion & Accessibility")
+            } footer: {
+                Text("These override your device's Accessibility settings for Bizarre CRM only. Reducing transparency uses solid backgrounds instead of glass materials.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("App sounds", isOn: $vm.soundsEnabled)
+                    .accessibilityLabel("App sounds master toggle")
+                    .accessibilityIdentifier("appearance.soundsEnabled")
+                Toggle("Haptics", isOn: $vm.hapticsEnabled)
+                    .accessibilityLabel("Haptics master toggle")
+                    .accessibilityIdentifier("appearance.hapticsEnabled")
+            } header: {
+                Text("Sounds & Haptics")
+            } footer: {
+                Text("Controls in-app sounds (scan chime, success/error) and haptic feedback. Your device's system sounds and Siri are unaffected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // §wave-5 — POS-specific theme override. Stored in
@@ -224,5 +261,8 @@ public struct AppearancePage: View {
         }
         .onChange(of: vm.theme) { _, _ in vm.save() }
         .onChange(of: vm.posThemeOverride) { _, _ in vm.save() }
+        .onChange(of: vm.reduceTransparency) { _, _ in vm.save() }
+        .onChange(of: vm.soundsEnabled) { _, _ in vm.save() }
+        .onChange(of: vm.hapticsEnabled) { _, _ in vm.save() }
     }
 }

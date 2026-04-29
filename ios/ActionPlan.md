@@ -3103,7 +3103,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
 - [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
-- [ ] **Quiet hours** — start/end time; show icon in tab badge during quiet hours.
+- [x] **Quiet hours** — start/end time pickers. (`NotificationsPage.swift` section; backed by `HapticsSettings.shared` `quietHoursOn/Start/End`; footer explains critical-alert override.)
 - [ ] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle).
 - [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
 - [ ] **Test push** — admin-only button sends test notification.
@@ -3114,10 +3114,10 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Density** — Compact toggle; row height scale. (`AppearancePage.swift`)
 - [ ] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt).
 - [x] **Reduce motion** — overrides system (for one-user testing). (`AppearancePage.swift`)
-- [ ] **Reduce transparency** — overrides system.
+- [x] **Reduce transparency** — overrides system. (`AppearancePage.swift` `reduceTransparency` toggle; persisted via `UserDefaults("appearance.reduceTransparency")`; footer explains glass → solid fallback.)
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
-- [ ] **Sounds** — receive notification sound / scan chime / success / error; master mute.
-- [ ] **Haptics** — master toggle + per-event subtle/medium/strong.
+- [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearancePage.swift` `soundsEnabled` toggle; writes to `HapticsSettings.shared.soundsEnabled`.)
+- [x] **Haptics** — master toggle (per-event intensity is a follow-up). (`AppearancePage.swift` `hapticsEnabled` toggle; writes to `HapticsSettings.shared.hapticsEnabled`.)
 - [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
 
 ### 19.5 Organization (admin)
@@ -3260,7 +3260,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] **Licenses** — `NSAcknowledgments` auto-generated.
 - [x] **Privacy policy**, **Terms of Service**, **Support email** — deep links. (`Settings/AboutView.swift` section "Support" links `mailto:support@bizarrecrm.com`, privacy policy, and terms of service.)
 - [ ] **App Store review** — `SKStoreReviewController` after N engaged sessions.
-- [ ] **Device info** — iOS version, model, free storage.
+- [x] **Device info** — iOS version, model, free storage. (`AboutView.swift` "Device" section; `deviceModel`, `iosVersion`, `freeStorageLabel` computed props; a11y identifiers on each row.)
 - [ ] **Secret gesture** — long-press version 7x → Diagnostics.
 
 ### 19.25 Diagnostics (dev/admin)

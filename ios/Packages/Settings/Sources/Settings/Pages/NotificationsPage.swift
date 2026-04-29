@@ -2,7 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 
-/// §19.3 Notifications page — per-channel toggles.
+/// §19.3 Notifications page — per-channel toggles + quiet hours.
 /// Delegates to `NotificationSettingsView` already shipped in Phase 6A.
 /// This is a thin wrapper that wires the Settings NavigationLink destination.
 ///
@@ -19,6 +19,11 @@ public struct NotificationsPage: View {
     @State private var appointmentReminderEnabled: Bool = true
     @State private var lowStockEnabled: Bool = false
     @State private var dailySummaryEnabled: Bool = false
+
+    // §19.3 Quiet hours — backed by HapticsSettings.shared.
+    @State private var quietHoursOn: Bool = HapticsSettings.shared.quietHoursOn
+    @State private var quietHoursStart: Int = HapticsSettings.shared.quietHoursStart
+    @State private var quietHoursEnd: Int = HapticsSettings.shared.quietHoursEnd
 
     public init() {}
 
@@ -53,6 +58,38 @@ public struct NotificationsPage: View {
                     .accessibilityIdentifier("notif.dailySummary")
             }
 
+            // §19.3 Quiet hours
+            Section {
+                Toggle("Quiet hours", isOn: $quietHoursOn)
+                    .accessibilityLabel("Quiet hours enabled")
+                    .accessibilityIdentifier("notif.quietHoursOn")
+                    .onChange(of: quietHoursOn) { _, v in HapticsSettings.shared.quietHoursOn = v }
+
+                if quietHoursOn {
+                    Picker("Start", selection: $quietHoursStart) {
+                        ForEach(0..<24, id: \.self) { h in
+                            Text(hourLabel(h)).tag(h)
+                        }
+                    }
+                    .accessibilityIdentifier("notif.quietHoursStart")
+                    .onChange(of: quietHoursStart) { _, v in HapticsSettings.shared.quietHoursStart = v }
+
+                    Picker("End", selection: $quietHoursEnd) {
+                        ForEach(0..<24, id: \.self) { h in
+                            Text(hourLabel(h)).tag(h)
+                        }
+                    }
+                    .accessibilityIdentifier("notif.quietHoursEnd")
+                    .onChange(of: quietHoursEnd) { _, v in HapticsSettings.shared.quietHoursEnd = v }
+                }
+            } header: {
+                Text("Quiet hours")
+            } footer: {
+                Text("During quiet hours, in-app notification sounds and haptics are suppressed. Critical alerts (payment failed, @mentions) can override this in a future update.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Button {
                     #if canImport(UIKit)
@@ -74,5 +111,19 @@ public struct NotificationsPage: View {
         #endif
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+    }
+
+    // MARK: - Helpers
+
+    private func hourLabel(_ hour: Int) -> String {
+        var comps = DateComponents()
+        comps.hour = hour
+        comps.minute = 0
+        guard let date = Calendar.current.date(from: comps) else {
+            return String(format: "%02d:00", hour)
+        }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "h:mm a"
+        return fmt.string(from: date)
     }
 }
