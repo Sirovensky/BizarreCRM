@@ -18,6 +18,7 @@ public struct AppointmentCreateFullView: View {
     @State private var vm: AppointmentCreateFullViewModel
     @State private var showRepeatSheet = false
     @State private var showConflictAlert = false
+    @State private var showConflictToast = false
 
     public init(api: APIClient) {
         _vm = State(wrappedValue: AppointmentCreateFullViewModel(api: api))
@@ -42,6 +43,14 @@ public struct AppointmentCreateFullView: View {
         .onChange(of: vm.createdId) { _, id in
             if id != nil { dismiss() }
         }
+        .onChange(of: vm.conflictWarning) { _, hasConflict in
+            // Show toast whenever a conflict is detected (e.g. slot tapped).
+            if hasConflict { showConflictToast = true }
+        }
+        .appointmentConflictToast(
+            isVisible: $showConflictToast,
+            onResolve: { showConflictAlert = true }
+        )
     }
 
     // MARK: - iPhone layout
