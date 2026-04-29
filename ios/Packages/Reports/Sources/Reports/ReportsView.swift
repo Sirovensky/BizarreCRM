@@ -19,6 +19,9 @@ public struct ReportsView: View {
     // §15.9 compare-periods picker state
     @State private var showComparePicker = false
 
+    // §15.1 Custom date-range picker sheet
+    @State private var showCustomDateSheet = false
+
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
     @State private var showCSATDetail = false
@@ -113,6 +116,17 @@ public struct ReportsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(exportError ?? "")
+        }
+        // §15.1 Custom date-range sheet with quick-presets
+        .sheet(isPresented: $showCustomDateSheet) {
+            CustomDateRangeSheet(
+                from: $vm.customFrom,
+                to: $vm.customTo
+            ) {
+                vm.applyCustomRange(from: vm.customFrom, to: vm.customTo)
+                Task { await vm.loadAll() }
+                showCustomDateSheet = false
+            }
         }
     }
 
@@ -252,9 +266,20 @@ public struct ReportsView: View {
                 Label(vm.comparePeriod?.displayLabel ?? "Compare",
                       systemImage: "arrow.left.arrow.right")
                     .font(.brandLabelSmall())
+                    // Tint orange when a comparison period is active so the
+                    // chip is visually distinct from the inactive/idle state.
+                    .foregroundStyle(vm.comparePeriod != nil ? Color.bizarreOrange : Color.bizarreOnSurface)
             }
-            .brandGlass(.clear, in: Capsule())
-            .accessibilityLabel("Compare to prior period")
+            .brandGlass(
+                vm.comparePeriod != nil ? .regular : .clear,
+                in: Capsule(),
+                tint: vm.comparePeriod != nil ? Color.bizarreOrange.opacity(0.15) : .clear
+            )
+            .accessibilityLabel(
+                vm.comparePeriod != nil
+                    ? "Comparing to \(vm.comparePeriod!.displayLabel). Tap to change."
+                    : "Compare to prior period"
+            )
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
@@ -340,6 +365,8 @@ public struct ReportsView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    // ⌘1…⌘6 keyboard shortcuts for iPad / Mac Catalyst
+                    .keyboardShortcut(tab.keyEquivalent, modifiers: .command)
                     .accessibilityLabel("\(tab.displayLabel) report section")
                     .accessibilityAddTraits(vm.selectedSubTab == tab ? .isSelected : [])
                 }
@@ -359,8 +386,13 @@ public struct ReportsView: View {
             ForEach(DateRangePreset.allCases) { preset in
                 let isSelected = vm.selectedPreset == preset
                 Button {
-                    vm.selectedPreset = preset
-                    Task { await vm.loadAll() }
+                    if preset == .custom {
+                        // Open quick-presets + DatePicker sheet for custom range.
+                        showCustomDateSheet = true
+                    } else {
+                        vm.selectedPreset = preset
+                        Task { await vm.loadAll() }
+                    }
                 } label: {
                     Text(preset.displayLabel)
                         .font(.brandLabelLarge())

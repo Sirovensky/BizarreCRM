@@ -70,13 +70,38 @@ public actor ReportExportService {
         #endif
     }
 
+    // MARK: - Filename token
+
+    /// Derives a sanitised PDF filename from the report title and period.
+    ///
+    /// Format: `{SafeTitle}_{SafePeriod}.pdf`
+    /// where each component has whitespace collapsed to underscores and
+    /// non-alphanumeric/underscore characters stripped so the result is
+    /// safe for every major filesystem and safe to pass to share-sheet /
+    /// UIDocumentInteractionController without further escaping.
+    ///
+    /// Example: "BizarreCRM Report" + "2025-01-01 – 2025-01-31"
+    ///          → `BizarreCRM_Report_2025-01-01_2025-01-31.pdf`
+    private static func pdfFilename(for report: ReportSnapshot) -> String {
+        func sanitise(_ s: String) -> String {
+            s.replacingOccurrences(of: " ", with: "_")
+             .components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-")))
+             .joined()
+        }
+        let titlePart  = sanitise(report.title)
+        let periodPart = sanitise(report.period)
+        let base = [titlePart, periodPart].filter { !$0.isEmpty }.joined(separator: "_")
+        let safeName = base.isEmpty ? "BizarreCRM_Report" : base
+        return "\(safeName).pdf"
+    }
+
     #if canImport(UIKit)
     private static func renderPDF(report: ReportSnapshot) throws -> URL {
         let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8) // A4
 
         let tempURL = FileManager.default
             .temporaryDirectory
-            .appendingPathComponent("BizarreCRM_Report_\(Int(Date().timeIntervalSince1970)).pdf")
+            .appendingPathComponent(Self.pdfFilename(for: report))
 
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
         let data = renderer.pdfData { ctx in
@@ -214,7 +239,7 @@ public actor ReportExportService {
         let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
         let tempURL = FileManager.default
             .temporaryDirectory
-            .appendingPathComponent("BizarreCRM_Report_\(Int(Date().timeIntervalSince1970)).pdf")
+            .appendingPathComponent(Self.pdfFilename(for: report))
 
         var mediaBox = pageRect
         guard let ctx = CGContext(tempURL as CFURL, mediaBox: &mediaBox, nil) else {
