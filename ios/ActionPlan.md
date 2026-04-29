@@ -3548,6 +3548,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Field-level merge** for notes (append), tags (union), statuses (server wins).
 - [ ] **Conflict pane** — when server rejects with `409 CONFLICT + server_version`, show diff UI: Your change vs Server change; keep one.
 - [ ] **Delete vs edit** conflict — server tombstone wins; local edit discarded with banner.
+- [x] **Conflict-resolved toast** — top-of-screen glass toast that auto-dismisses after 3 s when `ConflictResolutionPhase` enters `.resolved`; shows resolution strategy (server/local/merged/rejected). `ConflictResolvedToastModifier` + `.conflictResolvedToast(phase:)` in `Sync/Conflicts/ConflictResolvedToast.swift`. (feat(§20.3))
 
 ### 20.4 Photo / binary uploads
 - [ ] **Background `URLSession`** — configuration `background(withIdentifier:)`; survives app exit.
@@ -3578,6 +3579,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive). (`SyncManager.autoStart()` subscribes and triggers `syncNow()` on reconnect.)
 - [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier 173d99c4)
 - [x] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override). (`MeteredUploadPolicy` + `MeteredNetworkWarningModifier` + `.meteredNetworkWarning(isUploadPending:)` in `Sync/MeteredNetworkWarning.swift`; glass banner safeAreaInset; per-session user override. feat(§20.6): 7000f88c)
+- [x] **Offline banner copy variants** — distinct copy for no-signal vs cellular vs constrained-wifi. `OfflineBannerCopy` value type in `Sync/OfflineBannerCopy.swift`; `ConnectivityBannerModifier` updated to use `ConnectivityCopyChip` for non-online states; "No internet connection / Changes will sync…" vs "Using cellular data / Large uploads paused…". (feat(§20.6))
 - [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
 
 ### 20.7 Selective sync (large tenants)
@@ -3587,10 +3589,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **User setting** — "Sync last 30 days" / "90 days" / "All".
 
 ### 20.8 Manual sync controls
-- [ ] **Sync now** — Settings → Data + pull-down on Dashboard.
+- [x] **Sync now** — `RetryNowButton` (full + compact styles) in `Sync/RetryNowButton.swift`; calls `SyncManager.syncNow()`; shows spinner + success checkmark; disables during in-flight drain. (feat(§20.8))
 - [x] **Per-tab pull-to-refresh** — standard `.refreshable`. (Dashboard/Tickets/Customers wired to forceRefresh() via CachedRepository; phase-3 PR)
-- [ ] **Last-sync timestamp** footer in Settings → Data.
-- [ ] **Unsynced writes count** — tab badge red dot.
+- [x] **Last-sync timestamp** footer in Settings → Data. `LastSyncFooter` (full + compact) in `Sync/LastSyncFooter.swift`; `TimelineView` 1-min cadence keeps relative label fresh; shows pending count subline. (feat(§20.8))
+- [x] **Unsynced writes count** — `PendingActionChip` capsule badge in `Sync/PendingActionChip.swift`; observes `SyncManager.pendingCountDidChange` notification; hides at zero. (feat(§20.8))
 
 ### 20.9 Cache invalidation + eviction
 - [x] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use. (`Core/Performance/StorageBreakdown.swift` — `ImageCachePolicy` singleton; `StorageMonitor`; tiered eviction policy with `isEvictable` per `StorageCategory`. feat(§20.9): b12)

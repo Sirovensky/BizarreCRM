@@ -228,6 +228,9 @@ public final class SyncManager {
     private func refreshPendingCount() async {
         do {
             pendingCount = try await SyncQueueStore.shared.pendingCount()
+            // Broadcast so PendingActionChip, RetryNowButton, and LastSyncFooter
+            // update without a polling timer (§20.8).
+            postPendingCountChanged()
         } catch {
             AppLog.sync.error("pendingCount refresh failed: \(error, privacy: .public)")
         }
