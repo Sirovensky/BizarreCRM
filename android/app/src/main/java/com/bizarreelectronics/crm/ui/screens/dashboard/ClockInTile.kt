@@ -246,7 +246,7 @@ fun ClockInTile(
                 // §3.11 — "Since h:mm a" when clocked in and timestamp available;
                 // falls back to display name, then generic hint.
                 val subtitle = when {
-                    isOn && state.clockedInSince != null -> state.clockedInSince
+                    isOn && state.clockedInSince != null -> state.clockedInSince ?: ""
                     state.displayName.isNotBlank() -> state.displayName
                     else -> "Tap to open clock screen"
                 }

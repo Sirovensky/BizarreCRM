@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -41,13 +42,16 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import android.provider.Settings
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterSheet
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterState
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSortDropdown
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusChip
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusPieChart
 import com.bizarreelectronics.crm.ui.screens.invoices.components.invoiceChipStateFor
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.bizarreelectronics.crm.util.toDollars
 import java.io.OutputStreamWriter
 
@@ -63,6 +67,14 @@ fun InvoiceListScreen(
     val statuses = listOf("All", "Paid", "Unpaid", "Partial", "Void")
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val isTablet = isMediumOrExpandedWidth()
+    val reduceMotion = remember(context) {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
@@ -226,6 +238,13 @@ fun InvoiceListScreen(
             val stats = state.stats
             if (stats != null) {
                 InvoiceStatsHeader(stats = stats)
+                // §7.1 — Status donut chart: tablet / ChromeOS only
+                if (isTablet) {
+                    InvoiceStatusPieChart(
+                        stats = stats,
+                        reduceMotion = reduceMotion,
+                    )
+                }
             }
 
             // Count pill
@@ -284,12 +303,25 @@ fun InvoiceListScreen(
                     }
                 }
                 else -> {
+                    val listState = rememberLazyListState()
+
+                    // §7.1 — trigger loadMore when the user scrolls near the end
+                    LaunchedEffect(listState.firstVisibleItemIndex, listState.layoutInfo) {
+                        val info = listState.layoutInfo
+                        val totalItems = info.totalItemsCount
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        if (totalItems > 0 && lastVisible >= totalItems - 5) {
+                            viewModel.loadMore()
+                        }
+                    }
+
                     PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(
                                 start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp,
                             ),
@@ -308,6 +340,14 @@ fun InvoiceListScreen(
                                         if (!state.isBulkMode) viewModel.enterBulkMode(invoice.id)
                                         else viewModel.toggleSelection(invoice.id)
                                     },
+                                )
+                            }
+                            // §7.1 — pagination footer
+                            item(key = "invoice_list_footer") {
+                                InvoiceListFooter(
+                                    isLoadingMore = state.isLoadingMore,
+                                    hasMore = state.hasMore,
+                                    totalLoaded = state.invoices.size,
                                 )
                             }
                         }
@@ -434,6 +474,54 @@ private fun BulkActionBar(
                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Void")
+            }
+        }
+    }
+}
+
+// ── §7.1 Pagination footer ────────────────────────────────────────────────────
+
+/**
+ * Shown at the bottom of the invoice list. Mirrors the pattern used by
+ * [com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter].
+ *
+ * - Loading: circular progress indicator centered in a compact row.
+ * - End of list: "Showing N invoices" label in subdued onSurfaceVariant.
+ * - Has more: empty spacer (the scroll-trigger LaunchedEffect fires loadMore).
+ */
+@Composable
+private fun InvoiceListFooter(
+    isLoadingMore: Boolean,
+    hasMore: Boolean,
+    totalLoaded: Int,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            isLoadingMore -> {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .semantics { contentDescription = "Loading more invoices" },
+                    strokeWidth = 2.dp,
+                )
+            }
+            !hasMore && totalLoaded > 0 -> {
+                Text(
+                    text = "Showing $totalLoaded ${if (totalLoaded == 1) "invoice" else "invoices"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.semantics {
+                        contentDescription = "End of list. $totalLoaded invoices loaded."
+                    },
+                )
+            }
+            else -> {
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }

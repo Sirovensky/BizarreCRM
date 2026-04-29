@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreditNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreditNoteResponseData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
+import com.bizarreelectronics.crm.data.remote.dto.InvoicePageResponse
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData
 import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
@@ -14,12 +15,26 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
 interface InvoiceApi {
 
     @GET("invoices")
     suspend fun getInvoices(@QueryMap filters: Map<String, String> = emptyMap()): ApiResponse<InvoiceListData>
+
+    /**
+     * Cursor-based page fetch for offline-first paging (§7.1).
+     * When [cursor] is null the server returns the first page.
+     * On servers that do not yet support cursor params the response is treated as a
+     * final page ([InvoicePageResponse.cursor] = null).
+     */
+    @GET("invoices")
+    suspend fun getInvoicePage(
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int = 50,
+        @QueryMap filters: Map<String, String> = emptyMap(),
+    ): ApiResponse<InvoicePageResponse>
 
     @GET("invoices/{id}")
     suspend fun getInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>

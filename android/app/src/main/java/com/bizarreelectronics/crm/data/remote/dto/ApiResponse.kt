@@ -118,6 +118,24 @@ data class InvoiceListData(
     val pagination: Pagination? = null
 )
 
+/**
+ * Cursor-based page response for [InvoiceRepository.loadInvoicesPage] (§7.1).
+ *
+ * Mirrors [EstimatePageResponse] exactly. When the server does not yet support
+ * cursor params it falls back to returning the standard invoice array under the
+ * `invoices` key; callers treat [cursor]=null as end-of-pagination.
+ */
+data class InvoicePageResponse(
+    val invoices: List<InvoiceListItem> = emptyList(),
+    /** Opaque cursor to pass as `?cursor=` on the next APPEND load. Null = exhausted. */
+    val cursor: String? = null,
+    /** True when the server explicitly confirms no more pages remain. */
+    @SerializedName("server_exhausted")
+    val serverExhausted: Boolean = false,
+    /** Optional approximate total for UI display ("Showing N of ~M"). */
+    val total: Int? = null,
+)
+
 data class InventoryListData(
     val items: List<InventoryListItem>,
     val pagination: Pagination? = null

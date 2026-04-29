@@ -296,6 +296,10 @@ class LoginViewModel @Inject constructor(
     private val biometricCredentialStore: BiometricCredentialStore,
     private val biometricAuth: BiometricAuth,
     private val deepLinkBus: DeepLinkBus,
+    // LOGIN-MOCK-256: Play Integrity attestation for cloud-hosted login events.
+    // Nullable injection so tests can omit it; the field is populated by Hilt
+    // in production via the @Singleton PlayIntegrityClient binding.
+    private val playIntegrityClient: com.bizarreelectronics.crm.util.PlayIntegrityClient? = null,
 ) : ViewModel() {
 
     companion object {
@@ -938,7 +942,19 @@ class LoginViewModel @Inject constructor(
                 // are being sent, so the URL has been validated as a real CRM host.
                 authPreferences.serverUrl = s.serverUrl
 
-                val response = authApi.login(LoginRequest(s.username.trim(), s.password))
+                // LOGIN-MOCK-256: Acquire a Play Integrity attestation token for
+                // cloud-hosted login events. Self-hosted and non-GMS paths skip this
+                // (token stays null) — the login call proceeds unconditionally.
+                // requestTokenString() is non-blocking: any failure returns null.
+                val integrityToken: String? = if (isCloudUrl(s.serverUrl)) {
+                    playIntegrityClient?.requestTokenString(
+                        com.bizarreelectronics.crm.util.PlayIntegrityClient.buildNonce()
+                    )
+                } else {
+                    null // Self-hosted: attestation not enforced.
+                }
+
+                val response = authApi.login(LoginRequest(s.username.trim(), s.password), integrityToken)
                 val data = response.data ?: throw Exception(response.message ?: "Login failed")
 
                 val challengeToken = data.challengeToken ?: throw Exception("No challenge token received")

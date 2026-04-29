@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,6 +26,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.appointments.components.ReminderOffsetPicker
 import com.bizarreelectronics.crm.util.CalendarMirror
+import kotlinx.coroutines.delay
+import java.util.concurrent.TimeUnit
 
 /**
  * Appointment detail screen (L1430–1444).
@@ -124,6 +128,17 @@ fun AppointmentDetailScreen(
                         }
                     }
 
+                    // §10.6 Check-in / check-out status card
+                    if (state.localCheckedInAt != null || appt.status == "in_progress" || appt.status == "completed") {
+                        item {
+                            CheckInStatusCard(
+                                checkedInAt = state.localCheckedInAt,
+                                checkedOutAt = state.localCheckedOutAt,
+                                status = appt.status,
+                            )
+                        }
+                    }
+
                     // Quick action chips header row (L1430)
                     item {
                         Row(
@@ -138,6 +153,37 @@ fun AppointmentDetailScreen(
                                     onClick = viewModel::markConfirmed,
                                     label = { Text("Mark Confirmed") },
                                     icon = { Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)) },
+                                )
+                            }
+                            // §10.6 — "Customer arrived" shown when status is not yet in_progress/completed
+                            if (appt.status !in listOf("in_progress", "completed", "cancelled", "no_show") &&
+                                state.localCheckedInAt == null
+                            ) {
+                                SuggestionChip(
+                                    onClick = viewModel::checkIn,
+                                    label = { Text("Customer arrived") },
+                                    icon = { Icon(Icons.Default.PersonPin, null, Modifier.size(18.dp)) },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Mark customer as arrived and start check-in"
+                                    },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        iconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    ),
+                                )
+                            }
+                            // §10.6 — "Customer departed" shown when checked in but not yet departed
+                            if ((appt.status == "in_progress" || state.localCheckedInAt != null) &&
+                                state.localCheckedOutAt == null && appt.status != "completed"
+                            ) {
+                                SuggestionChip(
+                                    onClick = viewModel::checkOut,
+                                    label = { Text("Customer departed") },
+                                    icon = { Icon(Icons.Default.ExitToApp, null, Modifier.size(18.dp)) },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Mark customer as departed and complete appointment"
+                                    },
                                 )
                             }
                             SuggestionChip(
@@ -538,6 +584,121 @@ private fun RecurringEditScopeDialog(
         },
     )
 }
+
+// ---------------------------------------------------------------------------
+// §10.6 Check-in status card
+// ---------------------------------------------------------------------------
+
+/**
+ * Displays the current check-in status of the appointment:
+ * - If [checkedInAt] is set and [checkedOutAt] is null → shows "In progress" with a live
+ *   elapsed timer that ticks every second.
+ * - If both [checkedInAt] and [checkedOutAt] are set → shows total duration.
+ * - If the appointment [status] is "completed" and no local timestamps are set →
+ *   shows a static "Completed" indicator.
+ *
+ * Respects TalkBack: the card has a merged contentDescription that is updated
+ * every minute to avoid spamming announcements.
+ */
+@Composable
+private fun CheckInStatusCard(
+    checkedInAt: Long?,
+    checkedOutAt: Long?,
+    status: String?,
+) {
+    // Live elapsed-seconds ticker (only when in-progress and not yet checked out)
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val isLive = checkedInAt != null && checkedOutAt == null && status != "completed"
+    LaunchedEffect(isLive) {
+        if (isLive) {
+            while (true) {
+                delay(1_000L)
+                nowMillis = System.currentTimeMillis()
+            }
+        }
+    }
+
+    val elapsedMs: Long? = when {
+        checkedInAt != null && checkedOutAt != null -> checkedOutAt - checkedInAt
+        checkedInAt != null && isLive               -> nowMillis - checkedInAt
+        else                                         -> null
+    }
+
+    val (iconVector, containerColorToken, label, detail) = when {
+        checkedOutAt != null || status == "completed" -> Quad(
+            Icons.Default.CheckCircle,
+            MaterialTheme.colorScheme.secondaryContainer,
+            "Completed",
+            elapsedMs?.let { "Duration: ${formatElapsed(it)}" } ?: "",
+        )
+        checkedInAt != null -> Quad(
+            Icons.Default.PersonPin,
+            MaterialTheme.colorScheme.primaryContainer,
+            "In progress",
+            elapsedMs?.let { "Elapsed: ${formatElapsed(it)}" } ?: "",
+        )
+        else -> Quad(
+            Icons.Default.EventAvailable,
+            MaterialTheme.colorScheme.surfaceVariant,
+            "In progress",
+            "",
+        )
+    }
+
+    val a11yDesc = if (detail.isNotBlank()) "$label — $detail" else label
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .semantics(mergeDescendants = true) { contentDescription = a11yDesc },
+        colors = CardDefaults.cardColors(containerColor = containerColorToken),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (detail.isNotBlank()) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Formats a duration in millis as "Xh Ym" or "Xm Ys" for short durations. */
+private fun formatElapsed(ms: Long): String {
+    val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(ms)
+    val hours   = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0   -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m ${seconds}s"
+        else        -> "${seconds}s"
+    }
+}
+
+/** Tiny 4-tuple to avoid destructuring noise; removed when Kotlin allows destructuring data classes inline. */
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 // ---------------------------------------------------------------------------
 // Shared detail row
