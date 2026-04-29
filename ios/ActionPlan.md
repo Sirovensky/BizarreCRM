@@ -1823,11 +1823,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.2 Sales
 - [x] Revenue trend — `RevenueChartCard` with Swift Charts `AreaMark + LineMark`, y-axis in $K, x-axis time-scale; hero tile shows period total + sparkline + trend arrow. (feat(ios phase-8 §15))
-- [ ] Total invoices / revenue / unique customers / period-over-period delta.
-- [ ] Revenue by payment method pie.
+- [x] Total invoices / revenue / unique customers / period-over-period delta — `PeriodSummaryCard` 4-column (Sales / Tickets / Customers / Avg) with compact currency. (fix(§91.2-2,3): PeriodSummaryCard)
+- [x] Revenue by payment method pie — `RevenueByMethodCard` donut + legend; mismatch tooltip when `byMethod` empty but revenue > 0. (fix(§91.2-6): RevenueByMethodCard)
 - [ ] YoY growth.
 - [ ] Top 10 customers by spend.
-- [ ] Cohort revenue retention.
+- [x] Cohort revenue retention — `CohortRevenueRetentionCard` heat-grid with bottom safe-area padding. (fix(§91.2-7): CohortRevenueRetentionCard)
 
 ### 15.3 Tickets
 - [x] Tickets by status — `TicketsByStatusCard` horizontal `BarMark` chart with per-status color. (feat(ios phase-8 §15))
@@ -1894,6 +1894,16 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] See §39 for the full list.
 - [ ] See §6 for the full list.
 - [ ] See §19 for the full list.
+
+### §91.2 Reports/Sales tab — UI bugfixes (batch a3f7)
+- [x] `↗ 0.0%` shown on zero-change — render flat dash `–` instead of up-arrow + green when delta is 0.0%. Fixed in `CompareDeltaPill`, `RevenueChartCard.periodBadge`, and `ReportsView.trendArrow`.
+- [x] Period Summary card content broken — `PeriodSummaryCard` added with 4 equal columns: Sales / Tickets / Customers / Avg; labelled with icons.
+- [x] Period Summary `$0…` truncated — compact currency helper (`$0`, `$1.5K`, `$15K`) prevents overflow; `minimumScaleFactor(0.8)` as backstop.
+- [x] Revenue card duplicates Trend + By Period — iPad "By Period" bar chart now lives inside a `DisclosureGroup` (collapsed by default); Trend line chart is the only primary chart.
+- [x] Bar chart Y-axis values lack unit — custom `chartYAxis` `AxisMarks` format values as `$\(n)K` on both iPhone and iPad charts in `RevenueChartCard`.
+- [x] Revenue by Method "No payment data" while Revenue $15K — `RevenueByMethodCard` shows an informational callout ("Breakdown pending") with actual revenue amount when `byMethod` is empty but `totalRevenue > 0`.
+- [x] Cohort Revenue Retention card cut off — `CohortRevenueRetentionCard` wraps with `.padding(.bottom, 32)` safe-area guard.
+- [ ] Revenue chart pagination icons (◀ ⊝ ⊕ ▶) unlabeled — zoom controls not present in current implementation; deferred (no custom zoom control exists in codebase yet).
 
 ---
 ## §16. POS / Checkout

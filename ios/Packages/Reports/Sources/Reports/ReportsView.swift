@@ -268,17 +268,20 @@ public struct ReportsView: View {
         }
     }
 
+    // §91.2-1: flat delta (0.0%) → neutral dash, not green up-arrow.
     @ViewBuilder
     private func trendArrow(pct: Double) -> some View {
-        let isUp = pct >= 0
+        let isFlat = (pct == 0.0)
+        let isUp   = pct > 0
         HStack(spacing: BrandSpacing.xxs) {
-            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+            Image(systemName: isFlat ? "minus" : (isUp ? "arrow.up.right" : "arrow.down.right"))
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            Text(String(format: "%.1f%%", abs(pct)))
+            Text(isFlat ? "–" : String(format: "%.1f%%", abs(pct)))
                 .font(.brandLabelLarge())
         }
-        .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
+        .foregroundStyle(isFlat ? Color.bizarreOnSurfaceMuted
+                                : (isUp ? Color.bizarreSuccess : Color.bizarreError))
     }
 
     // MARK: - Loading Placeholders
@@ -309,10 +312,22 @@ public struct ReportsView: View {
 
     @ViewBuilder
     private var cardItems: some View {
+        // §91.2-2/3: Period Summary card — 4 labelled columns, compact currency.
+        PeriodSummaryCard(
+            totals: vm.salesTotals,
+            avgTicketDollars: vm.avgTicketValue?.currentDollars
+        )
+
         // §15.2 Revenue chart — line + bar via /reports/sales
         RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
             drillContext = .revenue(date: pt.date)
         }
+
+        // §91.2-6: Revenue by Method — explains mismatch when byMethod is empty but revenue > 0.
+        RevenueByMethodCard(
+            methods: vm.revenueByMethod,
+            totalRevenueDollars: vm.revenueTotalDollars
+        )
 
         // §15.9 Expenses chart — bar via /reports/dashboard-kpis
         ExpensesChartCard(report: vm.expensesReport)
