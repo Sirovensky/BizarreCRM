@@ -31,7 +31,7 @@ public enum PasteboardAudit {
 
     /// Records that the pasteboard was read on a sensitive screen.
     ///
-    /// The entry is written to `OSLog` at the `.default` (persisted) level so it
+    /// The entry is written to `OSLog` at the `.notice` (persisted) level so it
     /// is available in Console.app and in diagnostics bundles. A companion
     /// server-side sink will be wired in Phase 11 when the audit-log POST
     /// endpoint is available.
@@ -51,9 +51,9 @@ public enum PasteboardAudit {
         // The actor is marked `.private` so it does not appear in public
         // Console output but IS captured in full diagnostics bundles shared
         // by the user (e.g. Feedback Assistant, Settings → Privacy → Analytics).
-        log.default(
-            "Pasteboard read on sensitive screen '\(screen, privacy: .public)' by actor '\(actor, privacy: .private)'"
-        )
+        let safeScreen = screen  // captured as local to use in interpolation
+        let safeActor  = actor
+        log.notice("Pasteboard read: screen=\(safeScreen, privacy: .public) actor=\(safeActor, privacy: .private)")
     }
 
     /// Records that sensitive content was written to the pasteboard and will
@@ -69,8 +69,8 @@ public enum PasteboardAudit {
         screen: String,
         expiresIn: TimeInterval
     ) {
-        log.default(
-            "Pasteboard write on sensitive screen '\(screen, privacy: .public)' expires in \(expiresIn, privacy: .public)s"
-        )
+        let safeScreen  = screen
+        let safeExpiry  = expiresIn
+        log.notice("Pasteboard write: screen=\(safeScreen, privacy: .public) expires_in=\(safeExpiry, privacy: .public)s")
     }
 }
