@@ -32,12 +32,14 @@ public struct CustomerDetailView: View {
                         Label("Edit", systemImage: "pencil")
                     }
                     .accessibilityLabel("Edit customer")
+                    .accessibilityIdentifier("customers.detail.toolbar.edit")
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Button { showingMerge = true } label: {
                         Label("Merge…", systemImage: "arrow.triangle.merge")
                     }
                     .accessibilityLabel("Merge customer with another")
+                    .accessibilityIdentifier("customers.detail.toolbar.merge")
                 }
             }
         }
@@ -280,33 +282,96 @@ private struct QuickActions: View {
 
 private struct ContactInfo: View {
     let detail: CustomerDetail
+    @State private var recentlyCopied: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Contact").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                .accessibilityIdentifier("customers.detail.contact.header")
 
             if let mobile = detail.mobile, !mobile.isEmpty {
-                row(icon: "phone", label: "Mobile", value: PhoneFormatter.format(mobile), mono: true)
+                copyableRow(
+                    icon: "phone", label: "Mobile",
+                    value: PhoneFormatter.format(mobile),
+                    copyValue: mobile, mono: true,
+                    identifier: "customers.detail.contact.mobile"
+                )
             }
             if let phone = detail.phone, !phone.isEmpty, phone != detail.mobile {
-                row(icon: "phone", label: "Phone", value: PhoneFormatter.format(phone), mono: true)
+                copyableRow(
+                    icon: "phone", label: "Phone",
+                    value: PhoneFormatter.format(phone),
+                    copyValue: phone, mono: true,
+                    identifier: "customers.detail.contact.phone"
+                )
             }
             if let email = detail.email, !email.isEmpty {
-                row(icon: "envelope", label: "Email", value: email)
+                copyableRow(
+                    icon: "envelope", label: "Email",
+                    value: email, copyValue: email,
+                    identifier: "customers.detail.contact.email"
+                )
             }
             if let addr = detail.addressLine {
-                row(icon: "mappin.and.ellipse", label: "Address", value: addr)
+                row(icon: "mappin.and.ellipse", label: "Address", value: addr,
+                    identifier: "customers.detail.contact.address")
             }
             if let org = detail.organization, !org.isEmpty {
-                row(icon: "building.2", label: "Organization", value: org)
+                row(icon: "building.2", label: "Organization", value: org,
+                    identifier: "customers.detail.contact.organization")
             }
         }
         .cardBackground()
     }
 
-    private func row(icon: String, label: String, value: String, mono: Bool = false) -> some View {
+    /// Row with a trailing copy button — used for phone and email.
+    private func copyableRow(
+        icon: String,
+        label: String,
+        value: String,
+        copyValue: String,
+        mono: Bool = false,
+        identifier: String
+    ) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.sm) {
             Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(value)
+                    .font(mono ? .brandMono(size: 14) : .brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+            // One-tap copy button: copies the raw value, briefly shows a checkmark.
+            Button {
+                UIPasteboard.general.string = copyValue
+                recentlyCopied = identifier
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if recentlyCopied == identifier { recentlyCopied = nil }
+                }
+            } label: {
+                Image(systemName: recentlyCopied == identifier ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 13))
+                    .foregroundStyle(recentlyCopied == identifier ? .bizarreSuccess : .bizarreOnSurfaceMuted.opacity(0.7))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(recentlyCopied == identifier ? "Copied" : "Copy \(label)")
+            .accessibilityIdentifier("\(identifier).copy")
+        }
+        .padding(.vertical, BrandSpacing.xxs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func row(icon: String, label: String, value: String, mono: Bool = false, identifier: String) -> some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
                 Text(value)
@@ -317,6 +382,9 @@ private struct ContactInfo: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, BrandSpacing.xxs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
+        .accessibilityIdentifier(identifier)
     }
 }
 
@@ -374,9 +442,10 @@ private struct TagsCard: View {
                 }
             }
             if tags.isEmpty {
-                Text("No tags.")
+                Text(onEditTags != nil ? "No tags yet — tap the pencil to add one." : "No tags.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityIdentifier("customers.detail.tags.empty")
             } else {
                 FlowTags(tags: tags)
             }

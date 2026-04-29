@@ -22,37 +22,44 @@ public struct CustomerQuickActionRow: View {
             HStack(spacing: BrandSpacing.sm) {
                 // — Call
                 if let phone = primaryPhone {
-                    actionChip("Call", icon: "phone.fill", tint: .bizarreOrange) {
+                    actionChip("Call", icon: "phone.fill", tint: .bizarreOrange,
+                               identifier: "customers.detail.action.call") {
                         openURL("tel:\(phone.filter(\.isNumber))")
                     }
                 }
                 // — SMS
                 if let phone = primaryPhone {
-                    actionChip("SMS", icon: "message.fill", tint: .bizarreTeal) {
+                    actionChip("SMS", icon: "message.fill", tint: .bizarreTeal,
+                               identifier: "customers.detail.action.sms") {
                         SMSLauncher.open(phone: phone)
                     }
                 }
                 // — Email
                 if let email = detail.email, !email.isEmpty {
-                    actionChip("Email", icon: "envelope.fill", tint: .bizarreSuccess) {
+                    actionChip("Email", icon: "envelope.fill", tint: .bizarreSuccess,
+                               identifier: "customers.detail.action.email") {
                         openURL("mailto:\(email)")
                     }
                 }
                 // — FaceTime
                 if let phone = primaryPhone {
-                    actionChip("FaceTime", icon: "video.fill", tint: .bizarreOrange) {
+                    actionChip("FaceTime", icon: "video.fill", tint: .bizarreOrange,
+                               identifier: "customers.detail.action.facetime") {
                         openURL("facetime:\(phone.filter(\.isNumber))")
                     }
                 }
                 // — New ticket (Phase 4 deeplink; stub)
-                actionChip("New ticket", icon: "ticket", tint: .bizarreOnSurfaceMuted) {}
+                actionChip("New ticket", icon: "ticket", tint: .bizarreOnSurfaceMuted,
+                           identifier: "customers.detail.action.newTicket") {}
                     .opacity(0.6)
                 // — New invoice (Phase 4 deeplink; stub)
-                actionChip("New invoice", icon: "doc.text.fill", tint: .bizarreOnSurfaceMuted) {}
+                actionChip("New invoice", icon: "doc.text.fill", tint: .bizarreOnSurfaceMuted,
+                           identifier: "customers.detail.action.newInvoice") {}
                     .opacity(0.6)
             }
             .padding(.horizontal, BrandSpacing.base)
         }
+        .accessibilityIdentifier("customers.detail.quickActionRow")
     }
 
     // MARK: Helpers
@@ -70,6 +77,7 @@ public struct CustomerQuickActionRow: View {
         _ label: String,
         icon: String,
         tint: Color,
+        identifier: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -90,6 +98,7 @@ public struct CustomerQuickActionRow: View {
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
     }
 }
 #endif
