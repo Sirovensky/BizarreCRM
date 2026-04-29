@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import com.bizarreelectronics.crm.ui.components.shared.brandColors
@@ -129,19 +127,16 @@ fun CheckInStep3Damage(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Overall condition", style = MaterialTheme.typography.titleSmall)
-                // M3 Expressive: ButtonGroup segmented single-select. Condition
-                // has a natural ordering (Mint → Salvage) that maps to
-                // segmented semantics better than free-floating FilterChips.
-                @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-                ButtonGroup(
-                    overflowIndicator = { /* fixed 5 items; no overflow */ },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DeviceCondition.entries.forEach { c ->
-                        toggleableItem(
-                            checked = condition == c,
-                            onCheckedChange = { checked -> if (checked) onConditionChange(c) },
-                            label = c.label,
+                        FilterChip(
+                            selected = condition == c,
+                            onClick = { onConditionChange(c) },
+                            label = { Text(c.label) },
+                            colors = FilterChipDefaults.brandColors(),
+                            modifier = Modifier.semantics {
+                                contentDescription = "Condition: ${c.label}"
+                            },
                         )
                     }
                 }
