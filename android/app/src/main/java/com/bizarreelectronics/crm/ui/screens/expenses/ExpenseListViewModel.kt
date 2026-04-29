@@ -72,7 +72,7 @@ class ExpenseListViewModel @Inject constructor(
 
                     // Pending approval category tab: filter by status == pending
                     if (categoryFilter == FILTER_PENDING_APPROVAL) {
-                        result = result.filter { it.status == "pending" }
+                        result = result.filter { it.approvalStatus == "pending" }
                     }
 
                     // When date range is active alongside a category filter, narrow further
@@ -109,7 +109,7 @@ class ExpenseListViewModel @Inject constructor(
                         totalAmount = sorted.sumOf { it.amount },
                         categorySlices = buildCategorySlices(sorted),
                         reimbursablePendingAmount = sorted
-                            .filter { it.status == "pending" }
+                            .filter { it.approvalStatus == "pending" }
                             .sumOf { it.amount },
                         employeeOptions = employeeOptions,
                         isLoading = false,
@@ -189,7 +189,7 @@ class ExpenseListViewModel @Inject constructor(
             val desc = (e.description ?: "").replace("\"", "\"\"")
             val user = (e.userName ?: "").replace("\"", "\"\"")
             sb.appendLine(
-                "${e.id},${e.category},$amountDollars,${e.date.take(10)},\"$desc\",\"$user\",${e.status}",
+                "${e.id},${e.category},$amountDollars,${e.date.take(10)},\"$desc\",\"$user\",${e.approvalStatus}",
             )
         }
         return sb.toString()

@@ -382,7 +382,7 @@ fun ExpenseListItem.toEntity() = ExpenseEntity(
     amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
-    status = status ?: "pending",
+
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
     createdAt = createdAt ?: "",
     updatedAt = createdAt ?: "",
@@ -395,7 +395,7 @@ fun ExpenseDetail.toEntity() = ExpenseEntity(
     amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
-    status = status ?: "pending",
+
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
     userId = userId,
     createdAt = createdAt ?: "",

@@ -563,11 +563,9 @@ sealed class Screen(val route: String) {
         fun createRoute(roleId: Long) = "settings/team/roles/$roleId/permissions"
     }
 
-    // §14.6 — Team shifts / weekly schedule
+    // §14.6 — Team shifts / weekly schedule (parallel to ShiftSchedule;
+    // ShiftsSchedule is plural-version under shifts/ subpackage from wave-1).
     data object ShiftsSchedule : Screen("shifts-schedule")
-
-    // §14.7 — Employee leaderboard
-    data object Leaderboard : Screen("leaderboard")
 
     // §14.4 — Role management (admin)
     data object RoleManagement : Screen("role-management")
@@ -2296,12 +2294,6 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
-            // §14.7 — Employee leaderboard
-            composable(Screen.Leaderboard.route) {
-                com.bizarreelectronics.crm.ui.screens.employees.LeaderboardScreen(
-                    onBack = { navController.popBackStack() },
-                )
-            }
             // §14.4 — Role management (admin)
             composable(Screen.RoleManagement.route) {
                 com.bizarreelectronics.crm.ui.screens.employees.RoleManagementScreen(
@@ -2372,7 +2364,6 @@ fun AppNavGraph(
                     onTicketSettings = { navController.navigate(Screen.TicketSettings.route) },
                     // §19.8 — POS / payment settings.
                     onPaymentSettings = { navController.navigate(Screen.PaymentSettings.route) },
-                    onPosSettings = { navController.navigate(Screen.PosSettings.route) },
                     // §19.9 — SMS settings.
                     onSmsSettings = { navController.navigate(Screen.SmsSettings.route) },
                     // §19.10 — Integrations hub (admin-only in UI; server enforces per-endpoint).
