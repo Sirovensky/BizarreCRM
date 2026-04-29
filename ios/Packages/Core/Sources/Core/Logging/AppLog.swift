@@ -42,6 +42,8 @@ public enum AppLog {
     public static let payments       = Logger(subsystem: subsystem, category: "payments")
     /// §32 / §57 — Field-service GPS location tracking pipeline.
     public static let location       = Logger(subsystem: subsystem, category: "location")
+    /// §65 — Deep-link / URL scheme routing (parse, validate, unknown-route fallback).
+    public static let routing        = Logger(subsystem: subsystem, category: "routing")
 
     // MARK: — §32.6 PII redaction helper (new)
 
