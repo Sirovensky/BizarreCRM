@@ -31,6 +31,8 @@ public final class SmsProviderViewModel: Sendable {
     var twilioAccountSid: String = ""
     var twilioAuthToken: String = ""
     var a2pStatus: String = ""
+    // §19.10 — MMS support toggle
+    var mmsEnabled: Bool = false
 
     var isLoading: Bool = false
     var isSaving: Bool = false
@@ -55,6 +57,7 @@ public final class SmsProviderViewModel: Sendable {
             twilioAccountSid = resp.twilioAccountSid ?? ""
             twilioAuthToken = resp.twilioAuthToken ?? ""
             a2pStatus = resp.a2pStatus ?? ""
+            mmsEnabled = resp.mmsEnabled ?? false
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -70,7 +73,8 @@ public final class SmsProviderViewModel: Sendable {
                 fromNumber: fromNumber,
                 twilioAccountSid: twilioAccountSid,
                 twilioAuthToken: twilioAuthToken,
-                a2pStatus: nil
+                a2pStatus: nil,
+                mmsEnabled: mmsEnabled
             )
             _ = try await api.saveSmsSettings(body)
             successMessage = "SMS settings saved."
@@ -112,6 +116,16 @@ public struct SmsProviderPage: View {
                     }
                 }
                 .accessibilityIdentifier("sms.provider")
+            }
+
+            // §19.10 — MMS toggle
+            Section {
+                Toggle("Enable MMS (photos & media)", isOn: $vm.mmsEnabled)
+                    .accessibilityIdentifier("sms.mmsEnabled")
+            } header: {
+                Text("Messaging capabilities")
+            } footer: {
+                Text("MMS allows sending photos and media files. Only available if your SMS plan and carrier support it.")
             }
 
             Section("From number") {

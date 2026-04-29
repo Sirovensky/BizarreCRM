@@ -14,11 +14,24 @@ public struct PaymentMethodSettings: Equatable, Sendable {
     public var checkEnabled: Bool
     public var blockChypApiKey: String
     public var blockChypTerminalName: String
+    // §19.9 — surcharge, tipping, manual-keyed card
+    /// Enable a card-processing surcharge passed to the customer.
+    public var cardSurchargeEnabled: Bool
+    /// Show tipping prompt at checkout.
+    public var tippingEnabled: Bool
+    /// Preset tip percentages (e.g. [10, 15, 20]) shown to the customer.
+    public var tipPresets: [Int]
+    /// Allow manual keyed-entry of card numbers (card-not-present; higher interchange).
+    public var manualKeyedCardAllowed: Bool
 
     public static let `default` = PaymentMethodSettings(
         cashEnabled: true, cardEnabled: true,
         giftCardEnabled: false, storeCreditEnabled: false,
-        checkEnabled: false, blockChypApiKey: "", blockChypTerminalName: ""
+        checkEnabled: false, blockChypApiKey: "", blockChypTerminalName: "",
+        cardSurchargeEnabled: false,
+        tippingEnabled: false,
+        tipPresets: [10, 15, 20],
+        manualKeyedCardAllowed: false
     )
 }
 
@@ -54,7 +67,11 @@ public final class PaymentMethodsViewModel: Sendable {
                 storeCreditEnabled: resp.storeCreditEnabled ?? false,
                 checkEnabled: resp.checkEnabled ?? false,
                 blockChypApiKey: resp.blockChypApiKey ?? "",
-                blockChypTerminalName: resp.blockChypTerminalName ?? ""
+                blockChypTerminalName: resp.blockChypTerminalName ?? "",
+                cardSurchargeEnabled: resp.cardSurchargeEnabled ?? false,
+                tippingEnabled: resp.tippingEnabled ?? false,
+                tipPresets: resp.tipPresets ?? [10, 15, 20],
+                manualKeyedCardAllowed: resp.manualKeyedCardAllowed ?? false
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -73,7 +90,11 @@ public final class PaymentMethodsViewModel: Sendable {
                 storeCreditEnabled: settings.storeCreditEnabled,
                 checkEnabled: settings.checkEnabled,
                 blockChypApiKey: settings.blockChypApiKey,
-                blockChypTerminalName: settings.blockChypTerminalName
+                blockChypTerminalName: settings.blockChypTerminalName,
+                cardSurchargeEnabled: settings.cardSurchargeEnabled,
+                tippingEnabled: settings.tippingEnabled,
+                tipPresets: settings.tipPresets,
+                manualKeyedCardAllowed: settings.manualKeyedCardAllowed
             )
             _ = try await api.savePaymentSettings(body)
             successMessage = "Payment settings saved."
@@ -139,6 +160,63 @@ public struct PaymentMethodsPage: View {
                     Text("BlockChyp pairing")
                 } footer: {
                     Text("Pair a terminal: enter terminal name + API key from BlockChyp merchant portal.")
+                }
+            }
+
+            // MARK: §19.9 — Card surcharge + manual-keyed card
+            if vm.settings.cardEnabled {
+                Section {
+                    Toggle("Card surcharge", isOn: $vm.settings.cardSurchargeEnabled)
+                        .accessibilityIdentifier("payment.cardSurcharge")
+                    Toggle("Allow manual card entry", isOn: $vm.settings.manualKeyedCardAllowed)
+                        .accessibilityIdentifier("payment.manualKeyedCard")
+                } header: {
+                    Text("Card rules")
+                } footer: {
+                    Text("Surcharge passes the processing fee to the customer (check local regulations). Manual entry allows keyed card numbers when no terminal is present.")
+                }
+
+                // MARK: §19.9 — Tipping
+                Section {
+                    Toggle("Enable tipping at checkout", isOn: $vm.settings.tippingEnabled)
+                        .accessibilityIdentifier("payment.tippingEnabled")
+
+                    if vm.settings.tippingEnabled {
+                        HStack(spacing: BrandSpacing.sm) {
+                            Text("Presets")
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            ForEach([10, 15, 20, 25], id: \.self) { pct in
+                                let selected = vm.settings.tipPresets.contains(pct)
+                                Button {
+                                    if selected {
+                                        vm.settings.tipPresets.removeAll { $0 == pct }
+                                    } else {
+                                        vm.settings.tipPresets.append(pct)
+                                        vm.settings.tipPresets.sort()
+                                    }
+                                } label: {
+                                    Text("\(pct)%")
+                                        .font(.brandLabelLarge())
+                                        .padding(.horizontal, BrandSpacing.xs)
+                                        .padding(.vertical, BrandSpacing.xxs)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(selected ? Color.bizarreOrange : Color.bizarreSurface1)
+                                        )
+                                        .foregroundStyle(selected ? Color.white : Color.bizarreOnSurface)
+                                }
+                                .accessibilityLabel("\(pct)% tip preset, \(selected ? "selected" : "not selected")")
+                                .accessibilityIdentifier("payment.tipPreset.\(pct)")
+                            }
+                        }
+                        .padding(.vertical, BrandSpacing.xxs)
+                        .accessibilityElement(children: .contain)
+                    }
+                } header: {
+                    Text("Tipping")
+                } footer: {
+                    Text("Tap percentage chips to toggle preset tip amounts shown to customers at checkout.")
                 }
             }
 
