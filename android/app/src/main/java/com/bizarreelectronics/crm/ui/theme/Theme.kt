@@ -99,6 +99,74 @@ fun contrastTextColor(bgColor: Color): Color {
 // Color schemes
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// §26.3 High-contrast color schemes (WCAG 2.1 AAA — 7:1 minimum)
+//
+// These schemes are activated when AppPreferences.highContrastEnabled == true.
+// They maximise contrast ratios for users with low vision by using pure
+// black/white surfaces with brand cream (#FDEED0) preserved for primary
+// interactive elements (maintains brand identity at the highest accessible tier).
+//
+// Dark HC: black bg (#000000), white text (#FFFFFF), cream primary.
+// Light HC: white bg (#FFFFFF), black text (#000000), dark-brown primary for AA+ on white.
+// ---------------------------------------------------------------------------
+
+private val HighContrastDarkColorScheme = darkColorScheme(
+    primary              = Color(0xFFFDEED0),   // brand cream — selected/active accent
+    onPrimary            = Color(0xFF000000),   // pure black on cream — 18.5:1
+    primaryContainer     = Color(0xFF3D2C14),   // warm container retained; text is white
+    onPrimaryContainer   = Color(0xFFFFFFFF),
+    secondary            = Color(0xFF6FE8FA),   // brightened teal for contrast on black
+    onSecondary          = Color(0xFF000000),
+    secondaryContainer   = Color(0xFF003A44),
+    onSecondaryContainer = Color(0xFFFFFFFF),
+    tertiary             = Color(0xFFFF91D0),   // brightened magenta for contrast on black
+    onTertiary           = Color(0xFF000000),
+    tertiaryContainer    = Color(0xFF3D0028),
+    onTertiaryContainer  = Color(0xFFFFFFFF),
+    error                = Color(0xFFFF6B80),   // brightened error for black bg
+    onError              = Color(0xFF000000),
+    errorContainer       = Color(0xFF410009),
+    onErrorContainer     = Color(0xFFFFFFFF),
+    background           = Color(0xFF000000),   // pure black — max contrast surface
+    onBackground         = Color(0xFFFFFFFF),   // pure white — 21:1 ratio
+    surface              = Color(0xFF000000),
+    onSurface            = Color(0xFFFFFFFF),
+    surfaceVariant       = Color(0xFF1A1A1A),   // near-black surface variant
+    onSurfaceVariant     = Color(0xFFEEEEEE),   // near-white — ≥ 12:1 on black
+    surfaceContainer     = Color(0xFF1A1A1A),
+    surfaceContainerHigh = Color(0xFF2A2A2A),
+    outline              = Color(0xFFAAAAAA),   // mid-grey — visible dividers on black
+)
+
+private val HighContrastLightColorScheme = lightColorScheme(
+    primary              = Color(0xFF4A2F00),   // very dark brown — 9.5:1 on white
+    onPrimary            = Color(0xFFFFFFFF),
+    primaryContainer     = Color(0xFFFDEED0),   // cream container
+    onPrimaryContainer   = Color(0xFF000000),   // pure black on cream — 18.5:1
+    secondary            = Color(0xFF003A44),   // very dark teal — high contrast
+    onSecondary          = Color(0xFFFFFFFF),
+    secondaryContainer   = Color(0xFFB8F0FA),
+    onSecondaryContainer = Color(0xFF000000),
+    tertiary             = Color(0xFF4A0028),   // very dark magenta
+    onTertiary           = Color(0xFFFFFFFF),
+    tertiaryContainer    = Color(0xFFFFD8EC),
+    onTertiaryContainer  = Color(0xFF000000),
+    error                = Color(0xFF6B0000),   // very dark red — 8.5:1 on white
+    onError              = Color(0xFFFFFFFF),
+    errorContainer       = Color(0xFFFFE0E0),
+    onErrorContainer     = Color(0xFF000000),
+    background           = Color(0xFFFFFFFF),   // pure white — max contrast surface
+    onBackground         = Color(0xFF000000),   // pure black — 21:1 ratio
+    surface              = Color(0xFFFFFFFF),
+    onSurface            = Color(0xFF000000),
+    surfaceVariant       = Color(0xFFF0F0F0),   // near-white variant
+    onSurfaceVariant     = Color(0xFF111111),   // near-black — ≥ 16:1 on near-white
+    surfaceContainer     = Color(0xFFF0F0F0),
+    surfaceContainerHigh = Color(0xFFE0E0E0),
+    outline              = Color(0xFF555555),   // dark grey — visible on white
+)
+
 private val LightColorScheme = lightColorScheme(
     // POS redesign wave (2026-04-24) — cream `#fdeed0` is the project-wide primary.
     // On light backgrounds cream is too pale for AA, so we shift down to a
@@ -332,11 +400,20 @@ fun BizarreCrmTheme(
     // When true AND Android 12+ (API 31+), Material You derives the color scheme
     // from the user's wallpaper via dynamicLightColorScheme / dynamicDarkColorScheme.
     dynamicColor: Boolean = false,
+    // §26.3 — ActionPlan line 3391: high-contrast mode bumps to WCAG AAA 7:1.
+    // When true, HighContrastDark/LightColorScheme replaces the standard scheme;
+    // dynamicColor is overridden (Material You palette cannot guarantee 7:1).
+    // Sourced from AppPreferences.highContrastEnabledFlow in MainActivity.
+    highContrast: Boolean = false,
     // Tenant accent override — null uses BrandAccent (brand cream).
     tenantAccent: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
+        // High-contrast overrides both dynamic color and standard schemes.
+        // DynamicColor is intentionally bypassed — wallpaper-derived palettes
+        // cannot guarantee AAA 7:1 contrast ratios.
+        highContrast -> if (darkTheme) HighContrastDarkColorScheme else HighContrastLightColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -348,16 +425,43 @@ fun BizarreCrmTheme(
     // AND-036: provide semantic extended colors matching the active theme so
     // composables can read LocalExtendedColors.current instead of importing
     // hardcoded top-level color vals.
-    val extendedColors = if (darkTheme) darkExtended() else lightExtended()
+    // §26.3: high-contrast mode uses its own extended color variants that
+    // meet AAA 7:1 on their respective black/white surface.
+    val extendedColors = when {
+        highContrast && darkTheme -> ExtendedColors(
+            success          = Color(0xFF50FA7B),   // bright green — 9:1 on black
+            warning          = Color(0xFFFFD080),   // bright amber — 8:1 on black
+            error            = Color(0xFFFF6B80),   // bright red — 7:1 on black
+            info             = Color(0xFF6FE8FA),   // bright teal — 9:1 on black
+            successContainer = Color(0xFF003311),
+            warningContainer = Color(0xFF332200),
+            errorContainer   = Color(0xFF330008),
+            infoContainer    = Color(0xFF003340),
+        )
+        highContrast -> ExtendedColors(
+            success          = Color(0xFF004422),   // very dark green — 9:1 on white
+            warning          = Color(0xFF5A3500),   // very dark amber — 8:1 on white
+            error            = Color(0xFF6B0000),   // very dark red — 8.5:1 on white
+            info             = Color(0xFF003A44),   // very dark teal — 9:1 on white
+            successContainer = Color(0xFFB8F0D5),
+            warningContainer = Color(0xFFFFDDB8),
+            errorContainer   = Color(0xFFFFE0E0),
+            infoContainer    = Color(0xFFCCF0F5),
+        )
+        darkTheme -> darkExtended()
+        else -> lightExtended()
+    }
 
     // §30.9: resolve tenant accent with auto-contrast bump.
     // Falls back to brand cream when null; bumps toward AA 3.0 when the
     // tenant-supplied color is too pale against the active surface.
-    val activeSurface = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        // Dynamic color — use a neutral mid-dark surface as the bump reference.
-        if (darkTheme) Surface1 else Color(0xFFFFF8F0)
-    } else {
-        if (darkTheme) Surface1 else Color(0xFFFFF8F0)
+    // §26.3: in high-contrast mode the surface is black/white — always use
+    // brand cream directly (cream on black is already ≥ 12:1).
+    val activeSurface = when {
+        highContrast -> if (darkTheme) Color(0xFF000000) else Color(0xFFFFFFFF)
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) Surface1 else Color(0xFFFFF8F0)
+        else -> if (darkTheme) Surface1 else Color(0xFFFFF8F0)
     }
     val resolvedAccent = tenantAccentWithContrastBump(tenantAccent, surfaceColor = activeSurface)
 
@@ -401,12 +505,14 @@ fun BizarreCrmTheme(
 fun DesignSystemTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
+    highContrast: Boolean = false,
     tenantAccent: Color? = null,
     content: @Composable () -> Unit,
 ) {
     BizarreCrmTheme(
         darkTheme = darkTheme,
         dynamicColor = dynamicColor,
+        highContrast = highContrast,
         tenantAccent = tenantAccent,
         content = content,
     )

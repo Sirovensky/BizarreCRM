@@ -288,6 +288,11 @@ class MainActivity : FragmentActivity() {
             // changes the setting on ThemeScreen — no activity recreate needed.
             val darkMode by appPreferences.darkModeFlow.collectAsState()
             val dynamicColor by appPreferences.dynamicColorFlow.collectAsState()
+            // §26.3 — ActionPlan line 3391: observe highContrastEnabledFlow so
+            // BizarreCrmTheme switches to the AAA 7:1 high-contrast color schemes
+            // whenever the user toggles the setting on AppearanceScreen. No activity
+            // recreate needed — Compose recomposition propagates the new ColorScheme.
+            val highContrast by appPreferences.highContrastEnabledFlow.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (darkMode) {
                 "dark"  -> true
@@ -337,7 +342,7 @@ class MainActivity : FragmentActivity() {
             val dashboardDensity = if (sharedDeviceMode) DashboardDensity.Comfortable else rawDensity
 
             CompositionLocalProvider(LocalDashboardDensity provides dashboardDensity) {
-            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
+            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, highContrast = highContrast) {
             // §28.9 — Force-upgrade blocker: blocks the UI when the server reports a
             // min_supported_version higher than the installed app version code.
             // serverMinVersion is populated from GET /auth/me; null = no floor enforced.
