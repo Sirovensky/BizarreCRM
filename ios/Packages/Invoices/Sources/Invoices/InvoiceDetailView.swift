@@ -596,6 +596,9 @@ public struct InvoiceDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
+                // §22.1 — detail panes cap at 720 pt on wide iPad screens so
+                // line items + totals stay scannable; no-op on iPhone (<720 pt).
+                .maxContentWidth()
             }
             // §7.2 Deposit invoice detail drill-through
             .sheet(

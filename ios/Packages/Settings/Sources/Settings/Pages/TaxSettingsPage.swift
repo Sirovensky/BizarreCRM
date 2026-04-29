@@ -216,16 +216,35 @@ public struct TaxSettingsPage: View {
 struct TaxRateFormSheet: View {
     @Bindable var vm: TaxSettingsViewModel
 
+    // §22.7 — focus chain so the numeric accessory toolbar can advance
+    // between fields and dismiss the keyboard with Done.
+    private enum Field: Hashable { case name, rate }
+    @FocusState private var focusedField: Field?
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Rate") {
                     TextField("Name (e.g. State Tax)", text: $vm.draftName)
+                        .focused($focusedField, equals: .name)
                         .accessibilityLabel("Tax rate name")
                         .accessibilityIdentifier("tax.draftName")
                     TextField("Rate %", text: $vm.draftRate)
                         #if canImport(UIKit)
                         .keyboardType(.decimalPad)
+                        #endif
+                        .focused($focusedField, equals: .rate)
+                        // §22.7 — numeric accessory toolbar: %, prev (name),
+                        // Done. No "$" because rates are percentages only.
+                        #if canImport(UIKit)
+                        .brandNumericKeyboardAccessory(
+                            focus: $focusedField,
+                            current: .rate,
+                            prev: .name,
+                            next: nil,
+                            showSymbols: true,
+                            insertSymbol: { sym in vm.draftRate.append(sym) }
+                        )
                         #endif
                         .accessibilityLabel("Tax rate percent")
                         .accessibilityIdentifier("tax.draftRate")

@@ -3739,7 +3739,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.1 Layout
 - [x] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column. (feat(ios §22): ThreeColumnSplitView scaffold — SplitViewDomain protocol, .balanced style, column widths, detailContentCapped())
 - [x] **Dashboard 3-column KPI grid** on wide screens; 2-column on 11"; responsive `GridItem(.adaptive(...))`. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
-- [ ] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded.
+- [x] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded. (feat(§22): .maxContentWidth() applied to CustomerDetailView + InvoiceDetailView ScrollView contents — caps at 720pt on iPad, no-op on iPhone)
 - [ ] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`.
 - [x] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail. (feat(ios §22): InspectorPaneModifier — .brandInspector(isPresented:content:) with iOS 16 sheet fallback + InspectorToggleButton)
 - [x] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13". (feat(ios §22): TwoUpEditorLayout scaffold — side-by-side on width≥900pt, segmented-tab fallback on compact)
@@ -3763,7 +3763,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [x] **Scene state** restored per-window on relaunch. (feat(ios §22): SceneStateRestorer — stateRestorationActivity(for:) + restore(from:) + SceneDelegate willConnectTo restoration path)
 - [x] **Open in new window** from context menu. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [x] **Scene activities** — detail views become independent activities. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
-- [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
+- [x] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits. (feat(§22): ShellLayout gates rail vs compact on geo.size.width >= 500; 1/3-split on 13" → compact, 1/2-split on 11" keeps rail)
 
 ### 22.5 Data presentation
 - [ ] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs.
@@ -3781,11 +3781,11 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Drag-to-new-window: long-press ticket row → drag out → new window with that ticket. Long-press POS tab → dedicated register window.
 - [x] `NSUserActivity` per scene persists position / ticket ID; relaunch re-opens all windows. (feat(ios §22): DetailHandoffModifier — Handoff advertisement + "Open in New Window" context menu + MultiWindowCoordinator.openDetail(routeURL:) routing helper)
 - [ ] Scene declares capabilities ("can show ticket detail", "can run POS"); drag-drop between windows validates target capability.
-- [ ] Stage Manager min content area 700×500; below that → compact layout.
+- [x] Stage Manager min content area 700×500; below that → compact layout. (feat(§22): .splitViewMinSize() on WindowGroup root tightens UIScene.SizeRestrictions.minimumSize)
 - [ ] External-display `UIScene` hosts customer-facing display (§16 POS CFD) mirrored from POS scene.
 - [ ] `UICommand` menu per scene (File / Edit / View / Window / Help) with custom items (New Ticket, Quick Find, Switch Tenant).
 - [x] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels (feat(ios §22): ArrowKeyRowSelectionModifier DS widget — ↑/↓ hidden buttons + .arrowKeyRowSelection(items:selectedId:) view extension)
-- [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
+- [x] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached (feat(§22): NumericKeyboardAccessory DS modifier — .brandNumericKeyboardAccessory(focus:current:prev:next:); first wired on TaxSettingsPage rate field)
 - [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
 - [x] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] External barcode scanner (USB/BT wedge): detect rapid keystrokes ending in Enter; route to scan handler not textfield; configurable via Settings → Hardware
@@ -3811,7 +3811,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection
 - [ ] External storage: USB-C direct photo import; file picker recognizes external drives
 - [x] Safe area: use `.ignoresSafeArea(.keyboard)` carefully; default behavior is scroll. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
-- [ ] Accessory toolbar for numeric fields: `$`, `%`, next, prev, done (done closes keyboard, next moves focus).
+- [x] Accessory toolbar for numeric fields: `$`, `%`, next, prev, done (done closes keyboard, next moves focus). (feat(§22): same NumericKeyboardAccessory DS modifier as §22.7 row above)
 - [ ] SMS/email inputs show QuickType; custom template suggestions via replacement assistant.
 - [ ] External hardware keyboard: hide onscreen keyboard automatically.
 - [ ] iPad split keyboard respected; inline accessory bar follows keyboard.
