@@ -35,6 +35,15 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
     public let openTicketCount: Int?
     public let complaintCount: Int?
 
+    /// True when the customer has opted out of SMS marketing (server field `sms_opt_out`).
+    /// Displayed as a read-only badge in the detail view; edit via the edit form.
+    public let smsOptOut: Bool?
+
+    /// Structured tags with optional server-supplied hex accent color.
+    /// Populated by GET /customers/:id when the tenant has a tag-color palette configured.
+    /// Falls back to `customerTags` comma-string when absent.
+    public let tagItems: [CustomerTagItem]?
+
     public let phones: [CustomerPhoneRow]?
     public let emails: [CustomerEmailRow]?
 
@@ -65,8 +74,17 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
     }
 
     public var tagList: [String] {
+        // Prefer structured tag items when available; fall back to comma-string.
+        if let items = tagItems, !items.isEmpty { return items.map(\.name) }
         guard let raw = customerTags else { return [] }
         return raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    public struct CustomerTagItem: Decodable, Sendable, Hashable {
+        public let name: String
+        /// 6-digit RGB hex string from server, e.g. `"FF8C00"` (no leading `#`).
+        /// Nil when the tenant has not assigned a color to this tag.
+        public let color: String?
     }
 
     public struct CustomerPhoneRow: Decodable, Sendable, Identifiable, Hashable {
@@ -91,6 +109,7 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         case customerTags = "customer_tags"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case tagItems = "tag_items"
         // §44
         case healthScore = "health_score"
         case healthLabel = "health_label"
@@ -99,6 +118,7 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         case totalSpentCents = "total_spent_cents"
         case openTicketCount = "open_ticket_count"
         case complaintCount = "complaint_count"
+        case smsOptOut = "sms_opt_out"
     }
 }
 
@@ -362,6 +382,12 @@ public extension APIClient {
 
     func customerNotes(id: Int64) async throws -> [CustomerNote] {
         try await get("/api/v1/customers/\(id)/notes", as: [CustomerNote].self)
+    }
+
+    /// `GET /api/v1/customers/:id/invoices` — recent invoices for the customer detail card.
+    func customerRecentInvoices(id: Int64, pageSize: Int = 5) async throws -> [InvoiceSummary] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/invoices", query: items, as: InvoicesListResponse.self).invoices
     }
 
     // MARK: — Merge (§5.5)

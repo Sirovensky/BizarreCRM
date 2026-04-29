@@ -32,14 +32,12 @@ public struct CustomerDetailView: View {
                         Label("Edit", systemImage: "pencil")
                     }
                     .accessibilityLabel("Edit customer")
-                    .accessibilityIdentifier("customers.detail.toolbar.edit")
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Button { showingMerge = true } label: {
                         Label("Merge…", systemImage: "arrow.triangle.merge")
                     }
                     .accessibilityLabel("Merge customer with another")
-                    .accessibilityIdentifier("customers.detail.toolbar.merge")
                 }
             }
         }
@@ -108,9 +106,13 @@ public struct CustomerDetailView: View {
                         RecentTicketsSection(tickets: tickets)
                     }
 
+                    if let invoices = vm.snapshot.recentInvoices, !invoices.isEmpty {
+                        RecentInvoicesSection(invoices: invoices)
+                    }
+
                     // §5.9 Tags section
                     TagsCard(
-                        tags: detail.tagList,
+                        tagItems: detail.tagItems ?? detail.tagList.map { CustomerDetail.CustomerTagItem(name: $0, color: nil) },
                         onEditTags: api != nil ? { showingTagEditor = true } : nil
                     )
 
@@ -118,14 +120,8 @@ public struct CustomerDetailView: View {
                         CommentsCard(text: comments)
                     }
 
-                    // §5 batch-2: always show the notes section when the record
-                    // has loaded so staff aren't left wondering if notes exist.
-                    if let notes = vm.snapshot.notes {
-                        if notes.isEmpty {
-                            NotesSectionEmptyState()
-                        } else {
-                            NotesTimeline(notes: notes)
-                        }
+                    if let notes = vm.snapshot.notes, !notes.isEmpty {
+                        NotesTimeline(notes: notes)
                     }
 
                     // §5.6 Contacts section
@@ -152,18 +148,11 @@ private struct Header: View {
 
     var body: some View {
         VStack(spacing: BrandSpacing.sm) {
-            // §5 batch-2: fall back to person.fill icon when initials are blank.
             ZStack {
                 Circle().fill(Color.bizarreOrangeContainer)
-                if detail.initials.isEmpty {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 40, weight: .medium))
-                        .foregroundStyle(.bizarreOnOrange.opacity(0.65))
-                } else {
-                    Text(detail.initials)
-                        .font(.brandDisplayMedium())
-                        .foregroundStyle(.bizarreOnOrange)
-                }
+                Text(detail.initials)
+                    .font(.brandDisplayMedium())
+                    .foregroundStyle(.bizarreOnOrange)
             }
             .frame(width: 88, height: 88)
 
@@ -227,51 +216,21 @@ private struct QuickStatsRow: View {
 
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
-            // §5 batch-2: stat tiles each carry an SF Symbol icon for quick scanning.
-            tile("Tickets", icon: "ticket", value: "\(analytics.totalTickets)")
-            tile("Lifetime", icon: "dollarsign.circle", value: formatMoney(analytics.lifetimeValue))
-            tile("Last visit", icon: "calendar.badge.clock",
-                 value: analytics.lastVisit.map { formatLastVisit($0) } ?? "—")
+            tile("Tickets", value: "\(analytics.totalTickets)")
+            tile("Lifetime", value: formatMoney(analytics.lifetimeValue))
+            tile("Last visit", value: analytics.lastVisit.map { String($0.prefix(10)) } ?? "—")
         }
     }
 
-    /// §5 batch-2: convert an ISO-8601 date string to a human-readable relative
-    /// label within 30 days ("3 days ago", "yesterday") or a short date beyond.
-    private func formatLastVisit(_ iso: String) -> String {
-        let trimmed = String(iso.prefix(10))
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = fmt.date(from: trimmed) else { return trimmed }
-        if abs(date.timeIntervalSinceNow) < 30 * 86400 {
-            let rf = RelativeDateTimeFormatter()
-            rf.dateTimeStyle = .named
-            rf.unitsStyle = .short
-            return rf.localizedString(for: date, relativeTo: Date())
-        }
-        let df = DateFormatter()
-        df.dateStyle = .medium
-        df.timeStyle = .none
-        return df.string(from: date)
-    }
-
-    private func tile(_ label: String, icon: String, value: String) -> some View {
+    private func tile(_ label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-            HStack(spacing: BrandSpacing.xxs) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-            }
+            Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
             Text(value).font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
     }
 
     private func formatMoney(_ v: Double) -> String {
@@ -300,12 +259,11 @@ private struct QuickActions: View {
                         actionLabel("Call", icon: "phone.fill", tint: .bizarreOrange)
                     }
                 }
-                Button {
-                    SMSLauncher.open(phone: digits)
-                } label: {
-                    actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
+                if let smsURL = URL(string: "sms:\(digits)") {
+                    Link(destination: smsURL) {
+                        actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -325,60 +283,51 @@ private struct QuickActions: View {
 
 private struct ContactInfo: View {
     let detail: CustomerDetail
-    @State private var recentlyCopied: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Contact").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                .accessibilityIdentifier("customers.detail.contact.header")
 
             if let mobile = detail.mobile, !mobile.isEmpty {
-                copyableRow(
-                    icon: "phone", label: "Mobile",
-                    value: PhoneFormatter.format(mobile),
-                    copyValue: mobile, mono: true,
-                    identifier: "customers.detail.contact.mobile"
-                )
+                row(icon: "phone", label: "Mobile", value: PhoneFormatter.format(mobile), mono: true)
             }
             if let phone = detail.phone, !phone.isEmpty, phone != detail.mobile {
-                copyableRow(
-                    icon: "phone", label: "Phone",
-                    value: PhoneFormatter.format(phone),
-                    copyValue: phone, mono: true,
-                    identifier: "customers.detail.contact.phone"
-                )
+                row(icon: "phone", label: "Phone", value: PhoneFormatter.format(phone), mono: true)
             }
             if let email = detail.email, !email.isEmpty {
-                copyableRow(
-                    icon: "envelope", label: "Email",
-                    value: email, copyValue: email,
-                    identifier: "customers.detail.contact.email"
-                )
+                row(icon: "envelope", label: "Email", value: email)
             }
             if let addr = detail.addressLine {
-                row(icon: "mappin.and.ellipse", label: "Address", value: addr,
-                    identifier: "customers.detail.contact.address")
+                addressRow(addr: addr)
             }
             if let org = detail.organization, !org.isEmpty {
-                row(icon: "building.2", label: "Organization", value: org,
-                    identifier: "customers.detail.contact.organization")
+                row(icon: "building.2", label: "Organization", value: org)
+            }
+
+            // §5 blocklist toggle copy — SMS opt-out badge (read-only in detail; edit via Edit form).
+            if detail.smsOptOut == true {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("SMS marketing opt-out")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreSurface2, in: Capsule())
+                .accessibilityLabel("SMS marketing opt-out: customer has opted out of promotional messages")
             }
         }
         .cardBackground()
     }
 
-    /// Row with a trailing copy button — used for phone and email.
-    private func copyableRow(
-        icon: String,
-        label: String,
-        value: String,
-        copyValue: String,
-        mono: Bool = false,
-        identifier: String
-    ) -> some View {
+    /// Standard text row with textSelection enabled.
+    private func row(icon: String, label: String, value: String, mono: Bool = false) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.sm) {
             Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
-                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
                 Text(value)
@@ -387,47 +336,36 @@ private struct ContactInfo: View {
                     .textSelection(.enabled)
             }
             Spacer(minLength: 0)
-            // One-tap copy button: copies the raw value, briefly shows a checkmark.
-            Button {
-                UIPasteboard.general.string = copyValue
-                recentlyCopied = identifier
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    if recentlyCopied == identifier { recentlyCopied = nil }
-                }
-            } label: {
-                Image(systemName: recentlyCopied == identifier ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 13))
-                    .foregroundStyle(recentlyCopied == identifier ? .bizarreSuccess : .bizarreOnSurfaceMuted.opacity(0.7))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(recentlyCopied == identifier ? "Copied" : "Copy \(label)")
-            .accessibilityIdentifier("\(identifier).copy")
         }
         .padding(.vertical, BrandSpacing.xxs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
-        .accessibilityIdentifier(identifier)
     }
 
-    private func row(icon: String, label: String, value: String, mono: Bool = false, identifier: String) -> some View {
+    /// Address row with a copy-to-clipboard chip alongside the text.
+    @MainActor
+    private func addressRow(addr: String) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.sm) {
-            Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
-                .accessibilityHidden(true)
+            Image(systemName: "mappin.and.ellipse").foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-                Text(value)
-                    .font(mono ? .brandMono(size: 14) : .brandBodyMedium())
+                Text("Address").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(addr)
+                    .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .textSelection(.enabled)
             }
             Spacer(minLength: 0)
+            // §5 address copy chip
+            Button {
+                UIPasteboard.general.string = addr
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(BrandSpacing.xs)
+                    .background(Color.bizarreOrange.opacity(0.10), in: Circle())
+            }
+            .accessibilityLabel("Copy address")
         }
         .padding(.vertical, BrandSpacing.xxs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
-        .accessibilityIdentifier(identifier)
     }
 }
 
@@ -441,21 +379,31 @@ private struct RecentTicketsSection: View {
             Text("Recent tickets").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             VStack(spacing: BrandSpacing.xs) {
                 ForEach(tickets.prefix(10)) { t in
+                    let deviceName = t.firstDevice?.deviceName ?? ""
+                    let statusName = t.status?.name ?? ""
+                    let a11yLabel: String = {
+                        var parts = ["Ticket \(t.orderId)"]
+                        if !deviceName.isEmpty { parts.append(deviceName) }
+                        if !statusName.isEmpty { parts.append("Status: \(statusName)") }
+                        return parts.joined(separator: ", ")
+                    }()
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(t.orderId).font(.brandMono(size: 14)).foregroundStyle(.bizarreOnSurface)
-                            if let device = t.firstDevice?.deviceName, !device.isEmpty {
-                                Text(device).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
+                            if !deviceName.isEmpty {
+                                Text(deviceName).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
                             }
                         }
                         Spacer()
-                        if let status = t.status?.name {
-                            Text(status).font(.brandLabelSmall())
+                        if !statusName.isEmpty {
+                            Text(statusName).font(.brandLabelSmall())
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.bizarreSurface2, in: Capsule())
                                 .foregroundStyle(.bizarreOnSurface)
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(a11yLabel)
                 }
             }
         }
@@ -466,7 +414,7 @@ private struct RecentTicketsSection: View {
 // MARK: - Tags / Comments / Notes
 
 private struct TagsCard: View {
-    let tags: [String]
+    let tagItems: [CustomerDetail.CustomerTagItem]
     let onEditTags: (() -> Void)?
 
     var body: some View {
@@ -484,13 +432,12 @@ private struct TagsCard: View {
                     .accessibilityLabel("Edit tags")
                 }
             }
-            if tags.isEmpty {
-                Text(onEditTags != nil ? "No tags yet — tap the pencil to add one." : "No tags.")
+            if tagItems.isEmpty {
+                Text("No tags.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityIdentifier("customers.detail.tags.empty")
             } else {
-                FlowTags(tags: tags)
+                FlowTags(tagItems: tagItems)
             }
         }
         .cardBackground()
@@ -498,19 +445,21 @@ private struct TagsCard: View {
 }
 
 private struct FlowTags: View {
-    let tags: [String]
+    let tagItems: [CustomerDetail.CustomerTagItem]
 
     var body: some View {
         // Simple wrapping via LazyVGrid; flow layout would be prettier but not critical.
         let columns = [GridItem(.adaptive(minimum: 80), spacing: BrandSpacing.xs)]
         LazyVGrid(columns: columns, alignment: .leading, spacing: BrandSpacing.xs) {
-            ForEach(tags, id: \.self) { tag in
-                Text(tag)
+            ForEach(tagItems, id: \.name) { item in
+                let accent = item.color.flatMap { Color(hexString: $0) } ?? Color.bizarreSurface2
+                Text(item.name)
                     .font(.brandLabelLarge())
                     .padding(.horizontal, BrandSpacing.sm)
                     .padding(.vertical, BrandSpacing.xxs)
-                    .foregroundStyle(.bizarreOnSurface)
-                    .background(Color.bizarreSurface2, in: Capsule())
+                    .foregroundStyle(item.color != nil ? .white : .bizarreOnSurface)
+                    .background(accent.opacity(item.color != nil ? 0.85 : 1), in: Capsule())
+                    .accessibilityLabel("Tag: \(item.name)")
             }
         }
     }
@@ -530,33 +479,6 @@ private struct CommentsCard: View {
     }
 }
 
-// MARK: - §5 batch-2: Notes section empty state
-
-/// Displayed when the customer record is loaded but has no notes yet.
-private struct NotesSectionEmptyState: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Notes")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            HStack(alignment: .top, spacing: BrandSpacing.sm) {
-                Image(systemName: "note.text")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.5))
-                    .accessibilityHidden(true)
-                Text("No notes yet — add one from the toolbar to track calls, visits, or anything else.")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .cardBackground()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("No notes yet. Use the toolbar to add a note.")
-        .accessibilityIdentifier("customers.detail.notes.empty")
-    }
-}
-
 private struct NotesTimeline: View {
     let notes: [CustomerNote]
 
@@ -564,7 +486,7 @@ private struct NotesTimeline: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Timeline").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                ForEach(Array(notes.prefix(25))) { note in
+                ForEach(notes.prefix(25)) { note in
                     VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                         HStack {
                             Text(note.authorUsername ?? "Staff")
@@ -596,10 +518,12 @@ private struct RecommendationBanner: View {
     let text: String
     let detail: CustomerDetail
 
-    private var smsDigits: String? {
-        [detail.mobile, detail.phone]
+    private var smsURL: URL? {
+        let digits = [detail.mobile, detail.phone]
             .compactMap { $0?.filter(\.isNumber) }
             .first { !$0.isEmpty }
+        guard let digits else { return nil }
+        return URL(string: "sms:\(digits)")
     }
 
     var body: some View {
@@ -616,10 +540,8 @@ private struct RecommendationBanner: View {
 
             Spacer(minLength: 0)
 
-            if let digits = smsDigits {
-                Button {
-                    SMSLauncher.open(phone: digits)
-                } label: {
+            if let url = smsURL {
+                Link(destination: url) {
                     Text("Send follow-up")
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreTeal)
@@ -627,7 +549,6 @@ private struct RecommendationBanner: View {
                         .padding(.vertical, BrandSpacing.xs)
                         .background(Color.bizarreTeal.opacity(0.12), in: Capsule())
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Send follow-up SMS to \(detail.displayName)")
             }
         }
@@ -639,6 +560,70 @@ private struct RecommendationBanner: View {
                 .strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 0.5)
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Recent invoices
+
+private struct RecentInvoicesSection: View {
+    let invoices: [InvoiceSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Recent invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            VStack(spacing: BrandSpacing.xs) {
+                ForEach(invoices.prefix(5)) { inv in
+                    let totalFormatted = formattedTotal(inv.total)
+                    let statusName = inv.status?.capitalized ?? "Unknown"
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(inv.displayId)
+                                .font(.brandMono(size: 14))
+                                .foregroundStyle(.bizarreOnSurface)
+                            if let date = inv.createdAt.map({ String($0.prefix(10)) }) {
+                                Text(date)
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(totalFormatted)
+                                .font(.brandTitleMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Text(statusName)
+                                .font(.brandLabelSmall())
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(statusColor(inv.statusKind).opacity(0.15), in: Capsule())
+                                .foregroundStyle(statusColor(inv.statusKind))
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Invoice \(inv.displayId), \(totalFormatted), \(statusName)")
+                }
+            }
+        }
+        .cardBackground()
+    }
+
+    private func formattedTotal(_ value: Double?) -> String {
+        guard let v = value else { return "—" }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        return f.string(from: NSNumber(value: v)) ?? String(format: "$%.2f", v)
+    }
+
+    private func statusColor(_ kind: InvoiceSummary.Status) -> Color {
+        switch kind {
+        case .paid:    return .bizarreTeal
+        case .unpaid:  return .bizarreError
+        case .partial: return .bizarreWarning
+        case .void_:   return .bizarreOnSurfaceMuted
+        case .other:   return .bizarreOnSurfaceMuted
+        }
     }
 }
 
@@ -656,5 +641,20 @@ private struct CardBackgroundModifier: ViewModifier {
 
 private extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
+}
+
+// MARK: - Hex color helper
+
+private extension Color {
+    /// Parse a 6-digit RGB hex string (with or without leading `#`) into a SwiftUI Color.
+    /// Returns nil when the string is not a valid 6-digit hex.
+    init?(hexString: String) {
+        let stripped = hexString.hasPrefix("#") ? String(hexString.dropFirst()) : hexString
+        guard stripped.count == 6, let value = UInt32(stripped, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255
+        let g = Double((value >>  8) & 0xFF) / 255
+        let b = Double( value        & 0xFF) / 255
+        self.init(red: r, green: g, blue: b)
+    }
 }
 #endif
