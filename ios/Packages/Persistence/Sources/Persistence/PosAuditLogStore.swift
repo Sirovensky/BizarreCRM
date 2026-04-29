@@ -91,6 +91,7 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
         case "manager_approved_refund": return "Manager refund"
         case "cash_drop":             return "Cash drop"
         case "drawer_open":           return "Drawer opened"
+        case "receipt_skipped":       return "Receipt skipped"
         default:                      return eventType
         }
     }
@@ -119,6 +120,10 @@ public extension PosAuditEntry {
         /// (e.g. "cash" or "cash, check"). Used by loss-prevention reports to
         /// surface unexpected drawer opens.
         public static let drawerOpen             = "drawer_open"
+        /// §39.5 — Cashier dismissed the post-sale receipt prompt without
+        /// printing or sending the receipt. Surfaced by `MissingReceiptCounter`
+        /// in the Z-report and end-of-shift summary.
+        public static let receiptSkipped         = "receipt_skipped"
     }
 }
 
