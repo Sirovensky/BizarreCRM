@@ -672,7 +672,16 @@ private struct SLABadge: View {
         Image(systemName: icon)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(badgeColor)
-            .accessibilityLabel("SLA \(status)")
+            .accessibilityLabel(a11yLabel)
+            .accessibilityAddTraits(.isStaticText)
+    }
+
+    private var a11yLabel: String {
+        switch status.lowercased() {
+        case "breached": return "SLA breached"
+        case "warning":  return "SLA warning, approaching breach"
+        default:         return "SLA on track"
+        }
     }
 
     private var icon: String {
@@ -991,8 +1000,61 @@ private struct ListFooterRow: View {
 // codex merge. Stubs keep the build green; rich versions will land in §4.1 polish.
 
 extension TicketListView {
+    /// §4.1 — Filter chip strip + search keyword row.
+    /// Replaces the stub EmptyView with the real scrollable chip bar.
+    /// Sort is already in the toolbar menu; this bar only houses filter + urgency chips.
     @ViewBuilder
-    var filterAndSortBar: some View { EmptyView() }
+    var filterAndSortBar: some View {
+        VStack(spacing: 0) {
+            // Status-group chips (All / Open / On hold / Closed / Cancelled / Active)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketListFilter.allCases) { option in
+                        FilterChip(
+                            label: option.displayName,
+                            selected: vm.filter == option
+                        ) {
+                            Task { await vm.applyFilter(option) }
+                        }
+                        .accessibilityAddTraits(vm.filter == option ? [.isSelected] : [])
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
+
+            // Saved views row — pinned filter combos (§4.1)
+            let savedViews = TicketSavedViewsStore.shared.savedViews
+            if !savedViews.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: BrandSpacing.xs) {
+                        ForEach(savedViews) { saved in
+                            FilterChip(
+                                label: saved.name,
+                                selected: vm.filter == saved.filter && vm.searchQuery == saved.keyword
+                            ) {
+                                Task {
+                                    await vm.applyFilter(saved.filter)
+                                    if !saved.keyword.isEmpty {
+                                        vm.onSearchChange(saved.keyword)
+                                    }
+                                }
+                            }
+                            .accessibilityLabel("Saved view: \(saved.name)")
+                        }
+                    }
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.xs)
+                }
+                .scrollClipDisabled()
+            }
+
+            Divider()
+                .background(Color.bizarreOutline.opacity(0.15))
+        }
+        .background(Color.bizarreSurfaceBase)
+    }
 
     @ToolbarContentBuilder
     var exportToolbarItem: some ToolbarContent {
