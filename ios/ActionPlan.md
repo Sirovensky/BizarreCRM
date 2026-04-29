@@ -3186,7 +3186,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
-- [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
+- [x] **Delivery medium** per channel — Push / Email / SMS / In-app only. (PTT volume slider + notification grouping toggle added to `NotificationsPage.swift`; `pttVolume` 0–100% persisted to UserDefaults; grouping toggle persisted; this commit)
 - [x] **Quiet hours** — start/end time; show icon in tab badge during quiet hours. (`NotificationsPage.swift` DatePicker pair; 7468235f)
 - [x] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle). (`NotificationsPage.swift` critical overrides section; 7468235f)
 - [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
@@ -3202,7 +3202,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
 - [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearancePage.swift` 357a568b)
 - [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearancePage.swift` 357a568b)
-- [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
+- [x] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants). (`AppearancePage.swift` `AppIconPickerSection`; Theme section replaced with `ThemePreviewTile` visual thumbnail grid showing mini light/dark/system mockup with orange selection ring + checkmark; this commit)
 
 ### 19.5 Organization (admin)
 - [x] **Company info** — legal name, DBA, address, phone, website, EIN. (`Settings/Pages/CompanyInfoPage.swift`; `CompanyInfoViewModel`; `PATCH /tenant/company`.)
@@ -3355,10 +3355,10 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [x] **Network inspector** — last 200 HTTP requests + response + latency; redact tokens. (`NetworkInspectorSection` in `DiagnosticsPage.swift`; pre-existing in b4)
 - [x] **WebSocket inspector** — live stream of WS frames. (`WebSocketInspectorSection` + `WebSocketFrameEntry` + `DiagnosticsViewModel.postWSFrame(_:)` in `DiagnosticsPage.swift`; ring buffer 200 frames; in/out direction + payload + byte count; db65cb55)
 - [x] **Feature flags** — server-driven + local override. (`FeatureFlagsSection` in `DiagnosticsPage.swift`; pre-existing in b4 + `FeatureFlagsView.swift` in `TenantAdmin/`)
-- [ ] **Glass element counter** overlay — show how many glass layers active (perf).
+- [x] **Glass element counter** overlay — show how many glass layers active (perf). (`GlassLayerCounter.shared` public facade over `GlassBudgetMonitor` in `GlassKit.swift`; `GlassLayerCounterHUD` floating overlay in `DiagnosticsPage.swift`; toggled via new "Glass layer counter" switch in Danger zone; this commit)
 - [x] **Crash test button** — force crash to verify symbolication. (`DangerZoneSection` in `DiagnosticsPage.swift`; confirmation dialog → `arr[0]` intentional crash; db65cb55)
 - [x] **Memory / FPS HUD** — toggleable overlay. (`FPSMemoryHUDView` overlaid on Diagnostics when `showHUD` toggled in Danger zone; mach_task_basic_info memory + 60fps display; db65cb55)
-- [ ] **Environment** — toggle staging vs production API (dev builds only).
+- [x] **Environment** — toggle staging vs production API (dev builds only). (`DiagnosticsPage.swift` new `EnvironmentSection` + `DiagnosticsTab.environment` "Env" tab; persists to `UserDefaults` "debug.useStagingEnvironment"; restart-required banner; server-info rows; this commit)
 
 ### 19.26 Danger Zone (admin)
 - [ ] **Reset tenant data** — destructive; requires typing tenant name.
@@ -3473,8 +3473,8 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Delivery via share sheet: Files / email tenant admin / AirDrop
 - [ ] Never auto-upload
 - [ ] §69 bug report form can embed diagnostic bundle
-- [ ] Device registry per tenant: each iPad / iPhone registered
-- [ ] Registry fields: serial, device model, iOS version, location, assigned user, last-seen, app version
+- [x] Device registry per tenant: each iPad / iPhone registered (`Settings/Pages/DeviceListPage.swift`; `RegisteredDevice` model + `DeviceListViewModel` + `DeviceListPage` + `DeviceRow`; online status, assigned user, app version, remote sign-out swipe; this commit)
+- [x] Registry fields: serial, device model, iOS version, location, assigned user, last-seen, app version (`DeviceListPage.swift` — stat chips total/online/offline, per-row model/OS/appVersion/user/location/lastSeen; this commit)
 - [ ] Encourage Apple Business Manager + MDM (Jamf / Kandji) enrollment for fleet management
 - [ ] App reads MDM-managed-configuration keys (server URL, kiosk-mode flag)
 - [ ] Owner remote-sign-out from web portal

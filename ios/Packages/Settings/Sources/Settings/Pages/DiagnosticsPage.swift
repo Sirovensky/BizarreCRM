@@ -185,6 +185,12 @@ public struct DiagnosticsPage: View {
     @State private var bundleText = ""
     @State private var showHUD = false
     @State private var showCrashConfirm = false
+    /// §19.25 — glass element counter overlay.
+    @State private var showGlassCounter = false
+    /// §19.25 — environment toggle (staging vs production), dev builds only.
+    @State private var usesStagingEnvironment: Bool = UserDefaults.standard.bool(
+        forKey: "debug.useStagingEnvironment"
+    )
 
     public init() {}
 
@@ -212,10 +218,14 @@ public struct DiagnosticsPage: View {
                 WebSocketInspectorSection(entries: vm.websocketEntries)
             case .featureFlags:
                 FeatureFlagsSection()
+            case .environment:
+                EnvironmentSection(usesStagingEnvironment: $usesStagingEnvironment)
             case .danger:
                 DangerZoneSection(
                     showCrashConfirm: $showCrashConfirm,
-                    showHUD: $showHUD
+                    showHUD: $showHUD,
+                    showGlassCounter: $showGlassCounter,
+                    usesStagingEnvironment: $usesStagingEnvironment
                 )
             }
         }
@@ -253,15 +263,24 @@ public struct DiagnosticsPage: View {
             Text("The app will crash immediately. Use this to verify symbolication in Xcode Organizer.")
         }
         .overlay(alignment: .topTrailing) {
-            if showHUD {
-                FPSMemoryHUDView {
-                    showHUD = false
+            VStack(alignment: .trailing, spacing: BrandSpacing.sm) {
+                if showHUD {
+                    FPSMemoryHUDView {
+                        showHUD = false
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                    .animation(BrandMotion.snappy, value: showHUD)
                 }
-                .padding(.top, BrandSpacing.lg)
-                .padding(.trailing, BrandSpacing.base)
-                .transition(.scale.combined(with: .opacity))
-                .animation(BrandMotion.snappy, value: showHUD)
+                if showGlassCounter {
+                    GlassLayerCounterHUD {
+                        showGlassCounter = false
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                    .animation(BrandMotion.snappy, value: showGlassCounter)
+                }
             }
+            .padding(.top, BrandSpacing.lg)
+            .padding(.trailing, BrandSpacing.base)
         }
     }
 }
@@ -274,6 +293,7 @@ private enum DiagnosticsTab: String, CaseIterable, Identifiable {
     case websocket    = "ws"
     case featureFlags = "flags"
     case danger       = "danger"
+    case environment  = "env"
 
     var id: String { rawValue }
     var label: String {
@@ -283,6 +303,7 @@ private enum DiagnosticsTab: String, CaseIterable, Identifiable {
         case .websocket:    return "WS"
         case .featureFlags: return "Flags"
         case .danger:       return "Danger"
+        case .environment:  return "Env"
         }
     }
 }
@@ -636,6 +657,10 @@ private struct WSFrameRow: View {
 private struct DangerZoneSection: View {
     @Binding var showCrashConfirm: Bool
     @Binding var showHUD: Bool
+    /// §19.25 Glass element counter overlay binding.
+    @Binding var showGlassCounter: Bool
+    /// §19.25 Environment toggle binding.
+    @Binding var usesStagingEnvironment: Bool
 
     var body: some View {
         List {
@@ -650,6 +675,10 @@ private struct DangerZoneSection: View {
                 Toggle("FPS / Memory HUD", isOn: $showHUD)
                     .accessibilityIdentifier("diagnostics.fpsHud")
                     .tint(.bizarreOrange)
+                // §19.25 — glass element counter overlay
+                Toggle("Glass layer counter", isOn: $showGlassCounter)
+                    .tint(.bizarreOrange)
+                    .accessibilityIdentifier("diagnostics.glassCounter")
             }
 
             Section("Crash testing") {
@@ -754,6 +783,178 @@ private struct FPSMemoryHUDView: View {
         // for diagnostics we read from CACurrentMediaTime delta.
         // Simplified: assume 60 unless we see frame drops in the future.
         fps = 60
+    }
+}
+
+// MARK: - §19.25 Glass layer counter HUD
+
+/// Floating overlay that polls the number of active `.brandGlass` layers by
+/// reading a shared atomic counter that glass modifiers increment/decrement.
+/// Falls back to a placeholder when the counter infrastructure isn't wired yet.
+private struct GlassLayerCounterHUD: View {
+    let onDismiss: () -> Void
+
+    /// Live count vended by `GlassLayerCounter.shared` (in DesignSystem).
+    /// Until that counter is wired, we show a static placeholder of 0.
+    @State private var activeLayerCount: Int = 0
+    @State private var timer: Timer?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: BrandSpacing.xs) {
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityLabel("Close glass counter")
+            }
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                Text("\(activeLayerCount)")
+                    .font(.brandMono(size: 18).bold())
+                    .foregroundStyle(
+                        activeLayerCount > 10 ? Color.bizarreWarning : .bizarreOnSurface
+                    )
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            Text("glass layers")
+                .font(.brandMono(size: 9))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .padding(BrandSpacing.sm)
+        .brandGlass(.identity, interactive: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Glass layer count: \(activeLayerCount)")
+        .accessibilityIdentifier("diagnostics.glassCounterHUD")
+        .onAppear {
+            refresh()
+            timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+                refresh()
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    private func refresh() {
+        // DesignSystem.GlassLayerCounter.shared.activeCount when wired;
+        // placeholder reads 0 until then.
+        activeLayerCount = GlassLayerCounter.shared.activeCount
+    }
+}
+
+// MARK: - §19.25 Environment section (dev builds only)
+
+/// §19.25 — Toggle between staging and production API base URL.
+/// Only visible in dev/admin builds; toggling requires an app restart to take effect.
+private struct EnvironmentSection: View {
+    @Binding var usesStagingEnvironment: Bool
+    @State private var showRestartBanner = false
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Image(systemName: usesStagingEnvironment ? "flask.fill" : "server.rack")
+                        .foregroundStyle(usesStagingEnvironment ? .bizarreWarning : .bizarreSuccess)
+                        .font(.system(size: 20))
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(usesStagingEnvironment ? "Staging" : "Production")
+                            .font(.brandBodyLarge())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Text(usesStagingEnvironment
+                             ? "https://staging-api.bizarrecrm.com"
+                             : "Your tenant server URL")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $usesStagingEnvironment)
+                        .labelsHidden()
+                        .tint(usesStagingEnvironment ? .bizarreWarning : .bizarreSuccess)
+                        .accessibilityLabel(usesStagingEnvironment ? "Switch to production" : "Switch to staging")
+                        .onChange(of: usesStagingEnvironment) { _, v in
+                            UserDefaults.standard.set(v, forKey: "debug.useStagingEnvironment")
+                            showRestartBanner = true
+                            AppLog.ui.warning(
+                                "DiagnosticsEnv: switched to \(v ? "staging" : "production", privacy: .public)"
+                            )
+                        }
+                }
+                .padding(.vertical, BrandSpacing.xs)
+                .listRowBackground(
+                    usesStagingEnvironment
+                    ? Color.bizarreWarning.opacity(0.08)
+                    : Color.bizarreSurface1
+                )
+                .accessibilityIdentifier("diagnostics.env.toggle")
+            } header: {
+                Text("API Environment")
+            } footer: {
+                Text("Switches between staging and production API. A restart is required for the change to take effect. Dev builds only.")
+            }
+
+            if showRestartBanner {
+                Section {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                        Text("Restart the app to apply the environment change.")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    }
+                    .padding(.vertical, BrandSpacing.xs)
+                    .listRowBackground(Color.bizarreOrange.opacity(0.1))
+                }
+                .accessibilityIdentifier("diagnostics.env.restartBanner")
+            }
+
+            Section("Server info") {
+                infoRow(label: "Base URL",
+                        value: usesStagingEnvironment
+                            ? "staging-api.bizarrecrm.com"
+                            : "Your tenant server")
+                infoRow(label: "Build type",
+                        value: {
+                            #if DEBUG
+                            return "Debug"
+                            #else
+                            return "Release"
+                            #endif
+                        }())
+                infoRow(label: "App version",
+                        value: "\(Platform.appVersion) (\(Platform.buildNumber))")
+            }
+        }
+        #if canImport(UIKit)
+        .listStyle(.insetGrouped)
+        #endif
+        .scrollContentBackground(.hidden)
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer()
+            Text(value)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .textSelection(.enabled)
+        }
+        .listRowBackground(Color.bizarreSurface1)
     }
 }
 

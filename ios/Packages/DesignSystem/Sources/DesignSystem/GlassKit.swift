@@ -186,6 +186,28 @@ public struct BrandGlassContainer<Content: View>: View {
     }
 }
 
+// MARK: - §19.25 GlassLayerCounter — public diagnostics hook
+
+/// Public facade over `GlassBudgetMonitor` that exposes the active glass-layer
+/// count to the diagnostics UI (Settings → Diagnostics → Danger → Glass layer counter).
+///
+/// In release builds the counter always returns 0 because `GlassBudgetMonitor`
+/// is `#if DEBUG` only — the overlay is harmless but shows nothing.
+@MainActor
+public final class GlassLayerCounter: Sendable {
+    public static let shared = GlassLayerCounter()
+    private init() {}
+
+    /// Number of `.brandGlass` modifier instances currently on-screen.
+    public var activeCount: Int {
+        #if DEBUG
+        return GlassBudgetMonitor.shared.visible
+        #else
+        return 0
+        #endif
+    }
+}
+
 // MARK: - Button styles
 
 /// Brand primary CTA — `.glassProminent` on iOS 26, `.borderedProminent` earlier.

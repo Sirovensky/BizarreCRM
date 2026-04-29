@@ -136,14 +136,18 @@ public struct AppearancePage: View {
     public var body: some View {
         Form {
             Section("Theme") {
-                Picker("Theme", selection: $vm.theme) {
+                // §19.4 — live preview thumbnails one-tap theme selection
+                HStack(spacing: BrandSpacing.sm) {
                     ForEach(AppTheme.allCases, id: \.self) { t in
-                        Text(t.displayName).tag(t)
+                        ThemePreviewTile(theme: t, isSelected: vm.theme == t) {
+                            vm.theme = t
+                            vm.save()
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
-                .accessibilityLabel("App theme")
-                .accessibilityIdentifier("appearance.theme")
+                .padding(.vertical, BrandSpacing.xs)
+                .listRowBackground(Color.bizarreSurface1)
+                .accessibilityElement(children: .contain)
             }
 
             // Accent-color section is hidden while the palette only ships a
@@ -276,6 +280,116 @@ public struct AppearancePage: View {
         }
         .onChange(of: vm.theme) { _, _ in vm.save() }
         .onChange(of: vm.posThemeOverride) { _, _ in vm.save() }
+    }
+}
+
+// MARK: - §19.4 Theme preview tile
+
+/// Small thumbnail that previews light/dark/system appearance for a theme option.
+/// Tapping selects that theme immediately (no separate Save needed — matches
+/// the existing `.onChange(of: vm.theme)` auto-save at the page level).
+private struct ThemePreviewTile: View {
+    let theme: AppTheme
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    /// Simulated surface colours for the mini UI mockup inside each tile.
+    private var bgColor: Color {
+        switch theme {
+        case .system: return Color(.systemBackground)
+        case .light:  return .white
+        case .dark:   return Color(white: 0.13)
+        }
+    }
+
+    private var textColor: Color {
+        switch theme {
+        case .light:  return Color(white: 0.1)
+        case .dark:   return Color(white: 0.9)
+        case .system: return Color(.label)
+        }
+    }
+
+    private var barColor: Color {
+        switch theme {
+        case .light:  return Color(white: 0.85)
+        case .dark:   return Color(white: 0.22)
+        case .system: return Color(.secondarySystemBackground)
+        }
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: BrandSpacing.xs) {
+                // Mini mockup
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(bgColor)
+                    .frame(width: 80, height: 56)
+                    .overlay {
+                        VStack(spacing: 4) {
+                            // Fake nav bar
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(barColor)
+                                .frame(height: 10)
+                                .padding(.horizontal, 6)
+                                .padding(.top, 4)
+                            // Fake content rows
+                            ForEach(0..<2, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(textColor.opacity(0.15))
+                                    .frame(height: 6)
+                                    .padding(.horizontal, 10)
+                            }
+                            // Fake accent strip
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.bizarreOrange.opacity(0.7))
+                                .frame(height: 6)
+                                .padding(.horizontal, 10)
+                            Spacer()
+                        }
+                    }
+                    .overlay {
+                        if theme == .system {
+                            // Half-and-half overlay for "system" tile
+                            GeometryReader { geo in
+                                Path { p in
+                                    p.move(to: CGPoint(x: geo.size.width, y: 0))
+                                    p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                                    p.addLine(to: CGPoint(x: 0, y: geo.size.height))
+                                    p.closeSubpath()
+                                }
+                                .fill(Color(white: 0.13).opacity(0.45))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(
+                                isSelected ? Color.bizarreOrange : Color.clear,
+                                lineWidth: 2
+                            )
+                    }
+
+                Text(theme.displayName)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(isSelected ? .bizarreOrange : .bizarreOnSurfaceMuted)
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+                } else {
+                    Color.clear.frame(height: 14)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("\(theme.displayName) theme\(isSelected ? ", selected" : "")")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("appearance.themePreview.\(theme.rawValue)")
     }
 }
 
