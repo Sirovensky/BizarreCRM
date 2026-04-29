@@ -72,4 +72,30 @@ public final class AnalyticsConsentManager {
     public func toggle() {
         if isOptedIn { optOut() } else { optIn() }
     }
+
+    // MARK: — §28.13 Consent reset on logout
+
+    /// Resets analytics consent to the default opt-out state when the user signs out.
+    ///
+    /// Called by the logout path (via `Notification.Name.userDidSignOut`) so that
+    /// a new user signing in on the same device always starts from the privacy-safe
+    /// default (opted out), rather than inheriting the previous user's choice.
+    ///
+    /// Does **not** fire an opt-out analytics event — the session has already ended.
+    public func resetForLogout() {
+        isOptedIn = false
+        defaults.removeObject(forKey: Self.defaultsKey)
+    }
+}
+
+// MARK: — Notification
+
+public extension Notification.Name {
+    /// Posted by the logout path (SettingsView, LoginFlow) so that observers
+    /// such as `AnalyticsConsentManager` can reset per-user consent to the
+    /// opt-out default (§28.13 consent reset on logout).
+    ///
+    /// Posting this notification is sufficient — the App module wires the
+    /// observer at startup via `NotificationCenter.default.addObserver`.
+    static let userDidSignOut = Notification.Name("com.bizarrecrm.auth.userDidSignOut")
 }

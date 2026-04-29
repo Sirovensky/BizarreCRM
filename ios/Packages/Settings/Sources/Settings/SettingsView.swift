@@ -381,6 +381,31 @@ public struct SettingsView: View {
                 BiometricToggleRow()
             }
 
+            // §28.13 Privacy / GDPR — data export request, account delete, nutrition label
+            Section("Privacy") {
+                NavigationLink {
+                    PrivacyNutritionLabelView()
+                } label: {
+                    Label("Privacy Details", systemImage: "hand.raised.fill")
+                }
+                .accessibilityIdentifier("settings.privacyNutritionLabel")
+
+                NavigationLink {
+                    DataExportRequestView(api: APIClientHolder.current)
+                } label: {
+                    Label("Request My Data", systemImage: "arrow.down.circle")
+                }
+                .accessibilityIdentifier("settings.requestMyData")
+
+                NavigationLink {
+                    AccountDeleteRequestView(api: APIClientHolder.current)
+                } label: {
+                    Label("Delete My Account", systemImage: "person.crop.circle.badge.minus")
+                        .foregroundStyle(.bizarreError)
+                }
+                .accessibilityIdentifier("settings.deleteMyAccount")
+            }
+
             // §69 Help center
             Section("Help") {
                 NavigationLink {
@@ -486,6 +511,10 @@ public struct SettingsView: View {
     /// Best-effort server-side logout followed by a local wipe. The server
     /// call is non-fatal — if it fails (offline, 401, rate-limited), we
     /// still clear local state so the user actually ends up signed out.
+    ///
+    /// Posts `Notification.Name.userDidSignOut` so observers such as
+    /// `AnalyticsConsentManager` reset per-user consent to the opt-out
+    /// default (§28.13 consent reset on logout).
     private func signOut(clearServer: Bool) async {
         if let api = APIClientHolder.current {
             _ = try? await api.logout()
@@ -498,6 +527,8 @@ public struct SettingsView: View {
             ServerURLStore.clear()
             await APIClientHolder.current?.setBaseURL(nil)
         }
+        // §28.13 — notify observers to reset per-user consent/state.
+        NotificationCenter.default.post(name: .userDidSignOut, object: nil)
         onSignOut?()
     }
 }
