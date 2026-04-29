@@ -1955,12 +1955,14 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Line items** — qty stepper (inc/dec with light haptic), unit price, line total. Swipe trailing = Remove; context menu = Remove / Edit quantity / Edit price.
 - [x] **Line edit sheets** — `PosEditQuantitySheet` + `PosEditPriceSheet` wired (role gating TBD in Phase 3).
 - [x] **Cart-level** — discount (% + $), tip (preset 10/15/20% + custom), fees (cents + label) via `PosCartAdjustmentSheets` + overflow ⋯ toolbar menu. `effectiveDiscountCents` re-derives on subtotal change.
+- [x] **Tip preset percentages config** — `TipPresetConfigSheet` manager-facing settings sheet: load/save via `TipPresetStore`, up to 4 presets, drag-to-reorder, swipe-to-delete, percentage vs fixed-cent toggle, inline validation (no duplicate %), "Reset to defaults" destructive confirmation; `TipPresetConfigViewModel` @Observable with `load/save/addPreset/removePreset/setPercentage/setFixedCents/move/resetToDefaults`; `PresetEditRow` preview chip reflects live edits; a11y identifiers; gate at call site (manager PIN). (feat(§16.3): tip preset percentages config)
 - [x] **Tax** — per-line `taxRate` propagated into `CartMath.totals` with bankers rounding; multi-rate per item supported. Tenant-wide tax config integration deferred to §19.
 - [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()` via `CartMath.formatCents`. Discount + Tip lines added when those features ship.
 - [x] **Link to record** — chip "Link to Ticket #1234". `Cart.linkedTicketId` + `Cart.linkToTicket(id:)` + `PosCartTicketLinkChip`. (feat(§16.3): cart ticket link chip)
 - [x] **Hold cart** — `POsHoldCartSheet` + `PosResumeHoldsSheet` wired to `POST/GET /pos/holds` with 404/501 "Coming soon" fallback. Resume clears cart first, never inherits pending payment link. Synthetic single-line pending per-hold detail endpoint.
 - [x] **Clear cart** — `Clear cart` toolbar action with ⌘⇧⌫ shortcut (destructive confirm lands with the first real-tender phase).
 - [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
+- [x] **Cart undo toast (last delete)** — swipe-to-remove and context-menu Remove in `PosCartPanel` now capture the deleted `CartItem` snapshot and show a 5-second snackbar ("Removed · [name] · Undo" button). `showUndo(for:)` starts an auto-dismiss Task; tapping Undo calls `cart.add(item)` and cancels the timer; Reduce Motion + VoiceOver labelled; toast pins above totals footer via ZStack overlay; `accessibilityIdentifier: pos.cart.undoToast / pos.cart.undoRemove`. (feat(§16.3): cart undo toast)
 
 ### 16.4 Customer pick
 - [x] **Attach existing** — `PosCustomerPickerSheet` with debounced 300ms `CustomerRepository.list(keyword:)`; tap row → `cart.attach(customer:)`; CartPill renders chip (initials or walk-in ghost). Loyalty tier badge deferred to §38.
@@ -2008,6 +2010,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Account credit / net-30** — role-gated; only if customer has terms set; adds to open balance. `PosAccountCreditTenderSheet` + `TenderMethod.accountCredit` + wired in `PosTenderAmountEntryView`. (feat(§16): account-credit tender 2f6d8bab)
 - [x] **Financing (if enabled)** — partner link (Affirm/Klarna) → QR/URL for customer to complete on their phone; webhook completes sale. `PosFinancingLinkSheet` + `FinancingProvider` enum; no partner SDK. (feat(§16): financing link 2f6d8bab)
 - [x] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card. `PosTenderCoordinator.applyTender` multi-leg + `PosTenderMethodPickerView`. (feat(§16.6): split tender)
+- [x] **Payment method icon SF Symbols** — `TenderMethod.systemImage` extended: `check` now uses `checkmark.rectangle.fill` (matches paper-check shape); new `.financing` case (`clock.arrow.circlepath`) + `tileSubtitle` "Affirm · Klarna"; `iconAccessibilityLabel` per method for chip-only icon contexts. `AppliedTender.Kind` gains `systemImage` + `accessibilityLabel` per kind (giftCard/storeCredit/loyaltyRedemption). (feat(§16.6): payment method icon SF Symbols)
 
 ### 16.7 Receipt & hand-off
 - [x] **On-device rendering pipeline per §17.4** (contract enforced via `ReceiptPrinter`/`PosReceiptRenderer`). Single SwiftUI `ReceiptView` deferred to full printer SDK work.
@@ -2021,6 +2024,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap. `PosReceiptPrintBridge.SignatureCompositor` composites `PKDrawing` → `UIImage` onto receipt bitmap (thermal) or PDF (AirPrint) below a separator line. (feat(§16.7): signature print compositor cad69018)
 - [x] **Gift receipt** — `GiftReceiptGenerator` pure-function generator + `GiftReceiptSheet` post-sale prompt. Strips prices/tenders/customer, preserves names/SKUs/qty. Tests ≥80%. (Phase 5 §16)
 - [x] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes. `ReceiptModelStore` actor + `.task` in `PosReceiptView`. (feat(§16.7): persist receipt model)
+- [x] **Receipt printer status pill** — `ReceiptPrinterStatusPill` collapsible toolbar chip: connected (green `printer.fill`) / notPaired (muted `printer.fill.and.paper`) / offline (red `printer.dotmatrix`); 30-second heartbeat via `ReceiptPrinterStatusViewModel` @Observable; tap expands label, auto-collapses after 4 s; Reduce Motion, a11y label, identifier. (feat(§16.7): receipt printer status pill)
 
 ### 16.8 Post-sale screen
 - [x] **Glass "Sale complete" card** — `PosPostSaleView` with 600ms spinner → success. Confetti animation deferred.
@@ -2052,6 +2056,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition. `ShiftHandoffView` two-step wizard (summary → openShift); opens CashRegisterStore.shared.openSession. (1a87bfb7)
 - [x] **Blind-count mode** — cashier doesn't see expected total until after count (loss prevention). `blindCountMode` + `blindCountRevealed` toggle in `CloseRegisterSheet`. (feat(§16.10): blind-count mode)
 - [x] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN. `ShiftHandoffPolicy` (.default/.strict/.mandatory); ManagerPinSheet for skip-count. (1a87bfb7)
+- [x] **Register-close summary screen polish** — `CloseRegisterSheet` gets: shift summary header card (duration chip e.g. "4 h 22 min", float, session ID, clock icon); variance badge polished with band description text ("On target" / "Minor variance" / "Investigate required") + band icon pill (`checkmark/exclamationmark/xmark.circle.fill`); `contentTransition(.numericText)` on variance amount; Duration row in Shift section; all a11y labels updated. (feat(§16.10): register-close summary polish)
 
 ### 16.11 Anti-theft / loss prevention
 - [x] **Void audit** — `Cart.removeLine(id:reason:managerId:)` logs `void_line`/`delete_line` via `PosAuditLogStore` (GRDB migration 005). Fire-and-forget Task never blocks cashier.
