@@ -45,4 +45,63 @@ public enum Analytics {
         guard let dispatcher = _dispatcher else { return }
         Task { await dispatcher.flush() }
     }
+
+    // MARK: — §32 Domain convenience helpers
+
+    /// §32 — Record a payment-approved event.
+    ///
+    /// - Parameters:
+    ///   - tender: Payment method string, e.g. `"card"`, `"cash"`, `"gift_card"`.
+    ///   - amountCents: Integer amount in the smallest currency unit; never PII.
+    public static func trackPaymentApproved(tender: String, amountCents: Int) {
+        track(.paymentApproved, properties: [
+            "tender": .string(tender),
+            "amount_cents": .int(amountCents),
+        ])
+    }
+
+    /// §32 — Record a payment-failed event.
+    ///
+    /// - Parameters:
+    ///   - tender: Payment method string.
+    ///   - reason: Machine-readable failure code (e.g. `"insufficient_funds"`).
+    ///             Must NOT contain customer text; pass through `AnalyticsRedactor` if unsure.
+    public static func trackPaymentFailed(tender: String, reason: String) {
+        track(.paymentFailed, properties: [
+            "tender": .string(tender),
+            "reason": .string(AnalyticsRedactor.scrubString(reason)),
+        ])
+    }
+
+    /// §32 — Record a sync conflict telemetry event.
+    ///
+    /// - Parameters:
+    ///   - entityType: The domain entity type that conflicted, e.g. `"ticket"`, `"customer"`.
+    ///   - resolution: How the conflict was resolved: `"server_wins"`, `"client_wins"`, `"merged"`.
+    ///   - deltaCount: Number of fields that differed.
+    public static func trackSyncConflict(
+        entityType: String,
+        resolution: String,
+        deltaCount: Int
+    ) {
+        track(.syncConflictResolved, properties: [
+            "entity_type": .string(entityType),
+            "resolution": .string(resolution),
+            "delta_count": .int(deltaCount),
+        ])
+    }
+
+    /// §32 — Record a hardware printer connectivity event.
+    ///
+    /// - Parameters:
+    ///   - online: `true` when the printer came online, `false` when it went offline.
+    ///   - peripheralType: Optional peripheral type string, e.g. `"bluetooth"`, `"usb"`, `"network"`.
+    public static func trackPrinterConnectivity(online: Bool, peripheralType: String? = nil) {
+        let event: AnalyticsEvent = online ? .printerOnline : .printerOffline
+        var props: [String: AnalyticsValue] = [:]
+        if let type_ = peripheralType {
+            props["peripheral_type"] = .string(type_)
+        }
+        track(event, properties: props)
+    }
 }

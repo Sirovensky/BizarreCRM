@@ -24,6 +24,13 @@ public enum AnalyticsRedactor {
 
     // MARK: — Public API
 
+    /// Redact a single string value, masking any PII patterns.
+    ///
+    /// Useful for scrubbing an individual string before embedding it as a property value.
+    public static func scrubString(_ value: String) -> String {
+        LogRedactor.redact(value)
+    }
+
     /// Return a new dictionary with PII keys removed and string values redacted.
     ///
     /// This function is pure — the input dictionary is not mutated.

@@ -72,6 +72,10 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case cardCharged          = "pos.card.charged"
     case discountApplied      = "pos.discount.applied"
     case checkoutAbandoned    = "pos.checkout.abandoned"
+    /// §32 — A payment capture was approved; properties: `tender`, `amount_cents` (int).
+    case paymentApproved      = "payment.approved"
+    /// §32 — A payment capture failed; properties: `tender`, `reason` (redacted string).
+    case paymentFailed        = "payment.failed"
 
     // MARK: Hardware
 
@@ -79,6 +83,10 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case receiptPrinted       = "hardware.receipt.printed"
     case barcodeScanned       = "hardware.barcode.scanned"
     case printerError         = "hardware.printer.error"
+    /// §32 — Printer came online (USB/Bluetooth/network peripheral reconnected).
+    case printerOnline        = "hardware.printer.online"
+    /// §32 — Printer went offline (disconnected or powered off).
+    case printerOffline       = "hardware.printer.offline"
 
     // MARK: Inventory
 
@@ -181,6 +189,7 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
              .customerCreated, .customerMerged, .customerViewed,
              .saleFinalized, .refundIssued, .cardCharged,
              .discountApplied, .checkoutAbandoned,
+             .paymentApproved, .paymentFailed,
              .inventoryAdjusted, .lowStockAlertShown,
              .inventoryItemViewed, .stockCountSubmitted,
              .invoiceCreated, .invoiceSent, .invoicePaid,
@@ -192,7 +201,8 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
              .widgetViewed, .liveActivityStarted, .liveActivityEnded, .featureFirstUse:
             return .domain
 
-        case .drawerKicked, .receiptPrinted, .barcodeScanned, .printerError:
+        case .drawerKicked, .receiptPrinted, .barcodeScanned, .printerError,
+             .printerOnline, .printerOffline:
             return .hardware
 
         case .campaignSent, .emailOpened:

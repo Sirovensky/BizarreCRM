@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // §32 Telemetry Sovereignty Guardrails — PII redaction for String-valued properties
@@ -91,6 +92,36 @@ public enum TelemetryRedactor {
             result[key] = redactValue(value)
         }
         return result
+    }
+
+    // MARK: - §32.6 Tenant-ID hash-anonymizer
+
+    /// Return an 8-character hex hash of `tenantId` salted with `salt`, suitable
+    /// for use as a stable, cross-session, non-reversible correlation key in
+    /// telemetry payloads.
+    ///
+    /// The salt must be tenant-specific (e.g. derived from the server URL) so the
+    /// same tenant slug cannot be correlated across different tenant deployments.
+    ///
+    /// Algorithm: SHA-256(`salt` + `":"` + `tenantId`), first 4 bytes → 8 hex chars,
+    /// matching §32.6 "8-char truncated SHA-256" spec.
+    ///
+    /// ```swift
+    /// let key = TelemetryRedactor.hashTenantId("acme-repair", salt: "bizarrecrm.com")
+    /// // → e.g. "3a7f1c2e"
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - tenantId: The raw tenant slug or identifier.
+    ///   - salt: Per-deployment salt (e.g. the tenant server host).
+    /// - Returns: 8-character lowercase hex string.
+    public static func hashTenantId(_ tenantId: String, salt: String) -> String {
+        let input = "\(salt):\(tenantId)"
+        guard let data = input.data(using: .utf8) else { return "00000000" }
+        let digest = SHA256.hash(data: data)
+        return digest.prefix(4)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     // MARK: - Private helpers
