@@ -4193,7 +4193,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] **Service naming** — `com.bizarrecrm.<purpose>` pattern; access group shared with widget extension where needed.
 - [ ] **UserDefaults** — non-secret prefs only (theme, sort order, last-used tab).
 - [ ] **App Group UserDefaults** — shared prefs between app + widgets (no secrets).
-- [ ] **Delete on logout** — Keychain keys scoped to user/tenant deleted.
+- [x] **Delete on logout** — Keychain keys scoped to user/tenant deleted.
 
 ### 28.2 Database encryption
 
@@ -4260,7 +4260,7 @@ Tasks:
 - [ ] **`ITSAppUsesNonExemptEncryption = false`** — only use HTTPS + standard Apple crypto; skip export-compliance paperwork.
 
 ### 28.7 Logging redaction
-- [ ] **`privacySensitive()`** on password, PIN, SSN fields.
+- [x] **`privacySensitive()`** on password, PIN, SSN fields.
 - [ ] **`OSLog` privacy levels** — `.private` on tokens, phones, emails.
 - [ ] **Crash logs** — no PII via symbolication hooks.
 - [ ] **Network inspector** in dev redacts Authorization header.
@@ -4277,7 +4277,7 @@ Three different iOS signals, three different defenses:
 | Sensitive input fields | — | **Yes, iOS 17+**: `UIView.isSecure = true` marks a view as content-protected; its pixels are excluded from screen-record capture AND from screenshots (replaced with black). Equivalent SwiftUI modifier pattern (via UIViewRepresentable wrapper) until Apple ships one. | Apply on PIN entry, OTP entry, PAN-masked displays, full-card reveal (not used but the plumbing exists). |
 
 Tasks:
-- [ ] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active.
+- [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active.
 - [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`.
 - [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
 - [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
@@ -4288,7 +4288,7 @@ Screen-protection audit entries go to the tenant server (§32), not third-party 
 ### 28.9 Pasteboard hygiene
 
 - [ ] **OTP paste** — `UITextContentType.oneTimeCode` is the right content type for the 2FA code field. iOS offers the code from the most recent Messages automatically; no need for us to read the pasteboard manually.
-- [ ] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s.
+- [x] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s.
 - [ ] **Card number — we never copy it.** Our app never handles raw PAN (§16.6 + §17.3 — BlockChyp tokenizes on the terminal or in its SDK sheet). So there is no "copy card number" code path in our app to defend; the relevant pasteboard events happen entirely inside the BlockChyp SDK process.
 - [ ] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive).
 - [ ] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast.
@@ -4348,7 +4348,7 @@ Rules:
 - [ ] Copy triggers: long-press on IDs/emails/phones/SKUs → "Copy" menu; ticket detail header chip `#4821` tap → copy with haptic; invoice number+total same way
 - [ ] Feedback: haptic `.success` + toast "Copied" (2s); dedup identical copies within 3s to avoid toast spam
 - [ ] Paste: form fields auto-detect tenant-URL paste → auto-populate host; phone field parses pasted numbers (removes formatting)
-- [ ] Pasteboard hygiene: `UIPasteboard.string` access wrapped in audit log on sensitive screens; prefer iOS 17+ `pasteButton` for user-initiated paste to avoid access warnings
+- [x] Pasteboard hygiene: `UIPasteboard.string` access wrapped in audit log on sensitive screens; prefer iOS 17+ `pasteButton` for user-initiated paste to avoid access warnings
 - [ ] Auto-clear: after paste of sensitive content (credentials), offer to clear pasteboard
 - [ ] Universal Clipboard works across Apple devices seamlessly via iCloud Handoff; no special code needed
 - [ ] See §57 for the full list.

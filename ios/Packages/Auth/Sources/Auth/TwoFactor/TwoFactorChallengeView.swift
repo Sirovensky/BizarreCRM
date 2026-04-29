@@ -95,6 +95,9 @@ public struct TwoFactorChallengeView: View {
                 digitCell(index: index)
             }
         }
+        // §28.7 — digits are a one-time code; redact from screenshots / screen
+        // recordings on iOS 17+ by marking the container privacy-sensitive.
+        .privacySensitive()
         .accessibilityElement(children: .contain)
         .onAppear { focusedField = 0 }
     }

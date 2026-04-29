@@ -53,4 +53,35 @@ public final class KeychainStore: @unchecked Sendable {
         try set(raw, for: .dbPassphrase)
         return raw
     }
+
+    // MARK: - §28.1 Delete on logout
+
+    /// Keys that are scoped to a specific user / tenant and must be deleted
+    /// when that user signs out or a tenant is removed.
+    private static let userScopedKeys: [KeychainKey] = [
+        .accessToken,
+        .refreshToken,
+        .pinHash,
+        .pinLength,
+        .pinFailCount,
+        .pinLockUntil,
+        .dbPassphrase,
+        .backupCodes,
+        .blockChypAuth,
+        .activeTenantId,
+    ]
+
+    /// Removes all Keychain items that are scoped to the active user session.
+    ///
+    /// Call this during logout or when a tenant record is being purged.
+    /// ``rememberedEmail`` is intentionally preserved across logouts so the
+    /// login screen can pre-populate the email field for convenience.
+    ///
+    /// - Parameter tenantSlug: Unused today (single-keychain-service model),
+    ///   but accepted for forward-compatibility with per-tenant service naming.
+    public func deleteUserScoped(tenantSlug: String? = nil) {
+        for key in Self.userScopedKeys {
+            try? keychain.remove(key.rawValue)
+        }
+    }
 }

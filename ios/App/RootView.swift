@@ -34,6 +34,9 @@ import Hardware
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    /// §28.8 — tracks whether the app is inactive / backgrounded so we can
+    /// overlay a branded blur before the system takes an App Switcher snapshot.
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -69,6 +72,14 @@ struct RootView: View {
                 .posTheme(override: nil)
             }
         }
+        // §28.8 Privacy snapshot — overlay a branded blur while the app is
+        // inactive so the App Switcher thumbnail never reveals sensitive data.
+        // Removed immediately when the app becomes active again.
+        .overlay {
+            if scenePhase != .active {
+                PrivacySnapshotOverlay()
+            }
+        }
         .task { await listenForSessionEvents() }
     }
 
@@ -90,6 +101,37 @@ struct RootView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - §28.8 Privacy snapshot overlay
+
+/// Branded blur shown while the app is inactive (App Switcher, system overlays).
+///
+/// The system captures the app snapshot when `scenePhase` transitions from
+/// `.active` to `.inactive`. By overlaying this view before that snapshot is
+/// taken, no sensitive data appears in the App Switcher.
+///
+/// Customer-facing display (kiosk) intentionally opts out — kiosk content is
+/// already meant to be public-facing and the overlay would confuse customers.
+private struct PrivacySnapshotOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase
+                .ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image("BrandMark")
+                    .resizable()
+                    .renderingMode(.template)
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(width: 56, height: 56)
+                Text("BizarreCRM")
+                    .font(.system(.title2, design: .default).bold())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+        }
+        .transition(.opacity)
+        .accessibilityHidden(true) // decorative only; app is inactive
     }
 }
 
