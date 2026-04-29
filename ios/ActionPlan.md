@@ -4928,16 +4928,17 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Dev console** — `CrashConsoleView` (`#if DEBUG`) showing breadcrumbs + export. <!-- shipped feat(ios phase-11 §32) -->
 
 ### 32.4 Event taxonomy (first-party analytics)
-- [x] **Screen views** — `screen_view { name, duration_ms }`. (`ScreenViewModifier` + `.trackScreenView(name:)` in `Core/Telemetry/ScreenViewTracking.swift`; records `screen.viewed` on appear+disappear with duration_ms. feat(§32.4): c342811e)
+- [x] **Screen views** — `screen_view { name, duration_ms, duration_bucket }`. (`ScreenViewModifier` + `.trackScreenView(name:)` in `Core/Telemetry/ScreenViewTracking.swift`; records `screen.viewed` on appear+disappear with duration_ms + histogram bucket via `ScreenDurationBucket.classify(_:)` — buckets: flash/glance/engaged/deep/marathon. feat(§32.4 §32): screen-view duration histogram)
 - [x] **Action taps** — `action_tap { screen, action, entity_id? }`. (`Analytics.trackAction(_:screen:entityId:)` — entity IDs hashed via `.hashValue` hex; never raw. feat(§32.4): c342811e)
 - [x] **Mutations** — `mutation_start`, `mutation_complete`, `mutation_failed { reason }`. (`Analytics.trackMutationStart/Complete/Failed` routing through `SinkDispatcher` → `AnalyticsRedactor`. feat(§32.4): c342811e)
 - [ ] **Sync** — `sync_start`, `sync_complete { delta_count, duration_ms }`, `sync_failed`.
 - [ ] **POS** — `pos_sale_complete { total, tender }`, `pos_sale_failed { reason }`.
 - [ ] **Performance** — `cold_launch_ms`, `first_paint_ms`.
 - [ ] **Retention** — dau / mau computed server-side.
+- [x] **Server-error event catalog** — three new events in `AnalyticsEventCatalog.swift`: `server.error.received { endpoint, status_code, error_code?, request_id? }`, `server.rate_limited { endpoint, status_code, retry_after_seconds? }`, `server.timeout { endpoint, timeout_seconds }`. Helpers: `Analytics.trackServerError`, `trackRateLimitHit`, `trackServerTimeout` in `Core/Telemetry/Analytics.swift`. (feat(§32): server-error event catalog)
 
 ### 32.5 User-level controls
-- [ ] **Analytics opt-out** in Settings → Privacy — suspends event sink entirely.
+- [x] **Analytics opt-out** in Settings → Privacy — suspends event sink entirely. (`SinkDispatcher` already gates on `consentManager.shouldSendEvents`; opt-in/out flow now fires `analyticsOptedIn` / `analyticsOptedOut` events from `AnalyticsConsentManager.optIn()/optOut()` in `Core/Telemetry/AnalyticsConsentManager.swift`. feat(§32): opt-in flow telemetry)
 - [x] **Crash-report opt-out** — admin toggle `CrashReportingSettingsView` + `CrashReportingDefaults.enabledKey`. <!-- shipped feat(ios phase-11 §32) -->
 - [x] **Opt-in rationale** — "Data stays on your company server" messaging in `CrashReportingSettingsView` footer. <!-- shipped feat(ios phase-11 §32) -->
 - [ ] **ATT prompt skipped** — we don't cross-app track; no `AppTrackingTransparency` permission needed.
@@ -4993,6 +4994,7 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 - [ ] **Support ticket** created via server endpoint.
 
 ### 32.8 Experimentation / feature flags
+- [x] **Feature-flag toggle event** — `settings.featureflag.toggled { flag_key, enabled, source }` fired via `Analytics.trackFeatureFlagToggled(flagKey:enabled:source:)` in `Core/Telemetry/Analytics.swift`. `source` is `"server"` / `"local_override"` / `"default"`. (feat(§32): feature-flag toggle event + server-error catalog)
 - [ ] **Server-driven flags** — `/feature-flags?user=` response cached; applied per session.
 - [ ] **Local override** (dev builds) — toggle any flag.
 - [ ] **A/B** — experiment bucket assigned at first session.
@@ -5004,6 +5006,7 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 - [ ] Levels: `debug` (dev-only, compile-stripped in Release), `info` (lifecycle + meaningful), `notice` (user-visible: logins / sales), `error` (recoverable failures), `fault` (unexpected state → crash analytics).
 - [ ] Redaction default: `privacy: .private` on all dynamic params; `.public` only for IDs + enum states. SwiftLint rule enforces per §32.6.
 - [ ] No ring-buffer shipped; system retention used.
+- [x] **Debug log export** — `DebugLogStore` (`#if DEBUG`) ring buffer (500 lines, FIFO eviction) accumulates ISO-8601-timestamped, redacted-property log lines from `LocalDebugSink`. `exportText()` / `exportData()` return the full buffer; `clear()` resets after submit. Lives in `Core/Telemetry/LocalDebugSink.swift`. (feat(§32): debug log export via DebugLogStore ring buffer)
 - [ ] Bug-report flow (§69) optionally bundles a redacted `sysdiagnose`-style export; never auto-upload.
 - [ ] Logs stay on device unless user opts in via bug report → tenant server only (§32 sovereignty).
 - [ ] Purpose targets: dashboard redesign (§3), onboarding flows, campaign templates.

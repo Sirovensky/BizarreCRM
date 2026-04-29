@@ -40,13 +40,30 @@ public final class AnalyticsConsentManager {
     // MARK: — Mutations
 
     /// Opt the user in to analytics collection. Persists immediately.
+    ///
+    /// Fires `settings.analytics.opted_in` **after** setting the flag so the
+    /// event itself is permitted by the newly-granted consent.
     public func optIn() {
         isOptedIn = true
         defaults.set(true, forKey: Self.defaultsKey)
+        // §32 Opt-in flow telemetry — record the consent decision.
+        // The event is emitted after `isOptedIn` is `true` so the dispatcher
+        // allows it through immediately.
+        Analytics.track(.analyticsOptedIn, properties: [
+            "source": .string("settings")
+        ])
     }
 
     /// Opt the user out of analytics collection. Persists immediately.
+    ///
+    /// Fires `settings.analytics.opted_out` **before** clearing the flag so the
+    /// opt-out acknowledgement itself can still be transmitted.
     public func optOut() {
+        // §32 Opt-in flow telemetry — emit while still opted-in so the event
+        // is transmitted (consent is cleared on the next line).
+        Analytics.track(.analyticsOptedOut, properties: [
+            "source": .string("settings")
+        ])
         isOptedIn = false
         defaults.set(false, forKey: Self.defaultsKey)
     }

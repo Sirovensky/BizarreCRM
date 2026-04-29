@@ -135,6 +135,17 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
 
     case crashDetected        = "crash.detected"
     case errorPresented       = "error.presented"
+    /// §32 — Tenant server responded with a 4xx or 5xx status. Properties:
+    /// `endpoint` (path string), `status_code` (int), `error_code`? (string),
+    /// `request_id`? (string). Never include response body text — may contain PII.
+    case serverErrorReceived  = "server.error.received"
+    /// §32 — Tenant server responded with 429 Too Many Requests. Properties:
+    /// `endpoint` (path string), `status_code` (int = 429),
+    /// `retry_after_seconds`? (int).
+    case serverRateLimited    = "server.rate_limited"
+    /// §32 — Client timed out waiting for a server response. Properties:
+    /// `endpoint` (path string), `timeout_seconds` (double).
+    case serverTimeout        = "server.timeout"
 
     // MARK: Sync / Offline
 
@@ -218,7 +229,8 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
         case .helpArticleViewed, .supportEmailSent, .bugReportSubmitted:
             return .support
 
-        case .crashDetected, .errorPresented, .smsDecodeFailure:
+        case .crashDetected, .errorPresented, .smsDecodeFailure,
+             .serverErrorReceived, .serverRateLimited, .serverTimeout:
             return .error
         }
     }

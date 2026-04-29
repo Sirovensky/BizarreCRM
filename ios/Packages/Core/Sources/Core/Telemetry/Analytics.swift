@@ -104,4 +104,94 @@ public enum Analytics {
         }
         track(event, properties: props)
     }
+
+    // MARK: — §32.8 Feature-flag toggle event
+
+    /// §32.8 — Record that a feature flag was toggled.
+    ///
+    /// Fired whenever a flag changes in either direction so the server can
+    /// correlate flag adoption with downstream metrics (e.g. task completion rate).
+    ///
+    /// - Parameters:
+    ///   - flagKey: Stable identifier for the flag, e.g. `"new_checkout_flow"`.
+    ///     Must be a developer-defined literal; never pass user-supplied text.
+    ///   - enabled: `true` when the flag was switched on, `false` when switched off.
+    ///   - source: Who changed the flag: `"server"` (remote payload), `"local_override"` (dev
+    ///     build), or `"default"` (first-run initialisation). Defaults to `"server"`.
+    public static func trackFeatureFlagToggled(
+        flagKey: String,
+        enabled: Bool,
+        source: String = "server"
+    ) {
+        track(.featureFlagToggled, properties: [
+            "flag_key": .string(flagKey),
+            "enabled": .bool(enabled),
+            "source": .string(source)
+        ])
+    }
+
+    // MARK: — §32 Server-error event helpers
+
+    /// §32 — Record a server error received from the tenant backend.
+    ///
+    /// Use this at API call sites when the server responds with a 4xx/5xx status
+    /// so the tenant can audit error rates by endpoint and HTTP status code.
+    ///
+    /// - Parameters:
+    ///   - endpoint: Path-only endpoint identifier, e.g. `"/api/v1/tickets"`.
+    ///     Strip query parameters; never include customer data.
+    ///   - statusCode: HTTP status code, e.g. `500`, `422`, `401`.
+    ///   - errorCode: Machine-readable error code from the response body, e.g.
+    ///     `"validation_failed"`. Pass `nil` if not available. Never pass free-form
+    ///     server error messages — those may contain PII.
+    ///   - requestId: Opaque request correlation ID from the `X-Request-Id` response
+    ///     header. Pass `nil` if not present. Used to correlate client + server logs.
+    public static func trackServerError(
+        endpoint: String,
+        statusCode: Int,
+        errorCode: String? = nil,
+        requestId: String? = nil
+    ) {
+        var props: [String: AnalyticsValue] = [
+            "endpoint": .string(endpoint),
+            "status_code": .int(statusCode)
+        ]
+        if let code = errorCode {
+            props["error_code"] = .string(code)
+        }
+        if let rid = requestId {
+            props["request_id"] = .string(rid)
+        }
+        track(.serverErrorReceived, properties: props)
+    }
+
+    /// §32 — Record a server-returned 429 rate-limit hit.
+    ///
+    /// Helps the tenant tune rate limits if clients are hitting them unexpectedly.
+    ///
+    /// - Parameters:
+    ///   - endpoint: Path-only endpoint identifier.
+    ///   - retryAfterSeconds: Value of the `Retry-After` header, if present.
+    public static func trackRateLimitHit(endpoint: String, retryAfterSeconds: Int? = nil) {
+        var props: [String: AnalyticsValue] = [
+            "endpoint": .string(endpoint),
+            "status_code": .int(429)
+        ]
+        if let delay = retryAfterSeconds {
+            props["retry_after_seconds"] = .int(delay)
+        }
+        track(.serverRateLimited, properties: props)
+    }
+
+    /// §32 — Record a network timeout waiting for the tenant server.
+    ///
+    /// - Parameters:
+    ///   - endpoint: Path-only endpoint identifier.
+    ///   - timeoutSeconds: The timeout interval that elapsed (from `URLRequest.timeoutInterval`).
+    public static func trackServerTimeout(endpoint: String, timeoutSeconds: Double) {
+        track(.serverTimeout, properties: [
+            "endpoint": .string(endpoint),
+            "timeout_seconds": .double(timeoutSeconds)
+        ])
+    }
 }

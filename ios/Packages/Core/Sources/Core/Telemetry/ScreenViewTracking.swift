@@ -1,6 +1,7 @@
 import SwiftUI
 
 // §32.4 — Screen-view + action-tap analytics event taxonomy
+// §32 — Screen-view duration histogram buckets
 //
 // Provides two SwiftUI conveniences:
 //   • `.trackScreenView(name:)` — records `screen.viewed` with duration_ms.
@@ -11,10 +12,46 @@ import SwiftUI
 // No PII passes through these helpers; screen names and action identifiers are
 // developer-supplied string literals, not user data.
 
+// MARK: - ScreenDurationBucket
+
+/// §32 — Histogram buckets for screen-view duration.
+///
+/// Durations are classified into labelled buckets so the server can build a
+/// histogram without retaining precise timing (which could act as a
+/// quasi-identifier when combined with session data).
+///
+/// Bucket boundaries (ms):
+/// - `flash`    < 500 ms  — user immediately dismissed / navigated back
+/// - `glance`   500–2 999 ms  — quick glance
+/// - `engaged`  3 000–14 999 ms — normal interaction
+/// - `deep`     15 000–59 999 ms — deep reading / filling a form
+/// - `marathon` ≥ 60 000 ms — left screen open / background
+public enum ScreenDurationBucket: String, Sendable {
+    case flash    = "flash"     // < 500 ms
+    case glance   = "glance"    // 500–2 999 ms
+    case engaged  = "engaged"   // 3 000–14 999 ms
+    case deep     = "deep"      // 15 000–59 999 ms
+    case marathon = "marathon"  // ≥ 60 000 ms
+
+    /// Classify a raw duration in milliseconds into the appropriate bucket.
+    public static func classify(_ durationMs: Int) -> ScreenDurationBucket {
+        switch durationMs {
+        case ..<500:    return .flash
+        case ..<3_000:  return .glance
+        case ..<15_000: return .engaged
+        case ..<60_000: return .deep
+        default:        return .marathon
+        }
+    }
+}
+
 // MARK: - ScreenViewModifier
 
-/// §32.4 — Records `screen.viewed` with `duration_ms` when the view
-/// appears/disappears. Attach once per screen-level view.
+/// §32.4 — Records `screen.viewed` with `duration_ms` and `duration_bucket`
+/// when the view appears/disappears. Attach once per screen-level view.
+///
+/// The `duration_bucket` property is a histogram label (see `ScreenDurationBucket`)
+/// that lets the server aggregate viewing patterns without retaining raw timing.
 ///
 /// ```swift
 /// TicketListView()
@@ -43,9 +80,11 @@ public struct ScreenViewModifier: ViewModifier {
                 } else {
                     durationMs = 0
                 }
+                let bucket = ScreenDurationBucket.classify(durationMs)
                 Analytics.track(.screenViewed, properties: [
                     "screen": .string(screenName),
                     "duration_ms": .int(durationMs),
+                    "duration_bucket": .string(bucket.rawValue),
                     "event_subtype": .string("disappear")
                 ])
                 appearTime = nil
