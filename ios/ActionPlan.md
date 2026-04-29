@@ -3069,13 +3069,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Scope chips** — EntityFilter chip bar (All / Tickets / Customers / Inventory / Invoices / Estimates / Appointments) wired into GlobalSearchView + EntitySearchView. (feat(ios post-phase §18))
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
-- [x] **Search-recent dedup helper** — `RecentSearchDeduplicator` pure-logic helper normalises (trim, collapse whitespace, truncate at 120 chars) and case-insensitive deduplicates query lists before persist; `prepending(_:to:)` + `removing(_:from:)` + `normalise(_:)` APIs. (`Search/Recent/RecentSearchDeduplicator.swift`; this commit)
-- [x] **Query-history clear action** — `QueryHistoryClearAction` (`ToolbarContent`) + `QueryHistoryClearButton` (list-footer variant); both present a confirmation dialog before calling `RecentSearchStore.clear()` + caller-provided `onCleared` async callback. (`Search/Recent/QueryHistoryClearAction.swift`; this commit)
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
 - [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.emptyStateWithRecent`; 30ae5799)
 - [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.noResultsView`; 30ae5799)
 - [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
-- [x] **Search-loading skeleton** — shimmer-animated multi-section skeleton cards replace plain `SkeletonRow` list during load; reduces layout shift when results arrive. (`Search/SearchLoadingSkeleton.swift`; `SearchLoadingSkeleton` + `SkeletonResultCard` + `SkeletonShape` shimmer gradient; this commit)
 - [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
@@ -3101,8 +3098,6 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Deep link** — Spotlight tap passes `uniqueIdentifier` → deep link to `/customers/:id` etc. (feat(ios phase-6 §24+§25))
 - [x] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`. (`Search/Spotlight/SpotlightPreviewBuilder.swift`; `SpotlightPreviewBuilder.enrich()` sets `contentURL` deep-link + `thumbnailData` for tickets/customers/invoices/appointments; `SpotlightPrivacyGate` honours opt-out; agent-9 b13 346d6fe0)
 - [x] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts). (`SpotlightPreviewBuilder.enrich(customer:includeContactDetails:)` gates `phoneNumbers`/`emailAddresses` on `SpotlightPrivacyGate.includeContactDetails`; agent-9 b13 346d6fe0)
-- [x] **NSUserActivity Spotlight indexer** — `SpotlightNSUserActivityIndexer` donates `NSUserActivity` on each entity detail view (`isEligibleForSearch`, `isEligibleForPrediction`, `isEligibleForHandoff`); `configure(_:for:)` overloads for `Ticket`, `Customer`, `InventoryItem`; `contentAttributeSet` populated so CoreSpotlight re-ranks items from actual usage. (`Search/Spotlight/SpotlightNSUserActivityIndexer.swift`; this commit)
-- [x] **Deep-link search result handler** — `SearchResultDeepLinkHandler` maps tapped `SearchHit` / `MergedRow` to a typed `Destination` enum (ticket/customer/inventoryItem/invoice/estimate/appointment); bridge to `SpotlightDeepLinkDestination` for shared-router callers; logs unknown domains. (`Search/SearchResultDeepLinkHandler.swift`; this commit)
 
 ### 18.4 Entity-scoped search
 - [x] **`EntitySearchView`** — search scoped to one entity type via chip selector. `EntitySearchViewModel` (@Observable, 200ms debounce). (feat(ios post-phase §18))
@@ -4361,7 +4356,7 @@ Tasks:
 - [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay 173d99c4)
 - [x] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`. (`ScreenCaptureBlurModifier` + `.screenCaptureProtected()` in `Core/Privacy/ScreenCapturePrivacy.swift`; blurs at 20pt + ultraThinMaterial overlay; animated `.easeInOut(0.22)`. feat(§28.8): ebf86471)
 - [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
-- [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
+- [x] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all. (`SecureTextEntryModifier` + `.secureInput()` + `.pixelSecure()` in `Core/Privacy/SecureTextEntryModifier.swift`; UIViewRepresentable introspection sets `UIView.isSecure = true` on iOS 17+; fallback to `screenCaptureProtected()` blur on older OS; feat(§28.8))
 
 ### 28.8.1 Sovereignty note
 Screen-protection audit entries go to the tenant server (§32), not third-party analytics. Screenshot notifications cannot carry image data anyway; iOS would never hand us the image even if we wanted it.
@@ -4398,8 +4393,8 @@ Rules:
 - [ ] **Failure limits** — after 3 fails, drop to password.
 
 ### 28.11 Jailbreak / integrity
-- [ ] **Heuristic detection** — file presence + sandbox escape checks; informational flag only (log, never block).
-- [ ] **App Attest** (DeviceCheck) — verify device integrity per session.
+- [x] **Heuristic detection** — file presence + sandbox escape checks; informational flag only (log, never block). (`JailbreakDetector` in `Core/Privacy/JailbreakDetector.swift`: suspicious-path scan, sandbox-write probe, dyld image walk, URL-scheme check; returns `JailbreakRiskLevel` + `[JailbreakSignal]`; never blocks UX. `DebuggerDetector` in `Core/Privacy/DebuggerDetector.swift`: sysctl `P_TRACED` bit; returns `DebuggerRiskEntry` for server risk payload. `CodeInjectionGuard` in `Core/Privacy/CodeInjectionGuard.swift`: DYLD_INSERT_LIBRARIES env check, hooking-framework image scan, ObjC IMP-range validation. feat(§28.11))
+- [x] **App Attest** (DeviceCheck) — verify device integrity per session. (`AppAttestService` actor in `Auth/SecurityPolish/AppAttestService.swift`; `prepare()` generates/reuses key in Keychain; `attest(challenge:)` produces DER attestation for `POST /auth/attest`; `assert(challenge:clientData:)` for step-up ops; degrades gracefully to `.unsupported` on simulator/old OS; `MockAppAttestService` for tests. feat(§28.11))
 
 ### 28.12 Tenant data sovereignty
 - [ ] **Tenant DBs are sacred** — never delete tenant DB to recover from missing state; only repair.
