@@ -980,11 +980,11 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Privacy: read-only; never writes back to Contacts — `CNContactPickerViewController` is read-only by design; privacy note in UI. (f026f0d6)
 - [x] Clear imported data if user revokes permission — `ContactsBulkImportViewModel.handlePermissionRevoked()` resets to `.picking` phase; permission-denied state shown with Settings link. (f026f0d6)
 - [x] A11y: VoiceOver announces counts at each step — count label on review section, summaryView announces counts, each candidate row has combined `.accessibilityLabel`. (f026f0d6)
-- [ ] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale.
-- [ ] Per-customer override of tenant default.
-- [ ] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`.
-- [ ] Money input parsing accepts multiple locales; normalize to storage.
-- [ ] VoiceOver accessibility: read full currency phrasing.
+- [x] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale. — `CustomerCurrencyTemplate` struct with `SymbolPlacement` enum + thousands/decimal separator overrides; `CustomerCurrencyFormat.format(cents:tenant:)` honors all three. (CustomerCurrencyFormat.swift)
+- [x] Per-customer override of tenant default. — `CustomerCurrencyOverrideStore` actor (UserDefaults-backed, offline-first); `CustomerDetailViewModel.currencyOverrideCode` loaded on `load()`; `setCurrencyOverride(_:)` persists. (CustomerCurrencyFormat.swift + CustomerDetailViewModel.swift)
+- [x] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`. — `CustomerCurrencyTemplate.presets` (`US`/`EU-FR`/`JP`/`CH`) all four covered with locale-aware formatting; minor-unit table mirrors `Core.LocaleFormatter`. (CustomerCurrencyFormat.swift)
+- [x] Money input parsing accepts multiple locales; normalize to storage. — `CustomerCurrencyFormat.parse(input:tenant:)` strips symbols/ISO codes/NBSPs, tries tenant-locale + 4 preset (decimal, thousands) pairs, returns integer minor units; ambiguity-guard rejects multi-decimal strings. (CustomerCurrencyFormat.swift)
+- [x] VoiceOver accessibility: read full currency phrasing. — `CustomerCurrencyFormat.voiceOverPhrase(cents:tenant:)` uses `NumberFormatter.currencyPlural` ("twelve dollars and fifty cents") with spell-out fallback; `View.accessibilityCurrencyValue(cents:tenant:)` modifier wires it as `accessibilityLabel`. (CustomerCurrencyFormat.swift)
 - [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity).
 - [ ] See §28 for the full list.
 - [x] **Birthday gift reminder chip** — shown in customer detail Info tab when birthday is ≤ 14 days away; taps open `CustomerBirthdayAutomationSheet`; reads `birthday` field via `CustomerDetail.birthday` keyed UserDefaults cache. `BirthdayGiftReminderChip`. (CustomerExtra5Items.swift)
