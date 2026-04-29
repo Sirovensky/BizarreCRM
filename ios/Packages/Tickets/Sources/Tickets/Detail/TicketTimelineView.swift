@@ -290,23 +290,60 @@ private struct TimelineEventRow: View {
         }
     }
 
+    // §4.4 audit-log: combine actor, event kind label, message and a
+    // verbose timestamp for VoiceOver — improves on the previous
+    // "<actor> — <message> — at 2026-04-20T14:32" raw-ISO form.
     private var accessibilityDescription: String {
         var parts: [String] = []
         if let actor = event.actorName, !actor.isEmpty {
             parts.append(actor)
         }
+        parts.append(event.kind.accessibilityLabel)
         if !event.message.isEmpty {
             parts.append(event.message)
         }
-        parts.append("at \(shortTimestamp(event.createdAt))")
-        return parts.joined(separator: " — ")
+        parts.append("at \(verboseTimestamp(event.createdAt))")
+        return parts.joined(separator: ". ")
     }
 
+    // §4.4 audit-log: produce a human-readable short form "Apr 20, 14:32"
+    // using DateFormatter instead of raw ISO string slicing.
     private func shortTimestamp(_ iso: String) -> String {
-        // Try to produce a short "Apr 20, 14:32" format.
-        let prefix = String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
-        return prefix
+        guard let date = Self.parseISO(iso) else {
+            // Fallback: strip the T and truncate.
+            return String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        }
+        return Self.shortFormatter.string(from: date)
     }
+
+    private func verboseTimestamp(_ iso: String) -> String {
+        guard let date = Self.parseISO(iso) else { return iso }
+        return Self.verboseFormatter.string(from: date)
+    }
+
+    private static func parseISO(_ iso: String) -> Date? {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: iso) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: iso)
+    }
+
+    private static let shortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.doesRelativeDateFormatting = true
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static let verboseFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 // MARK: - Diff chip

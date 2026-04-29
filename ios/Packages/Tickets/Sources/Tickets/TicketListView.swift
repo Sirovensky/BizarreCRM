@@ -672,7 +672,22 @@ private struct SLABadge: View {
         Image(systemName: icon)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(badgeColor)
-            .accessibilityLabel("SLA \(status)")
+            // §4.1 a11y: meaningful sentence rather than the raw server value.
+            .accessibilityLabel(a11yLabel)
+            .accessibilityAddTraits(isUrgent ? [.updatesFrequently] : [])
+    }
+
+    private var a11yLabel: String {
+        switch status.lowercased() {
+        case "breached": return "SLA breached"
+        case "warning":  return "SLA warning — due soon"
+        default:         return "SLA on track"
+        }
+    }
+
+    private var isUrgent: Bool {
+        let s = status.lowercased()
+        return s == "breached" || s == "warning"
     }
 
     private var icon: String {
@@ -991,8 +1006,51 @@ private struct ListFooterRow: View {
 // codex merge. Stubs keep the build green; rich versions will land in §4.1 polish.
 
 extension TicketListView {
+    // §4.1 — Filter chip strip: status group chips + urgency chips in two
+    // scrollable horizontal rows.  Replaces the `EmptyView()` stub so the list
+    // header actually renders both rows.
     @ViewBuilder
-    var filterAndSortBar: some View { EmptyView() }
+    var filterAndSortBar: some View {
+        VStack(spacing: 0) {
+            // Row 1 — status group
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketListFilter.allCases) { option in
+                        FilterChip(
+                            label: option.displayName,
+                            selected: vm.filter == option
+                        ) {
+                            Task { await vm.applyFilter(option) }
+                        }
+                        .accessibilityAddTraits(vm.filter == option ? [.isSelected] : [])
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
+
+            // Row 2 — urgency (Critical / High / Medium / Normal / Low)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketUrgencyFilter.allCases) { urgency in
+                        UrgencyChip(
+                            urgency: urgency,
+                            selected: vm.urgencyFilter == urgency
+                        ) {
+                            Task { await vm.applyUrgency(urgency) }
+                        }
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
+
+            Divider()
+                .background(Color.bizarreOutline.opacity(0.2))
+        }
+    }
 
     @ToolbarContentBuilder
     var exportToolbarItem: some ToolbarContent {
