@@ -1819,6 +1819,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Export button** — "Export PDF" toolbar action via `ReportExportService.generatePDF` + `ShareLink`; "Email Report" posts to `POST /api/v1/reports/email`. (feat(ios phase-8 §15))
 - [x] **iPad** — 3-column `LazyVGrid` gated on `Platform.isCompact`; iPhone single-column. (feat(ios phase-8 §15))
 - [x] **Schedule report** — `ScheduledReportsSettingsView` with `GET/POST/DELETE /reports/scheduled`; frequency picker daily/weekly/monthly; recipient email list. (feat(ios phase-8 §15))
+- [x] **Topbar bleed fix** — `scrollContentBackground(.hidden)` + `.toolbarBackground(.ultraThinMaterial, for: .navigationBar)` on both phone and iPad layouts so body content no longer bleeds through the navigation bar. (actionplan/§91-reports-topbar-batch)
+- [x] **Sync-chip overlap fix** — `StalenessIndicator` moved from `.automatic` to `.principal` toolbar slot; chip is pinned in the inline title area and no longer drifts over body content on scroll. (actionplan/§91-reports-topbar-batch)
+- [x] **Topbar inline title** — `navigationBarTitleDisplayMode(.inline)` applied to both layouts; "Reports" headline stays in the bar chrome consistent with POS and Dashboard. (actionplan/§91-reports-topbar-batch)
+- [x] **Period pill row** — custom `periodPillRow` replaces the stock segmented Picker for 7D/30D/90D/Custom; all four options render as equal brand-orange Capsule pills, including "Custom" (previously plain text). Low-contrast system-grey fill eliminated. (actionplan/§91-reports-topbar-batch)
+- [x] **Granularity sub-segment contrast** — `.tint(.bizarreOrange)` added to the Day/Week/Month `Picker(.segmented)` so the selection treatment uses the brand cream-orange ramp instead of low-contrast system grey. (actionplan/§91-reports-topbar-batch)
 - [ ] **Sub-routes / segmented picker** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
 
 ### 15.2 Sales

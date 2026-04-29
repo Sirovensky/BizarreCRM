@@ -96,6 +96,8 @@ public struct ReportsView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
+                        // §91.6 — pickers scroll with content so the sync-chip cluster
+                        // never overlaps body copy when the user scrolls.
                         dateRangePicker
                             .padding(.horizontal, BrandSpacing.base)
                         heroTile
@@ -108,8 +110,19 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
+                // §91.6 — prevent content bleed through the navigation bar by
+                // giving it an opaque/glass background rather than letting it go
+                // fully transparent as the scroll offset grows.
+                .scrollContentBackground(.hidden)
             }
+            // §91.8 — inline display mode puts "Reports" in the principal slot,
+            // consistent with POS and Dashboard topbars; large-title mode causes
+            // the headline to scroll under the bar and bleed through.
             .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
+            // §91.6 — glass backing on the nav bar so content scrolling under it
+            // is correctly occluded instead of showing through.
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -144,8 +157,12 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
+                // §91.6 — same glass backing on iPad.
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -154,7 +171,10 @@ public struct ReportsView: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
+        // §91.8 — pin the sync-chip to the principal (centre) slot so it never
+        // drifts on top of body content when the user scrolls.  On iPhone
+        // .principal is the inline title area; on iPad it sits centre-bar.
+        ToolbarItem(placement: .principal) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
         ToolbarItem(placement: .primaryAction) {
@@ -198,21 +218,60 @@ public struct ReportsView: View {
 
     private var dateRangePicker: some View {
         VStack(spacing: BrandSpacing.sm) {
-            Picker("Date Range", selection: $vm.selectedPreset) {
-                ForEach(DateRangePreset.allCases) { preset in
-                    Text(preset.displayLabel).tag(preset)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: vm.selectedPreset) { _, _ in
-                Task { await vm.loadAll() }
-            }
-            .accessibilityLabel("Select date range preset")
-
+            // §91.4 + §91.6 — Replace the stock segmented Picker with a branded
+            // pill row so:
+            //   a) Selection uses cream-orange brand treatment instead of the
+            //      low-contrast system grey fill.
+            //   b) "Custom" renders as a pill peer (§91.6) rather than plain text,
+            //      consistent with its 7D / 30D / 90D siblings.
+            periodPillRow
             granularityToggle
         }
     }
 
+    /// §91.4 + §91.6 — Pill-based date-range selector.
+    ///
+    /// All four options (7D / 30D / 90D / Custom) render as equal Capsule pills.
+    /// The active pill fills with `bizarreOrangeContainer` and uses the on-surface
+    /// foreground; inactive pills use a low-prominence glass capsule.
+    private var periodPillRow: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            ForEach(DateRangePreset.allCases) { preset in
+                let isSelected = vm.selectedPreset == preset
+                Button {
+                    vm.selectedPreset = preset
+                    Task { await vm.loadAll() }
+                } label: {
+                    Text(preset.displayLabel)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(
+                            isSelected
+                                ? Color.bizarreOrangeContainer
+                                : Color.bizarreOnSurfaceMuted
+                        )
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, BrandSpacing.xs)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    isSelected
+                                        ? Color.bizarreOrange
+                                        : Color.bizarreSurface1
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Date range: \(preset.displayLabel)")
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+    }
+
+    /// §91.5 — Granularity sub-segment (Day / Week / Month).
+    ///
+    /// `.tint(.bizarreOrange)` upgrades the system-default low-contrast grey
+    /// selection indicator to the brand cream-orange treatment.
     private var granularityToggle: some View {
         Picker("Granularity", selection: $vm.granularity) {
             ForEach(ReportGranularity.allCases) { g in
@@ -220,6 +279,8 @@ public struct ReportsView: View {
             }
         }
         .pickerStyle(.segmented)
+        // §91.5 — brand-orange tint replaces the low-contrast system-grey fill.
+        .tint(.bizarreOrange)
         .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }
