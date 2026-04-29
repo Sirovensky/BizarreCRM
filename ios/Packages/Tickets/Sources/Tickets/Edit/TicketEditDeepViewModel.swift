@@ -174,6 +174,11 @@ public final class TicketEditDeepViewModel {
 
         do {
             _ = try await api.updateTicket(id: ticketId, req)
+            // §4.4 — Audit log: record the save event locally so Timeline can
+            // stream it back once the server confirms the change.
+            AppLog.audit.info(
+                "ticket.edit saved: ticket=\(self.ticketId, privacy: .public) fields=[\(req.auditDescription, privacy: .public)]"
+            )
             // If a transition was chosen, commit it too.
             if let transition = selectedTransition {
                 await applyTransition(transition)
@@ -216,6 +221,10 @@ public final class TicketEditDeepViewModel {
 
         do {
             _ = try await api.assignTicket(id: ticketId, employeeId: employeeId)
+            // §4.4 — Audit: reassignment recorded locally for timeline streaming.
+            AppLog.audit.info(
+                "ticket.reassign: ticket=\(self.ticketId, privacy: .public) to=\(employeeId, privacy: .private)"
+            )
             didSave = true
         } catch {
             if TicketOfflineQueue.isNetworkError(error) {
@@ -240,6 +249,8 @@ public final class TicketEditDeepViewModel {
 
         do {
             _ = try await api.archiveTicket(id: ticketId)
+            // §4.4 — Audit: archive event recorded for timeline streaming.
+            AppLog.audit.info("ticket.archive: ticket=\(self.ticketId, privacy: .public)")
             didArchive = true
         } catch {
             AppLog.ui.error("Archive failed: \(error.localizedDescription, privacy: .public)")
@@ -314,5 +325,23 @@ public final class TicketEditDeepViewModel {
         guard let value, value != 0 else { return "" }
         if value == floor(value) { return String(Int(value)) }
         return String(format: "%.2f", value)
+    }
+}
+
+// MARK: — §4.4 Audit description helper
+
+extension UpdateTicketRequest {
+    /// Comma-separated list of field names that carry non-nil values in this
+    /// request — used in audit log entries to describe what changed.
+    var auditDescription: String {
+        var changed: [String] = []
+        if customerId != nil    { changed.append("customer") }
+        if assignedTo != nil    { changed.append("assignee") }
+        if discount != nil      { changed.append("discount") }
+        if discountReason != nil { changed.append("discount_reason") }
+        if source != nil        { changed.append("source") }
+        if referralSource != nil { changed.append("referral") }
+        if dueOn != nil         { changed.append("due_on") }
+        return changed.isEmpty ? "no-op" : changed.joined(separator: ",")
     }
 }
