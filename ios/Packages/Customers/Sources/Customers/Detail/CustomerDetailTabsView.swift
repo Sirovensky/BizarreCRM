@@ -84,8 +84,40 @@ public struct CustomerInfoTabView: View {
                 // Quick-action glass row
                 CustomerQuickActionRow(detail: detail, api: api)
 
+                // §5 Birthday gift reminder chip (visible ≤14 days before birthday)
+                BirthdayGiftReminderChip(detail: detail, api: api)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // §5 Anniversary chip (visible ≤7 days before customer anniversary)
+                CustomerAnniversaryChip(createdAt: detail.createdAt)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // §5 Lifetime-spend card (LTV formatted with percentile tier badge)
+                CustomerLifetimeSpendCard(detail: detail, analytics: analytics)
+
                 // §5.2 Contact card — multi-phone, multi-email, address→Maps
                 CustomerFullContactCard(detail: detail, onMapsTap: nil)
+
+                // §5 Marketing-channel preference row (reads comm prefs; taps → edit sheet)
+                VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                    Text("Preferences")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    MarketingChannelPreferenceRow(customerId: detail.id, api: api)
+
+                    // §5 Customer-portal magic-link copy chip
+                    HStack {
+                        Text("Self-service portal")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        Spacer(minLength: 0)
+                        CustomerPortalMagicLinkCopy(customerId: detail.id, api: api)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(BrandSpacing.base)
+                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
 
                 // §5.2 Membership card (shown only if tenant has memberships)
                 CustomerMembershipCard(customerId: detail.id, api: api)
