@@ -111,19 +111,34 @@ public struct CSATDetailView: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
 
-            Chart(scoreBuckets, id: \.score) { bucket in
-                BarMark(
-                    x: .value("Score", "\(bucket.score) ★"),
-                    y: .value("Count", bucket.count)
-                )
-                .foregroundStyle(barColor(bucket.score))
-                .cornerRadius(DesignTokens.Radius.xs)
+            if scoreBuckets.isEmpty {
+                emptySparklineSilhouette
+                    .frame(height: 160)
+            } else {
+                Chart(scoreBuckets, id: \.score) { bucket in
+                    BarMark(
+                        x: .value("Score", "\(bucket.score) ★"),
+                        y: .value("Count", bucket.count)
+                    )
+                    .foregroundStyle(barColor(bucket.score))
+                    .cornerRadius(DesignTokens.Radius.xs)
+                }
+                .frame(height: 160)
+                .chartXAxisLabel("Score", alignment: .center)
+                .chartYAxisLabel("Responses", position: .leading)
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisGridLine()
+                        AxisValueLabel()
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.bizarreOnSurface)
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: scoreBuckets.map(\.count))
+                .accessibilityChartDescriptor(CSATDistChartDescriptor(buckets: scoreBuckets))
+                // Legend with color names (§91.13 item 4)
+                csatLegend
             }
-            .frame(height: 160)
-            .chartXAxisLabel("Score", alignment: .center)
-            .chartYAxisLabel("Responses", position: .leading)
-            .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: scoreBuckets.map(\.count))
-            .accessibilityChartDescriptor(CSATDistChartDescriptor(buckets: scoreBuckets))
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -165,6 +180,62 @@ public struct CSATDetailView: View {
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(r.score) stars. \(r.comment ?? "No comment"). \(r.respondedAt).")
+    }
+
+    // MARK: - CSAT chart legend + empty silhouette
+
+    private var csatLegend: some View {
+        let entries: [(String, Color)] = [
+            ("5★ (green)", .bizarreSuccess),
+            ("4★ (teal)", .bizarreTeal),
+            ("3★ (amber)", .bizarreWarning),
+            ("2★ (orange)", .bizarreOrange),
+            ("1★ (red)", .bizarreError),
+        ]
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(entries, id: \.0) { (label, color) in
+                    HStack(spacing: BrandSpacing.xxs) {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                        Text(label)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Chart legend: 5 stars green, 4 stars teal, 3 stars amber, 2 stars orange, 1 star red")
+    }
+
+    private var emptySparklineSilhouette: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let barHeights: [CGFloat] = [0.2, 0.35, 0.6, 0.85, 0.45]
+            let barW = w / CGFloat(barHeights.count * 2)
+            Path { path in
+                for (i, frac) in barHeights.enumerated() {
+                    let x = CGFloat(i) * barW * 2 + barW * 0.5
+                    let barH = h * frac
+                    path.addRoundedRect(
+                        in: CGRect(x: x, y: h - barH, width: barW, height: barH),
+                        cornerSize: CGSize(width: 3, height: 3)
+                    )
+                }
+            }
+            .stroke(
+                Color.bizarreOnSurface.opacity(0.18),
+                style: StrokeStyle(lineWidth: 2, dash: [5, 3])
+            )
+        }
+        .overlay(alignment: .center) {
+            Text("No data")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityLabel("No CSAT score distribution data")
     }
 
     private func gaugeColor(_ v: Double) -> Color {

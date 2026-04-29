@@ -206,6 +206,7 @@ public struct RevenueChartCard: View {
             }
         }
         .pickerStyle(.segmented)
+        .frame(minHeight: 44)
         .accessibilityLabel("Revenue chart display mode")
     }
 
@@ -214,7 +215,7 @@ public struct RevenueChartCard: View {
     @ViewBuilder
     private var chartContent: some View {
         if points.isEmpty {
-            emptyState
+            emptySparklineSilhouette
         } else {
             switch chartMode {
             case .line: lineChart
@@ -228,7 +229,7 @@ public struct RevenueChartCard: View {
     private var lineChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                emptySparklineSilhouette
             } else {
                 Chart(points) { pt in
                     AreaMark(
@@ -261,6 +262,14 @@ public struct RevenueChartCard: View {
                     }
                 }
                 .animation(reduceMotion ? nil : .easeInOut(duration: DesignTokens.Motion.smooth), value: points.count)
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel()
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.bizarreOnSurface)
+                    }
+                }
             }
         }
     }
@@ -270,7 +279,7 @@ public struct RevenueChartCard: View {
     private var barChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                emptySparklineSilhouette
             } else {
                 Chart(points) { pt in
                     BarMark(
@@ -285,6 +294,14 @@ public struct RevenueChartCard: View {
                     .cornerRadius(DesignTokens.Radius.xs)
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: points.count)
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel()
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.bizarreOnSurface)
+                    }
+                }
             }
         }
     }
@@ -363,6 +380,38 @@ public struct RevenueChartCard: View {
     }
 
     // MARK: - Shared helpers
+
+    /// Dashed sparkline silhouette rendered when there are zero data points (§91.13 item 5).
+    private var emptySparklineSilhouette: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            // Gentle wave path simulating a flat-ish trend line
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: h * 0.65))
+                path.addCurve(
+                    to: CGPoint(x: w * 0.5, y: h * 0.45),
+                    control1: CGPoint(x: w * 0.2, y: h * 0.55),
+                    control2: CGPoint(x: w * 0.3, y: h * 0.4)
+                )
+                path.addCurve(
+                    to: CGPoint(x: w, y: h * 0.5),
+                    control1: CGPoint(x: w * 0.7, y: h * 0.5),
+                    control2: CGPoint(x: w * 0.85, y: h * 0.55)
+                )
+            }
+            .stroke(
+                Color.bizarreOnSurface.opacity(0.18),
+                style: StrokeStyle(lineWidth: 2, dash: [6, 4], dashPhase: 0)
+            )
+        }
+        .overlay(alignment: .center) {
+            Text("No data")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityLabel("No revenue data for this period")
+    }
 
     private var emptyState: some View {
         ContentUnavailableView("No Revenue Data",

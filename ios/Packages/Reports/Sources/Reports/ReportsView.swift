@@ -278,12 +278,8 @@ public struct ReportsView: View {
             // §15.1 Sub-routes segmented picker
             subTabPicker
 
-            // §91.4 + §91.6 — Replace the stock segmented Picker with a branded
-            // pill row so:
-            //   a) Selection uses cream-orange brand treatment instead of the
-            //      low-contrast system grey fill.
-            //   b) "Custom" renders as a pill peer (§91.6) rather than plain text,
-            //      consistent with its 7D / 30D / 90D siblings.
+            // §91.4 + §91.6 — Pill row replaces stock segmented Picker.
+            // §91.13 — minHeight enforced on each pill below for tap-target a11y.
             periodPillRow
 
             granularityToggle
@@ -375,6 +371,8 @@ public struct ReportsView: View {
         .pickerStyle(.segmented)
         // §91.5 — brand-orange tint replaces the low-contrast system-grey fill.
         .tint(.bizarreOrange)
+        // §91.13 — 44pt minimum tap target for a11y.
+        .frame(minHeight: 44)
         .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }

@@ -151,9 +151,9 @@ public struct NPSScoreCard: View {
                 legendChip("Passives", pct: s.passivePct, color: .bizarreWarning)
                 legendChip("Detractors", pct: s.detractorPct, color: .bizarreError)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(
-                "Promoters \(String(format: "%.0f", s.promoterPct))%, Passives \(String(format: "%.0f", s.passivePct))%, Detractors \(String(format: "%.0f", s.detractorPct))%"
+                "NPS legend: Promoters (green) \(String(format: "%.0f", s.promoterPct))%, Passives (amber) \(String(format: "%.0f", s.passivePct))%, Detractors (red) \(String(format: "%.0f", s.detractorPct))%"
             )
         }
     }

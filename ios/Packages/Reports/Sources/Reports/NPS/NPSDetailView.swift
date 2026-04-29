@@ -140,8 +140,32 @@ public struct NPSDetailView: View {
             }
             .frame(height: 120)
             .chartXAxisLabel("Percentage", alignment: .center)
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisGridLine()
+                    AxisValueLabel()
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.bizarreOnSurface)
+                }
+            }
             .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: score.current)
             .accessibilityChartDescriptor(NPSSplitDescriptor(score: score))
+            // Legend with color-name pairs (§91.13 item 4)
+            HStack(spacing: BrandSpacing.md) {
+                ForEach(segments, id: \.label) { seg in
+                    HStack(spacing: BrandSpacing.xxs) {
+                        Circle().fill(seg.color).frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                        Text(seg.label)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                "NPS legend: Promoters (green) \(String(format: "%.1f", score.promoterPct))%, Passives (amber) \(String(format: "%.1f", score.passivePct))%, Detractors (red) \(String(format: "%.1f", score.detractorPct))%"
+            )
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))

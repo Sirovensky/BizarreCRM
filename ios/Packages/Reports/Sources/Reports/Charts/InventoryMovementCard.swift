@@ -149,7 +149,7 @@ public struct InventoryMovementCard: View {
     @ViewBuilder
     private var movementChart: some View {
         if topItems.isEmpty {
-            emptyState
+            emptySparklineSilhouette
         } else {
             Chart(topItems) { item in
                 BarMark(
@@ -166,6 +166,14 @@ public struct InventoryMovementCard: View {
             }
             .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
                        value: topItems.count)
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisGridLine()
+                    AxisValueLabel()
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.bizarreOnSurface)
+                }
+            }
         }
     }
 
@@ -207,6 +215,33 @@ public struct InventoryMovementCard: View {
     }
 
     // MARK: - Empty state
+
+    /// Dashed bar silhouette when zero data points (§91.13 item 5).
+    private var emptySparklineSilhouette: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let barWidths: [CGFloat] = [0.7, 0.55, 0.45, 0.38, 0.28]
+            let step = h / CGFloat(barWidths.count + 1)
+            Path { path in
+                for (i, frac) in barWidths.enumerated() {
+                    let y = step * CGFloat(i + 1)
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: w * frac, y: y))
+                }
+            }
+            .stroke(
+                Color.bizarreOnSurface.opacity(0.18),
+                style: StrokeStyle(lineWidth: 10, lineCap: .round, dash: [10, 5])
+            )
+        }
+        .overlay(alignment: .center) {
+            Text("No data")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityLabel("No inventory movement data for this period")
+    }
 
     private var emptyState: some View {
         ContentUnavailableView("No Movement Data",
