@@ -133,6 +133,26 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case syncQueueDrained     = "sync.queue.drained"
     case offlineFallback      = "offline.fallback"
     case syncConflictResolved = "sync.conflict.resolved"
+    /// §32.4 — `sync_start` emitted when a domain sync cycle begins.
+    case syncStarted          = "sync.started"
+    /// §32.4 — `sync_complete { delta_count, duration_ms }`.
+    case syncCompleted        = "sync.completed"
+    /// §32.4 — `sync_failed { reason }`.
+    case syncFailed           = "sync.failed"
+
+    // MARK: POS — sale lifecycle (§32.4)
+
+    /// §32.4 — `pos_sale_complete { total_cents, tender }`.  No customer PII.
+    case posSaleComplete      = "pos.sale.complete"
+    /// §32.4 — `pos_sale_failed { reason }`.
+    case posSaleFailed        = "pos.sale.failed"
+
+    // MARK: Performance (§32.4)
+
+    /// §32.4 — `cold_launch_ms` — milliseconds from process launch to first frame.
+    case coldLaunchMs         = "perf.cold_launch_ms"
+    /// §32.4 — `first_paint_ms` — milliseconds from scene activation to first meaningful paint.
+    case firstPaintMs         = "perf.first_paint_ms"
 
     // MARK: Widgets / Live Activities
 
@@ -166,6 +186,9 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
              .invoiceCreated, .invoiceSent, .invoicePaid,
              .estimateCreated, .estimateApproved,
              .syncQueueDrained, .offlineFallback, .syncConflictResolved,
+             .syncStarted, .syncCompleted, .syncFailed,
+             .posSaleComplete, .posSaleFailed,
+             .coldLaunchMs, .firstPaintMs,
              .widgetViewed, .liveActivityStarted, .liveActivityEnded, .featureFirstUse:
             return .domain
 
