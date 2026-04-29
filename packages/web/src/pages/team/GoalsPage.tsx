@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
+import { Target, Trash2, Plus, Loader2, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { formatCurrency } from '@/utils/format';
@@ -33,23 +33,20 @@ interface Employee {
   last_name: string;
 }
 
+// WEB-W3-037: Static fallback labels for metrics not yet loaded from server.
+// The GoalsPage fetches /team/goal-metrics on mount; until that resolves these
+// cover the 3 legacy values so existing goals render correctly.
+const METRIC_LABELS_FALLBACK: Record<string, string> = {
+  tickets_closed_week: 'Tickets closed',
+  revenue_week: 'Revenue',
+  csat: 'CSAT',
+};
+
 interface GoalMetricDef {
   key: string;
   label: string;
   unit: string;
 }
-
-// WEB-W3-037: Static fallback labels for metrics not yet loaded from server.
-// The GoalsPage fetches /team/goal-metrics on mount; until that resolves these
-// cover the legacy values so existing goals render correctly.
-const METRIC_LABELS_FALLBACK: Record<string, string> = {
-  tickets_closed_week: 'Tickets closed',
-  revenue_week: 'Revenue',
-  avg_ticket_value: 'Avg ticket value',
-  csat: 'CSAT',
-  on_time_completion: 'On-time completion',
-  parts_accuracy: 'Parts accuracy',
-};
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -77,6 +74,31 @@ export function GoalsPage() {
   const [newStart, setNewStart] = useState(todayIso());
   const [newEnd, setNewEnd] = useState(plusDaysIso(7));
 
+  // WEB-S6-027: edit state
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  const [editUserId, setEditUserId] = useState<number | ''>('');
+  const [editMetric, setEditMetric] = useState('tickets_closed_week');
+  const [editTarget, setEditTarget] = useState('');
+  const [editStart, setEditStart] = useState(todayIso());
+  const [editEnd, setEditEnd] = useState(plusDaysIso(7));
+
+  // WEB-W3-037: Load supported metric types from server enum instead of hardcoding.
+  const { data: metricsData } = useQuery({
+    queryKey: ['team', 'goal-metrics'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: GoalMetricDef[] }>('/team/goal-metrics');
+      return res.data.data;
+    },
+    staleTime: 5 * 60 * 1000, // Metric list rarely changes; cache for 5 min.
+  });
+  const metricDefs: GoalMetricDef[] = metricsData || [];
+  // Build label map — merge server defs over static fallback so legacy goals
+  // that use a key not yet in the server list still show a readable label.
+  const metricLabels: Record<string, string> = {
+    ...METRIC_LABELS_FALLBACK,
+    ...Object.fromEntries(metricDefs.map((m) => [m.key, m.label])),
+  };
+
   const { data: goalsData } = useQuery({
     queryKey: ['team', 'goals'],
     queryFn: async () => {
@@ -94,21 +116,6 @@ export function GoalsPage() {
     },
   });
   const employees: Employee[] = employeesData || [];
-
-  // WEB-W3-037: Load supported metric types from server enum instead of hardcoding.
-  const { data: metricsData } = useQuery({
-    queryKey: ['team', 'goal-metrics'],
-    queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: GoalMetricDef[] }>('/team/goal-metrics');
-      return res.data.data;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-  const metricDefs: GoalMetricDef[] = metricsData || [];
-  const metricLabels: Record<string, string> = {
-    ...METRIC_LABELS_FALLBACK,
-    ...Object.fromEntries(metricDefs.map((m) => [m.key, m.label])),
-  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -139,6 +146,35 @@ export function GoalsPage() {
       queryClient.invalidateQueries({ queryKey: ['team', 'goals'] });
     },
   });
+
+  // WEB-S6-027: editMut calls PUT /team/goals/:id
+  const editMut = useMutation({
+    mutationFn: async () => {
+      const res = await api.put(`/team/goals/${editingGoalId}`, {
+        user_id: Number(editUserId),
+        metric: editMetric,
+        target_value: Number(editTarget),
+        period_start: editStart,
+        period_end: editEnd,
+      });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      toast.success('Goal updated');
+      queryClient.invalidateQueries({ queryKey: ['team', 'goals'] });
+      setEditingGoalId(null);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to update goal'),
+  });
+
+  const openEditModal = (g: Goal) => {
+    setEditingGoalId(g.id);
+    setEditUserId(g.user_id);
+    setEditMetric(g.metric);
+    setEditTarget(String(g.target_value));
+    setEditStart(g.period_start);
+    setEditEnd(g.period_end);
+  };
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -189,14 +225,24 @@ export function GoalsPage() {
                     {metricLabels[g.metric] || g.metric} · {g.period_start} → {g.period_end}
                   </div>
                 </div>
-                <button
-                  className="text-red-500 hover:text-red-700 disabled:opacity-40"
-                  onClick={() => deleteMut.mutate(g.id)}
-                  disabled={deleteMut.isPending && deleteMut.variables === g.id}
-                  aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {/* WEB-S6-027: edit button */}
+                  <button
+                    className="text-surface-400 hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    onClick={() => openEditModal(g)}
+                    aria-label={`Edit goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    onClick={() => deleteMut.mutate(g.id)}
+                    disabled={deleteMut.isPending && deleteMut.variables === g.id}
+                    aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                 <div
@@ -242,14 +288,13 @@ export function GoalsPage() {
                   value={newMetric}
                   onChange={(e) => setNewMetric(e.target.value)}
                 >
-                  {(metricDefs.length > 0
-                    ? metricDefs
-                    : [
-                        { key: 'tickets_closed_week', label: 'Tickets closed' },
-                        { key: 'revenue_week',        label: 'Revenue'        },
-                        { key: 'csat',                label: 'CSAT score'     },
-                      ]
-                  ).map((m) => (
+                  {/* WEB-W3-037: options loaded from /team/goal-metrics; fall back
+                      to the 3 static values if the request hasn't resolved yet. */}
+                  {(metricDefs.length > 0 ? metricDefs : [
+                    { key: 'tickets_closed_week', label: 'Tickets closed', unit: 'count' },
+                    { key: 'revenue_week',         label: 'Revenue',        unit: 'currency' },
+                    { key: 'csat',                 label: 'CSAT score',     unit: 'score' },
+                  ]).map((m) => (
                     <option key={m.key} value={m.key}>{m.label}</option>
                   ))}
                 </select>
@@ -313,6 +358,109 @@ export function GoalsPage() {
                 onClick={() => createMut.mutate()}
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                Save
+              </button>
+            </div>
+          </div>
+        </NewGoalModal>
+      )}
+
+      {/* WEB-S6-027: edit goal modal */}
+      {editingGoalId !== null && (
+        <NewGoalModal onClose={() => setEditingGoalId(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 id="new-goal-title" className="text-lg font-bold mb-4">Edit goal</h2>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Employee</span>
+                <select
+                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                  value={editUserId}
+                  onChange={(e) => setEditUserId(e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">— pick —</option>
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.first_name} {e.last_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Metric</span>
+                <select
+                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                  value={editMetric}
+                  onChange={(e) => setEditMetric(e.target.value)}
+                >
+                  {(metricDefs.length > 0 ? metricDefs : [
+                    { key: 'tickets_closed_week', label: 'Tickets closed', unit: 'count' },
+                    { key: 'revenue_week',         label: 'Revenue',        unit: 'currency' },
+                    { key: 'csat',                 label: 'CSAT score',     unit: 'score' },
+                  ]).map((m) => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-gray-600">Target value</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                  value={editTarget}
+                  onChange={(e) => setEditTarget(e.target.value)}
+                  placeholder="e.g. 15"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-xs font-semibold text-gray-600">Start</span>
+                  <input
+                    type="date"
+                    min={GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
+                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                    value={editStart}
+                    onChange={(e) => setEditStart(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold text-gray-600">End</span>
+                  <input
+                    type="date"
+                    min={editStart || GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
+                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                    value={editEnd}
+                    onChange={(e) => setEditEnd(e.target.value)}
+                  />
+                </label>
+              </div>
+              {editStart && editEnd && editStart > editEnd && (
+                <p role="alert" aria-live="polite" className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                onClick={() => setEditingGoalId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 inline-flex items-center justify-center"
+                disabled={
+                  !editUserId
+                  || !editTarget
+                  || !editStart
+                  || !editEnd
+                  || editStart > editEnd
+                  || editMut.isPending
+                }
+                onClick={() => editMut.mutate()}
+              >
+                {editMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
                 Save
               </button>
             </div>

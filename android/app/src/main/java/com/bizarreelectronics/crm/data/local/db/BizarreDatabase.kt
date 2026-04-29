@@ -99,8 +99,8 @@ import kotlinx.coroutines.withContext
     // Phase 3 check-in: bumped from 10 to 11 to add checkin_drafts table.
     // §18.1 search FTS: bumped from 11 to 12 to add FTS4 virtual tables
     // (customers_fts, tickets_fts, inventory_fts) + AFTER INSERT/UPDATE/DELETE triggers.
-    // §11.1 Filters: bumped from 12 to 13 to add expenses.status column for
-    // approval-status filter (mirrors server migration 120).
+    // §11.1 Filters: bumped from 12 to 13 to add expenses.approval_status column
+    // (mirrors server migration 120's `status` column, renamed locally for clarity).
     version = 13,
     exportSchema = true,
 )

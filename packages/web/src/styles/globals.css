@@ -166,6 +166,34 @@
     /* Avoid clipping long detail tables across pages. */
     body:not(.print-route) table { page-break-inside: auto; }
     body:not(.print-route) tr { page-break-inside: avoid; page-break-after: auto; }
+
+    /* WEB-W2-034: Estimate detail print template.
+     * The estimate detail page uses a 3-column grid (lg:grid-cols-3).
+     * On paper, collapse to a single column so sidebar summary follows
+     * the line-items vertically — no truncation, no two-up layout. */
+    body:not(.print-route) .grid.lg\:grid-cols-3 {
+      display: block !important;
+    }
+    /* Hide action buttons, breadcrumb nav, and version history panel */
+    body:not(.print-route) .print\:hidden,
+    body:not(.print-route) nav[aria-label="Breadcrumb"],
+    body:not(.print-route) [data-estimate-actions],
+    body:not(.print-route) [data-version-history] {
+      display: none !important;
+    }
+    /* Cards render as clean bordered sections */
+    body:not(.print-route) .card {
+      border: 1px solid #d4d4d8 !important;
+      box-shadow: none !important;
+      break-inside: avoid;
+      margin-bottom: 12pt;
+      border-radius: 4pt;
+    }
+    /* Tables get clean borders */
+    body:not(.print-route) table th,
+    body:not(.print-route) table td {
+      border-bottom: 1px solid #e4e4e7 !important;
+    }
   }
 
   /* Touch targets for mobile — minimum 44px on interactive elements */

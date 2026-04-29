@@ -15,7 +15,7 @@ export function BackButton({ to, label = 'Back' }: BackButtonProps) {
     <button
       type="button"
       onClick={() => (to ? navigate(to) : navigate(-1))}
-      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800 transition-[colors,box-shadow,transform]"
     >
       <ArrowLeft aria-hidden="true" className="h-4 w-4" />
       {label}

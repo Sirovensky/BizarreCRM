@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Database, FolderOpen, Clock, Trash2, Download, RefreshCw, AlertTriangle, CheckCircle2, Undo2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -30,6 +30,14 @@ export function BackupPage() {
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
 
+  // DASH-ELEC-256: guard setState calls after component unmounts (e.g. logout
+  // while a 5-minute backup or restore is in-flight).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const api = getAPI();
@@ -37,6 +45,7 @@ export function BackupPage() {
         api.admin.listBackups(),
         api.admin.getStatus(),
       ]);
+      if (!isMountedRef.current) return;
       // AUDIT-MGT-010: detect 401 on either response and trigger global auto-logout.
       if (handleApiResponse(backupsRes) || handleApiResponse(statusRes)) return;
       if (backupsRes.success && backupsRes.data) {
@@ -63,7 +72,7 @@ export function BackupPage() {
         toast.error(`Backup: ${msg}`);
       }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -73,6 +82,7 @@ export function BackupPage() {
     setBacking(true);
     try {
       const res = await getAPI().admin.runBackup();
+      if (!isMountedRef.current) return;
       if (res.success) {
         toast.success('Backup completed');
         refresh();
@@ -80,9 +90,9 @@ export function BackupPage() {
         toast.error(formatApiError(res));
       }
     } catch {
-      toast.error('Backup failed');
+      if (isMountedRef.current) toast.error('Backup failed');
     } finally {
-      setBacking(false);
+      if (isMountedRef.current) setBacking(false);
     }
   };
 
@@ -103,6 +113,7 @@ export function BackupPage() {
     setRestoring(true);
     try {
       const res = await getAPI().admin.restoreBackup(restoreTarget);
+      if (!isMountedRef.current) return;
       if (res.success) {
         toast.success(
           res.data?.safetyBackup
@@ -117,14 +128,23 @@ export function BackupPage() {
         // refresh by 2 s so the new server is up and the backup table has
         // been reopened against the restored DB. Operators see the toast
         // duration (8 s) cover the gap.
-        setTimeout(() => { refresh(); }, 2000);
+        setTimeout(() => { if (isMountedRef.current) refresh(); }, 2000);
+      } else if (res.offline) {
+        // DASH-ELEC-257: the server rebooted mid-restore (expected for large
+        // restores that bounce the process). Surface a specific message so
+        // the operator knows to wait rather than treating it as a hard failure.
+        toast(
+          'Restore sent — server may be restarting. Wait a moment, then refresh.',
+          { icon: '⏳', duration: 10_000 },
+        );
+        setTimeout(() => { if (isMountedRef.current) refresh(); }, 5000);
       } else {
         toast.error(formatApiError(res));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Restore failed');
+      if (isMountedRef.current) toast.error(err instanceof Error ? err.message : 'Restore failed');
     } finally {
-      setRestoring(false);
+      if (isMountedRef.current) setRestoring(false);
     }
   };
 

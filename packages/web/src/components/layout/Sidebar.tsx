@@ -117,6 +117,7 @@ const navSections: NavSection[] = [
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
       { label: 'Goals', path: '/team/goals', icon: Trophy },
+      { label: 'Payroll', path: '/team/payroll', icon: DollarSign, adminOnly: true },
       { label: 'Performance Reviews', path: '/team/reviews', icon: Award, adminOnly: true },
     ],
   },
@@ -196,8 +197,14 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Navigation Items */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
+      {/* Navigation Items — WEB-FX-010: `aria-label` on the <nav> landmark so
+          screen readers can distinguish primary navigation from any other nav
+          regions (rotor / NVDA landmarks shortcut). `role="navigation"` is
+          implicit on <nav> so we omit it to pass jsx-a11y/no-redundant-roles. */}
+      <nav
+        aria-label="Primary navigation"
+        className="flex-1 overflow-y-auto overflow-x-hidden py-3"
+      >
         {sidebarCollapsed ? (
           <ul className="flex flex-col gap-0.5 px-2">
             {visibleSections.flatMap((s) => s.items).map((item) => (

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
@@ -17,6 +17,15 @@ import {
   NotFoundPage,
   SetupFailedScreen,
 } from './components/shared/LoadingScreen';
+
+// WEB-FW-006: tiny helper so future lazy imports don't need the
+// `.then(m => ({ default: m.X }))` dance on every line.
+// Usage: `const FooPage = lazyNamed(() => import('./pages/foo/FooPage'), 'FooPage')`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lazyNamed = <T extends Record<string, ComponentType<any>>>(
+  factory: () => Promise<T>,
+  name: keyof T,
+) => lazy(() => factory().then((m) => ({ default: m[name] })));
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -80,6 +89,7 @@ const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m
 const TeamChatPage = lazy(() => import('./pages/team/TeamChatPage').then(m => ({ default: m.TeamChatPage })));
 const PerformanceReviewsPage = lazy(() => import('./pages/team/PerformanceReviewsPage').then(m => ({ default: m.PerformanceReviewsPage })));
 const GoalsPage = lazy(() => import('./pages/team/GoalsPage').then(m => ({ default: m.GoalsPage })));
+const PayrollPage = lazy(() => import('./pages/team/PayrollPage').then(m => ({ default: m.PayrollPage })));
 // Marketing / Growth enrichment pages (§54).
 const CampaignsPage = lazy(() => import('./pages/marketing/CampaignsPage').then(m => ({ default: m.CampaignsPage })));
 const SegmentsPage = lazy(() => import('./pages/marketing/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
@@ -97,6 +107,8 @@ const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => (
 // `/automations` is kept as a `<Navigate replace>` to preserve any
 // bookmarked links staff already have. The standalone wrapper page
 // (AutomationsListPage) was removed because it was a 28-LOC duplicate.
+// `/automations/:id` — detail/edit page for a single rule (WEB-S6-019).
+const AutomationDetailPage = lazy(() => import('./pages/settings/AutomationDetailPage').then(m => ({ default: m.AutomationDetailPage })));
 // Super-admin tenant management
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
@@ -510,6 +522,7 @@ export default function App() {
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
+                    <Route path="/team/payroll" element={<RequireRole roles={['admin', 'manager']}><PayrollPage /></RequireRole>} />
                     {/* Gift Cards (§ orphan). */}
                     <Route path="/gift-cards" element={<GiftCardsListPage />} />
                     <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
@@ -519,8 +532,10 @@ export default function App() {
                     <Route path="/loaners" element={<LoanersPage />} />
                     {/* Automations canonical home is Settings → Automations.
                      *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
-                     *  there so navigation memory has one URL per feature. */}
+                     *  there so navigation memory has one URL per feature.
+                     *  WEB-S6-019: `/automations/:id` — detail/edit page for a single rule. */}
                     <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
+                    <Route path="/automations/:id" element={<AutomationDetailPage />} />
                     {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
                     <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}

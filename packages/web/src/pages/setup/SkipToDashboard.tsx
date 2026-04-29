@@ -30,7 +30,7 @@ export function SkipToDashboard({ onSkip, disabled, label = 'Skip for now' }: Sk
             type="button"
             onClick={onSkip}
             disabled={disabled}
-            className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+            className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Yes, skip to dashboard
           </button>
@@ -51,7 +51,7 @@ export function SkipToDashboard({ onSkip, disabled, label = 'Skip for now' }: Sk
       type="button"
       onClick={() => setConfirming(true)}
       disabled={disabled}
-      className="flex items-center gap-1 text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+      className="flex items-center gap-1 text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-surface-400 dark:hover:text-surface-100"
     >
       {label}
       <ArrowRight className="h-3 w-3" />

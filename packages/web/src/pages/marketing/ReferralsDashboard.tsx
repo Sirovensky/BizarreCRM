@@ -162,7 +162,7 @@ export function ReferralsDashboard() {
               type="button"
               onClick={() => refetch()}
               disabled={isFetching}
-              className="mt-3 px-3 py-1.5 rounded-md text-sm font-medium border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50"
+              className="mt-3 px-3 py-1.5 rounded-md text-sm font-medium border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {isFetching ? 'Retrying...' : 'Retry'}
             </button>

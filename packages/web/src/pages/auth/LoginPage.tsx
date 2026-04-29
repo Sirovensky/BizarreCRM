@@ -167,7 +167,7 @@ export function LoginPage() {
   // failure. Widget is lazily loaded (script injected on first need) to avoid
   // loading hcaptcha.com on every login page visit. `forgotFailCount` drives
   // the show/hide; once the widget is rendered we keep it.
-  const captchaSiteKey = (typeof import.meta !== 'undefined' ? (import.meta as Record<string, Record<string, string>>).env?.VITE_HCAPTCHA_SITE_KEY : '') || '';
+  const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
   useEffect(() => {
     if (!captchaSiteKey) return;
     // Only render after first failure AND when the forgot panel is open
@@ -585,7 +585,7 @@ export function LoginPage() {
                       autoFocus
                       maxLength={200}
                       placeholder="Acme Phone Repair"
-                      className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     />
                     <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Used on receipts and the dashboard header.</p>
                   </div>
@@ -599,7 +599,7 @@ export function LoginPage() {
                         onChange={(e) => setSetupFirstName(e.target.value)}
                         maxLength={100}
                         placeholder="John"
-                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                     <div>
@@ -611,7 +611,7 @@ export function LoginPage() {
                         onChange={(e) => setSetupLastName(e.target.value)}
                         maxLength={100}
                         placeholder="Smith"
-                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                   </div>
@@ -636,7 +636,7 @@ export function LoginPage() {
                   placeholder="Choose a username"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
@@ -652,7 +652,7 @@ export function LoginPage() {
                   autoComplete="email"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
@@ -666,7 +666,7 @@ export function LoginPage() {
                   placeholder="Min 8 characters"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               {error && <p id="setup-form-error" role="alert" aria-live="polite" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -674,7 +674,7 @@ export function LoginPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 {isSingleTenantSetup ? 'Create shop & continue' : 'Create Account & Continue'}
@@ -689,7 +689,7 @@ export function LoginPage() {
                   placeholder="admin or admin@yourshop.com"
                   aria-invalid={!!fieldErrors.username}
                   aria-describedby={fieldErrors.username ? 'login-username-error' : undefined}
-                  className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
+                  className={`w-full rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
                 {fieldErrors.username && <p id="login-username-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
               </div>
               <div>
@@ -698,7 +698,7 @@ export function LoginPage() {
                   <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }} autoComplete="current-password"
                     aria-invalid={!!fieldErrors.password}
                     aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
-                    className={`w-full rounded-lg border bg-surface-50 px-4 py-3 pr-11 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.password ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
+                    className={`w-full rounded-lg border bg-surface-50 px-3 py-2 pr-10 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.password ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
                     {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
@@ -767,7 +767,7 @@ export function LoginPage() {
                               setForgotLoading(false);
                             }
                           }}
-                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                         >
                           {forgotLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
                           Send
@@ -779,7 +779,7 @@ export function LoginPage() {
               )}
               {error && <LoginError message={error} kind={errorKind} />}
               <button type="submit" disabled={loading} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Sign In'}
                 <span className="sr-only" aria-live="polite">{loading ? 'Submitting' : ''}</span>
               </button>
@@ -797,17 +797,17 @@ export function LoginPage() {
               <div>
                 <label htmlFor="new-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
                 <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={8} autoComplete="new-password"
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <div>
                 <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
                 <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} autoComplete="new-password"
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
               {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
               <button type="submit" disabled={loading || newPassword.length < 8} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Set Password & Continue'}
               </button>
             </form>
@@ -839,12 +839,20 @@ export function LoginPage() {
                 <label htmlFor="2fa-setup-code" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
                 <input id="2fa-setup-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                   aria-label="Verification code"
-                  value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  value={totpCode} onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    setTotpCode(v);
+                    if (v.length === 6) {
+                      requestAnimationFrame(() => {
+                        (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
+                      });
+                    }
+                  }}
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
                 {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
                 <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                  className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50">
+                  className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
               </form>
@@ -862,7 +870,17 @@ export function LoginPage() {
               <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
               <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                 aria-label="6-digit authenticator code"
-                value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                value={totpCode} onChange={(e) => {
+                  // WEB-S4-040: auto-submit when all 6 digits are entered so
+                  // the user doesn't have to tap/click Verify manually.
+                  const v = e.target.value.replace(/\D/g, '');
+                  setTotpCode(v);
+                  if (v.length === 6) {
+                    requestAnimationFrame(() => {
+                      (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
+                    });
+                  }
+                }}
                 placeholder="000000" autoFocus
                 className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
@@ -900,7 +918,7 @@ export function LoginPage() {
                 </div>
               </div>
               <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
               </button>
               <button type="button" onClick={() => { setStep('password'); setError(''); }}

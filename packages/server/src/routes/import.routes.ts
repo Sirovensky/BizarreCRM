@@ -153,41 +153,51 @@ function releaseImportLock(db: any, holderId?: number): void {
 // callers that pass no plan default to the 5-minute ceiling so single-tenant
 // / admin surfaces keep working.
 // ---------------------------------------------------------------------------
+// WEB-S7-044: wrap prune + count checks in a transaction so the count is
+// stable under concurrent import-start requests. better-sqlite3 transactions
+// are synchronous and serialise writers; the AppError thrown on a limit hit
+// propagates normally (better-sqlite3 auto-rolls back on exception).
+// Note: recordImportRateLimit (the INSERT) is intentionally called by each
+// callsite *after* the import lock is claimed, keeping the existing flow that
+// deduplicates via tryClaimImportLock before recording the rate-limit row.
 function enforceImportRateLimit(db: any, plan?: 'free' | 'pro' | null): void {
-  // Prune old rows so the table does not grow unbounded.
-  db.prepare(
-    "DELETE FROM import_rate_limits WHERE started_at < datetime('now', ?)"
-  ).run(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`);
+  const txn = db.transaction(() => {
+    // Prune old rows so the table does not grow unbounded.
+    db.prepare(
+      "DELETE FROM import_rate_limits WHERE started_at < datetime('now', ?)"
+    ).run(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`);
 
-  // Free-tier strict cap: 1 import per 60 minutes. Check first so a Free
-  // tenant sees the right error message instead of the generic 5-min one.
-  if (plan === 'free') {
-    const recentHour = db.prepare(
-      "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
-    ).get(`-${Math.ceil(IMPORT_FREE_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
-    if ((recentHour?.c ?? 0) >= 1) {
-      throw new AppError(
-        'Free tier allows one import per hour. Upgrade to Pro for faster import cadence.',
-        429,
-      );
+    // Free-tier strict cap: 1 import per 60 minutes. Check first so a Free
+    // tenant sees the right error message instead of the generic 5-min one.
+    if (plan === 'free') {
+      const recentHour = db.prepare(
+        "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+      ).get(`-${Math.ceil(IMPORT_FREE_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
+      if ((recentHour?.c ?? 0) >= 1) {
+        throw new AppError(
+          'Free tier allows one import per hour. Upgrade to Pro for faster import cadence.',
+          429,
+        );
+      }
     }
-  }
 
-  const recentMin = db.prepare(
-    "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
-  ).get(`-${Math.ceil(IMPORT_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
+    const recentMin = db.prepare(
+      "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+    ).get(`-${Math.ceil(IMPORT_MIN_INTERVAL_MS / 1000)} seconds`) as { c: number } | undefined;
 
-  if ((recentMin?.c ?? 0) >= 1) {
-    throw new AppError('Only one import allowed every 5 minutes. Please wait before starting another import.', 429);
-  }
+    if ((recentMin?.c ?? 0) >= 1) {
+      throw new AppError('Only one import allowed every 5 minutes. Please wait before starting another import.', 429);
+    }
 
-  const recentDay = db.prepare(
-    "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
-  ).get(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`) as { c: number } | undefined;
+    const recentDay = db.prepare(
+      "SELECT COUNT(*) as c FROM import_rate_limits WHERE started_at >= datetime('now', ?)"
+    ).get(`-${Math.ceil(IMPORT_DAILY_WINDOW_MS / 1000)} seconds`) as { c: number } | undefined;
 
-  if ((recentDay?.c ?? 0) >= IMPORT_MAX_PER_DAY) {
-    throw new AppError(`Daily import limit reached (${IMPORT_MAX_PER_DAY} per 24 hours). Try again later.`, 429);
-  }
+    if ((recentDay?.c ?? 0) >= IMPORT_MAX_PER_DAY) {
+      throw new AppError(`Daily import limit reached (${IMPORT_MAX_PER_DAY} per 24 hours). Try again later.`, 429);
+    }
+  });
+  txn();
 }
 
 function recordImportRateLimit(db: any, source: string, userId: number | null, ip: string): void {
@@ -346,6 +356,7 @@ router.post(
 router.get(
   '/repairdesk/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -436,6 +447,7 @@ router.post(
 router.get(
   '/history',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
@@ -722,6 +734,7 @@ router.post(
 router.get(
   '/repairshopr/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -1050,6 +1063,7 @@ router.post(
 router.get(
   '/myrepairapp/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -1588,6 +1602,7 @@ router.post(
 router.get(
   '/oauth/status',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     // Load from memory or DB (SCAN-805: decrypt on read)
     if (!rdAccessToken) {

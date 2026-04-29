@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { isAdminOrManager } from '../utils/constants.js';
 
 const router = Router();
 
@@ -39,7 +40,10 @@ router.get(
     const db = req.db;
     const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
-    if (!q) {
+    // WEB-S7-022: fast-exit for very short queries — correlated EXISTS subqueries
+    // on ticket_notes / ticket_history are expensive full-table scans; single-char
+    // queries return too many results to be useful anyway.
+    if (!q || q.length < 3) {
       return void res.json({
         success: true,
         data: { customers: [], tickets: [], inventory: [], invoices: [] },
@@ -53,7 +57,8 @@ router.get(
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    const isAdmin = userRole === 'admin' || userRole === 'manager';
+    // WEB-S7-034: use shared helper so role additions are a one-line change
+    const isAdmin = isAdminOrManager(userRole);
 
     let canViewAllTickets = isAdmin;
     if (!isAdmin) {
@@ -169,7 +174,7 @@ router.get(
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    const isAdmin = userRole === 'admin' || userRole === 'manager';
+    const isAdmin = isAdminOrManager(userRole);
     let canViewAllTickets = isAdmin;
     if (!isAdmin) {
       const viewAllCfg = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");

@@ -15,6 +15,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { createPaymentLink, isBlockChypEnabled } from '../services/blockchyp.js';
 import {
   validatePositiveAmount,
   validateIsoDate,
@@ -323,25 +324,30 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
 }));
 
 /**
- * POST /:token/pay - intentionally disabled.
+ * POST /:token/pay — WEB-W3-005.
  *
- * Public payment links do not currently create a Stripe Checkout Session,
- * BlockChyp hosted link, or any other provider-hosted authorization. Until a
- * provider checkout/webhook path is wired end to end, this endpoint must fail
- * closed and never mutate payment state.
+ * Creates a BlockChyp Hosted Checkout link for the amount on this payment link
+ * and returns the provider URL. The customer's browser then navigates to the
+ * BlockChyp-hosted card-entry page. On success/failure BlockChyp fires a
+ * callbackUrl webhook back to this server (not yet wired) to mark the link paid.
+ *
+ * If BlockChyp is not configured for this tenant the endpoint still returns a
+ * 200 with `checkout_available: false` so the UI can show the "call shop" fallback.
  */
 publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response) => {
-  // This endpoint is intentionally fail-closed until payment links create a
-  // real provider-hosted checkout and reconcile completion through webhooks.
   guardPublicRate(req, PUBLIC_PAYMENT_CATEGORY + ':pay', PUBLIC_PAY_MAX, PUBLIC_PAY_WINDOW_MS);
   const token = String(req.params.token || '').trim();
   if (!TOKEN_REGEX.test(token)) throw new AppError('Invalid token', 400);
 
-  // SEC-M60: select expires_at so the /pay endpoint can reject stale links
-  // without waiting for a prior GET to have flipped the row. When the check
-  // fires we also mutate status -> 'expired' to keep DB state consistent.
-  const row = await req.asyncDb.get<Row>(
-    `SELECT id, status, invoice_id, amount_cents, provider, expires_at FROM payment_links WHERE token = ?`,
+  const adb = req.asyncDb;
+
+  // SEC-M60: select expires_at so we can reject stale links and flip status.
+  const row = await adb.get<Row>(
+    `SELECT pl.id, pl.status, pl.invoice_id, pl.amount_cents, pl.description, pl.provider, pl.expires_at,
+            i.order_id AS invoice_order_id
+       FROM payment_links pl
+       LEFT JOIN invoices i ON i.id = pl.invoice_id
+      WHERE pl.token = ?`,
     token,
   );
   if (!row) throw new AppError('Payment link not found', 404);
@@ -349,37 +355,81 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
     res.status(409).json({ success: false, message: 'Payment link is not active' });
     return;
   }
-  // SEC-M60: reject a pay attempt on an active-but-expired row and flip
-  // status. 410 Gone signals a permanently unavailable resource so portal
-  // UI can render a "contact shop for a new link" state instead of looking
-  // like a transient failure.
+  // SEC-M60: reject pay attempt on active-but-expired row.
   if (isLinkExpired(row.expires_at)) {
-    await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
+    await adb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
   }
 
-  audit(req.db, 'payment_link.pay_blocked', null, req.ip ?? '', {
+  // If BlockChyp is not configured for this tenant, return graceful fallback.
+  if (!isBlockChypEnabled(req.db)) {
+    audit(req.db, 'payment_link.pay_unavailable', null, req.ip ?? '', {
+      id: row.id,
+      reason: 'blockchyp_not_configured',
+      token_prefix: token.slice(0, 8),
+    });
+    res.json({
+      success: true,
+      data: { id: row.id, checkout_available: false },
+    });
+    return;
+  }
+
+  // Amount in dollars (BlockChyp expects "10.00" strings).
+  const dollars = (row.amount_cents / 100).toFixed(2);
+  const description = row.description
+    || (row.invoice_order_id ? `Invoice ${row.invoice_order_id}` : 'Payment');
+
+  // Construct the callbackUrl from the request origin so BlockChyp can POST
+  // back to us when the customer completes payment. Webhook handler is not yet
+  // implemented — this wires the plumbing for it without blocking the flow.
+  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  const callbackUrl = `${protocol}://${host}/api/v1/public/payment-links/${encodeURIComponent(token)}/paid-callback`;
+
+  audit(req.db, 'payment_link.checkout_started', null, req.ip ?? '', {
     id: row.id,
     invoice_id: row.invoice_id,
     amount_cents: row.amount_cents,
-    provider: row.provider,
-    reason: 'hosted_checkout_not_configured',
     token_prefix: token.slice(0, 8),
   });
 
-  logger.warn('Blocked public payment-link pay attempt because hosted checkout is not configured', {
+  const result = await createPaymentLink(req.db, dollars, description, callbackUrl);
+
+  if (!result.success || !result.linkUrl) {
+    logger.error('BlockChyp createPaymentLink failed for public pay page', {
+      id: row.id,
+      error: result.error,
+    });
+    audit(req.db, 'payment_link.checkout_failed', null, req.ip ?? '', {
+      id: row.id,
+      error: result.error,
+      token_prefix: token.slice(0, 8),
+    });
+    // Return graceful fallback so UI shows "call shop" instead of a crash.
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        checkout_available: false,
+        error: result.error ?? 'Checkout unavailable',
+      },
+    });
+    return;
+  }
+
+  logger.info('BlockChyp hosted checkout created for payment link', {
     id: row.id,
-    invoice_id: row.invoice_id,
-    provider: row.provider,
+    linkCode: result.linkCode,
   });
 
-  res.status(501).json({
-    success: false,
-    message: 'Online card checkout is not configured for this payment link. Please contact the shop to complete payment.',
+  res.json({
+    success: true,
     data: {
       id: row.id,
-      status: row.status,
-      checkout_available: false,
+      checkout_available: true,
+      checkout_url: result.linkUrl,
+      link_code: result.linkCode ?? null,
     },
   });
 }));

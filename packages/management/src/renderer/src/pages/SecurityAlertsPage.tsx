@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Shield, RefreshCw, CheckCircle2, CheckCheck, AlertTriangle, Info } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { SecurityAlert, SecurityAlertSeverity } from '@/api/bridge';
@@ -36,27 +37,54 @@ function prettyDetails(raw: string | null): string {
   }
 }
 
+const ALERTS_PAGE_SIZE = 200;
+
 export function SecurityAlertsPage() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ackFilter, setAckFilter] = useState<AckFilter>('unacknowledged');
-  const [severityFilter, setSeverityFilter] = useState<SecurityAlertSeverity | 'all'>('all');
+  // DASH-ELEC-063: migrate ackFilter + severityFilter to useSearchParams so
+  // back-button, reload, and deep-link (e.g. ?ack=all&sev=critical) restore
+  // the same view. Mirrors the AuditLogPage pattern (Fixer-B28 2026-04-25).
+  const [params, setParams] = useSearchParams();
+  const ackFilter = (params.get('ack') as AckFilter) ?? 'unacknowledged';
+  const severityFilter = (params.get('sev') as SecurityAlertSeverity | 'all') ?? 'all';
+  const setAckFilter = useCallback((value: AckFilter) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('ack', value);
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+  const setSeverityFilter = useCallback((value: SecurityAlertSeverity | 'all') => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('sev', value);
+      return next;
+    }, { replace: true });
+  }, [setParams]);
   const [ackingId, setAckingId] = useState<number | null>(null);
   const [ackingAll, setAckingAll] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [ackAllDialogOpen, setAckAllDialogOpen] = useState(false);
+  // DASH-ELEC-064: page-based pagination — server returns pagination.total_pages.
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setPage(1);
     try {
       const res = await getAPI().superAdmin.listSecurityAlerts({
         acknowledged: ackFilter === 'all' ? undefined : ackFilter === 'acknowledged' ? 1 : 0,
         severity: severityFilter === 'all' ? undefined : severityFilter,
-        limit: 200,
+        limit: ALERTS_PAGE_SIZE,
+        page: 1,
       });
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setAlerts(res.data.alerts);
+        setTotalPages(res.data.pagination?.total_pages ?? 1);
       } else {
         toast.error(formatApiError(res));
       }
@@ -66,6 +94,31 @@ export function SecurityAlertsPage() {
       setLoading(false);
     }
   }, [ackFilter, severityFilter]);
+
+  const loadMore = useCallback(async () => {
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    try {
+      const res = await getAPI().superAdmin.listSecurityAlerts({
+        acknowledged: ackFilter === 'all' ? undefined : ackFilter === 'acknowledged' ? 1 : 0,
+        severity: severityFilter === 'all' ? undefined : severityFilter,
+        limit: ALERTS_PAGE_SIZE,
+        page: nextPage,
+      });
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        setAlerts((prev) => [...prev, ...res.data!.alerts]);
+        setPage(nextPage);
+        setTotalPages(res.data.pagination?.total_pages ?? totalPages);
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load more alerts');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [ackFilter, severityFilter, page, totalPages]);
 
   useEffect(() => {
     refresh();
@@ -287,6 +340,20 @@ export function SecurityAlertsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* DASH-ELEC-064: "Load next 200" — visible when more pages remain. */}
+      {page < totalPages && !loading && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-400 border border-surface-700 rounded-lg hover:bg-surface-800 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
+            {loadingMore ? 'Loading…' : 'Load next 200'}
+          </button>
         </div>
       )}
 

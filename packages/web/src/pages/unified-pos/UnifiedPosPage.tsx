@@ -9,7 +9,6 @@ import { CheckoutModal } from './CheckoutModal';
 import { SuccessScreen } from './SuccessScreen';
 import { UpsellPrompt } from './UpsellPrompt';
 import { InactivityTimer } from './InactivityTimer';
-import { TopFiveTiles } from './TopFiveTiles';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
@@ -402,9 +401,12 @@ export function UnifiedPosPage() {
           />
         </div>
 
-        {/* Right: tabs (repairs / products / misc) — audit §43.1 tiles above */}
+        {/* Right: tabs (repairs / products / misc).
+            TopFiveTiles ("Today's Top 5") removed 2026-04-28 — too much
+            real estate for two recently-sold parts. Quick-add affordance
+            now lives next to the search bar inside RightPanel where the
+            user is already looking. */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <TopFiveTiles />
           <div className="flex-1 overflow-hidden"><RightPanel /></div>
         </div>
       </div>

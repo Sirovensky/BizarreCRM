@@ -36,13 +36,23 @@ import com.bizarreelectronics.crm.data.remote.dto.UserDto
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface AuthApi {
 
+    /**
+     * LOGIN-MOCK-256: [integrityToken] carries the Play Integrity attestation for
+     * cloud-hosted tenants.  Pass `null` to omit the header — self-hosted and
+     * non-GMS devices always pass `null` and proceed without attestation.
+     * Retrofit skips null @Header values, so no special handling is needed.
+     */
     @POST("auth/login")
-    suspend fun login(@Body request: LoginRequest): ApiResponse<LoginResponse>
+    suspend fun login(
+        @Body request: LoginRequest,
+        @Header("X-Integrity-Token") integrityToken: String?,
+    ): ApiResponse<LoginResponse>
 
     @POST("auth/login/2fa-verify")
     suspend fun verify2FA(@Body request: TwoFactorRequest): ApiResponse<TwoFactorResponse>

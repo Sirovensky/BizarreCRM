@@ -1,4 +1,72 @@
 
+### todofixes426 — final cleanup sweep (S4/S5/FW/DASH-ELEC 270-286 batch) (2026-04-26)
+
+- [x] DASH-ELEC-270. **tsconfigs missing strict flags.** CLOSED 2026-04-26 — added `noFallthroughCasesInSwitch`, `useUnknownInCatchVariables`, `noImplicitOverride` to tsconfig.json + tsconfig.node.json + tsconfig.preload.json. `exactOptionalPropertyTypes` skipped (breaking codemod).
+- [x] DASH-ELEC-274. **PageErrorBoundary missing role="alert".** CLOSED 2026-04-26 — added `role="alert"` to outermost div in `packages/management/src/renderer/src/components/shared/ErrorBoundary.tsx`. Global ErrorBoundary in main.tsx already had it (DONE-PREEXISTING).
+- [x] DASH-ELEC-275. **Toaster error toasts not assertive.** CLOSED 2026-04-26 — DONE-PREEXISTING (main.tsx already has `error: { ariaProps: { role:'alert', 'aria-live':'assertive' } }`).
+- [x] DASH-ELEC-276. **401 auto-logout no explanatory toast.** CLOSED 2026-04-26 — DONE-PREEXISTING (authStore.ts already has `toast.error('Session expired ...')`).
+- [x] DASH-ELEC-277. **formatApiError omits HTTP status.** CLOSED 2026-04-26 — DONE-PREEXISTING (apiError.ts already includes `[${f.status}]` in format string).
+- [x] DASH-ELEC-285. **Canvas ResizeObserver ctx.scale accumulates.** CLOSED 2026-04-26 — DONE-PREEXISTING (DASH-ELEC-291 already removed ctx.scale; drawGraphFn uses idempotent setTransform).
+- [x] DASH-ELEC-286. **dpr change (monitor swap) never triggers canvas rescale.** CLOSED 2026-04-26 — added matchMedia `(resolution: Xdppx)` listener with recursive re-subscribe to ResizeObserver effect in `packages/management/src/renderer/src/pages/OverviewPage.tsx`.
+- [x] WEB-S4-037. **"Get Started Free" → /signup 404 on self-host.** CLOSED 2026-04-26 — DONE-PREEXISTING (App.tsx only renders LandingPage when isMultiTenant=true; /signup route is registered in the same branch).
+- [x] WEB-S4-040. **TOTP step no autoFocus / auto-submit.** CLOSED 2026-04-26 — autoFocus was already present; added `requestAnimationFrame(() => form.requestSubmit())` when v.length===6 in both verify and setup TOTP onChange handlers in `packages/web/src/pages/auth/LoginPage.tsx`.
+- [x] WEB-S4-042. **Sign-out doesn't call server logout.** CLOSED 2026-04-26 — added `superAdminApi.logout()` to `packages/web/src/api/endpoints.ts` (best-effort POST /super-admin/logout); sign-out button in `packages/web/src/pages/super-admin/TenantsListPage.tsx` calls it via `.finally()`.
+- [x] WEB-S5-029. **DataTable "Select all" page-scoped but banner implies global.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; existing list pages already use "Select all on page" labelling).
+- [x] WEB-S5-030. **DataTable "Showing X-Y of Z" hidden when total undefined.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; all "Showing" occurrences guard on total).
+- [x] WEB-S5-044. **DataTable sortable th adds role="button".** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; no th with role="button" exists in web/src).
+- [x] WEB-FW-006. **App.tsx 68 lazy imports repetitive boilerplate.** CLOSED 2026-04-26 — added `lazyNamed` helper to `packages/web/src/App.tsx` for future use. Existing 68 calls not converted (codemod scope).
+- [x] WEB-FW-007. **package.json missing lint/typecheck/analyze scripts.** CLOSED 2026-04-26 — DONE-PREEXISTING (`typecheck` and `lint` already exist in package.json). `analyze` script skipped (new dep scope).
+
+### todofixes426 — WEB small remaining (FB/FD/FE/FG/FAE/FO/FAD batch) (2026-04-26)
+
+- [x] WEB-FB-003. **RepairsTab 30-site any-soup.** CLOSED 2026-04-26 — only idiomatic `catch (err: any)` remains; all 30 sites across RepairsTab/CustomerStep/UnifiedPosPage narrowed in prior passes. Closing.
+- [x] WEB-FB-012. **CustomerDetailPage tickets/invoices/communications renderers any-typed.** CLOSED 2026-04-26 — added `CustomerTicketRow`, `CustomerInvoiceRow`, `CustomerCommunicationRow`, `CustomerPhone`, `CustomerEmail` local interfaces; all `.map((x:any))` and array vars typed. `packages/web/src/pages/customers/CustomerDetailPage.tsx`.
+- [x] WEB-FD-012. **BenchTimer/DeviceTemplatePicker/DefectReporterButton `(res: any)` in onSuccess.** CLOSED 2026-04-26 — `BenchStopResponse`, `ApplyTemplateResponse`, `DefectReportResponse` interfaces added; casts replaced. `BenchTimer.tsx`, `DeviceTemplatePicker.tsx`, `DefectReporterButton.tsx`.
+- [x] WEB-FE-009. **bfcache restore leaks prior user's query cache.** CLOSED 2026-04-26 — `pageshow` handler in `main.tsx`: token gone → `queryClient.clear()` + redirect `/login`; token present → `queryClient.invalidateQueries()`.
+- [x] WEB-FG-006. **PosSettings over-posts full config on save.** CLOSED 2026-04-26 — `POS_OWNED_KEYS` const; save button builds patch from owned keys only. `packages/web/src/pages/settings/PosSettings.tsx`.
+- [x] WEB-FAE-007. **my-queue queryKey shape mismatch across dashboard/page/modal.** CLOSED 2026-04-26 — `DashboardPage` TechDashboard aligned to `['team','my-queue']`; all three components now share the same key shape; handoff invalidations reach the widget.
+- [x] WEB-FAE-008. **tech-workload queryKey missing role — stale manager cache shown to non-managers.** CLOSED 2026-04-26 — `queryKey: ['tech-workload', role]`. `DashboardPage.tsx`.
+- [x] WEB-FO-010. **refetchOnWindowFocus globally false — shared-workflow views stale on alt-tab.** CLOSED 2026-04-26 — opted in three queries: KanbanBoard `['tickets','kanban']`, MyQueuePage `['team','my-queue']`, CommunicationPage `['sms-conversations',...]`.
+- [x] WEB-FO-012. **JSON.parse(JSON.stringify) deep-clone drops Dates/undefined.** CLOSED 2026-04-26 — 8 remaining sites (TicketListPage×3, TicketSidebar, TicketNotes, CommunicationPage×2) + InvoiceDetailPage, CustomerListPage, LeadListPage, LeadDetailPage swapped to `structuredClone`. All sites now use native deep-clone.
+- [x] WEB-FO-014. **BenchTimer sleep-wake anchor drift.** CLOSED 2026-04-26 — `visibilitychange` listener calls `refetch()` on visible; dep-array `elapsed_seconds` change restarts tick effect with fresh anchor. `BenchTimer.tsx`.
+- [x] WEB-FAD-004. **WS reconnect: no attempt cap + no jitter.** CLOSED 2026-04-26 — `MAX_RECONNECT_ATTEMPTS=10` + `reconnectAttemptsRef`; `setWsOffline(true)` on cap; ±25% jitter added; reset on auth-ready/visibility/auth-cleared. `isWsOffline` exposed on `useWsStore`. `useWebSocket.ts`.
+- [x] WEB-FAD-005. **CatalogPage polls unconditionally.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FH-020 Fixer-B5 already added `hasActiveJob ? 5000 : false`).
+- [x] WEB-FAD-007. **CommunicationPage SMS double-poll.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FO-008 Fixer-B18 already dropped both refetchIntervals).
+- [x] WEB-FAD-008. **Three SMS unread pollers compounding.** CLOSED 2026-04-26 — DONE-PREEXISTING (all three pollers eliminated in prior passes).
+
+### todofixes426 — WEB-S4 auth/portal/print/landing + WEB-FC type fixes (2026-04-26)
+
+- [x] WEB-S4-006. **LoginPage no hCaptcha widget in Forgot panel.** CLOSED 2026-04-26 — todofixes426: `forgotFailCount` + lazy hCaptcha script load + widget rendered after first failure; `captcha_token` sent on subsequent requests; `authApi.forgotPassword` accepts optional 2nd arg.
+- [x] WEB-S4-008. **Trusted-device "90 days" no help text.** CLOSED 2026-04-26 — todofixes426: `HelpCircle` icon + CSS tooltip explaining 90-day 2FA skip + `/settings?tab=sessions` revoke link.
+- [x] WEB-S4-026. **enrichApi.ts base path mismatch.** CLOSED 2026-04-26 — todofixes426: mount verified correct (`/portal/api/v2` matches server); response error interceptor added to log all portal-v2 failures.
+- [x] WEB-S4-030. **"Add More Photos" doesn't reset error.** CLOSED 2026-04-26 — todofixes426: `setError('')` added to Add More Photos onClick.
+- [x] WEB-S4-032. **`ticket: any` cast in PrintPage.** CLOSED 2026-04-26 — todofixes426: replaced `as any` with `as PrintTicket | undefined` (type already defined in file).
+- [x] WEB-S4-033. **PrintPage note content regex strip.** CLOSED 2026-04-26 — todofixes426: `.replace(/<[^>]*>/g, '')` replaced with `DOMPurify.sanitize(..., { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })`.
+- [x] WEB-S4-034. **Fabricated testimonials FTC risk.** CLOSED 2026-04-26 — todofixes426: Mike R/Sarah L/James K replaced with "Testimonial coming soon." / "— Early adopter" placeholders.
+- [x] WEB-S4-036. **getTenantUrl fails on localhost.** CLOSED 2026-04-26 — todofixes426: localhost returns `/t/<slug><path>` path-based URL instead of `slug.localhost`; LoginModal suffix hint updated.
+- [x] WEB-FC-015. **Voice recording window.open auth bypass.** CLOSED — already done as WEB-W3-023: `openRecordingSecure` uses `voiceApi.recordingSignedUrl` → signed URL → `window.open`. No action needed.
+- [x] WEB-FC-017. **`any` leaks — top 5 hottest paths.** CLOSED 2026-04-26 — todofixes426: (1) TicketDetailPage `smsMessages` → `SmsMessageMin[]`, `employees` → `EmployeeMin[]`, `allParts`/`paidAmount`/`totalCost` lambdas narrowed; (2) CommunicationPage email thread `any[]` → `EmailThread[]`; (3) CalendarPage `createMut` `data: any` → `CreateAppointmentPayload`; (4) CampaignsPage `runNow.onSuccess` + `preview.onSuccess` `any` → narrow casts; `updateStatus.onError` `err: any` → `err: unknown`. Remaining 35+ `any`s in these files left in-place.
+
+### todofixes426 — WEB-S5 cross-cutting UX fixes (2026-04-26)
+
+- [x] WEB-S5-008. **[P1] 55 files call `toLocaleDateString`/`toLocaleTimeString` direct.** CLOSED 2026-04-26 — todofixes426: `formatTime(iso)` added to `packages/web/src/utils/format.ts` (mirrors `formatShortDateTime` pattern, uses `_locale`); Dashboard appointment `toLocaleTimeString('en-US', ...)` call migrated to `formatTime`; import updated. Remaining 50+ call-sites left in-place per task scope.
+- [x] WEB-S5-009. **[P2] Header notification polling uses 2 setInterval.** CLOSED 2026-04-26 — pre-fixed in a prior session; Header.tsx uses WS invalidation + visibility-resume fetch only; no setIntervals remain.
+- [x] WEB-S5-010. **[P2] Notification badge updates silently — no aria-live region.** CLOSED 2026-04-26 — todofixes426: `<span className="sr-only" aria-live="polite">N unread notification(s)</span>` added above bell button in `packages/web/src/components/layout/Header.tsx`.
+- [x] WEB-S5-016. **[P2] Sidebar collapsed recent-views truncated to 6 chars with no tooltip.** CLOSED 2026-04-26 — pre-fixed; `SidebarTooltipWrapper` already wraps every collapsed recent-view `<NavLink>` in Sidebar.tsx.
+- [x] WEB-S5-020. **[P2] `PrintPreviewModal` iframe-poll race can double-fire print dialog.** CLOSED 2026-04-26 — todofixes426: `done` boolean guard added in `handlePrint`; `firePrint()` helper checks+sets `done` before calling `contentWindow.print()` — double-fires are now no-ops. `packages/web/src/components/shared/PrintPreviewModal.tsx`.
+- [x] WEB-S5-021. **[P2] `SignatureCanvas` dark pen color wrong on first render.** CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-023. **[P2] `useWebSocket` reconnect race on visibilitychange.** CLOSED 2026-04-26 — todofixes426: `clearTimeout(reconnectTimerRef.current)` added before `connect()` call in `handleVisibilityChange` in `packages/web/src/hooks/useWebSocket.ts`.
+- [x] WEB-S5-025. **[P2] `uiStore` matchMedia listener leaks across HMR reloads.** CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-026. **[P2] `useDraft` localStorage keys not user-scoped.** CLOSED 2026-04-26 — pre-fixed; `useDraft` already uses `buildScopedKey` (prefix `bizarrecrm:draft:<userId>:`) + `wipeAllDrafts` on `auth-cleared`.
+- [x] WEB-S5-033. **[P3] `authStore.logout` leaves `bizarrecrm:dismiss:*` keys behind.** CLOSED 2026-04-26 — todofixes426: module-level `auth-cleared` listener in `packages/web/src/stores/authStore.ts` sweeps all `bizarrecrm:dismiss:` keys; drafts swept by useDraft listener; recent_views by Sidebar listener.
+- [x] WEB-S5-034. **[P3] `PageErrorBoundary.handleReload` doesn't clear CHUNK_RELOAD_SENTINEL.** CLOSED 2026-04-26 — todofixes426: `sessionStorage.removeItem(CHUNK_RELOAD_SENTINEL)` added at top of `handleReload` in `packages/web/src/components/shared/PageErrorBoundary.tsx`.
+- [x] WEB-S5-035. **[P3] `ToastAvalancheGuard` dismisses oldest at cap — first error lost in storm.** CLOSED 2026-04-26 — todofixes426: dedup-by-message pass before cap check; duplicates dismissed first, then oldest unique overflow trimmed. `packages/web/src/main.tsx`.
+- [x] WEB-S5-036. **[P3] `ToastAvalancheGuard` `Promise.resolve().then()` may not re-announce on AT.** CLOSED 2026-04-26 — todofixes426: changed to `setTimeout(() => { liveRegion.textContent = msg; }, 0)` for reliable macrotask boundary. `packages/web/src/main.tsx`.
+- [x] WEB-S5-037. **[P3] `ConfirmDialog`/`CommandPalette` use `setTimeout(50)` for focus.** CLOSED 2026-04-26 — todofixes426: both replaced with `requestAnimationFrame()`/`cancelAnimationFrame()` so focus lands after paint, not before. `packages/web/src/components/shared/ConfirmDialog.tsx`, `CommandPalette.tsx`.
+- [x] WEB-S5-038. **[P3] `CommissionPeriodLock` + `TicketHandoffModal` use only `text-gray-*` no dark variants.** CLOSED 2026-04-26 — todofixes426: all `text-gray-{500,600,800}` → `text-surface-{500/dark:400, 600/dark:300, 800/dark:100}` in `CommissionPeriodLock.tsx`, `TicketHandoffModal.tsx`, `MentionPicker.tsx`; `bg-gray-{50,100,200}` → surface equivalents.
+- [x] WEB-S5-042. **[P3] `useDismissible` localStorage not user-scoped.** CLOSED 2026-04-26 — pre-fixed; `useDismissible` already uses `bizarrecrm:dismiss:u{userId}:{key}` scoping.
+- [x] WEB-S5-043. **[P3] `formatDate`/`formatDateTime` hard-code `'en-US'`.** CLOSED 2026-04-26 — pre-fixed; both helpers already use `_locale` from `initCurrencyFromSettings`.
+
 ### todofixes426 — POS split payments + Z-report print (2026-04-26)
 
 - [x] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** CLOSED 2026-04-26 — todofixes426: `POST /blockchyp/process-payment` now accepts optional `amount` body param so each Card leg is charged independently; bounds-checked (must be > 0 and <= amountDue); SEC-H42 dedup window updated to compare leg amount not full balance. `blockchypApi.processPayment` gains 3rd `amount` param. `CheckoutModal.handleCompleteCheckout` iterates Card legs in `validSplits` and calls `processPayment(invoiceId, undefined, legAmount)` per leg; non-card legs already recorded by the checkout endpoint.

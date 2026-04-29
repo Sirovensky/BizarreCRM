@@ -15,7 +15,7 @@ data class ExpenseListItem(
     val amount: Double?,
     val description: String?,
     val date: String?,
-    /** Approval status: `pending` | `approved` | `denied`. Server migration 120. */
+    /** Approval status from server: `pending` | `approved` | `denied`. Server migration 120. */
     val status: String? = null,
     @SerializedName("first_name")
     val firstName: String?,

@@ -111,13 +111,6 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE user_id = :userId ORDER BY date DESC")
     fun getByEmployee(userId: Long): Flow<List<ExpenseEntity>>
 
-    /**
-     * Filter by approval status (`pending` | `approved` | `denied`).
-     * Used by [ExpenseListViewModel] for the approval-status filter.
-     */
-    @Query("SELECT * FROM expenses WHERE status = :status ORDER BY date DESC")
-    fun getByStatus(status: String): Flow<List<ExpenseEntity>>
-
     /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")
     fun getTotalAmount(): Flow<Long?>

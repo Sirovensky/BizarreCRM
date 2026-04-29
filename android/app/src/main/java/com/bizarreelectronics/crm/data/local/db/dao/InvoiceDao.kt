@@ -51,6 +51,23 @@ interface InvoiceDao {
     @Query("SELECT SUM(amount_due) FROM invoices WHERE amount_due > 0")
     fun getOutstandingBalance(): Flow<Long?>
 
+    /**
+     * Keyset / cursor page for offline-first paging (§7.1).
+     *
+     * Pass [beforeCreatedAt] = "" to get the first page (no upper-bound filter).
+     * Subsequent pages use the [created_at] value of the last row as the cursor
+     * (exclusive upper bound).
+     */
+    @Query(
+        """
+        SELECT * FROM invoices
+        WHERE (:beforeCreatedAt = '' OR created_at < :beforeCreatedAt)
+        ORDER BY created_at DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getPage(beforeCreatedAt: String, limit: Int): List<InvoiceEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(invoices: List<InvoiceEntity>)
 

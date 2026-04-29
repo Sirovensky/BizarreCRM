@@ -931,40 +931,30 @@ object Migrations {
     }
 
     /**
-     * **Migration 12 → 13: add `status` column to `expenses` (§11 Filters).**
+     * **Migration 12 → 13: add `approval_status` column to `expenses` + index.**
      *
-     * The server added an approval workflow to the expenses table in server
-     * migration 120 (`status TEXT NOT NULL DEFAULT 'pending'` with a CHECK
-     * constraint). This Room migration mirrors that change so the Android
-     * client can:
+     * Mirrors the server's `expenses.status` column (server migration 120,
+     * values: `pending | approved | denied`). Android stores it under the
+     * Kotlin field `approvalStatus` mapped to SQL column `approval_status`
+     * — name disambiguates from any future generic `status` field.
      *
-     *  - Display approval status in [ExpenseListScreen] and [ExpenseDetailScreen].
-     *  - Filter expenses by status (pending / approved / denied) via [ExpenseDao.getByStatus].
-     *  - Accurately compute the "Reimbursable pending" tile (sum of pending expenses).
+     * Powers [ExpenseDao.getByApprovalStatus], the approval-status chip row
+     * in [ExpenseFilterSheet], and the "Pending approval" badge on the list
+     * summary tile.
      *
-     * `ALTER TABLE … ADD COLUMN` is the minimum-impact approach (no table rebuild
-     * needed). Existing cached rows receive the default `'pending'`; the next
-     * background sync from [ExpenseRepository.refreshFromServer] overwrites them
-     * with the server-authoritative value.
+     * Existing cached rows get DEFAULT `'pending'`; next sync overwrites them
+     * with server-authoritative value via [ExpenseRepository.refreshFromServer].
      *
-     * ## Idempotency
-     *
-     * `ALTER TABLE … ADD COLUMN` is NOT idempotent in SQLite, but Room guarantees
-     * each migration object runs exactly once per upgrade path — this is safe.
-     *
-     * ## ActionPlan reference
-     *
-     * ActionPlan §11.1 Filters — approval status filter requires this column.
+     * Renumbered from main's MIGRATION_11_12 to 12→13 so it sequences after
+     * MIGRATION_11_12 (FTS4 search, §18.1) on this branch.
      */
     val MIGRATION_12_13 = object : Migration(12, 13) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // Add status column with default 'pending' to match server migration 120.
             db.execSQL(
-                "ALTER TABLE expenses ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
+                "ALTER TABLE expenses ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending'"
             )
-            // Index for getByStatus() DAO query
             db.execSQL(
-                "CREATE INDEX IF NOT EXISTS index_expenses_status ON expenses(status)"
+                "CREATE INDEX IF NOT EXISTS index_expenses_approval_status ON expenses(approval_status)"
             )
         }
     }

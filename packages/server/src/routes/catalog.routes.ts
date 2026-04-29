@@ -27,6 +27,7 @@ import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, MAX_PAGE_SIZE } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 
 const logger = createLogger('catalog-routes');
 
@@ -330,6 +331,13 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
 const VALID_SOURCES: CatalogSource[] = ['mobilesentrix', 'phonelcdparts'];
 
 router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
+  // WEB-S8-037: rate-limit sync triggers to 3 per hour per admin to prevent
+  // flooding the scrape_jobs table and hammering supplier sites.
+  const rate = consumeWindowRate(req.db, 'catalog_sync', String(req.user!.id), 3, 3_600_000);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    throw new AppError(`Too many sync requests; retry in ${rate.retryAfterSeconds}s`, 429);
+  }
   const db = req.db;
   const source = req.body.source as CatalogSource;
   if (!VALID_SOURCES.includes(source)) {

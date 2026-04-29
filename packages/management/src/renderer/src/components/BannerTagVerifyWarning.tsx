@@ -14,9 +14,24 @@ import { useState, useEffect } from 'react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 
+// DASH-ELEC-248: persist dismissal to localStorage; re-show after 24h or on
+// a fresh cold-start (page reload without a stored timestamp).
+const LS_KEY = 'banner-tag-verify-warning-dismissed-at';
+const RESHOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function isSuppressed(): boolean {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    return Date.now() - Number(raw) < RESHOW_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function BannerTagVerifyWarning() {
   const [bypass, setBypass] = useState<boolean | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => isSuppressed());
 
   useEffect(() => {
     getAPI().system.getTagVerifyStatus().then((res) => {
@@ -31,6 +46,11 @@ export function BannerTagVerifyWarning() {
       setBypass(false);
     });
   }, []);
+
+  function handleDismiss() {
+    try { localStorage.setItem(LS_KEY, String(Date.now())); } catch { /* ignore */ }
+    setDismissed(true);
+  }
 
   // Hide when bypass is not active, status unknown, or user dismissed.
   if (bypass !== true || dismissed) return null;
@@ -53,7 +73,7 @@ export function BannerTagVerifyWarning() {
         </span>
       </div>
       <button
-        onClick={() => setDismissed(true)}
+        onClick={handleDismiss}
         className="flex-shrink-0 text-red-500 hover:text-red-300 transition-colors"
         aria-label="Dismiss"
       >

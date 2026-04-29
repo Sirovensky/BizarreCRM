@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import { requirePermission } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import path from 'path';
 import fs from 'fs';
 import { createCanvas } from 'canvas';
@@ -1840,6 +1841,133 @@ router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bu
   audit(req.db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: item });
+});
+
+// ==================== WEB-W3-013: Server-streaming CSV export ====================
+// GET /inventory/export.csv — full-dataset CSV honoring the same filter params as GET /inventory
+// No pagination — streams all matching rows directly to the client.
+router.get('/export.csv', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const {
+    keyword, item_type, category, low_stock, reorderable_only,
+    supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, location_id,
+  } = req.query as Record<string, string>;
+
+  let where = 'WHERE i.is_active = 1';
+  const params: any[] = [];
+
+  if (item_type) { where += ' AND i.item_type = ?'; params.push(item_type); }
+  if (category) { where += ' AND i.category = ?'; params.push(category); }
+  if (low_stock === 'true') { where += " AND i.item_type != 'service' AND i.is_reorderable = 1 AND i.in_stock <= i.reorder_level AND i.low_stock_dismissed_at IS NULL"; }
+  if (reorderable_only === 'true') { where += ' AND i.is_reorderable = 1'; }
+  if (supplier_id) { where += ' AND i.supplier_id = ?'; params.push(parseInt(supplier_id, 10)); }
+  if (location_id && /^\d+$/.test(location_id)) { where += ' AND i.location_id = ?'; params.push(parseInt(location_id, 10)); }
+  if (manufacturer) { where += " AND i.manufacturer LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(manufacturer)}%`); }
+  if (min_price) { where += ' AND i.retail_price >= ?'; params.push(validatePrice(min_price, 'min_price')); }
+  if (max_price) { where += ' AND i.retail_price <= ?'; params.push(validatePrice(max_price, 'max_price')); }
+  if (hide_out_of_stock === 'true') { where += ' AND (i.item_type = "service" OR i.in_stock > 0)'; }
+  if (keyword) {
+    where += " AND (i.name LIKE ? ESCAPE '\\' OR i.sku LIKE ? ESCAPE '\\' OR i.upc LIKE ? ESCAPE '\\' OR i.manufacturer LIKE ? ESCAPE '\\')";
+    const k = `%${escapeLike(keyword)}%`;
+    params.push(k, k, k, k);
+  }
+
+  const role = req.user?.role;
+  const items = await adb.all<any>(`
+    SELECT i.id, i.sku, i.upc, i.name, i.item_type, i.category, i.manufacturer,
+           i.in_stock, i.reorder_level, i.cost_price, i.retail_price,
+           i.location, i.shelf, i.bin, s.name as supplier_name
+    FROM inventory_items i
+    LEFT JOIN suppliers s ON s.id = i.supplier_id
+    ${where}
+    ORDER BY i.name ASC
+  `, ...params);
+
+  // Strip cost_price for non-admin/manager (mirrors list endpoint masking)
+  const CSV_BOM = '﻿';
+  const headers = role === 'admin' || role === 'manager'
+    ? ['id', 'sku', 'upc', 'name', 'item_type', 'category', 'manufacturer', 'in_stock', 'reorder_level', 'cost_price', 'retail_price', 'location', 'shelf', 'bin', 'supplier_name']
+    : ['id', 'sku', 'upc', 'name', 'item_type', 'category', 'manufacturer', 'in_stock', 'reorder_level', 'retail_price', 'location', 'shelf', 'bin', 'supplier_name'];
+
+  const escCsv = (v: unknown): string => {
+    const s = v == null ? '' : String(v);
+    // Formula-injection guard (SCAN-1161 pattern)
+    const sanitized = s.replace(/^[=+\-@\t\r]/, "'$&");
+    if (sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')) {
+      return '"' + sanitized.replace(/"/g, '""') + '"';
+    }
+    return sanitized;
+  };
+
+  const rows = items.map((it: any) => headers.map((h: string) => escCsv(it[h])).join(','));
+  const csv = CSV_BOM + [headers.join(','), ...rows].join('\r\n');
+
+  const filename = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  audit(req.db, 'inventory_csv_exported', req.user!.id, req.ip || 'unknown', { rows: items.length });
+  res.send(csv);
+});
+
+// ==================== WEB-S6-009: Price history ====================
+// GET /inventory/:id/price-history — cost price change log
+router.get('/:id/price-history', async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  // Only admin/manager can see cost price history
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    throw new AppError('Admin or manager access required', 403);
+  }
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get<{ id: number }>('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
+  if (!item) throw new AppError('Item not found', 404);
+
+  const history = await adb.all(`
+    SELECT cph.id, cph.old_price, cph.new_price, cph.created_at,
+           u.first_name || ' ' || u.last_name AS changed_by_name
+    FROM cost_price_history cph
+    LEFT JOIN users u ON u.id = cph.changed_by
+    WHERE cph.inventory_item_id = ?
+    ORDER BY cph.created_at DESC
+    LIMIT 100
+  `, req.params.id);
+
+  res.json({ success: true, data: history });
+});
+
+// ==================== WEB-S6-010: Multi-location stock breakdown ====================
+// GET /inventory/:id/locations — per-location stock (grouped from same SKU items or location column)
+router.get('/:id/locations', async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  const adb: AsyncDb = req.asyncDb;
+  const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
+  if (!item) throw new AppError('Item not found', 404);
+
+  // Show where this item lives (via location_id FK + legacy text location column)
+  // and all other active locations for reference.
+  const locations = await adb.all(`
+    SELECT
+      l.id,
+      l.name AS location_name,
+      l.address,
+      l.is_default,
+      CASE WHEN i.location_id = l.id THEN i.in_stock ELSE 0 END AS in_stock,
+      CASE WHEN i.location_id = l.id THEN 1 ELSE 0 END AS is_primary
+    FROM locations l
+    LEFT JOIN inventory_items i ON i.id = ?
+    WHERE l.is_active = 1
+    ORDER BY l.is_default DESC, l.name ASC
+  `, item.id);
+
+  res.json({
+    success: true,
+    data: {
+      item_id: item.id,
+      item_name: item.name,
+      sku: item.sku,
+      total_in_stock: item.in_stock,
+      locations,
+    },
+  });
 });
 
 // POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock

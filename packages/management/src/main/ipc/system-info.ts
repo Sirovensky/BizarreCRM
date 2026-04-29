@@ -3,7 +3,7 @@
  * Runs in Electron main process — no server dependency.
  */
 import { ipcMain, shell, app } from 'electron';
-import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -154,16 +154,21 @@ function tryPowershellDiskSpace(): DiskDrive[] {
     const psExe = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     if (!fs.existsSync(psExe)) return [];
 
-    // DASH-ELEC-004: execSync is acceptable here because the script is a
-    // hardcoded literal — no caller-supplied input reaches this shell string.
-    // Do NOT use this pattern with dynamic input; use spawnSync with an
-    // explicit argv array instead to avoid shell injection.
+    // DASH-ELEC-080: the script literal contains `"` characters — embedding
+    // it inside a `-Command "..."` shell string terminates the inner command
+    // early on Windows 24H2+, silently returning []. Use spawnSync with an
+    // explicit argv array instead of execSync so the script is passed as a
+    // single -Command argument without any shell re-quoting.
     const script = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object { "$($_.Root),$($_.Free),$($_.Used + $_.Free)" }`;
-    const raw = execSync(`"${psExe}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${script}"`, {
-      encoding: 'utf-8',
-      timeout: 10_000,
-      windowsHide: true,
-    });
+    const result = spawnSync(
+      psExe,
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { encoding: 'utf-8', timeout: 10_000, windowsHide: true },
+    );
+    if (result.status !== 0 || result.error) {
+      throw result.error ?? new Error(`PowerShell exited with code ${result.status}`);
+    }
+    const raw = result.stdout ?? '';
 
     const drives: DiskDrive[] = [];
     for (const line of raw.split(/\r?\n/)) {

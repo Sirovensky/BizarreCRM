@@ -502,13 +502,18 @@ export async function runRetentionSweep(
   uploadsPath?: string,
   tenantSlug?: string,
 ): Promise<RetentionSweepResult> {
-  if (isSweepDisabledForTenant(db)) {
-    return { totalDeleted: 0, perTable: {} };
-  }
+  // Master switch (`retention_sweep_enabled`) gates ONLY customer-data
+  // sweeps — PII tables, ticket photos, tenant exports. Operational
+  // hygiene (rate_limits, idempotency_keys, retry queues, etc.) runs
+  // always: those tables fill up by design and must be capped to keep
+  // the indexes sane. The owner's "keep customer data forever" choice
+  // doesn't extend to "let internal queues balloon."
+  const piiSweepEnabled = !isSweepDisabledForTenant(db);
 
   const perTable: Record<string, number> = {};
   let totalDeleted = 0;
 
+  // Phase 1: operational hygiene — always runs.
   for (const rule of RULES) {
     try {
       const deleted = applyRule(db, rule);
@@ -534,10 +539,14 @@ export async function runRetentionSweep(
     }
   }
 
+  // Phase 2: customer-data PII sweep — gated by master switch.
   // SEC-H57: PII phase — runs after the ops-log phase so a failure in the
   // ops sweep cannot skip the (arguably more important) compliance-driven
   // PII retention. Each PII rule is individually isolated for the same
   // reason as the ops loop.
+  if (!piiSweepEnabled) {
+    return { totalDeleted, perTable };
+  }
   for (const rule of PII_RULES) {
     try {
       const affected = applyPiiRule(db, rule);

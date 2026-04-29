@@ -35,7 +35,11 @@ const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
   'qualified': ['proposal', 'contacted', 'scheduled', 'lost'],
   'proposal':  ['converted', 'qualified', 'lost'],
   'lost':      ['new', 'contacted'],      // allow re-opening a lost lead
-  'converted': [],                         // terminal — cannot un-convert
+  // WEB-W2-036: 'converted' was previously terminal ([]).
+  // Allow re-opening a converted lead back to 'new' or 'contacted' so admins
+  // can recover from accidental conversions (e.g. ticket deleted, wrong lead).
+  // Intentionally does NOT allow 'converted' → 'converted' (no-op guard).
+  'converted': ['new', 'contacted'],
 };
 
 /**
@@ -396,6 +400,66 @@ router.post(
       success: true,
       data: leadData,
     });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /bulk-action – Bulk delete or status-change leads (WEB-W2-035)
+// Must be before /:id routes to avoid Express capturing "bulk-action" as an id.
+// ---------------------------------------------------------------------------
+router.post(
+  '/bulk-action',
+  asyncHandler(async (req, res) => {
+    const db = req.db;
+    const adb = req.asyncDb;
+    const { lead_ids, action, value } = req.body;
+
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      throw new AppError('lead_ids must be a non-empty array', 400);
+    }
+    // Cap at 500 to prevent accidental mass-destruction and DoS
+    if (lead_ids.length > 500) {
+      throw new AppError('Cannot bulk-action more than 500 leads at once', 400);
+    }
+    const ids = lead_ids.map((id: unknown) => {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n < 1) throw new AppError('Invalid lead id in lead_ids', 400);
+      return n;
+    });
+
+    const ph = ids.map(() => '?').join(',');
+
+    if (action === 'delete') {
+      await adb.run(
+        `UPDATE leads SET is_deleted = 1, updated_at = datetime('now') WHERE id IN (${ph}) AND is_deleted = 0`,
+        ...ids,
+      );
+      audit(db, 'leads_bulk_deleted', req.user!.id, req.ip || 'unknown', { lead_ids: ids });
+      res.json({ success: true, data: { affected: ids.length } });
+      return;
+    }
+
+    if (action === 'status') {
+      if (!value || typeof value !== 'string') {
+        throw new AppError('value (status) is required for status action', 400);
+      }
+      const validStatuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
+      if (!validStatuses.includes(value)) {
+        throw new AppError(`Invalid status value '${value}'`, 400);
+      }
+      // Bulk status change skips per-row state-machine enforcement intentionally —
+      // this is an admin-level batch op. Single-row state machine still applies
+      // when updating individual leads via PUT /:id.
+      await adb.run(
+        `UPDATE leads SET status = ?, updated_at = datetime('now') WHERE id IN (${ph}) AND is_deleted = 0`,
+        value, ...ids,
+      );
+      audit(db, 'leads_bulk_status_changed', req.user!.id, req.ip || 'unknown', { lead_ids: ids, status: value });
+      res.json({ success: true, data: { affected: ids.length } });
+      return;
+    }
+
+    throw new AppError(`Unknown action '${action}'. Supported: delete, status`, 400);
   }),
 );
 

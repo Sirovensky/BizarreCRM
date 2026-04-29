@@ -146,7 +146,7 @@ object MigrationRegistry {
         Entry(
             fromVersion = 12,
             toVersion = 13,
-            name = "expenses-status: ADD COLUMN status + index for approval-status filter [§11.1]",
+            name = "expenses-approval-status: approval_status column + index [§11 filters]",
             migration = Migrations.MIGRATION_12_13,
         ),
     )

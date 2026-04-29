@@ -115,6 +115,10 @@ import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.bench.BenchTabScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DeviceTemplatesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RepairPricingScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.PosSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.BusinessInfoScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
@@ -559,6 +563,15 @@ sealed class Screen(val route: String) {
         fun createRoute(roleId: Long) = "settings/team/roles/$roleId/permissions"
     }
 
+    // §14.6 — Team shifts / weekly schedule
+    data object ShiftsSchedule : Screen("shifts-schedule")
+
+    // §14.7 — Employee leaderboard
+    data object Leaderboard : Screen("leaderboard")
+
+    // §14.4 — Role management (admin)
+    data object RoleManagement : Screen("role-management")
+
     // §52 — Audit Logs (admin-only)
     data object AuditLogs : Screen("audit-logs")
 
@@ -763,6 +776,10 @@ sealed class Screen(val route: String) {
 
     // §6.8 — Bin locations manager (Settings → Inventory → Bin Locations)
     data object BinLocations : Screen("settings/inventory/bin-locations")
+
+    // §19.8 — POS / payment settings sub-screen (parallel to PaymentSettings;
+    // PosSettings owns POS-flow toggles, PaymentSettings owns processor config).
+    data object PosSettings : Screen("settings/pos")
 }
 
 data class BottomNavItem(
@@ -2273,6 +2290,24 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+            // §14.6 — Team shifts weekly schedule
+            composable(Screen.ShiftsSchedule.route) {
+                com.bizarreelectronics.crm.ui.screens.shifts.ShiftsScheduleScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §14.7 — Employee leaderboard
+            composable(Screen.Leaderboard.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.LeaderboardScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §14.4 — Role management (admin)
+            composable(Screen.RoleManagement.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.RoleManagementScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
             // §68.2 — deep link: bizarrecrm://settings and bizarrecrm://settings/{section}
             // {section} is a hint only; well-known sub-sections already have their own
             // routes wired with deepLinks (e.g. security-summary). This entry catches
@@ -2337,6 +2372,7 @@ fun AppNavGraph(
                     onTicketSettings = { navController.navigate(Screen.TicketSettings.route) },
                     // §19.8 — POS / payment settings.
                     onPaymentSettings = { navController.navigate(Screen.PaymentSettings.route) },
+                    onPosSettings = { navController.navigate(Screen.PosSettings.route) },
                     // §19.9 — SMS settings.
                     onSmsSettings = { navController.navigate(Screen.SmsSettings.route) },
                     // §19.10 — Integrations hub (admin-only in UI; server enforces per-endpoint).
@@ -2379,6 +2415,22 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.settings.BinLocationsScreen(
                     onBack = { navController.popBackStack() },
                 )
+            }
+            // §19.7 — Ticket settings sub-screen.
+            composable(Screen.TicketSettings.route) {
+                TicketSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.8 — POS / payment settings sub-screen.
+            composable(Screen.PosSettings.route) {
+                PosSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.9 — SMS settings sub-screen.
+            composable(Screen.SmsSettings.route) {
+                SmsSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.19 — Business info sub-screen.
+            composable(Screen.BusinessInfo.route) {
+                BusinessInfoScreen(onBack = { navController.popBackStack() })
             }
             // §3.13 L565–L567 — Display settings sub-screen.
             composable(Screen.DisplaySettings.route) {
@@ -3829,6 +3881,12 @@ fun MoreScreen(
                 MoreItem(Icons.Default.BarChart,         "Liability Report", Screen.GiftCardLiability.route),
                 // §47 — Team Chat internal messaging
                 MoreItem(Icons.Default.Forum,           "Team Chat",     Screen.TeamChat.route),
+                // §14.6 — Team shifts weekly schedule
+                MoreItem(Icons.Default.CalendarMonth,   "Schedule",      Screen.ShiftsSchedule.route),
+                // §14.7 — Employee leaderboard
+                MoreItem(Icons.Default.EmojiEvents,     "Leaderboard",   Screen.Leaderboard.route),
+                // §14.4 — Role management (admin)
+                MoreItem(Icons.Default.ManageAccounts,  "Roles",         Screen.RoleManagement.route),
             ),
         ),
         MoreSection(

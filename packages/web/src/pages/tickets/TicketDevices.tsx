@@ -4,9 +4,9 @@ import {
   Wrench, Package, FileText, Image, CheckCircle2, Calendar, Timer, MapPin,
   Plus, X, Edit3, ShoppingCart, Loader2, Camera,
 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ticketApi, catalogApi } from '@/api/endpoints';
+import { ticketApi, catalogApi, serverInfoApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
@@ -43,7 +43,6 @@ function initials(first?: string, last?: string) {
 
 import { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { timeAgo } from '@/utils/format';
 
@@ -157,6 +156,84 @@ function AccordionSection({
 
 import { Save } from 'lucide-react';
 
+const CONDITION_OPTIONS = [
+  'Screen cracked', 'Screen scratched', 'Housing damaged', 'Missing buttons',
+  'Water damage', 'Battery issue', 'Camera damaged', 'Speaker/mic damaged',
+  'Charging port damaged', 'Touch not working', 'Functional issue reported',
+];
+
+function ConditionChecklist({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [custom, setCustom] = useState('');
+
+  function toggle(item: string) {
+    onChange(value.includes(item) ? value.filter((v) => v !== item) : [...value, item]);
+  }
+
+  function addCustom() {
+    const trimmed = custom.trim();
+    if (!trimmed || value.includes(trimmed)) return;
+    onChange([...value, trimmed]);
+    setCustom('');
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-surface-500 mb-1.5">{label}</label>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {CONDITION_OPTIONS.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => toggle(opt)}
+            className={cn(
+              'px-2 py-1 text-[11px] rounded-full border transition-colors',
+              value.includes(opt)
+                ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600'
+                : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
+            )}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          placeholder="Add custom condition..."
+          className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-1 focus-visible:ring-primary-500/30"
+        />
+        <button
+          type="button"
+          onClick={addCustom}
+          className="px-2.5 py-1 text-xs rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
+        >
+          Add
+        </button>
+      </div>
+      {value.filter((v) => !CONDITION_OPTIONS.includes(v)).length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {value.filter((v) => !CONDITION_OPTIONS.includes(v)).map((v) => (
+            <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-primary-50 text-primary-700 border border-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-700">
+              {v}
+              <button type="button" onClick={() => toggle(v)} className="ml-0.5 text-primary-400 hover:text-primary-600">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DeviceEditForm({
   device,
   onSave,
@@ -175,6 +252,8 @@ function DeviceEditForm({
     security_code: device.security_code || '',
     additional_notes: device.additional_notes || '',
     price: device.price ?? 0,
+    pre_conditions: Array.isArray(device.pre_conditions) ? device.pre_conditions : [],
+    post_conditions: Array.isArray(device.post_conditions) ? device.post_conditions : [],
   });
 
   return (
@@ -225,12 +304,22 @@ function DeviceEditForm({
           className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           placeholder="Describe the issue..." />
       </div>
+      <ConditionChecklist
+        label="Pre-repair Conditions"
+        value={form.pre_conditions}
+        onChange={(v) => setForm({ ...form, pre_conditions: v })}
+      />
+      <ConditionChecklist
+        label="Post-repair Conditions"
+        value={form.post_conditions}
+        onChange={(v) => setForm({ ...form, post_conditions: v })}
+      />
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-3 py-1.5 text-sm rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800">
           Cancel
         </button>
         <button onClick={() => onSave(form)} disabled={isPending}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save
         </button>
@@ -306,7 +395,7 @@ function PhotoUploadSection({
         onChange={handlePick}
         className="hidden" />
       <button onClick={() => fileInputRef.current?.click()} disabled={uploadMut.isPending}
-        className="inline-flex items-center gap-1.5 rounded-md border border-surface-200 dark:border-surface-700 px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+        className="inline-flex items-center gap-1.5 rounded-md border border-surface-200 dark:border-surface-700 px-3 py-2 min-h-[44px] min-w-[44px] text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
         {uploadMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
         Upload Photos
       </button>
@@ -467,7 +556,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addPartMut.mutate({ inventory_item_id: item.id, quantity: 1, price: item.price })}
                         disabled={addPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-green-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-green-700 transition-all disabled:opacity-50"
+                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-green-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                         Add
@@ -489,7 +578,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addPartMut.mutate({ inventory_item_id: item.id, quantity: 1, price: item.price })}
                         disabled={addPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-amber-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-amber-700 transition-all disabled:opacity-50"
+                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-amber-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                         Add (order needed)
@@ -519,7 +608,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addSupplierPartMut.mutate(item)}
                         disabled={addSupplierPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-yellow-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-yellow-700 transition-all disabled:opacity-50"
+                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-yellow-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-yellow-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addSupplierPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShoppingCart className="h-3 w-3" />}
                         Add + Order
@@ -587,7 +676,7 @@ function PartsSearchModal({
                             quickAddMut.mutate({ name: qaName.trim(), price: Number(qaPrice), quantity: Math.max(1, parseInt(qaQty) || 1) });
                           }}
                           disabled={quickAddMut.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                         >
                           {quickAddMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                           Add to Ticket
@@ -639,6 +728,14 @@ export function TicketDevices({
   const queryClient = useQueryClient();
   const assigned = ticket?.assigned_user;
 
+  // WEB-S6-030: resolve photo URLs through server_url so they work from any origin.
+  const { data: serverInfoData } = useQuery({
+    queryKey: ['server-info'],
+    queryFn: () => serverInfoApi.get(),
+    staleTime: 300_000,
+  });
+  const serverUrl = serverInfoData?.data?.data?.server_url ?? '';
+
   const updateDeviceMut = useMutation({
     mutationFn: ({ deviceId, data }: { deviceId: number; data: any }) =>
       ticketApi.updateDevice(deviceId, data),
@@ -685,6 +782,13 @@ export function TicketDevices({
     mutationFn: (photoId: number) => ticketApi.deletePhoto(photoId),
     onSuccess: () => { toast.success('Photo deleted'); invalidateTicket(); },
     onError: () => toast.error('Failed to delete photo'),
+  });
+
+  const updatePhotoMut = useMutation({
+    mutationFn: ({ photoId, caption }: { photoId: number; caption: string | null }) =>
+      ticketApi.updatePhoto(photoId, { caption }),
+    onSuccess: () => invalidateTicket(),
+    onError: () => toast.error('Failed to update caption'),
   });
 
   return (
@@ -952,14 +1056,14 @@ export function TicketDevices({
                     <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1.5">Pre-Repair</p>
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
-                        <div key={photo.id} className="relative group">
+                        <div key={photo.id} className="relative group flex flex-col gap-1 w-20">
                           {/* WEB-FJ-002 (Fixer-A14 2026-04-25): referrerPolicy=no-referrer on the <a> + <img>
                               so a customer's photo URL can never leak via the Referer header to a third
                               party (chrome extension, embedded preview, mis-configured CDN). Pairs with
                               `rel="noopener noreferrer"` on the anchor. Server-side signed-URL revocation
                               is still required for full GDPR Art.17 compliance — tracked in WEB-FJ-002. */}
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-                            <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                          <a href={`${serverUrl}/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+                            <img src={`${serverUrl}/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
                               referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
@@ -967,6 +1071,13 @@ export function TicketDevices({
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
+                          <input
+                            defaultValue={photo.caption || ''}
+                            onBlur={(e) => updatePhotoMut.mutate({ photoId: photo.id, caption: e.target.value.trim() || null })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Caption..."
+                            className="w-full rounded border border-surface-200 px-1 py-0.5 text-[10px] dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none"
+                          />
                         </div>
                       ))}
                     </div>
@@ -977,10 +1088,10 @@ export function TicketDevices({
                     <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1.5">Post-Repair</p>
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
-                        <div key={photo.id} className="relative group">
+                        <div key={photo.id} className="relative group flex flex-col gap-1 w-20">
                           {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer — see Pre-Repair block above. */}
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-                            <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                          <a href={`${serverUrl}/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+                            <img src={`${serverUrl}/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
                               referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
@@ -988,6 +1099,13 @@ export function TicketDevices({
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
+                          <input
+                            defaultValue={photo.caption || ''}
+                            onBlur={(e) => updatePhotoMut.mutate({ photoId: photo.id, caption: e.target.value.trim() || null })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Caption..."
+                            className="w-full rounded border border-surface-200 px-1 py-0.5 text-[10px] dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none"
+                          />
                         </div>
                       ))}
                     </div>
@@ -1055,10 +1173,10 @@ export function TicketDevices({
                     <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1.5">Pre-Repair</p>
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
-                        <div key={photo.id} className="relative group">
+                        <div key={photo.id} className="relative group flex flex-col gap-1 w-24">
                           {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-                            <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                          <a href={`${serverUrl}/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+                            <img src={`${serverUrl}/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
                               referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
@@ -1066,6 +1184,13 @@ export function TicketDevices({
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
+                          <input
+                            defaultValue={photo.caption || ''}
+                            onBlur={(e) => updatePhotoMut.mutate({ photoId: photo.id, caption: e.target.value.trim() || null })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Caption..."
+                            className="w-full rounded border border-surface-200 px-1 py-0.5 text-[10px] dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none"
+                          />
                         </div>
                       ))}
                     </div>
@@ -1076,10 +1201,10 @@ export function TicketDevices({
                     <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1.5">Post-Repair</p>
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
-                        <div key={photo.id} className="relative group">
+                        <div key={photo.id} className="relative group flex flex-col gap-1 w-24">
                           {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-                            <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                          <a href={`${serverUrl}/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+                            <img src={`${serverUrl}/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
                               referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
@@ -1087,6 +1212,13 @@ export function TicketDevices({
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
+                          <input
+                            defaultValue={photo.caption || ''}
+                            onBlur={(e) => updatePhotoMut.mutate({ photoId: photo.id, caption: e.target.value.trim() || null })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Caption..."
+                            className="w-full rounded border border-surface-200 px-1 py-0.5 text-[10px] dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none"
+                          />
                         </div>
                       ))}
                     </div>

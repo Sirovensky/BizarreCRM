@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, Percent, type LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, ticketApi, customerApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -9,6 +9,7 @@ import { CustomerSelector } from './CustomerSelector';
 import { genId } from './types';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
+import { useSettings } from '@/hooks/useSettings';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Local payload shapes ──────────────────────────────────────────
@@ -855,6 +856,130 @@ function useTotals(): Totals {
   );
 }
 
+// ─── DiscountEditor ─────────────────────────────────────────────────
+// WEB-W1-015: Cart-wide order discount entry. When store_config
+// pos_show_discount_reason = '1', the Reason field is required before
+// the discount can be applied.
+
+function DiscountEditor() {
+  const { discount, discountReason, setDiscount } = useUnifiedPosStore();
+  const { getSetting } = useSettings();
+  const requireReason = getSetting('pos_show_discount_reason') === '1';
+
+  const [open, setOpen] = useState(false);
+  const [draftAmount, setDraftAmount] = useState('');
+  const [draftReason, setDraftReason] = useState('');
+
+  // Sync draft values from store when panel opens
+  const handleOpen = () => {
+    setDraftAmount(discount > 0 ? discount.toFixed(2) : '');
+    setDraftReason(discountReason);
+    setOpen(true);
+  };
+
+  const handleApply = () => {
+    const amount = parseFloat(draftAmount) || 0;
+    if (requireReason && amount > 0 && !draftReason.trim()) {
+      toast.error('Reason is required for discounts');
+      return;
+    }
+    setDiscount(amount < 0 ? 0 : amount, draftReason.trim());
+    setOpen(false);
+  };
+
+  const handleClear = () => {
+    setDiscount(0, '');
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <div className="flex justify-between items-center text-xs text-surface-500 dark:text-surface-400">
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline"
+          aria-label="Add order discount"
+        >
+          <Percent className="h-3 w-3" />
+          {discount > 0 ? `Discount: -$${discount.toFixed(2)}` : 'Add discount'}
+        </button>
+        {discount > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="text-surface-400 hover:text-red-500 p-0.5"
+            aria-label="Remove discount"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-2.5 py-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 flex items-center gap-1">
+          <Percent className="h-3 w-3" /> Order Discount
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded p-0.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+          aria-label="Close discount editor"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      <label className="block">
+        <span className="text-[11px] font-medium text-surface-500">Amount ($)</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          pattern="[0-9.]*"
+          value={draftAmount}
+          onChange={(e) => setDraftAmount(e.target.value)}
+          placeholder="0.00"
+          autoFocus
+          className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
+        />
+      </label>
+      {(requireReason || draftReason) && (
+        <label className="block">
+          <span className="text-[11px] font-medium text-surface-500">
+            Reason{requireReason && parseFloat(draftAmount) > 0 ? <span className="text-red-500 ml-0.5">*</span> : null}
+          </span>
+          <input
+            type="text"
+            value={draftReason}
+            onChange={(e) => setDraftReason(e.target.value)}
+            placeholder="e.g. Loyalty, damaged, etc."
+            className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
+          />
+        </label>
+      )}
+      <div className="flex gap-1.5 pt-0.5">
+        <button
+          type="button"
+          onClick={handleClear}
+          className="flex-1 rounded border border-surface-300 dark:border-surface-600 py-1 text-xs font-medium text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={handleApply}
+          className="flex-1 rounded bg-teal-600 py-1 text-xs font-semibold text-white hover:bg-teal-700"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── LeftPanel ──────────────────────────────────────────────────────
 
 export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onToggle?: () => void }) {
@@ -975,6 +1100,8 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
           <span>Subtotal</span>
           <span>${totals.subtotal.toFixed(2)}</span>
         </div>
+        {/* WEB-W1-015: cart-wide discount entry with optional reason gate */}
+        <DiscountEditor />
         {totals.discountAmount > 0 && (
           <div className="flex justify-between text-xs text-green-600 dark:text-green-400">
             <span>Discount</span>

@@ -1,6 +1,6 @@
 import { MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { formatStorePhoneAsYouType } from '@/utils/phoneFormat';
+import { formatStorePhoneAsYouType, formatStorePhoneOnBlur } from '@/utils/phoneFormat';
 import {
   validateStoreAddress,
   validatePhoneInternational,
@@ -54,7 +54,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
 
   return (
     <div className="mx-auto max-w-2xl animate-in fade-in-0 slide-in-from-bottom-4 duration-300 motion-reduce:animate-none">
-      <div className="mb-6">
+<div className="mb-6 mt-6">
         <h2 className="text-3xl font-semibold tracking-tight text-surface-900 dark:text-surface-50">
           Store info
         </h2>
@@ -94,12 +94,22 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               <Phone className="h-4 w-4 text-surface-400" />
               Phone <span className="text-red-500">*</span>
             </label>
+            {/* Phone input: as-you-type format. The leading-1 strip used to
+                fire here and made typing the 11th digit (a "1") shift the
+                whole number — see phoneFormat.ts comment. Strip moved to
+                formatStorePhoneOnBlur so it only runs after focus loss. */}
             <input
               id="setup-store-phone"
               type="tel"
               value={phone}
               onChange={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
-              placeholder="+1 (555)-123-4567"
+              onBlur={(e) => {
+                const normalized = formatStorePhoneOnBlur(e.target.value);
+                if (normalized !== e.target.value) {
+                  onUpdate({ store_phone: normalized });
+                }
+              }}
+              placeholder="+1 (555) 123-4567"
               inputMode="tel"
               autoComplete="tel"
               aria-invalid={!!errors.phone}
@@ -187,9 +197,9 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             type="button"
             onClick={onNext}
             disabled={!canAdvance}
-            className="flex h-12 items-center gap-2 rounded-full bg-primary-600 px-6 font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-12 items-center gap-2 rounded-full bg-primary-500 px-6 font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Next — Extras
+            Continue
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>

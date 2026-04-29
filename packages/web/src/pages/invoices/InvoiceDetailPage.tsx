@@ -3,8 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '@/api/endpoints';
+import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
+import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -19,7 +21,6 @@ import {
   RefundReasonPicker,
   type RefundReasonCode,
 } from '@/components/billing/RefundReasonPicker';
-import { api } from '@/api/client';
 import type { InvoiceDetail } from '@/types/invoice';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -48,6 +49,7 @@ export function InvoiceDetailPage() {
     note: string;
   }>({ amount: '', reason: null, note: '' });
   const [emailReceiptSending, setEmailReceiptSending] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
   // normal "record payment" flow. Opens only on demand, once per invoice.
   const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
@@ -140,7 +142,7 @@ export function InvoiceDetailPage() {
     // Optimistically mark the invoice as voided so the UI updates instantly.
     queryClient.setQueriesData({ queryKey: ['invoice', id] }, (old: any) => {
       if (!old) return old;
-      const clone = JSON.parse(JSON.stringify(old));
+      const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
       const inv = clone?.data?.data;
       if (inv) inv.status = 'void';
       return clone;
@@ -150,10 +152,9 @@ export function InvoiceDetailPage() {
   };
 
   const creditNoteMutation = useMutation({
-    // FA-L8: submit the structured reason `{ code, note }` alongside a
-    // composed `reason` string so the existing server contract
-    // (refunds.routes.ts expects a non-empty `reason` string) keeps
-    // working until the route grows dedicated code/note columns.
+    // WEB-W2-018: migration 150 added credit_note_code / credit_note_note
+    // columns to invoices. Send code + note as dedicated fields; also keep
+    // a composed `reason` string in case older server builds are still running.
     mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) => {
       const reason = d.note
         ? `${d.code}: ${d.note}`
@@ -163,7 +164,7 @@ export function InvoiceDetailPage() {
         reason,
         code: d.code,
         note: d.note,
-      } as any);
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
@@ -207,7 +208,7 @@ export function InvoiceDetailPage() {
   // /api/v1/installments (see installment-plans.routes.ts). The wizard
   // already owns the money math + acceptance token; this just POSTs.
   const installmentPlanMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => api.post('/installments', payload),
+    mutationFn: (payload: CreateInstallmentPlanInput) => installmentApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -365,7 +366,7 @@ export function InvoiceDetailPage() {
             )}
             <button onClick={() => {
               if (invoice.ticket_id) {
-                window.open(`/print/ticket/${invoice.ticket_id}?size=letter`, '_blank');
+                setShowPrintModal(true);
               } else {
                 window.print();
               }
@@ -377,17 +378,9 @@ export function InvoiceDetailPage() {
                 <CreditCard className="h-4 w-4" /> Credit Note
               </button>
             )}
-            {blockchypEnabled && cardPaymentWithTxn && invoice.status !== 'void' && (
-              <button
-                onClick={() => {
-                  setTipAdjustForm({ transaction_id: cardPaymentWithTxn.processor_transaction_id ?? '', new_tip: '' });
-                  setShowTipAdjust(true);
-                }}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
-              >
-                <Receipt className="h-4 w-4" /> Adjust Tip
-              </button>
-            )}
+            {/* WEB-W2-017: Tip-adjust removed — BlockChyp SDK does not expose
+                adjustTip. Re-enable when SDK ships the endpoint. Void + re-charge
+                is the current workaround per the server's NOT_SUPPORTED response. */}
             {invoice.status !== 'void' && (
               <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                 <Ban className="h-4 w-4" /> Void
@@ -611,10 +604,13 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
+                    id="payment-amount"
                     type="number" step="0.01" min="0.01"
                     value={paymentForm.amount}
                     onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                     placeholder={Number(invoice.amount_due).toFixed(2)}
+                    aria-invalid={paymentForm.amount !== '' && parseFloat(paymentForm.amount) <= 0 ? true : undefined}
+                    aria-describedby="payment-amount-label"
                     className="input w-full pl-6"
                     autoFocus
                   />
@@ -651,7 +647,7 @@ export function InvoiceDetailPage() {
               <button
                 onClick={handleTerminalPay}
                 disabled={terminalProcessing || payMutation.isPending}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {terminalProcessing ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
@@ -668,7 +664,7 @@ export function InvoiceDetailPage() {
             )}
             <div className="flex gap-3">
               <button onClick={() => setShowPayment(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {payMutation.isPending ? 'Recording...' : 'Record Payment'}
               </button>
             </div>
@@ -691,8 +687,8 @@ export function InvoiceDetailPage() {
               {invoice?.ticket_id && (
                 <button
                   onClick={() => {
-                    window.open(`/print/ticket/${invoice.ticket_id}?size=receipt80`, '_blank');
                     setShowReceiptPrompt(false);
+                    setShowPrintModal(true);
                   }}
                   className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
                 >
@@ -721,7 +717,7 @@ export function InvoiceDetailPage() {
                 <button
                   onClick={handleEmailReceipt}
                   disabled={emailReceiptSending}
-                  className="flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   <Mail className="h-4 w-4" />
                   {emailReceiptSending ? 'Sending...' : `Email to ${invoice.customer_email}`}
@@ -763,10 +759,13 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
+                    id="credit-amount"
                     type="number" step="0.01" min="0.01" max={Number(invoice.amount_paid) || 0}
                     value={creditNoteForm.amount}
                     onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
                     placeholder={(Number(invoice.amount_paid) || 0).toFixed(2)}
+                    aria-invalid={creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > (Number(invoice.amount_paid) || 0)) ? true : undefined}
+                    aria-describedby="credit-amount-label"
                     className="input w-full pl-6"
                     autoFocus
                   />
@@ -796,7 +795,7 @@ export function InvoiceDetailPage() {
               <button
                 onClick={handleCreditNote}
                 disabled={creditNoteMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {creditNoteMutation.isPending ? 'Creating...' : 'Create Credit Note'}
               </button>
@@ -817,57 +816,9 @@ export function InvoiceDetailPage() {
         onCancel={() => setShowVoidConfirm(false)}
       />
 
-      {/* Tip Adjust Modal */}
-      {showTipAdjust && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Adjust Tip</h2>
-              <button aria-label="Close" onClick={() => setShowTipAdjust(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-              Adjust the tip on terminal transaction <span className="font-mono text-xs">{tipAdjustForm.transaction_id}</span>.
-            </p>
-            <div>
-              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">New Tip Amount</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={tipAdjustForm.new_tip}
-                  onChange={(e) => setTipAdjustForm({ ...tipAdjustForm, new_tip: e.target.value })}
-                  className="input w-full pl-6"
-                  autoFocus
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowTipAdjust(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  const amount = parseFloat(tipAdjustForm.new_tip);
-                  if (isNaN(amount) || amount < 0) {
-                    toast.error('Enter a valid tip amount');
-                    return;
-                  }
-                  tipAdjustMutation.mutate({ transaction_id: tipAdjustForm.transaction_id, new_tip: amount });
-                }}
-                disabled={tipAdjustMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {tipAdjustMutation.isPending ? 'Adjusting...' : 'Adjust Tip'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* WEB-W2-017: Tip-adjust modal removed — BlockChyp SDK does not expose
+          adjustTip. Modal code preserved in git history; re-wire when SDK ships
+          the endpoint and the server returns success:true from /blockchyp/adjust-tip. */}
 
       {/* FA-L4 — Installment Plan Wizard. Mounts into a modal so it doesn't
           push the invoice detail content down when it's not in use. */}
@@ -883,6 +834,14 @@ export function InvoiceDetailPage() {
             />
           </div>
         </div>
+      )}
+
+      {showPrintModal && invoice.ticket_id && (
+        <PrintPreviewModal
+          ticketId={invoice.ticket_id}
+          invoiceId={invoiceId}
+          onClose={() => setShowPrintModal(false)}
+        />
       )}
     </div>
   );

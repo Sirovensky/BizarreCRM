@@ -370,7 +370,7 @@ export function SuccessScreen() {
             <button
               onClick={handleSendSms}
               disabled={smsSending}
-              className="flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10"
+              className="flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10"
             >
               <MessageSquare className="h-4 w-4" />
               {smsSending ? 'Sending...' : 'Send Receipt via SMS'}
@@ -380,7 +380,7 @@ export function SuccessScreen() {
             <button
               onClick={handleSendEmail}
               disabled={emailSending}
-              className="flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
+              className="flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
             >
               <Mail className="h-4 w-4" />
               {emailSending ? 'Sending...' : 'Email Receipt'}

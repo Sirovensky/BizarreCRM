@@ -602,7 +602,7 @@ function CallLogPanel() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Previous
           </button>
@@ -612,7 +612,7 @@ function CallLogPanel() {
           <button
             onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
             disabled={page >= pagination.total_pages}
-            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Next
           </button>
@@ -716,7 +716,7 @@ function NewMessageModal({ onClose, onStart }: {
           <button
             onClick={() => phoneInput.trim() && onStart(phoneInput.replace(/\D/g, ''))}
             disabled={!phoneInput.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Start Conversation
           </button>
@@ -880,7 +880,7 @@ function LinkCustomerPopover({
               createMut.mutate(createForm);
             }}
             disabled={createMut.isPending}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {createMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Create &amp; Link
@@ -1143,19 +1143,8 @@ export function CommunicationPage() {
     enabled: mainView === 'email',
     staleTime: 60_000,
   });
-  // WEB-FC-017: narrow email thread shape instead of `any[]`.
-  interface EmailThread {
-    id: number | string;
-    subject?: string | null;
-    last_message_at?: string | null;
-    from_address?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    unread_count?: number;
-    [key: string]: unknown;
-  }
-  const emailPayload = (emailData?.data as { data?: { threads?: EmailThread[]; enabled?: boolean } } | undefined)?.data;
-  const emailThreads: EmailThread[] = emailPayload?.threads ?? [];
+  const emailPayload = (emailData?.data as any)?.data as { threads: any[]; enabled: boolean } | undefined;
+  const emailThreads: any[] = emailPayload?.threads ?? [];
   const emailEnabled: boolean = emailPayload?.enabled ?? false;
 
   // WEB-S6-034: Debounce search so the API is only hit 300ms after the user
@@ -1176,6 +1165,9 @@ export function CommunicationPage() {
   // poll was duplicating the same work plus burning a steady request/min on
   // every open Communications tab. WS reconnect on visibilitychange picks up
   // any messages missed while hidden.
+  // WEB-FO-010 (Fixer-426B 2026-04-26): opt in to refetchOnWindowFocus.
+  // The conversation list is shared-workflow state (multiple staff tabs) so a
+  // tech returning from another app should see newly received threads.
   const { data: convData, isLoading: convLoading } = useQuery({
     // WEB-S6-034: include debouncedSearch in the cache key so a new search
     // triggers a fresh server-side fetch.
@@ -1187,6 +1179,7 @@ export function CommunicationPage() {
       return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
     },
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
@@ -1303,7 +1296,7 @@ export function CommunicationPage() {
       const prev = queryClient.getQueryData(['sms-conversations']);
       queryClient.setQueryData(['sms-conversations'], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.conversations ?? [];
         const c = list.find((c: any) => c.conv_phone === phone);
         if (c) c.is_flagged = !c.is_flagged;
@@ -1324,7 +1317,7 @@ export function CommunicationPage() {
       const prev = queryClient.getQueryData(['sms-conversations']);
       queryClient.setQueryData(['sms-conversations'], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.conversations ?? [];
         const c = list.find((c: any) => c.conv_phone === phone);
         if (c) c.is_pinned = !c.is_pinned;
@@ -1808,7 +1801,7 @@ export function CommunicationPage() {
           ) : (
             <div className="space-y-2 max-w-2xl">
               <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">Email Threads</h2>
-              {emailThreads.map((thread) => (
+              {emailThreads.map((thread: any) => (
                 <div
                   key={thread.id}
                   className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-4 py-3"
@@ -1991,7 +1984,7 @@ export function CommunicationPage() {
                           }
                         }}
                         disabled={markAsResolvedMutation.isPending || !selectedPhone}
-                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-green-900/20 dark:hover:text-green-400"
                         title="Mark resolved (read)"
                       >
                         <CheckCheck className="h-4 w-4" />
@@ -2211,7 +2204,7 @@ export function CommunicationPage() {
                 <button
                   onClick={() => imageInputRef.current?.click()}
                   disabled={uploading}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-300 text-surface-500 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-300 text-surface-500 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                   title="Attach image (MMS)"
                 >
                   {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
@@ -2355,7 +2348,7 @@ export function CommunicationPage() {
                   onClick={handleSend}
                   disabled={(!composeText.trim() && !attachedMedia) || sendMutation.isPending}
                   className={cn(
-                    'flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium text-white transition-colors disabled:opacity-50',
+                    'flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
                     scheduledAt
                       ? 'bg-amber-600 hover:bg-amber-700'
                       : 'bg-primary-600 hover:bg-primary-700',

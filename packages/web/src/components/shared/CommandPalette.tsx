@@ -436,7 +436,8 @@ export function CommandPalette() {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
+        data-state="open"
+        className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200 motion-reduce:animate-none"
         onClick={close}
       />
 
@@ -446,7 +447,8 @@ export function CommandPalette() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="command-palette-title"
-          className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+          data-state="open"
+          className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
           onClick={(e) => e.stopPropagation()}
         >
           <h2 id="command-palette-title" className="sr-only">Command palette</h2>

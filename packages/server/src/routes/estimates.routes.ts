@@ -75,6 +75,19 @@ router.get(
     const pageSize = parsePageSize(req.query.pagesize, 20);
     const status = (req.query.status as string || '').trim();
     const keyword = (req.query.keyword as string || '').trim();
+    // WEB-W2-033: sortable columns
+    const sortByRaw = (req.query.sort_by as string || '').trim();
+    const sortDirRaw = (req.query.sort_dir as string || '').toLowerCase();
+    const ESTIMATE_SORT_COLS: Record<string, string> = {
+      created_at: 'e.created_at',
+      total: 'e.total',
+      status: 'e.status',
+      order_id: 'e.order_id',
+      valid_until: 'e.valid_until',
+      customer: "c.last_name || ' ' || c.first_name",
+    };
+    const sortCol = ESTIMATE_SORT_COLS[sortByRaw] ?? 'e.created_at';
+    const sortDir = sortDirRaw === 'asc' ? 'ASC' : 'DESC';
 
     const conditions: string[] = ['e.is_deleted = 0'];
     const params: unknown[] = [];
@@ -109,7 +122,7 @@ router.get(
       LEFT JOIN customers c ON c.id = e.customer_id
       LEFT JOIN users u ON u.id = e.created_by
       ${whereClause}
-      ORDER BY e.created_at DESC
+      ORDER BY ${sortCol} ${sortDir}
       LIMIT ? OFFSET ?
     `, ...params, pageSize, offset);
 
@@ -999,6 +1012,37 @@ router.post(
     }
 
     res.json({ success: true, data: responseData });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /:id/reject — Staff rejects an estimate (WEB-W2-020)
+// ---------------------------------------------------------------------------
+router.post(
+  '/:id/reject',
+  requirePermission('estimates.edit'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+
+    const existing = await adb.get<{ id: number; status: string }>(
+      'SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0',
+      id,
+    );
+    if (!existing) throw new AppError('Estimate not found', 404);
+
+    if (existing.status === 'rejected') throw new AppError('Estimate is already rejected', 400);
+    if (existing.status === 'converted') throw new AppError('Cannot reject a converted estimate', 400);
+
+    await adb.run(
+      "UPDATE estimates SET status = 'rejected', updated_at = datetime('now') WHERE id = ?",
+      id,
+    );
+
+    audit(req.db, 'estimate_rejected', req.user!.id, req.ip || 'unknown', { estimate_id: id });
+    logger.info('estimate rejected', { estimate_id: id });
+
+    res.json({ success: true, data: { id, status: 'rejected' } });
   }),
 );
 

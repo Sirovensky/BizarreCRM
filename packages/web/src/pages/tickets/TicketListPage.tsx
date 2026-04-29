@@ -19,6 +19,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
 import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 
 // ─── Optional column definitions ──────────────────────────────────
@@ -258,9 +259,13 @@ function SavedFiltersDropdown({
                 </button>
                 <button
                   onClick={async () => {
-                    await ticketApi.savedFilters.delete(sf.id);
-                    queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
-                    toast.success('Filter deleted');
+                    try {
+                      await ticketApi.savedFilters.delete(sf.id);
+                      queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                      toast.success('Filter deleted');
+                    } catch (err) {
+                      toast.error(formatApiError(err));
+                    }
                   }}
                   className="ml-2 text-surface-400 hover:text-red-500 shrink-0"
                   title="Delete filter"
@@ -276,11 +281,15 @@ function SavedFiltersDropdown({
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!filterName.trim()) return;
-                  await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
-                  queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
-                  toast.success('Filter saved');
-                  setFilterName('');
-                  setSaving(false);
+                  try {
+                    await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
+                    queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                    toast.success('Filter saved');
+                    setFilterName('');
+                    setSaving(false);
+                  } catch (err) {
+                    toast.error(formatApiError(err));
+                  }
                 }}
                 className="flex gap-1.5"
               >
@@ -649,7 +658,7 @@ const TicketRow = memo(function TicketRow({
                     }).finally(() => { btn.disabled = false; });
                   }}>
                     <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500 focus-visible:border-green-500" />
-                    <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                    <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-1">
                       <Send className="h-3 w-3" /> Send
                     </button>
                   </form>
@@ -895,8 +904,16 @@ export function TicketListPage() {
     }
     return filtered;
   }, [rawTickets, showClosed, showEmpty, statuses]);
-  const statusCounts: { status_id?: number; id?: number; name?: string; status_name?: string; color: string; count: number }[] =
+  // WEB-S7-029: use filtered_status_counts when any filter is active so the
+  // sidebar shows accurate per-status counts rather than all-ticket totals.
+  const hasActiveFilters = !!(keyword || assignedTo || dateFilter || statusGroupFilter);
+  const rawStatusCounts: { status_id?: number; id?: number; name?: string; status_name?: string; color: string; count: number }[] =
     ticketData?.data?.data?.status_counts || ticketData?.data?.status_counts || [];
+  const filteredStatusCounts: typeof rawStatusCounts =
+    ticketData?.data?.data?.filtered_status_counts || ticketData?.data?.filtered_status_counts || [];
+  const statusCounts = hasActiveFilters && filteredStatusCounts.length > 0
+    ? filteredStatusCounts
+    : rawStatusCounts;
 
   // Compute total created count
   const totalCreated = statusCounts.reduce((sum, sc) => sum + (sc.count || 0), 0);
@@ -910,7 +927,7 @@ export function TicketListPage() {
       const prev = queryClient.getQueryData(['tickets', ticketParams]);
       queryClient.setQueryData(['tickets', ticketParams], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets || [];
         const t = list.find((t: any) => t.id === ticketId);
         if (t) {
@@ -973,7 +990,7 @@ export function TicketListPage() {
       // Optimistic hide: drop the row from every cached tickets list page.
       queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets;
         if (Array.isArray(list)) {
           const filtered = list.filter((t: any) => t.id !== id);
@@ -1028,7 +1045,7 @@ export function TicketListPage() {
       const prev = queryClient.getQueryData(['tickets', ticketParams]);
       queryClient.setQueryData(['tickets', ticketParams], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets || [];
         const t = list.find((t: any) => t.id === id);
         if (t) t.is_pinned = !t.is_pinned;
@@ -1123,6 +1140,18 @@ export function TicketListPage() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [bulkStatusOpen]);
+
+  // Bulk assign state
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const bulkAssignRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!bulkAssignOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (bulkAssignRef.current && !bulkAssignRef.current.contains(e.target as Node)) setBulkAssignOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [bulkAssignOpen]);
 
   // ─── Render ───────────────────────────────────────────────────────
   return (
@@ -1396,7 +1425,9 @@ export function TicketListPage() {
           <div className="flex flex-wrap items-center gap-2 pb-3 sm:pb-0">
             <div className="relative flex-1 min-w-[150px] max-w-xs">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+              <label htmlFor="tlist-search" className="sr-only">Search tickets</label>
               <input
+                id="tlist-search"
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
@@ -1437,7 +1468,9 @@ export function TicketListPage() {
             </div>
 
             {/* Status filter dropdown */}
+            <label htmlFor="tlist-filter-status" className="sr-only">Filter by status</label>
             <select
+              id="tlist-filter-status"
               value={statusFilter}
               onChange={(e) => setParam('status_id', e.target.value)}
               className="hidden sm:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
@@ -1450,7 +1483,10 @@ export function TicketListPage() {
 
             {/* Assigned To filter — CROSS1: hidden when assignment feature off */}
             {assignmentEnabled && (
+              <>
+              <label htmlFor="tlist-filter-assigned" className="sr-only">Filter by assigned tech</label>
               <select
+                id="tlist-filter-assigned"
                 value={assignedTo}
                 onChange={(e) => setParam('assigned_to', e.target.value)}
                 className="hidden md:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
@@ -1461,6 +1497,7 @@ export function TicketListPage() {
                   <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
                 ))}
               </select>
+              </>
             )}
 
             {/* Saved filter presets */}
@@ -1548,6 +1585,43 @@ export function TicketListPage() {
                 </div>
               )}
             </div>
+            {assignmentEnabled && (
+              <div className="relative" ref={bulkAssignRef}>
+                <button
+                  onClick={() => setBulkAssignOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+                >
+                  Assign <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {bulkAssignOpen && (
+                  <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                    <div className="max-h-64 overflow-y-auto py-1">
+                      <button
+                        onClick={() => {
+                          bulkMut.mutate({ action: 'assign', value: undefined });
+                          setBulkAssignOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700 text-surface-500 dark:text-surface-400 italic"
+                      >
+                        Unassign
+                      </button>
+                      {users.map((u) => (
+                        <button
+                          key={u.id}
+                          onClick={() => {
+                            bulkMut.mutate({ action: 'assign', value: u.id });
+                            setBulkAssignOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700"
+                        >
+                          <span className="text-surface-700 dark:text-surface-200">{u.first_name} {u.last_name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={() => setConfirmDlg({ open: true, bulk: true, ticketLabel: `${selected.size} ticket(s)` })}
               className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 shadow-sm transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-surface-800 dark:text-red-400"
@@ -1751,7 +1825,7 @@ export function TicketListPage() {
                 aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1793,7 +1867,7 @@ export function TicketListPage() {
                   next.set('page', String(page + 1));
                   return next;
                 })}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

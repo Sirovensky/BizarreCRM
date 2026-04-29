@@ -123,6 +123,59 @@ trackInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// ─── Effective base-domain resolver ───────────────────────────────
+//
+// Hardcoding `config.baseDomain` ("bizarrecrm.com") into every tenant URL
+// breaks local dev: a developer hitting https://localhost/signup gets a
+// success response pointing at https://viztest.bizarrecrm.com — which
+// resolves to whatever's at that real DNS in production, NOT localhost.
+//
+// Derive the effective base domain from the incoming Host header instead.
+// Strip the first label if the request looks like `<slug>.<domain>`.
+// Allowlist suffix matching against TRUSTED_BASE_HOSTS prevents an
+// attacker from sending a forged Host header that redirects users to
+// `evil.com` after signup.
+//
+// Allowlist:
+//   - whatever's configured (`config.baseDomain`)
+//   - `localhost` (always allowed — local dev runs on bare or *.localhost)
+//   - `127.0.0.1` (less common but supported for hosts-file workarounds)
+const TRUSTED_BASE_HOSTS = new Set<string>([
+  config.baseDomain,
+  'localhost',
+  '127.0.0.1',
+]);
+
+function effectiveBaseDomain(req: Request): string {
+  const rawHost = (req.headers.host || '').toLowerCase().trim();
+  if (!rawHost) return config.baseDomain;
+  // Strip port for matching (port preserved in returned value when used in
+  // URL template — caller must include req.headers.host exact for that).
+  // For our purposes we want the base DOMAIN only; ports are baked into
+  // the slug subdomain hostname via Host header at request time.
+  const hostNoPort = rawHost.replace(/:\d+$/, '');
+
+  // Already a base host (no subdomain prefix) — return as-is if trusted.
+  if (TRUSTED_BASE_HOSTS.has(hostNoPort)) return rawHost; // keep port suffix for dev
+
+  // Try stripping the first label and matching trusted suffix.
+  const dotIdx = hostNoPort.indexOf('.');
+  if (dotIdx > 0) {
+    const remainder = hostNoPort.slice(dotIdx + 1);
+    if (TRUSTED_BASE_HOSTS.has(remainder)) {
+      // Reconstruct with port suffix from the original Host header so e.g.
+      // `viztest.localhost:443` → `localhost:443` (preserving the port).
+      const portSuffix = rawHost.slice(hostNoPort.length); // e.g. ':443' or ''
+      return remainder + portSuffix;
+    }
+  }
+
+  // Host looks suspicious (forged or unrecognized) — fall back to the
+  // configured canonical domain. Never propagate an untrusted host back
+  // into a redirect target.
+  return config.baseDomain;
+}
+
 // ─── SQLite-backed rate limiters ──────────────────────────────────
 
 // Signup creation: per-IP hourly ceiling (R5).
@@ -436,13 +489,14 @@ async function issueSignupTokens(
 // creds inside platform_config; we read those via the same sendEmail
 // helper that the rest of the app uses.
 async function sendVerificationEmail(
+  req: Request,
   db: any,
   toEmail: string,
   token: string,
   slug: string,
   shopName: string,
 ): Promise<boolean> {
-  const verifyUrl = `https://${config.baseDomain}/api/v1/signup/verify/${encodeURIComponent(token)}`;
+  const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(token)}`;
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="margin-top:0">Confirm your shop</h2>
@@ -589,7 +643,7 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
       data: {
         tenant_id: result.tenantId,
         slug: result.slug,
-        url: `https://${result.slug}.${config.baseDomain}`,
+        url: `https://${result.slug}.${effectiveBaseDomain(req)}`,
         message: 'Shop created successfully (dev mode — email verification bypassed).',
         ...(tokenResult && {
           accessToken: tokenResult.accessToken,
@@ -618,7 +672,40 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // restarts between here and the user clicking the verification link.
   logger.info('pending signup created', { slug: normalizedSlug, email: normalizedEmail, tokenPrefix: verifyToken.slice(0, 8) });
 
-  const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
+  // WIZARD-EMAIL-1 (TEMPORARY): when the dev-skip gate is on, do NOT attempt
+  // to send the verification email — outbound SMTP is not yet wired in this
+  // build, so any send fails and bricks the signup flow. Instead log the
+  // verify token URL so an operator can manually click it, and return success
+  // so the frontend lands on its "Check your email" screen where the
+  // dev-only "Skip email check" button can finish the provisioning.
+  //
+  // Triple-gated identical to the dev-skip endpoint itself:
+  //   NODE_ENV !== 'production'  AND  WIZARD_DEV_SKIP_EMAIL === '1'
+  //
+  // Removal: tracked in TODO.md as WIZARD-EMAIL-1.
+  const devSkipEmail =
+    process.env.NODE_ENV !== 'production' &&
+    process.env.WIZARD_DEV_SKIP_EMAIL === '1';
+
+  if (devSkipEmail) {
+    const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(verifyToken)}`;
+    logger.warn('[WIZARD-EMAIL-1] dev-skip mode — verification email NOT sent', {
+      slug: normalizedSlug,
+      email: normalizedEmail,
+      verifyUrl,
+      tokenPrefix: verifyToken.slice(0, 8),
+    });
+    audit(req.db, 'signup_pending_dev_skip_email', null, ip, { slug: normalizedSlug, email: normalizedEmail });
+    res.status(202).json({
+      success: true,
+      data: {
+        message: 'Email sending is disabled in this dev build. Use the "Skip email check (dev only)" button to provision the shop.',
+      },
+    });
+    return;
+  }
+
+  const emailSent = await sendVerificationEmail(req, req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
   if (!emailSent) {
     // Remove the pending entry so this attempt doesn't occupy the email quota
     // slot without the user being able to complete it.
@@ -667,7 +754,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: 'Invalid or expired verification link. Please sign up again.' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=invalid_link`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=invalid_link`);
     }
     return;
   }
@@ -683,7 +770,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: 'This verification link has expired. Please sign up again.' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=link_expired`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=link_expired`);
     }
     return;
   }
@@ -704,7 +791,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=provisioning_failed`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=provisioning_failed`);
     }
     return;
   }
@@ -716,7 +803,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   // a signup flow — the POST handler above never provisions in prod.
   const tokenResult = await issueSignupTokens(result.slug!, req, res);
 
-  const tenantUrl = `https://${result.slug}.${config.baseDomain}`;
+  const tenantUrl = `https://${result.slug}.${effectiveBaseDomain(req)}`;
 
   // Determine response mode:
   //   ?format=json  — explicit API request (iOS/Android fetch)
@@ -747,6 +834,109 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     // will carry the cookies automatically.
     res.redirect(`${tenantUrl}/login?verified=1`);
   }
+}));
+
+// ─── POST /signup/verify/dev-skip ──────────────────────────────────
+// WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
+//
+// Outbound email is not yet wired in this build, so the wizard's
+// email-verification step in StepVerifyEmail can't actually receive a
+// code. To unblock end-to-end dogfooding of the SaaS-mode wizard, this
+// endpoint short-circuits the token-link step: given a slug + adminEmail
+// matching a pending signup, it provisions the tenant immediately as if
+// the email had been verified.
+//
+// Gated behind BOTH:
+//   process.env.NODE_ENV !== 'production'
+//   process.env.WIZARD_DEV_SKIP_EMAIL === '1'
+//
+// Returns 404 (not 403) in production so it's indistinguishable from a
+// route that doesn't exist. Audit-logs every call regardless of outcome.
+//
+// REMOVAL: tracked as TODO `WIZARD-EMAIL-1`. Delete this entire handler,
+// the matching button in StepVerifyEmail.tsx, and the env-var check once
+// SMTP is wired and the real /verify/:token flow is dogfooded.
+router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  // Gate 1 — production hard-block. 404 not 403 to avoid surfacing existence.
+  if (process.env.NODE_ENV === 'production' || process.env.WIZARD_DEV_SKIP_EMAIL !== '1') {
+    res.status(404).json({ success: false, message: 'Not found' });
+    return;
+  }
+  if (!config.multiTenant) {
+    res.status(404).json({ success: false, message: 'Not available' });
+    return;
+  }
+
+  const slug = String(req.body?.slug || '').trim().toLowerCase();
+  const adminEmail = String(req.body?.adminEmail || req.body?.email || '').trim().toLowerCase();
+  if (!slug || !adminEmail) {
+    res.status(400).json({ success: false, message: 'slug and adminEmail are required' });
+    return;
+  }
+
+  // Find the pending entry by (slug + email). Token is irrelevant on this path.
+  let matchedToken: string | null = null;
+  let matchedEntry: ReturnType<typeof pendingSignups.get> = undefined;
+  for (const [token, entry] of pendingSignups) {
+    if (entry.slug === slug && entry.adminEmail.toLowerCase() === adminEmail) {
+      matchedToken = token;
+      matchedEntry = entry;
+      break;
+    }
+  }
+  if (!matchedToken || !matchedEntry) {
+    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
+      slug, adminEmail, reason: 'no_matching_pending_entry',
+    });
+    res.status(404).json({ success: false, message: 'No pending signup found for that slug + email' });
+    return;
+  }
+
+  // Same single-use guarantee as the real /verify/:token path.
+  pendingSignups.delete(matchedToken);
+
+  const result = await provisionTenant({
+    slug: matchedEntry.slug,
+    name: matchedEntry.shopName,
+    adminEmail: matchedEntry.adminEmail,
+    adminPassword: matchedEntry.adminPassword,
+    adminFirstName: matchedEntry.adminFirstName,
+    adminLastName: matchedEntry.adminLastName,
+  });
+
+  if (!result.success) {
+    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
+      slug, adminEmail, reason: result.error,
+    });
+    res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+    return;
+  }
+
+  audit(req.db, 'signup_dev_skip_succeeded', null, req.ip || 'unknown', {
+    slug: result.slug, email: matchedEntry.adminEmail,
+  });
+  logger.warn('[WIZARD-EMAIL-1] dev-skip endpoint used — REMOVE BEFORE PRODUCTION', {
+    slug: result.slug, adminEmail,
+  });
+
+  // Issue tokens just like the real /verify path does.
+  const tokenResult = await issueSignupTokens(result.slug!, req, res);
+  const tenantUrl = `https://${result.slug}.${effectiveBaseDomain(req)}`;
+
+  res.status(201).json({
+    success: true,
+    data: {
+      tenant_id: result.tenantId,
+      slug: result.slug,
+      url: tenantUrl,
+      message: 'Shop created (dev-skip).',
+      ...(tokenResult && {
+        accessToken: tokenResult.accessToken,
+        user: tokenResult.user,
+        tenant: { id: result.tenantId, slug: result.slug, name: matchedEntry.shopName },
+      }),
+    },
+  });
 }));
 
 // ─── GET /signup/check-slug/:slug ──────────────────────────────────

@@ -283,7 +283,7 @@ router.get('/recording/:id', asyncHandler(async (req: Request, res: Response) =>
   const adb = req.asyncDb;
   const call = await adb.get<AnyRow>(
     'SELECT user_id, direction, recording_local_path, recording_url FROM call_logs WHERE id = ?',
-    parseInt(id, 10),
+    parseInt(String(id), 10),
   );
   if (!call) throw new AppError('Recording not found', 404);
 
@@ -319,7 +319,7 @@ router.get('/recording/:id', asyncHandler(async (req: Request, res: Response) =>
 // ---------------------------------------------------------------------------
 router.get('/calls/:id/recording-url', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
   if (!callId || isNaN(callId)) throw new AppError('Invalid call id', 400);
 
   const call = await adb.get<AnyRow>(

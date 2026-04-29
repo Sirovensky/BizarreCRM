@@ -362,10 +362,14 @@ export function assertRendererOrigin(event: Electron.IpcMainInvokeEvent): void {
         );
       }
     } else {
-      // No dev server URL configured — fall back to file:// only.
-      if (!url.startsWith('file://')) {
+      // DASH-ELEC-212: No dev server URL configured — restrict to file:// URLs
+      // that live under the app root rather than accepting any file:// origin
+      // (a hostile file could otherwise invoke IPC from a different location).
+      const appRoot = path.resolve(app.getAppPath());
+      const appRootPrefix = pathToFileURL(appRoot + path.sep).href;
+      if (!url.startsWith(appRootPrefix)) {
         throw new Error(
-          `IPC_ORIGIN_REJECTED: expected file:// renderer (no VITE_DEV_SERVER_URL set), got "${url.slice(0, 256)}"`
+          `IPC_ORIGIN_REJECTED: expected file:// renderer under "${appRoot}" (no VITE_DEV_SERVER_URL set), got "${url.slice(0, 256)}"`
         );
       }
     }
@@ -1058,6 +1062,15 @@ export function registerManagementIpc(): void {
   // logout endpoint for super-admin sessions.)
   ipcMain.handle('management:logout', wrapHandler(async (event) => {
     assertRendererOrigin(event);
+    // DASH-ELEC-214: tell the server to invalidate the JWT before clearing
+    // the in-memory token. Fire-and-forget is intentional — a network failure
+    // or offline server must not prevent the dashboard from logging out locally.
+    // The token clears regardless so the UI returns to the login screen.
+    try {
+      await apiRequest('POST', '/super-admin/api/logout');
+    } catch {
+      // Server may be offline; local logout still proceeds.
+    }
     setSuperAdminToken(null);
     return { success: true, data: { local: true } };
   }));
@@ -1648,16 +1661,19 @@ export function registerManagementIpc(): void {
   // the previous git checkout. `get-rollback-info` tells the renderer
   // whether a snapshot exists; `rollback-update` executes the restore.
 
-  ipcMain.handle('management:get-rollback-info', async (event) => {
+  // DASH-ELEC-208: wrap with wrapHandler so unhandled rejections produce a
+  // structured { success:false } response instead of an unstructured Electron
+  // promise rejection that the renderer cannot inspect.
+  ipcMain.handle('management:get-rollback-info', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const sha = readSnapshot();
     if (!sha) {
       return { success: true, data: { available: false } };
     }
     return { success: true, data: { available: true, sha } };
-  });
+  }));
 
-  ipcMain.handle('management:rollback-update', async (event) => {
+  ipcMain.handle('management:rollback-update', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const sha = readSnapshot();
     if (!sha) {
@@ -1730,13 +1746,13 @@ export function registerManagementIpc(): void {
         message: sanitizeErrorMessage(rawMessage, root),
       };
     }
-  });
+  }));
 
-  ipcMain.handle('management:clear-rollback', async (event) => {
+  ipcMain.handle('management:clear-rollback', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     clearSnapshot();
     return { success: true };
-  });
+  }));
 
   // UP6: Called by the UpdatesPage after the dashboard reopens so the
   // server can record the final outcome (success/failure + after_sha).
@@ -1815,9 +1831,13 @@ export function registerManagementIpc(): void {
     return bodyOf(res);
   }));
 
+  // DASH-ELEC-255: backup + restore can take several minutes on large DBs;
+  // give them a 5-minute ceiling instead of the default 30 s.
+  const BACKUP_TIMEOUT_MS = 5 * 60 * 1000;
+
   ipcMain.handle('admin:run-backup', wrapHandler(async (event) => {
     assertRendererOrigin(event);
-    const res = await apiRequest('POST', '/api/v1/admin/backup');
+    const res = await apiRequest('POST', '/api/v1/admin/backup', null, 'authenticated', BACKUP_TIMEOUT_MS);
     return bodyOf(res);
   }));
 
@@ -1846,7 +1866,7 @@ export function registerManagementIpc(): void {
     // Server guards this with a global mutex + safety-copy of the current DB
     // before swapping in the restore target, so a mid-restore crash still
     // leaves a rollback path. UI still confirms with type-the-filename below.
-    const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`);
+    const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`, null, 'authenticated', BACKUP_TIMEOUT_MS);
     return bodyOf(res);
   }));
 

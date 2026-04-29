@@ -12,12 +12,14 @@ import {
   Pause,
   CircleCheck,
   CircleSlash,
+  Pencil,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 /**
  * CampaignsPage — marketing automation dashboard.
@@ -95,6 +97,7 @@ const STATUS_STYLES: Record<Campaign['status'], string> = {
 export function CampaignsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; sample: Array<{ rendered_body: string }> } | null>(null);
   // Confirm dialogs for destructive actions — Run-now dispatches the segment
   // immediately to potentially thousands of recipients, and Delete is final.
@@ -285,13 +288,15 @@ export function CampaignsPage() {
                           const total = (res.data as any)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
-                        } catch (err: any) {
-                          if (ac.signal.aborted || err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+                        } catch (err: unknown) {
+                          const e = err as { name?: string };
+                          if (ac.signal.aborted || e?.name === 'CanceledError' || e?.name === 'AbortError') return;
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
+                          toast.error(formatApiError(err));
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Play className="h-3 w-3" /> Run now
                     </button>
@@ -299,7 +304,7 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'active' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <CircleCheck className="h-3 w-3" /> Activate
                       </button>
@@ -307,7 +312,7 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'paused' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <Pause className="h-3 w-3" /> Pause
                       </button>
@@ -315,15 +320,22 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'draft' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <CircleSlash className="h-3 w-3" /> Restore
                       </button>
                     )}
+                    {/* WEB-S6-021: edit button — opens the create modal pre-populated */}
+                    <button
+                      onClick={() => setEditingCampaign(campaign)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800"
+                    >
+                      <Pencil className="h-3 w-3" /> Edit
+                    </button>
                     <button
                       onClick={() => setDeleteConfirm(campaign)}
                       disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Trash2 className="h-3 w-3" /> Delete
                     </button>
@@ -341,6 +353,19 @@ export function CampaignsPage() {
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
+            queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+          }}
+        />
+      )}
+
+      {/* WEB-S6-021: edit modal — same modal component, pre-populated via initialCampaign */}
+      {editingCampaign && (
+        <CreateCampaignModal
+          segments={segments}
+          initialCampaign={editingCampaign}
+          onClose={() => setEditingCampaign(null)}
+          onCreated={() => {
+            setEditingCampaign(null);
             queryClient.invalidateQueries({ queryKey: ['campaigns'] });
           }}
         />
@@ -400,21 +425,85 @@ export function CampaignsPage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Trigger rule helpers (WEB-S6-020)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parsed representation of the trigger_rule_json for the types that have
+ * a meaningful UI. The server stores this as an opaque JSON string; the UI
+ * is the only place that gives it a structured interpretation.
+ *
+ * birthday:      { type: 'birthday',      days_before: number }
+ * winback:       { type: 'winback',       inactive_days: number }
+ * churn_warning: { type: 'churn_warning', unpaid_days: number }
+ * (other types:  no trigger rule UI shown)
+ */
+interface TriggerRule {
+  type: string;
+  days_before?: number;     // birthday
+  inactive_days?: number;   // winback
+  unpaid_days?: number;     // churn_warning
+}
+
+function parseTriggerRule(json: string | null): TriggerRule | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as TriggerRule;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+const TRIGGER_RULE_TYPES: ReadonlyArray<Campaign['type']> = [
+  'birthday',
+  'winback',
+  'churn_warning',
+];
+
+// ---------------------------------------------------------------------------
+// CreateCampaignModal — also handles editing via initialCampaign (WEB-S6-021)
+// ---------------------------------------------------------------------------
+
 interface CreateProps {
   segments: Segment[];
   onClose: () => void;
   onCreated: () => void;
+  /** If provided, the modal operates in edit mode (PATCH) pre-populated. */
+  initialCampaign?: Campaign;
 }
 
-function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
-  const [form, setForm] = useState({
-    name: '',
-    type: 'custom',
-    channel: 'sms' as 'sms' | 'email' | 'both',
-    segment_id: '' as string,
-    template_subject: '',
-    template_body: '',
+function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: CreateProps) {
+  const isEdit = !!initialCampaign;
+
+  const [form, setForm] = useState(() => {
+    const c = initialCampaign;
+    return {
+      name: c?.name ?? '',
+      type: c?.type ?? 'custom',
+      channel: (c?.channel ?? 'sms') as 'sms' | 'email' | 'both',
+      segment_id: c?.segment_id != null ? String(c.segment_id) : '',
+      template_subject: c?.template_subject ?? '',
+      template_body: c?.template_body ?? '',
+    };
   });
+
+  // WEB-S6-020: trigger rule state — per-type fields
+  const [triggerRule, setTriggerRule] = useState<TriggerRule>(() => {
+    if (initialCampaign?.trigger_rule_json) {
+      const parsed = parseTriggerRule(initialCampaign.trigger_rule_json);
+      if (parsed) return parsed;
+    }
+    return { type: form.type };
+  });
+
+  // Keep trigger rule's .type in sync when form.type changes
+  const handleTypeChange = (newType: string) => {
+    setForm((f) => ({ ...f, type: newType }));
+    setTriggerRule((r) => ({ ...r, type: newType }));
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -422,39 +511,72 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const create = useMutation({
+  /** Serialize trigger rule to JSON string, or null if the type doesn't use one. */
+  const buildTriggerRuleJson = (): string | null => {
+    const type = form.type as Campaign['type'];
+    if (!TRIGGER_RULE_TYPES.includes(type)) return null;
+    const rule: Record<string, unknown> = { type };
+    if (type === 'birthday') rule.days_before = triggerRule.days_before ?? 7;
+    if (type === 'winback') rule.inactive_days = triggerRule.inactive_days ?? 90;
+    if (type === 'churn_warning') rule.unpaid_days = triggerRule.unpaid_days ?? 14;
+    return JSON.stringify(rule);
+  };
+
+  const save = useMutation({
     mutationFn: async () => {
-      const payload: any = {
-        name: form.name,
-        type: form.type,
-        channel: form.channel,
-        template_body: form.template_body,
-      };
-      if (form.template_subject.trim()) payload.template_subject = form.template_subject.trim();
-      if (form.segment_id) payload.segment_id = Number(form.segment_id);
-      const res = await campaignsApi.create(payload);
-      return res.data;
+      const trigger_rule_json = buildTriggerRuleJson();
+      if (isEdit) {
+        // WEB-S6-021: PATCH to update existing campaign
+        const payload: Parameters<typeof campaignsApi.update>[1] = {
+          name: form.name,
+          channel: form.channel,
+          template_body: form.template_body,
+          segment_id: form.segment_id ? Number(form.segment_id) : null,
+          trigger_rule_json,
+        };
+        if (form.template_subject.trim()) {
+          payload.template_subject = form.template_subject.trim();
+        }
+        const res = await campaignsApi.update(initialCampaign!.id, payload);
+        return res.data;
+      } else {
+        const payload: any = {
+          name: form.name,
+          type: form.type,
+          channel: form.channel,
+          template_body: form.template_body,
+        };
+        if (form.template_subject.trim()) payload.template_subject = form.template_subject.trim();
+        if (form.segment_id) payload.segment_id = Number(form.segment_id);
+        if (trigger_rule_json !== null) payload.trigger_rule_json = trigger_rule_json;
+        const res = await campaignsApi.create(payload);
+        return res.data;
+      }
     },
     onSuccess: () => {
-      toast.success('Campaign created');
+      toast.success(isEdit ? 'Campaign updated' : 'Campaign created');
       onCreated();
     },
     onError: (err: any) => {
       // WEB-FC-019 (Fixer-KKK 2026-04-25): prefer .message; .error kept as fallback.
-      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to create campaign');
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? (isEdit ? 'Failed to update campaign' : 'Failed to create campaign'));
     },
   });
+
+  const showTriggerBuilder = TRIGGER_RULE_TYPES.includes(form.type as Campaign['type']);
 
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="new-campaign-title"
+      aria-labelledby="campaign-modal-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h2 id="new-campaign-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">New campaign</h2>
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 id="campaign-modal-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">
+          {isEdit ? `Edit: ${initialCampaign!.name}` : 'New campaign'}
+        </h2>
 
         <div>
           <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Name</label>
@@ -471,13 +593,18 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
             <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Type</label>
             <select
               value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+              onChange={(e) => handleTypeChange(e.target.value)}
+              disabled={isEdit}
+              title={isEdit ? 'Campaign type cannot be changed after creation' : undefined}
+              className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+            {isEdit && (
+              <p className="text-[10px] text-surface-400 mt-0.5">Type is locked after creation.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Channel</label>
@@ -508,6 +635,81 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
             ))}
           </select>
         </div>
+
+        {/* WEB-S6-020: trigger rule builder — shown for birthday, winback, churn_warning */}
+        {showTriggerBuilder && (
+          <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 space-y-2">
+            <p className="text-xs font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wide">
+              Trigger rule
+            </p>
+
+            {form.type === 'birthday' && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-surface-600 dark:text-surface-400 w-36 shrink-0">
+                  Days before birthday
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={triggerRule.days_before ?? 7}
+                  onChange={(e) =>
+                    setTriggerRule((r) => ({
+                      ...r,
+                      days_before: Math.max(0, Math.min(30, Number(e.target.value) || 0)),
+                    }))
+                  }
+                  className="w-20 px-2 py-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+                />
+                <span className="text-xs text-surface-500">days (0–30)</span>
+              </div>
+            )}
+
+            {form.type === 'winback' && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-surface-600 dark:text-surface-400 w-36 shrink-0">
+                  Inactive for at least
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={730}
+                  value={triggerRule.inactive_days ?? 90}
+                  onChange={(e) =>
+                    setTriggerRule((r) => ({
+                      ...r,
+                      inactive_days: Math.max(1, Number(e.target.value) || 1),
+                    }))
+                  }
+                  className="w-20 px-2 py-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+                />
+                <span className="text-xs text-surface-500">days since last visit</span>
+              </div>
+            )}
+
+            {form.type === 'churn_warning' && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-surface-600 dark:text-surface-400 w-36 shrink-0">
+                  Unpaid invoice older than
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={triggerRule.unpaid_days ?? 14}
+                  onChange={(e) =>
+                    setTriggerRule((r) => ({
+                      ...r,
+                      unpaid_days: Math.max(1, Number(e.target.value) || 1),
+                    }))
+                  }
+                  className="w-20 px-2 py-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
+                />
+                <span className="text-xs text-surface-500">days</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {(form.channel === 'email' || form.channel === 'both') && (
           <div>
@@ -573,11 +775,11 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
             Cancel
           </button>
           <button
-            onClick={() => create.mutate()}
-            disabled={create.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50"
+            onClick={() => save.mutate()}
+            disabled={save.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            Create
+            {save.isPending ? (isEdit ? 'Saving…' : 'Creating…') : (isEdit ? 'Save changes' : 'Create')}
           </button>
         </div>
       </div>

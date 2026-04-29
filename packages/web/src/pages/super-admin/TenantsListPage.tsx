@@ -110,7 +110,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
+              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Continue'}
             </button>
@@ -134,7 +134,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
             <button
               type="submit"
               disabled={submitting || code.length !== 6}
-              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
+              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Verify'}
             </button>
@@ -247,7 +247,7 @@ function TenantRow({ tenant }: TenantRowProps) {
         <button
           onClick={() => setConfirmOpen(true)}
           disabled={impersonateMutation.isPending || tenant.status !== 'active'}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           title={tenant.status !== 'active' ? `Cannot impersonate: tenant is ${tenant.status}` : 'Log in as tenant admin'}
         >
           {impersonateMutation.isPending ? (
@@ -479,7 +479,14 @@ export function TenantsListPage() {
             <option value="deleted">Deleted</option>
           </select>
           <button
-            onClick={() => { superAdminTokenStore.remove(); setIsAuthenticated(false); }}
+            onClick={() => {
+              // WEB-S4-042: call server logout so the audit log records the
+              // sign-out; best-effort — token is removed locally regardless.
+              superAdminApi.logout().finally(() => {
+                superAdminTokenStore.remove();
+                setIsAuthenticated(false);
+              });
+            }}
             className="px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800"
           >
             Sign out

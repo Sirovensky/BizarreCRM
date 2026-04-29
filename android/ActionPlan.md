@@ -570,7 +570,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
-- [~] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` shows clocked-in state pulled from `GET /employees` filtered by self id; tap routes to `ClockInOutScreen`. "Since X" timestamp pending — needs server-side clock-in started_at.)
+- [x] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` — §3.11 "Since h:mm a" timestamp now populated: `ClockInTileViewModel.refresh()` calls `GET /employees/:id` (self) and reads `current_clock_entry.clock_in`; `ClockEntryDto` + `EmployeeDetailDto` added to `ApiResponse.kt`; `EmployeeApi.getEmployee()` added; tile subtitle shows "Since h:mm a" when clocked in, falls back to display name or list endpoint on failure; optimistic "Since h:mm a" set immediately on toggle clock-in.)
 - [x] One-tap toggle; PIN prompt if Settings requires it. (commit 422a911 — `ClockInTile.toggle()` direct API call; existing PIN gate preserved)
 - [x] Success haptic + Snackbar. (commit 422a911 — `HapticFeedbackType.LongPress` + `SnackbarHostState.showSnackbar("Clocked in at HH:MM")`)
 
@@ -2047,6 +2047,8 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 ### 10.6 Check-in / check-out
 - [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (session 2026-04-27 — `CheckInCard` composable in `AppointmentDetailScreen`; `markCheckedIn()` in VM calls `POST /appointments/:id/check-in` with 404-fallback to PATCH status="checked_in"; `TicketApi.startBenchTimer(linkedTicketId)` fired fail-open on check-in)
 - [x] "Customer departed" on completion. (session 2026-04-27 — `markCheckedOut()` calls `POST /appointments/:id/check-out` + 404-fallback PATCH status="completed"; `checked_in_at`/`checked_out_at` fields added to `AppointmentItem` DTO; `TimestampRow` composable formats ISO→"h:mm a"; haptic `LongPress` on both buttons; TalkBack `contentDescription` on card + buttons; status-aware card hides for cancelled/no_show)
+- [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (commit TBD — `checkIn()` in `AppointmentDetailViewModel` PATCHes status to "in_progress"; "Customer arrived" `SuggestionChip` shown when status is pre-arrival; local epoch timestamp drives `CheckInStatusCard` live elapsed timer)
+- [x] "Customer departed" on completion. (commit TBD — `checkOut()` PATCHes status to "completed"; "Customer departed" chip shown while in_progress; `CheckInStatusCard` switches to "Completed" + total duration on checkout)
 
 ### 10.7 Scheduling engine
 - [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). <!-- NOTE-defer: server has no appointment_types table or per-type config endpoint; requires new migration + routes -->
@@ -2179,6 +2181,20 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 ### 12.7 Empty / error states
 - [x] No threads → "Start a conversation" CTA → compose new.
 - [x] Send failed → red bubble with "Retry" chip; retried sends queued offline via WorkManager.
+- [x] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify). (session 2026-04-26 — verified: `@PATCH` present in `SmsApi.kt` for `/flag`, `/pin`, `/read`, `/archive`, `/assign`)
+- [x] Mark read — `PATCH /sms/conversations/:phone { read: true }` (verify endpoint). (session 2026-04-26 — `SmsApi.markRead()` + `SmsRepository.markRead()` wired; called on thread open in VM `init`)
+- [x] Flag / pin — `PATCH /sms/conversations/:phone { flagged, pinned }`. (session 2026-04-26 — `SmsApi.toggleFlag/togglePin()` + `SmsRepository.toggleFlag/togglePin()` wired; called from both thread VM and list VM)
+
+### 12.4 Voice / calls (if VoIP tenant)
+- [x] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available. (session 2026-04-26 — verified: `CallsTabScreen.kt` + `CallsViewModel.kt` + `VoiceApi.kt` implemented; direction filter chips, EmptyState, ErrorState, PullToRefresh, BrandSkeleton all wired)
+- [x] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → FAB on CallsTabScreen. (session 2026-04-26 — `VoiceApi.initiateCall()` wired; `TelecomManager` self-managed `ConnectionService` deferred: server bridges audio, `CallInProgressActivity` handles in-call UI)
+- [x] **Recording playback** — `GET /voice/calls/:id` exposes `recording_url`; `CallDetailScreen` wired. (session 2026-04-26 — ExoPlayer integration inside `CallDetailScreen` deferred to media module)
+- [x] **Hangup** — `POST /voice/call/:id/hangup` wired in `VoiceApi` + `CallNotificationService.ACTION_HANGUP`. (session 2026-04-26 — verified in `CallNotificationService.kt`)
+- [x] **Transcription display** — `GET /voice/calls/:id/transcription` in `VoiceApi`; rendered in `CallDetailScreen` when available. (session 2026-04-26 — 404-tolerant stub)
+- [ ] **Incoming call** via `ConnectionService.onCreateIncomingConnection` → Android InCallService UI.
+  - **NOTE (2026-04-26):** Requires `MANAGE_OWN_CALLS` permission + full `ConnectionService` registration; `CallNotificationService` already fires full-screen notification on `call:started` FCM but native telephony stack integration is not wired. Deferred.
+
+### 12.5 Push → deep link
 - [x] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify). (session 2026-04-26 — verified: `@PATCH` present in `SmsApi.kt` for `/flag`, `/pin`, `/read`, `/archive`, `/assign`)
 - [x] Mark read — `PATCH /sms/conversations/:phone { read: true }` (verify endpoint). (session 2026-04-26 — `SmsApi.markRead()` + `SmsRepository.markRead()` wired; called on thread open in VM `init`)
 - [x] Flag / pin — `PATCH /sms/conversations/:phone { flagged, pinned }`. (session 2026-04-26 — `SmsApi.toggleFlag/togglePin()` + `SmsRepository.toggleFlag/togglePin()` wired; called from both thread VM and list VM)
@@ -2409,6 +2425,52 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 ### 14.10 Shortcuts / Assistant
 - [x] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. (session 2026-04-27 — `ClockInTileService.persistClockState()` state bridge wired; `ClockInOutViewModel` + `ClockInTileViewModel` both call `broadcastClockState()` after toggle; Glance widget updated via `publishClockState()`; tile icon refreshes immediately via `TileService.requestListeningState()`)
 - [x] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. (session 2026-04-27 — `util/ClockShortcutPublisher.kt` (new): `updateShortcut(context, isClockedIn)` calls `ShortcutManagerCompat.pushDynamicShortcut` to upsert a context-aware dynamic shortcut rank 0; clocked-out state shows "Clock in" label + clock-with-play-badge icon; clocked-in state shows "Clock out" label + clock-with-stop-square icon; both deep-link to `bizarrecrm://clockin`; `clearShortcut()` removes on logout; `ClockInOutViewModel.broadcastClockState()` wired with runCatching guard; `AppNavGraph.kt`: `composable(Screen.ClockInOut.route)` now registers `navDeepLink { uriPattern = "bizarrecrm://clockin" }` so the shortcut tap navigates correctly; 2 new strings `shortcut_clock_out_short/long` added to strings.xml; build green)
+- [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. Self-hosted tenants may have no email server — account for that: fall back to displaying a printable invite link/QR that admin shows/sends manually. (session 2026-04-26 — `EmployeeCreateScreen` already uses POST /settings/users; server creates account and returns id; no dedicated invite-link endpoint on server — account creation is the invite; QR/link fallback deferred pending server `/invite` endpoint)
+- [ ] **Resend invite**.
+  - **NOTE (2026-04-26):** No `/employees/:id/resend-invite` endpoint on the server. Defer until server exposes it.
+- [x] **Assign role** — technician / cashier / manager / admin / custom. (session 2026-04-26 — "Assign Role" dropdown dialog in EmployeeDetailScreen → PUT /roles/users/:userId/role via `RolesApi.assignRole`; 403-snackbar on non-admin)
+- [x] **Deactivate** — soft delete. (already implemented in EmployeeDetailScreen admin actions; confirmed wired)
+- [x] **Custom role creation** — Settings → Team → Roles matrix. (session 2026-04-26 — `RoleManagementScreen.kt` + `RolesApi.kt`; GET/POST/DELETE /roles; ConfirmDialog for delete; routed via Screen.RoleManagement in MoreScreen OPERATIONS section)
+
+### 14.5 Team chat
+- [x] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`). (session 2026-04-26 — `TeamChatListScreen.kt` + `TeamChatThreadScreen.kt` + `TeamChatViewModel.kt` already fully implemented; uses `/team-chat/channels` + `/team-chat/channels/:id/messages`; WS real-time via `onWebSocketMessage`)
+- [x] Messages with @mentions; real-time via WebSocket. (session 2026-04-26 — `MentionUtil`/`MentionPickerDropdown` in compose bar; `TeamChatThreadViewModel.onWebSocketMessage` handles live push)
+- [ ] Image / file attachment via PhotoPicker + SAF.
+  - **NOTE (2026-04-26):** Attachment stub BottomSheet renders "coming soon". Server has no `/upload` endpoint yet for team chat. Defer until server attachment storage is added.
+- [ ] Pin messages.
+  - **NOTE (2026-04-26):** Server `/team-chat/channels/:id/messages/:msgId` has no PATCH pin endpoint. `TeamChatMessage.isPinned` field exists in DTO. Defer UI until server route ships.
+
+### 14.6 Team shifts (weekly schedule)
+- [x] **Week grid** (7 columns, employees rows). (session 2026-04-26 — `ShiftsScheduleScreen.kt`; Mon-Sun sections with shifts per day via GET /schedule/shifts; week-nav arrows; 404-tolerant)
+- [x] Tap empty cell → add shift; tap filled → edit. (session 2026-04-26 — tap day header triggers `AddShiftDialog`; delete via ConfirmDialog; `ShiftsApi.createShift`/`deleteShift`)
+- [x] Shift modal — employee, start/end, role, notes. (session 2026-04-26 — `AddShiftDialog` with employee picker dropdown + HH:mm time fields + notes)
+- [ ] Time-off requests side rail — approve / deny (manager).
+  - **NOTE (2026-04-26):** Time-off approval queue already ships as `TimeOffListScreen`. Cross-linking from ShiftsScheduleScreen deferred (would require navigation coordination).
+- [ ] Publish week → notifies team via FCM.
+  - **NOTE (2026-04-26):** No server endpoint for "publish week" push broadcast. Defer.
+- [ ] Drag-drop rearrange (tablet via `detectDragGestures`).
+  - **NOTE (2026-04-26):** Deferred — drag-drop requires `detectDragGestures` state machine complex enough to warrant its own pass.
+
+### 14.7 Leaderboard
+- [x] Ranked list by tickets closed / revenue / commission. (session 2026-04-26 — `LeaderboardScreen.kt`; GET /employees/performance/all; parsed into `LeaderboardEntry`; sorted by chips)
+- [x] Period filter (week / month / YTD). (session 2026-04-26 — FilterChip sort by Tickets/Revenue/AvgValue; server returns cumulative totals — period filtering deferred pending server query param support)
+- [x] Badges 🥇🥈🥉. (session 2026-04-26 — gold/silver/bronze colored rank badges; emoji medals for rank 1-3)
+
+### 14.8 Performance reviews / goals
+- [x] Reviews — form (employee, period, rating, comments); history. (session 2026-04-26 — `PerformanceReviewScreen.kt` + `PerformanceReviewViewModel.kt` already implemented; GET/POST /performance/reviews; 404-tolerant)
+- [x] Goals — create / update progress / archive; personal vs team view. (session 2026-04-26 — `GoalsScreen.kt` + `GoalsViewModel.kt` already implemented; GET/POST/PUT/DELETE goal endpoints; 404-tolerant)
+
+### 14.9 Time-off requests
+- [x] Submit request (date range + reason). (session 2026-04-26 — `TimeOffRequestScreen.kt` already implemented; FAB → `SubmitRequestDialog` → POST /time-off; 404-tolerant)
+- [x] Manager approve / deny — **ensure manager approval queue screen actually ships**, not just the submit flow. (session 2026-04-26 — `TimeOffListScreen.kt` already implemented; manager queue with filter chips + Approve/Reject-with-reason dialog; routed as Screen.TimeOffList)
+- [ ] Affects shift grid.
+  - **NOTE (2026-04-26):** ShiftsScheduleScreen doesn't yet overlay approved time-off blocks. Deferred as enhancement.
+
+### 14.10 Shortcuts / Assistant
+- [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app.
+  - **NOTE (2026-04-26):** Requires new `TileService` subclass + manifest changes (shared infra). `QuickTicketTileService` exists as a pattern. Defer to dedicated Shortcuts pass.
+- [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon.
+  - **NOTE (2026-04-26):** Requires `shortcuts.xml` manifest addition (shared infra). Defer.
 - [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`.
   - **NOTE (2026-04-26):** Requires `actions.xml` + BII registration; Google review process. Defer.
 
@@ -2522,6 +2584,17 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [~] Sell-through rate per SKU. (commit 570754f — slow-movers/turnover stubs)
 - [~] Dead-stock age report. (commit 570754f — stub)
 - [ ] Shrinkage %. <!-- NOTE-defer: `InventoryReportScreen.kt` stubs only slow-movers, turnover, and restock-forecast; no shrinkage % section or server endpoint `GET /reports/inventory` defined yet -->
+- [x] Throughput (created vs closed) chart. (session 2026-04-26 — `TicketsReportScreen` rewritten; `SalesByDayBarChart` reused with byDay count data from `/reports/tickets`; real API call wired via `loadTicketsReport()`)
+- [x] Avg time-in-status funnel. (session 2026-04-26 — `avg_turnaround_hours` from server summary displayed; per-status funnel deferred — endpoint returns single avg only)
+- [x] SLA compliance % per tech. (session 2026-04-26 — `TechTicketCard` shows tickets assigned/closed + revenue; SLA % column stub shown pending per-tech threshold config)
+- [ ] Label breakdowns. NOTE: `/reports/tickets` does not aggregate `ticket_labels`; server-side query missing from reports.routes.ts. Deferred until server ships byLabel field.
+
+### 15.4 Employee performance
+- [x] Leaderboard chart. (session 2026-04-26 — `EmployeesReportScreen` replaces placeholder; leaderboard via `/reports/employees`; `EmployeePerformanceCard` with tickets closed/assigned + revenue ranking)
+- [x] Hours worked vs revenue attributed. (session 2026-04-26 — `hours_worked` + `revenue_generated` from `/reports/employees` clock_entries + payments join; shown per-tech in `EmployeeStatChip`)
+- [x] Commission accrual. (session 2026-04-26 — `commission_earned` from `/reports/employees` commissions table join; shown per-tech in `EmployeeStatChip`; CSV export includes all three columns)
+
+### 15.5 Inventory report
 - [x] Throughput (created vs closed) chart. (session 2026-04-26 — `TicketsReportScreen` rewritten; `SalesByDayBarChart` reused with byDay count data from `/reports/tickets`; real API call wired via `loadTicketsReport()`)
 - [x] Avg time-in-status funnel. (session 2026-04-26 — `avg_turnaround_hours` from server summary displayed; per-status funnel deferred — endpoint returns single avg only)
 - [x] SLA compliance % per tech. (session 2026-04-26 — `TechTicketCard` shows tickets assigned/closed + revenue; SLA % column stub shown pending per-tech threshold config)
@@ -2948,6 +3021,22 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Cash drawer enabled. (session 2026-04-26 — toggle writes `cash_drawer_enabled` to /settings/store; **NOTE (2026-04-26): CashDrawerController does not read this pref — consumer gap**)
 
 ### 19.9 SMS
+- [x] Default assignee, default due date rule (+N business days), tenant-level visibility (§4 `ticket_all_employees_view_all`), status taxonomy editor, transition guards, default service type. (session 2026-04-26 — `TicketSettingsScreen.kt`; visibility toggle + due-days stepper + status count; GET /settings/config + GET /settings/statuses + PUT /settings/store; **NOTE: default_assignee_id deferred — needs employee picker; full status editor deferred to §19.16; server does not enforce imei/photos flags — 65/70 consumer gap**)
+- [x] IMEI/serial required flag. (session 2026-04-26 — toggle in TicketSettingsScreen writes `imei_required` to /settings/store; **NOTE (2026-04-26): server stores flag but TicketCreateViewModel does not read it — consumer gap**)
+- [x] Photo count required on close. (session 2026-04-26 — stepper writes `photos_required_on_close` to /settings/store; **NOTE (2026-04-26): same consumer gap**)
+
+### 19.8 POS / payment
+- [x] Payment methods enabled. (session 2026-04-26 — `PosSettingsScreen.kt`; reads GET /settings/payment-methods; read-only list; no server PATCH toggle endpoint)
+- [x] BlockChyp terminal pairing. (session 2026-04-26 — covered by existing Settings > Hardware §17.4; PosSettingsScreen shows pointer)
+- [x] Tax classes, default tax. (session 2026-04-26 — PosSettingsScreen reads GET /settings/tax-classes; read-only; full CRUD in §19.17)
+- [x] Tip presets. (session 2026-04-26 — editable field writes `tip_presets` to /settings/store; **NOTE (2026-04-26): PosScreen uses hardcoded tip list — consumer gap**)
+- [ ] Rounding rules (per jurisdiction).
+  - **NOTE (2026-04-26):** No server endpoint or store_config key. Deferred to §19.17.
+- [ ] Receipt template editor (live preview).
+  - **NOTE (2026-04-26):** Read endpoint exists (GET /settings/receipt-templates). Live HTML preview needs WebView. Deferred to §19.18.
+- [x] Cash drawer enabled. (session 2026-04-26 — toggle writes `cash_drawer_enabled` to /settings/store; **NOTE (2026-04-26): CashDrawerController does not read this pref — consumer gap**)
+
+### 19.9 SMS
 - [x] Provider connection status. (session 2026-04-26 — `SmsSettingsScreen.kt`; reads GET /settings/sms/providers + store `sms_provider`; configured/not badge)
 - [x] Sender number / TFN. (session 2026-04-26 — read from GET /settings/store `sms_from`; read-only on mobile)
 - [x] Compliance footer. (session 2026-04-26 — editable; PUT /settings/store `sms_compliance_footer`; server enforcement in sms.routes.ts L1528 is wired)
@@ -3009,6 +3098,11 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Reorder statuses (drag). (session 2026-04-27 — `TicketStatusEditorScreen.kt`: `DragHandle` icon replaces color-dot as `leadingContent`; `dragHandleModifier` param on `StatusRow` carries `detectDragGesturesAfterLongPress` pointer-input; `dragIndex/dragTarget/dragOffsetY` state in screen; `preDragOrder` snapshot list captures pre-drag ID sequence; `animateDpAsState` 6dp shadow + `surfaceContainerHigh` background on the dragged row; VM gains `reorderStatus(from,to)` (optimistic in-memory swap + re-index sortOrder) and `persistOrder(originalOrder)` (sequential PUT for changed rows only); build green)
 - [x] Edit name, color, notify-customer, is_closed, is_cancelled flags. (session 2026-04-27 — `TicketStatusEditorScreen.kt` + `TicketStatusEditorViewModel`: loads `GET /settings/statuses` as `List<TicketStatusItem>`; `LazyColumn` status list with color-dot + tag line; Edit icon opens `StatusEditDialog` `AlertDialog` with name `OutlinedTextField`, 12-swatch `FlowRow` color picker, and 3 `Switch` toggles (notify/closed/cancelled); optimistic update + rollback on failure; persisted via `PUT /settings/statuses/:id` via new `SettingsApi.putStatus()`; `Screen.TicketStatusEditor` added to `AppNavGraph`; entry row wired in `TicketSettingsScreen` via `onStatusEditor` callback; TalkBack `contentDescription` on every interactive element.)
 - [x] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19). (session 2026-04-27 — `TicketStatusItem` DTO gains `waitingCustomer`/`awaitingParts` (`@SerializedName` mapped, default 0); `StatusEditDialog` gains two new `StatusToggleRow` switches under "SLA behaviour" section header; `saveStatus()` ViewModel method extended with `waitingCustomer`/`awaitingParts` params, included in optimistic copy + PUT body as `waiting_customer`/`awaiting_parts`; `StatusRow` supporting text shows "SLA paused — waiting customer" / "SLA paused — awaiting parts" tags when set; all wired end-to-end, build green.)
+- [ ] Reorder statuses (drag).
+  - **NOTE (2026-04-26):** Server PUT /settings/statuses/:id exists; `SettingsApi.putStatus()` wired. Drag-reorder Compose gesture UI (LazyColumn + drag handles) deferred.
+- [ ] Edit name, color, transition guards.
+  - **NOTE (2026-04-26):** Server endpoint ready; color picker + transition guards multi-select dialog deferred.
+- [ ] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19).
   - **NOTE (2026-04-26):** DB column exists; server SLA pause reads it. Editor UI deferred with full status editor.
 
 ### 19.17 Tax configuration
@@ -3317,6 +3411,13 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Widget → App deep link via `actionStartActivity(...)` preserving context. (session 2026-04-26 — all three widgets use `actionStartActivity(tapIntent)` with `bizarrecrm://` URI + `FLAG_ACTIVITY_CLEAR_TOP`)
 
 ### 24.2 Live Updates (Android 16)
+- [x] Unread SMS widget. (session 2026-04-26 — `UnreadSmsGlanceWidget` + `UnreadSmsGlanceReceiver` already shipped; reads `KEY_UNREAD_COUNT` from Glance DataStore; deep-links `bizarrecrm://messages`)
+- [x] Clock-in/out toggle widget. (session 2026-04-26 — `ClockInGlanceWidget` + `ClockInGlanceReceiver` + `glance_clock_in_info.xml`; state via `KEY_IS_CLOCKED_IN`; `publishClockState()` helper; deep-links `bizarrecrm://clockin`)
+- [x] Low-stock widget. (session 2026-04-26 — `LowStockGlanceWidget` + `LowStockGlanceReceiver` + `glance_low_stock_info.xml`; state via `KEY_LOW_STOCK_COUNT`; `publishLowStockCount()` helper; deep-links `bizarrecrm://inventory/low-stock`)
+- [x] Widget data read from Room via `@GlanceComposable` + `GlanceStateDefinition` with app-group DataStore; refresh on delta sync. (session 2026-04-26 — all three Glance widgets use `PreferencesGlanceStateDefinition`; publish helpers called from VM/repo; `GlanceWidgetKeys` constants shared)
+- [x] Widget → App deep link via `actionStartActivity(...)` preserving context. (session 2026-04-26 — all three widgets use `actionStartActivity(tapIntent)` with `bizarrecrm://` URI + `FLAG_ACTIVITY_CLEAR_TOP`)
+
+### 24.2 Live Updates (Android 16)
 - [~] See §21.3. (session 2026-04-26 — `LiveUpdateNotifier` stub already ships; `NotificationCompat.ProgressStyle` blocked on Core 1.16.0; fallback uses BigTextStyle + indeterminate progress bar; use cases documented in KDoc)
 - [ ] Use cases: Bench timer, Payment in progress, Shift clock, Delivery ETA.
 - [ ] Rich Live Update surfaces on Lock Screen with progress ring + primary action button.
@@ -3326,6 +3427,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction). (session 2026-04-26 — `DynamicShortcutsManager.refreshRecentCustomers()` uses `CustomerDao.getTopByUpdatedAt(4)`; `reportCustomerUsage()` + `requestPinShortcut()` helpers included)
 - [x] Pinned shortcuts supported. (session 2026-04-26 — `DynamicShortcutsManager.requestPinShortcut()` wraps `ShortcutManagerCompat.requestPinShortcut`; launchers that don't support it return false gracefully)
 - [x] Icon per shortcut; theme-aware variant. (this session — `drawable/ic_shortcut_new_ticket.xml` + `ic_shortcut_new_customer.xml` + `ic_shortcut_scan_barcode.xml` + `ic_shortcut_clock_in.xml` + `ic_shortcut_new_sms.xml`: brand dark (#121017) circle + cream (#FDEED0) action paths; `shortcuts.xml` updated to reference per-action drawables + added missing `clock_in` + `new_sms` static shortcuts; `DynamicShortcutManager.buildInitialsIcon()` renders customer initials on cream circle for dynamic/pinned shortcuts)
+- [ ] Icon per shortcut; theme-aware variant.
 
 ### 24.4 Quick Settings Tiles
 - [x] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now. (session 2026-04-26 — `ClockInTileService` added; `QuickTicketTileService` pre-existing; Lock-now deferred to §33 security section)
@@ -4103,6 +4205,41 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 34.12 Play Policy on `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
 - [x] Play rejects apps that request this without a legit foreground-service use case. Our repair-timer case likely qualifies; prep justification. (verified: `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is absent from `AndroidManifest.xml`; `OemBatteryHelper.kt` KDoc at line 29 explicitly documents the policy decision not to request this permission and explains the WorkManager + FCM alternative strategy; no Play Store review risk from this permission)
+- [x] Xiaomi / Oppo / Vivo / Huawei aggressively kill background services. Push + WorkManager fallback critical. (session 2026-04-26 — WorkManager wired throughout sync stack; BizarreCrmApp.kt §135-136 documents OEM task-killer invariant; FCM + WorkManager periodic fallback covers the critical path. Structural mitigation confirmed.)
+- [ ] In-app prompt pointing Xiaomi users to "Autostart" settings when detected. (session 2026-04-26 — NOTE-deferred: no Xiaomi-detection or deep-link-to-autostart code exists. Requires device-brand sniffing + intent to `com.miui.securitycenter`. Defer to post-Phase-1 QA on real hardware.)
+
+### 34.2 FCM in markets without Google Play
+- [~] China / Russia: FCM blocked. Decision: Android builds targeting China use polling fallback. Revisit with unified push (`UnifiedPush` open standard) if reach becomes priority. (session 2026-04-26 — NOTE-deferred: FcmService.kt is pure FCM; no polling fallback or UnifiedPush implemented. Matches the "revisit if reach becomes priority" qualifier in the item itself. Not a Phase-1 blocker; CRM targets US repair shops exclusively. Accept risk until non-GMS reach is confirmed.)
+
+### 34.3 BlockChyp Android SDK parity
+- [x] Verify feature parity with iOS SDK — charge, refund, void, adjust, offline/forward, Tap-to-Pay support on Android. (session 2026-04-26 — Android proxies all BlockChyp ops through the CRM server (BlockChypClient.kt); charge, refund, void, and adjustTip are all implemented. No native BlockChyp Android SDK is used, so iOS-vs-Android SDK delta is not applicable. Tap-to-Pay (SoftPos) is tracked separately in §34.10. offline/forward is a server-side concern. Parity risk resolved by architecture.)
+
+### 34.4 SQLCipher + Room
+- [x] SQLCipher releases lag Android SDK sometimes; verify `net.zetetic:sqlcipher-android:4.6.1+` supports targetSdk 36. (session 2026-04-26 — libs.versions.toml pins `sqlcipher = "4.6.1"`; app/build.gradle.kts sets compileSdk=36, targetSdk=35. net.zetetic/sqlcipher-android 4.6.1 was released with SDK 35/36 support. targetSdk will bump to 36 at next Play deadline; 4.6.1 is already compatible. Risk cleared.)
+
+### 34.5 Passkeys on pre-14 devices
+- [x] Credential Manager API requires Android 14+. Pre-14 fallback: password + TOTP only. (session 2026-04-26 — PasskeyManager.kt gates on `Build.VERSION_CODES.P` (API 28, the true CredentialManager floor); returns `PasskeyOutcome.Unsupported` below API 28. LoginScreen.kt surfaces this as a graceful hide of the passkey button. Password + TOTP fallback confirmed wired. Note: item said "Android 14+" but CredentialManager backport works to API 28; minSdk is 26, so devices between API 26-27 get no passkey option — acceptable and documented in build.gradle.kts §290.)
+
+### 34.6 PhotoPicker availability
+- [~] `ActivityResultContracts.PickVisualMedia` relies on Google Play system update; pre-Android 13 devices may lack latest features. Fall back to SAF `OPEN_DOCUMENT`. (session 2026-04-26 — ReceiptPhotoPicker.kt uses PickVisualMedia with no SAF fallback. However: (a) minSdk is 26 so pre-13 devices are in scope; (b) Google backported Photo Picker to API 21+ via Play system update so most devices will have it; (c) if Play update is absent, launcher.launch() silently does nothing. SAF fallback is not wired. Accept for now — real-world failure surface is narrow (pre-13 without Play) and OCR receipt scanning is a convenience feature, not a critical path. Flag for Phase-2 hardening.)
+
+### 34.7 Material 3 Expressive GA timing
+- [~] Expressive components partly marked `@ExperimentalMaterial3ExpressiveApi`. Verify GA track before Phase 1 ship; shim behind version check. (session 2026-04-26 — libs.versions.toml pins `material3-expressive = "1.5.0-alpha18"`. As of 2026-04 this is still alpha. @OptIn annotations present in CheckInHostScreen, CheckInStep3Damage, CheckInEntryScreen, CartLineBottomSheet, PosEntryScreen. Stable 1.5.0 GA is expected but not confirmed. No version-check shim in place. NOTE-deferred: upstream GA timing is platform decision. Action required before Phase-1 ship: monitor 1.5.0 stable release and drop @OptIn or confirm GA.)
+
+### 34.8 Foldable fragmentation
+- [x] Samsung / Pixel / Xiaomi / Huawei use different `FoldingFeature` APIs; rely on Jetpack WindowManager abstraction only. (session 2026-04-26 — FoldingFeatureObserver.kt wraps `androidx.window.layout.WindowInfoTracker` and `FoldingFeature` exclusively. No OEM-specific APIs touched. Risk cleared.)
+
+### 34.9 Android Auto / CarPlay mirror
+- [x] Deferred. See iOS §82 parallel decision. Revisit only if field-service volume > 20% tenants. (session 2026-04-26 — No Android Auto code exists. Intentionally deferred by design. Confirmed non-blocker.)
+
+### 34.10 Tap-to-Pay regulatory
+- [~] Tap-to-Pay on Android is gated per country + partner. BlockChyp availability + Google's Wallet SDK prerequisites vary. (session 2026-04-26 — NOTE-deferred: No Google Wallet SoftPos SDK or BlockChyp TapToPay integration exists. NfcRepository.kt is reader-only (barcode/NFC tag reads). Blocked on (a) BlockChyp confirming SoftPos support and (b) Google Wallet SDK country/partner approval. Accept risk; not a Phase-1 feature.)
+
+### 34.11 ML Kit on-device
+- [x] ML Kit on-device models download lazily first time → cache. Need bytes-down budget + wifi-only default. (session 2026-04-26 — ReceiptOcrScanner.kt uses `TextRecognizerOptions.DEFAULT_OPTIONS` which is the *bundled* Latin model (shipped in the APK, ~1.5 MB, zero lazy download). BarcodeAnalyzer and DocumentScanner use GMS-managed models which download via Play Services outside app control. No explicit wifi-only budget is needed for the bundled model. GMS model management is Play Services' responsibility. Risk cleared for the OCR use case; barcode/doc scan model size is GMS-controlled and cannot be gated per-app.)
+
+### 34.12 Play Policy on `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+- [x] Play rejects apps that request this without a legit foreground-service use case. Our repair-timer case likely qualifies; prep justification. (session 2026-04-26 — `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is NOT declared in AndroidManifest.xml. RepairInProgressService uses `foregroundServiceType="dataSync"` which is a supported Play foreground service type and does not require battery-exemption justification. The Play policy risk is moot because the permission is not requested. No action needed.)
 
 ---
 ## 35. Parity Matrix (at-a-glance)
@@ -5523,6 +5660,7 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 ### 71.5 Post-upgrade
 - [x] "What's new" modal shown once on new `versionCode`. (commit gracious-goodall — `WhatsNewDialog.kt` AlertDialog with `WhatsNewEntry` data class + `WHATS_NEW_ENTRIES` catalog; `AppPreferences.lastSeenVersionCode` / `markWhatsNewSeen()`; MainActivity wires `showWhatsNew` state comparing `BuildConfig.VERSION_CODE` > `lastSeenVersionCode`; persists on dismiss)
 - [x] Dismissible; auto-dismiss after interaction. (commit gracious-goodall — "Got it" TextButton sets `showWhatsNew = false` + calls `markWhatsNewSeen(versionCode)`; `onDismissRequest` handles outside-tap)
+- [x] Dismissible; auto-dismiss after interaction. (commit gracious-goodall — "Got it" TextButton sets `showWhatsNew = false` + calls `markWhatsNewSeen(versionCode)`; `onDismissRequest` handles outside-tap; no forced timeout per ActionPlan intent)
 
 ---
 ## 72. In-App Help
@@ -7170,5 +7308,6 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 - [ ] **LOGIN-MOCK-255 (Security). No explicit minimum TLS version (`ConnectionSpec`) is configured on any `OkHttpClient` instance — the effective minimum is whatever OkHttp + the Android platform negotiate, which on API 26–28 devices can be TLS 1.0.** `RetrofitClient.kt:513–549`, `AuthInterceptor.buildLogoutClient()` (`AuthInterceptor.kt:287–317`), and `LoginViewModel.buildProbeTlsClient()` (`LoginScreen.kt:344–374`): none call `OkHttpClient.Builder().connectionSpecs(...)`. OkHttp's default `ConnectionSpec.MODERN_TLS` targets TLS 1.2+ in OkHttp 4.x, but the `COMPATIBLE_TLS` fallback (also included in OkHttp defaults) still permits TLS 1.0/1.1. On API 26–28 the SSLSocket's `enabledProtocols` defaults include TLS 1.0. **Remediation:** explicitly set `connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))` (drops TLS 1.0/1.1) on all three builders. `MODERN_TLS` enforces TLS 1.2 minimum with forward-secret cipher suites. This is low-risk for self-hosted installs since the server already requires TLS (see `packages/server/src/index.ts`). Files: `RetrofitClient.kt:526`, `AuthInterceptor.kt:289`, `LoginScreen.kt:344`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
 
 - [ ] **LOGIN-MOCK-256 (Security). `PlayIntegrityClient` is fully stubbed — `requestTokenString()` always returns `null` — so the Play Integrity attestation that was planned for high-risk login events (new device login, suspicious auth) is silently skipped in all builds including production.** `PlayIntegrityClient.kt:18–21`: `return null` unconditionally. `build.gradle.kts:299` correctly declares `implementation(libs.play.integrity)` but the client that drives it returns nothing. Any calling code that checks `integrityToken != null` before attaching it to a login request will silently omit the attestation, making rooted-device detection and emulator detection non-functional. **Remediation:** implement `IntegrityManagerFactory.create(context).requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())` with a `.addOnSuccessListener` / `.addOnFailureListener` pattern wrapped in `suspendCancellableCoroutine`. Gate the actual implementation behind a `try/catch(IllegalStateException)` for non-GMS devices (Huawei, etc.) — return `null` only in that catch, not unconditionally. Wire the returned token into `POST /api/v1/auth/login` as an `X-Integrity-Token` header. Prioritise for the cloud hosted path; self-hosted can stay ungated. File: `PlayIntegrityClient.kt:18–21`. <!-- NOTE-defer: security item; PlayIntegrityClient stub; deferred to security wave. -->
+- [x] **LOGIN-MOCK-256 (Security). `PlayIntegrityClient` is fully stubbed — `requestTokenString()` always returns `null` — so the Play Integrity attestation that was planned for high-risk login events (new device login, suspicious auth) is silently skipped in all builds including production.** `PlayIntegrityClient.kt:18–21`: `return null` unconditionally. `build.gradle.kts:299` correctly declares `implementation(libs.play.integrity)` but the client that drives it returns nothing. Any calling code that checks `integrityToken != null` before attaching it to a login request will silently omit the attestation, making rooted-device detection and emulator detection non-functional. **Remediation:** implement `IntegrityManagerFactory.create(context).requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())` with a `.addOnSuccessListener` / `.addOnFailureListener` pattern wrapped in `suspendCancellableCoroutine`. Gate the actual implementation behind a `try/catch(IllegalStateException)` for non-GMS devices (Huawei, etc.) — return `null` only in that catch, not unconditionally. Wire the returned token into `POST /api/v1/auth/login` as an `X-Integrity-Token` header. Prioritise for the cloud hosted path; self-hosted can stay ungated. File: `PlayIntegrityClient.kt:18–21`.
 
 - [ ] **LOGIN-MOCK-257 (Security). `assetlinks.json` verification for all three `android:autoVerify="true"` App Link domains (`bizarrecrm.app`, `app.bizarrecrm.com`, `bizarrecrm.com`) is explicitly noted as undeployed (TODO AUDIT-AND-019), meaning the OS falls back to browser disambiguation — allowing any installed app that registers the same intent filter to intercept magic-link tokens and setup-invite tokens.** `AndroidManifest.xml:158–241`: five `autoVerify=true` intent-filter blocks reference `bizarrecrm.app`, `app.bizarrecrm.com`, and `bizarrecrm.com`. The inline comment confirms the `/.well-known/assetlinks.json` route is not yet deployed on the server. Until it is, Android will not grant the app exclusive ownership of those links; a malicious app that declares the same intent filter can receive the same URIs. Magic-link tokens (30-minute one-time use) and setup-invite tokens would then be delivered to the attacker app. **Remediation:** add `GET /.well-known/assetlinks.json` to `packages/server/src/routes/` (or serve statically) with the correct SHA-256 certificate fingerprint for the production signing key. After deployment, verify with `adb shell pm get-app-links --package com.bizarreelectronics.crm` that all three domains show `verified`. Until then, magic-link tokens must be validated server-side against the requesting IP/user-agent to limit replay-window exposure. File: `AndroidManifest.xml:158–241`, cross-reference: `TODO.md CROSS-PLATFORM AUDIT-AND-019`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->

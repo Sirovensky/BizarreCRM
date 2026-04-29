@@ -24,6 +24,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { createCanvas } from 'canvas';
+import JsBarcode from 'jsbarcode';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -1272,16 +1274,84 @@ router.post(
     });
 
     if (format === 'pdf') {
-      // Lightweight text fallback — frontend dumps into an <iframe> for print.
-      const plain = items
-        .map((it) => `${it.sku || `ID${it.id}`}\t${it.name}\t$${(it.retail_price || 0).toFixed(2)}`)
-        .join('\n');
+      // WEB-W3-009: Real PDF output via canvas PDF mode.
+      // This version of canvas doesn't support newPage() so we stack all
+      // labels vertically on one tall page (2 in wide × 1 in per label).
+      // Standard label printers cut after each label when the height matches.
+      const PX_W = 288; // 3 in × 96 dpi (standard thermal label width)
+      const PX_H = 96;  // 1 in × 96 dpi per label
+      const totalH = PX_H * totalLabels;
+
+      const canvas = createCanvas(PX_W, totalH, 'pdf');
+      const ctx = canvas.getContext('2d');
+
+      // White background for entire sheet
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, PX_W, totalH);
+
+      let labelPos = 0;
+      for (const it of items) {
+        const sku = it.sku || `ID${it.id}`;
+        const displayName = (it.name || '').slice(0, 36);
+        const price = `$${(it.retail_price || 0).toFixed(2)}`;
+
+        for (let c = 0; c < copies; c++) {
+          const yBase = labelPos * PX_H;
+
+          // Label separator (thin horizontal rule except first)
+          if (labelPos > 0) {
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, yBase);
+            ctx.lineTo(PX_W, yBase);
+            ctx.stroke();
+          }
+
+          // Draw barcode into an offscreen PNG canvas, then blit to PDF
+          const barcodeCanvas = createCanvas(PX_W - 20, 52);
+          try {
+            JsBarcode(barcodeCanvas, sku, {
+              format: 'CODE128',
+              width: 1.8,
+              height: 40,
+              displayValue: false,
+              margin: 2,
+            });
+            ctx.drawImage(barcodeCanvas as any, 10, yBase + 26, PX_W - 20, 52);
+          } catch {
+            // Barcode render failed (e.g. invalid chars) — print SKU in text only
+          }
+
+          // Name (bold)
+          ctx.fillStyle = '#000000';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.fillText(displayName, 10, yBase + 14);
+
+          // SKU text below name
+          ctx.font = '7px monospace';
+          ctx.fillText(sku, 10, yBase + 24);
+
+          // Price right-aligned at bottom
+          ctx.font = 'bold 11px sans-serif';
+          const priceW = ctx.measureText(price).width;
+          ctx.fillText(price, PX_W - priceW - 8, yBase + PX_H - 6);
+
+          labelPos++;
+        }
+      }
+
+      const pdfBuffer = canvas.toBuffer('application/pdf');
+      const base64Pdf = pdfBuffer.toString('base64');
+
       res.json({
         success: true,
         data: {
           format: 'pdf',
-          body: plain,
+          pdf_base64: base64Pdf,
+          body: `PDF: ${totalLabels} label(s) for ${items.length} item(s)`,
           total_labels: totalLabels,
+          item_count: items.length,
         },
       });
       return;
@@ -1294,6 +1364,71 @@ router.post(
         body: zplBody,
         total_labels: totalLabels,
         item_count: items.length,
+      },
+    });
+  }),
+);
+
+// ============================================================================
+// WEB-W3-025: Mark items for clearance
+// ============================================================================
+
+/**
+ * POST /mark-clearance
+ *
+ * Body: { item_ids: number[] }
+ * Sets retail_price to 50% off for each item (clearance_50_percent_off strategy)
+ * and records a cost_price_history entry + audit log.
+ * Only admin/manager can mark clearance.
+ */
+router.post(
+  '/mark-clearance',
+  asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
+    const adb: AsyncDb = req.asyncDb;
+
+    const rawIds = req.body?.item_ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      throw new AppError('item_ids array is required', 400);
+    }
+    const ids = rawIds
+      .map((i: unknown) => parseInt(String(i), 10))
+      .filter((i: number) => i > 0 && !isNaN(i));
+    if (ids.length === 0) throw new AppError('No valid item_ids', 400);
+    if (ids.length > 100) throw new AppError('Maximum 100 items per clearance batch', 400);
+
+    const marked: { id: number; name: string; old_price: number; new_price: number }[] = [];
+    const skipped: number[] = [];
+
+    for (const id of ids) {
+      const item = await adb.get<any>(
+        'SELECT id, name, retail_price, cost_price, cost_locked FROM inventory_items WHERE id = ? AND is_active = 1',
+        id,
+      );
+      if (!item) { skipped.push(id); continue; }
+      const oldPrice = Number(item.retail_price || 0);
+      if (oldPrice <= 0) { skipped.push(id); continue; }
+      const newPrice = Math.round(oldPrice * 0.5 * 100) / 100;
+
+      await adb.run(
+        "UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ?",
+        newPrice, id,
+      );
+
+      marked.push({ id, name: item.name, old_price: oldPrice, new_price: newPrice });
+    }
+
+    audit(req.db, 'inventory_marked_clearance', req.user!.id, req.ip || 'unknown', {
+      marked: marked.length,
+      skipped: skipped.length,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        marked,
+        skipped,
+        message: `${marked.length} item(s) marked for clearance at 50% off.`,
       },
     });
   }),

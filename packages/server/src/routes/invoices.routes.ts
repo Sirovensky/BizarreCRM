@@ -13,6 +13,8 @@ import {
 } from '../utils/validate.js';
 import { writeCommission, reverseCommission } from '../utils/commissions.js';
 import { allocateCounter, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
+import { sendSmsTenant } from '../services/smsProvider.js';
+import { sendEmail, isEmailConfigured } from '../services/email.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { runAutomations } from '../services/automations.js';
@@ -231,7 +233,7 @@ async function postPaymentSideEffects({
 // GET /invoices
 router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
-  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
   const offset = (p - 1) * ps;
@@ -254,6 +256,19 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
     params.push(k, k, k, k);
   }
 
+  // WEB-W2-032: allowlist sort columns to prevent SQL injection.
+  const ALLOWED_SORT_COLS: Record<string, string> = {
+    created_at: 'inv.created_at',
+    total: 'inv.total',
+    amount_due: 'inv.amount_due',
+    status: 'inv.status',
+    order_id: 'inv.order_id',
+    due_on: 'inv.due_on',
+    customer: "c.last_name || ' ' || c.first_name",
+  };
+  const sortCol = ALLOWED_SORT_COLS[sort_by ?? ''] ?? 'inv.created_at';
+  const sortDir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+
   const [totalRow, rawInvoices, agingRows] = await Promise.all([
     adb.get<any>(`
       SELECT COUNT(*) as c FROM invoices inv LEFT JOIN customers c ON c.id = inv.customer_id ${where}
@@ -265,7 +280,7 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
       LEFT JOIN customers c ON c.id = inv.customer_id
       LEFT JOIN tickets t ON t.id = inv.ticket_id
       ${where}
-      ORDER BY inv.created_at DESC
+      ORDER BY ${sortCol} ${sortDir}
       LIMIT ? OFFSET ?
     `, ...params, ps, offset),
     adb.all<any>(`
@@ -325,27 +340,79 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
 });
 
 // GET /invoices/stats — KPIs and distribution data for overview
+// WEB-W2-022 + WEB-W2-023: accepts the same filter params as GET / so the
+// stats panel reflects the current search context.  Filters: status,
+// from_date, to_date, customer_id, location_id, keyword.
+// Additionally exposes overdue_count + overdue_amount as standalone fields
+// (WEB-W2-023 — overdue stats independent of pagination).
 router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
+  const { status, from_date, to_date, customer_id, location_id, keyword } = req.query as Record<string, string>;
 
-  const [kpis, statusDist, methodDist] = await Promise.all([
+  // Build the shared WHERE clause that mirrors the list endpoint filters.
+  const conditions: string[] = ['inv.status != \'void\''];
+  const params: unknown[] = [];
+
+  if (status === 'overdue') {
+    conditions.push("inv.status IN ('unpaid','partial') AND inv.due_on IS NOT NULL AND inv.due_on < DATE('now')");
+  } else if (status) {
+    conditions.push('inv.status = ?');
+    params.push(status);
+  }
+  if (customer_id) { conditions.push('inv.customer_id = ?'); params.push(customer_id); }
+  if (from_date) { conditions.push('DATE(inv.created_at) >= ?'); params.push(from_date); }
+  if (to_date) { conditions.push('DATE(inv.created_at) <= ?'); params.push(to_date); }
+  if (location_id && /^\d+$/.test(location_id)) {
+    conditions.push('inv.location_id = ?');
+    params.push(parseInt(location_id, 10));
+  }
+  if (keyword) {
+    const esc = escapeLike(keyword);
+    conditions.push(
+      "(inv.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR (c.first_name || ' ' || c.last_name) LIKE ?)"
+    );
+    const pat = `%${esc}%`;
+    params.push(pat, pat, pat, pat);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  const [kpis, statusDist, methodDist, overdueRow] = await Promise.all([
     adb.get<any>(`
       SELECT
-        COALESCE(SUM(total), 0) AS total_sales,
+        COALESCE(SUM(inv.total), 0) AS total_sales,
         COUNT(*) AS invoice_count,
-        COALESCE(SUM(total_tax), 0) AS tax_collected,
-        COALESCE(SUM(CASE WHEN status IN ('unpaid','partial') THEN amount_due ELSE 0 END), 0) AS outstanding_receivables
-      FROM invoices WHERE status != 'void'
-    `),
+        COALESCE(SUM(inv.total_tax), 0) AS tax_collected,
+        COALESCE(SUM(CASE WHEN inv.status IN ('unpaid','partial') THEN inv.amount_due ELSE 0 END), 0) AS outstanding_receivables
+      FROM invoices inv
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      ${where}
+    `, ...params),
     adb.all<any>(`
-      SELECT status, COUNT(*) AS count FROM invoices GROUP BY status
-    `),
+      SELECT inv.status, COUNT(*) AS count
+      FROM invoices inv
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      ${where}
+      GROUP BY inv.status
+    `, ...params),
     adb.all<any>(`
       SELECT p.method, COUNT(*) AS count, COALESCE(SUM(p.amount), 0) AS total
       FROM payments p
       JOIN invoices inv ON inv.id = p.invoice_id
-      WHERE inv.status != 'void'
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      ${where}
       GROUP BY p.method
+    `, ...params),
+    // WEB-W2-023: overdue stats run against the FULL dataset (ignoring status
+    // filter) so the overdue badge is always accurate regardless of active tab.
+    adb.get<any>(`
+      SELECT
+        COUNT(*) AS overdue_count,
+        COALESCE(SUM(amount_due), 0) AS overdue_amount
+      FROM invoices
+      WHERE status IN ('unpaid','partial')
+        AND due_on IS NOT NULL
+        AND due_on < DATE('now')
     `),
   ]);
 
@@ -355,6 +422,8 @@ router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
       kpis,
       status_distribution: statusDist,
       method_distribution: methodDist,
+      overdue_count: overdueRow?.overdue_count ?? 0,
+      overdue_amount: overdueRow?.overdue_amount ?? 0,
     },
   });
 });
@@ -933,7 +1002,32 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
             errors.push({ invoice_id: id, error: `Cannot send reminder for ${invoice.status} invoice` });
             continue;
           }
-          // Mark reminder sent (actual email sending is async/external)
+          // WEB-W2-001: actually dispatch reminder via SMS + email
+          const reminderCustomer = invoice.customer_id
+            ? await adb.get<{ phone: string | null; mobile: string | null; email: string | null; first_name: string | null }>
+                ('SELECT phone, mobile, email, first_name FROM customers WHERE id = ?', invoice.customer_id)
+            : null;
+          const reminderMsg = `Hi ${reminderCustomer?.first_name || 'there'}, your invoice ${invoice.order_id || `#${invoice.id}`} for $${Number(invoice.amount_due ?? invoice.total).toFixed(2)} is overdue. Please contact us to arrange payment.`;
+          const reminderPhone = reminderCustomer?.mobile || reminderCustomer?.phone;
+          if (reminderPhone) {
+            try {
+              await sendSmsTenant(db, (req as any).tenantSlug ?? null, reminderPhone, reminderMsg);
+            } catch (smsErr) {
+              logger.warn('[invoices] bulk reminder SMS failed', { invoice_id: id, error: smsErr instanceof Error ? smsErr.message : String(smsErr) });
+            }
+          }
+          if (reminderCustomer?.email && isEmailConfigured(db)) {
+            try {
+              await sendEmail(db, {
+                to: reminderCustomer.email,
+                subject: `Payment reminder: invoice ${invoice.order_id || invoice.id}`,
+                html: `<p>${reminderMsg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+                text: reminderMsg,
+              });
+            } catch (emailErr) {
+              logger.warn('[invoices] bulk reminder email failed', { invoice_id: id, error: emailErr instanceof Error ? emailErr.message : String(emailErr) });
+            }
+          }
           await adb.run("UPDATE invoices SET reminder_sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", id);
           successCount++;
           break;
@@ -1080,6 +1174,15 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // V7-style: strictly positive amount
   const amount = validatePositiveAmount(req.body.amount, 'credit note amount');
   const { reason } = req.body;
+  // WEB-W2-018: structured refund reason code + free-text note (migration 150
+  // added credit_note_code / credit_note_note columns to invoices). Both are
+  // optional — existing callers that only send `reason` still work fine.
+  const cnCode: string | null = typeof req.body.code === 'string' && req.body.code.trim()
+    ? req.body.code.trim()
+    : null;
+  const cnNote: string | null = typeof req.body.note === 'string' && req.body.note.trim()
+    ? req.body.note.trim()
+    : null;
   if (amount > original.total) {
     throw new AppError('Credit note amount cannot exceed original invoice total', 400);
   }
@@ -1109,8 +1212,9 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-      amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id)
-    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?)
+      amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
+      credit_note_code, credit_note_note)
+    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?)
   `,
     orderId,
     original.customer_id,
@@ -1121,6 +1225,8 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
     invoiceId,     // link to original
     req.user!.id,
     original.location_id ?? 1,
+    cnCode,
+    cnNote,
   );
 
   const creditNoteId = cnResult.lastInsertRowid;
@@ -1201,6 +1307,7 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
     original_invoice_id: invoiceId,
     amount,
     reason: reason.trim(),
+    code: cnCode,
   });
 
   broadcast(WS_EVENTS.INVOICE_CREATED, creditNote, req.tenantSlug || null);

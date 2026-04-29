@@ -98,7 +98,7 @@ export function TrainingModeBanner() {
       <button
         onClick={startTraining}
         disabled={busy}
-        className="flex items-center gap-1.5 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-600 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
+        className="flex items-center gap-1.5 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-600 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
         title="New-hire sandbox: fake sales, no inventory impact"
       >
         <GraduationCap className="h-4 w-4" />
@@ -116,7 +116,7 @@ export function TrainingModeBanner() {
       <button
         onClick={endTraining}
         disabled={busy}
-        className="flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+        className="flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
       >
         <StopCircle className="h-3.5 w-3.5" />
         End Training

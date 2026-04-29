@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, PlayCircle } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, PlayCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -30,6 +30,7 @@ interface Subscription {
   last_name: string;
   email: string | null;
   phone: string | null;
+  blockchyp_token?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,6 +67,13 @@ function TableSkeleton() {
       ))}
     </div>
   );
+}
+
+// ─── AdminOnly wrapper ────────────────────────────────────────────────────────
+
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  return user?.role === 'admin' ? <>{children}</> : null;
 }
 
 // ─── Run Billing Button (admin-only, dev/admin convenience) ──────────────────
@@ -114,6 +122,35 @@ export function SubscriptionsListPage() {
       setCancellingId(null);
     },
   });
+
+  // WEB-W3-020: per-row run-billing mutation
+  const [billingId, setBillingId] = useState<number | null>(null);
+  const runBillingMut = useMutation({
+    mutationFn: (id: number) => membershipApi.runBilling(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      toast.success('Billing completed successfully');
+      setBillingId(null);
+    },
+    onError: (err: any, _id) => {
+      toast.error(err?.response?.data?.message || 'Billing failed');
+      setBillingId(null);
+    },
+  });
+
+  async function handleRunBilling(sub: Subscription): Promise<void> {
+    try {
+      const ok = await confirm(
+        `Charge ${sub.first_name} ${sub.last_name}'s card for ${formatCurrency(sub.monthly_price ?? 0)}/mo now?`,
+        { title: 'Run billing?', confirmLabel: 'Charge card' },
+      );
+      if (!ok) return;
+      setBillingId(sub.id);
+      runBillingMut.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  }
 
   async function handleCancel(sub: Subscription): Promise<void> {
     // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
@@ -204,8 +241,11 @@ export function SubscriptionsListPage() {
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(sub.status)}`}>
                       {statusLabel(sub.status)}
                     </span>
+                    {/* WEB-W3-030: show cancel date alongside the badge */}
                     {sub.cancel_at_period_end === 1 && (
-                      <span className="ml-1.5 text-xs text-amber-500">Cancels at period end</span>
+                      <span className="ml-1.5 text-xs text-amber-500">
+                        Cancels {sub.current_period_end ? formatDate(sub.current_period_end) : 'at period end'}
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
@@ -215,16 +255,34 @@ export function SubscriptionsListPage() {
                     {sub.monthly_price != null ? `${formatCurrency(sub.monthly_price)}/mo` : '—'}
                   </td>
                   <td className="px-4 py-3">
-                    {sub.status !== 'cancelled' && (
-                      <button
-                        onClick={() => handleCancel(sub)}
-                        disabled={cancellingId === sub.id}
-                        className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 text-xs font-medium"
-                      >
-                        {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                        Cancel
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {/* WEB-W3-020: per-row Bill now button — admin only, active subs with token */}
+                      {sub.status === 'active' && sub.blockchyp_token && (
+                        <AdminOnly>
+                          <button
+                            onClick={() => handleRunBilling(sub)}
+                            disabled={billingId === sub.id}
+                            className="flex items-center gap-1 text-primary-600 hover:text-primary-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Charge card now"
+                          >
+                            {billingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <RefreshCw className="h-3 w-3" />}
+                            Bill now
+                          </button>
+                        </AdminOnly>
+                      )}
+                      {sub.status !== 'cancelled' && (
+                        <button
+                          onClick={() => handleCancel(sub)}
+                          disabled={cancellingId === sub.id}
+                          className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                        >
+                          {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

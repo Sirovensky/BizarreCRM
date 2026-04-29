@@ -724,11 +724,17 @@ class MainActivity : FragmentActivity() {
             // referenced record themselves rather than the dashboard.
             "appointment"  -> "appointments"
             "expense"      -> "expenses"
-            // FCM `sms` payloads send a message id in entity_id, but the SMS
-            // thread route keys by phone number. Landing on the inbox is the
-            // closest we can get without a phone-number extra from the
-            // server.
-            "sms"          -> "messages"
+            // §12.5 — FCM `sms_inbound` / `sms` payloads carry an optional
+            // thread_phone extra. When present, navigate directly to the thread;
+            // fall back to the inbox if the extra is missing (e.g. older server).
+            "sms"          -> {
+                val threadPhone = intent.getStringExtra("thread_phone")
+                if (!threadPhone.isNullOrBlank()) {
+                    "messages/${android.net.Uri.encode(threadPhone)}"
+                } else {
+                    "messages"
+                }
+            }
             "notification" -> "notifications"
             else           -> null
         }

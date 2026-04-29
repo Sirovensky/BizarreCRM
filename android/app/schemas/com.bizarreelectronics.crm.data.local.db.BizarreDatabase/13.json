@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 13,
-    "identityHash": "f73c2ffaa93312ddbb239c3fd84cbe77",
+    "identityHash": "80b560e9b01d7878f32d6d9c6d0031b5",
     "entities": [
       {
         "tableName": "tickets",
@@ -1792,7 +1792,7 @@
       },
       {
         "tableName": "expenses",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `category` TEXT NOT NULL, `amount` INTEGER NOT NULL, `description` TEXT, `date` TEXT NOT NULL, `user_name` TEXT, `user_id` INTEGER, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, `status` TEXT NOT NULL, `locally_modified` INTEGER NOT NULL, `approval_status` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `category` TEXT NOT NULL, `amount` INTEGER NOT NULL, `description` TEXT, `date` TEXT NOT NULL, `user_name` TEXT, `user_id` INTEGER, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL, `locally_modified` INTEGER NOT NULL, `approval_status` TEXT NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -1842,12 +1842,6 @@
           {
             "fieldPath": "updatedAt",
             "columnName": "updated_at",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "status",
-            "columnName": "status",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -2359,7 +2353,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f73c2ffaa93312ddbb239c3fd84cbe77')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '80b560e9b01d7878f32d6d9c6d0031b5')"
     ]
   }
 }

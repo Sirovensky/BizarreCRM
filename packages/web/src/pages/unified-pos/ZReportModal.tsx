@@ -58,6 +58,26 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
     },
   });
 
+  // WEB-W3-016: inject a print-only <style> that hides everything on the page
+  // EXCEPT the modal content, then call window.print(). The style tag is
+  // mounted once (on modal open) and removed on unmount so it never leaks into
+  // other print contexts. Using a data attribute instead of a class selector
+  // avoids any coupling to Tailwind utility names that could change.
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-z-report-print', 'true');
+    style.textContent = `
+@media print {
+  body > * { display: none !important; }
+  [data-z-report-modal] { display: block !important; position: static !important; }
+  [data-z-report-modal] > * { display: block !important; }
+  [data-z-report-modal] .no-print { display: none !important; }
+}
+    `.trim();
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
+
   const handlePrint = () => window.print();
 
   useEffect(() => {
@@ -79,6 +99,7 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
       }}
     >
       <div
+        data-z-report-modal
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-900"
         onClick={(e) => e.stopPropagation()}
       >
@@ -86,7 +107,8 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
           <h3 id="z-report-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Z-Report · Shift #{shiftId}
           </h3>
-          <div className="flex items-center gap-1">
+          {/* no-print: header buttons are not useful on paper */}
+          <div className="no-print flex items-center gap-1">
             <button
               onClick={handlePrint}
               aria-label="Print"

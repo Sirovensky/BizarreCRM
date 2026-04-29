@@ -187,7 +187,7 @@ export function BinLocationsPage() {
                 <button
                   onClick={() => createMut.mutate()}
                   disabled={!newCode.trim() || createMut.isPending}
-                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-primary-950 disabled:opacity-50"
+                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   {createMut.isPending && <Loader2 className="inline h-3 w-3 animate-spin mr-1" />}
                   Create
@@ -218,7 +218,7 @@ export function BinLocationsPage() {
                     });
                     if (ok) deleteMut.mutate(b.id);
                   }}
-                  className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                  className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   disabled={deleteMut.isPending && deleteMut.variables === b.id}
                   aria-label={`Deactivate bin ${b.code}`}
                 >

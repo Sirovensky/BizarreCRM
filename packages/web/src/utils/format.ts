@@ -111,6 +111,15 @@ export function formatDateTime(iso: string | null | undefined, localeOverride?: 
   });
 }
 
+// BUILD-FIX-002: time-only formatter referenced by CalendarPage + EmployeeListPage
+// but missing. Hours+minutes only, locale-aware.
+export function formatTime(iso: string | Date | null | undefined, localeOverride?: string): string {
+  if (iso == null) return '\u2014';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return '\u2014';
+  return d.toLocaleTimeString(localeOverride ?? _locale, { hour: 'numeric', minute: '2-digit' });
+}
+
 // @audit-fixed (WEB-FF-003 / Fixer-DD 2026-04-25): short date+time used widely
 // across detail pages (Leads, Customer chat, Portal, etc.). Each had its own
 // hardcoded `toLocaleString('en-US', { month: 'short', ... })`. Centralised

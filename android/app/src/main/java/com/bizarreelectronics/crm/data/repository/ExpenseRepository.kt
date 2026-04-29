@@ -87,7 +87,46 @@ class ExpenseRepository @Inject constructor(
      */
     fun getByApprovalStatus(status: String): Flow<List<ExpenseEntity>> {
         refreshExpensesInBackground()
-        return expenseDao.getByStatus(status)
+        return expenseDao.getByApprovalStatus(status)
+    }
+
+    /**
+     * Combined filter flow: category + date range + approval status + employee name.
+     * Pass empty string for any dimension to skip it.
+     * Triggers a background refresh with server-side date/status params where supported.
+     */
+    fun getFiltered(
+        category: String,
+        dateFrom: String,
+        dateTo: String,
+        approvalStatus: String,
+        employeeName: String,
+    ): Flow<List<ExpenseEntity>> {
+        // Kick off background refresh with server-side filters where the API supports them
+        scope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) return@launch
+            try {
+                val params = buildMap<String, String> {
+                    put("pagesize", "200")
+                    if (category.isNotBlank()) put("category", category)
+                    if (dateFrom.isNotBlank()) put("from_date", dateFrom)
+                    if (dateTo.isNotBlank()) put("to_date", dateTo)
+                    if (approvalStatus.isNotBlank()) put("status", approvalStatus)
+                }
+                val response = expenseApi.getExpenses(params)
+                val expenses = response.data?.expenses ?: return@launch
+                expenseDao.insertAll(expenses.map { it.toEntity() })
+            } catch (e: Exception) {
+                Log.d(TAG, "Filtered expense refresh failed: ${e.message}")
+            }
+        }
+        return expenseDao.getFiltered(
+            category = category,
+            dateFrom = dateFrom,
+            dateTo = dateTo,
+            approvalStatus = approvalStatus,
+            employeeName = employeeName,
+        )
     }
 
     /** Create an expense. Online: API call. Offline: local insert + sync queue. */
@@ -347,6 +386,7 @@ fun ExpenseListItem.toEntity() = ExpenseEntity(
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
     createdAt = createdAt ?: "",
     updatedAt = createdAt ?: "",
+    approvalStatus = status?.takeIf { it.isNotBlank() } ?: "pending",
 )
 
 fun ExpenseDetail.toEntity() = ExpenseEntity(
@@ -360,4 +400,5 @@ fun ExpenseDetail.toEntity() = ExpenseEntity(
     userId = userId,
     createdAt = createdAt ?: "",
     updatedAt = updatedAt ?: "",
+    approvalStatus = status?.takeIf { it.isNotBlank() } ?: "pending",
 )
