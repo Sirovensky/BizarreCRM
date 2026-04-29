@@ -29,13 +29,17 @@ public struct ReportsView: View {
 
     private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
+    /// Navigation callback used by `TenantZeroStateView` and per-card POS CTAs.
+    private let onGoToPOS: (() -> Void)?
 
     public init(repository: ReportsRepository,
-                onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
+                onTapSaleRecord: @escaping (Int64) -> Void = { _ in },
+                onGoToPOS: (() -> Void)? = nil) {
         _vm = State(wrappedValue: ReportsViewModel(repository: repository))
         self.exportService = ReportExportService(repository: repository)
         self.csvService = ReportCSVService()
         self.onTapSaleRecord = onTapSaleRecord
+        self.onGoToPOS = onGoToPOS
     }
 
     // MARK: - Body
@@ -98,12 +102,25 @@ public struct ReportsView: View {
                     LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
                         dateRangePicker
                             .padding(.horizontal, BrandSpacing.base)
-                        heroTile
-                            .padding(.horizontal, BrandSpacing.base)
+                        if !vm.isTenantZeroState {
+                            heroTile
+                                .padding(.horizontal, BrandSpacing.base)
+                        }
                         if vm.isLoading {
                             loadingPlaceholders
+                        } else if vm.isTenantZeroState {
+                            // §91.16 item 1: tenant zero-state replaces the entire card surface
+                            HStack {
+                                Spacer()
+                                TenantZeroStateView(onGoToPOS: onGoToPOS)
+                                Spacer()
+                            }
+                            .padding(.top, BrandSpacing.xxl)
                         } else {
-                            cardStack
+                            // §91.16 item 3: shared ReportsGrid container
+                            ReportsGrid {
+                                cardItems
+                            }
                         }
                     }
                     .padding(.bottom, BrandSpacing.xxl)
@@ -124,22 +141,25 @@ public struct ReportsView: View {
                     LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
                         dateRangePicker
                             .padding(.horizontal, BrandSpacing.base)
-                        heroTile
-                            .padding(.horizontal, BrandSpacing.base)
+                        if !vm.isTenantZeroState {
+                            heroTile
+                                .padding(.horizontal, BrandSpacing.base)
+                        }
                         if vm.isLoading {
                             loadingPlaceholders
+                        } else if vm.isTenantZeroState {
+                            // §91.16 item 1: tenant zero-state replaces the entire card surface
+                            HStack {
+                                Spacer()
+                                TenantZeroStateView(onGoToPOS: onGoToPOS)
+                                Spacer()
+                            }
+                            .padding(.top, BrandSpacing.xxl)
                         } else {
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md)
-                                ],
-                                spacing: BrandSpacing.md
-                            ) {
+                            // §91.16 item 3: shared ReportsGrid container
+                            ReportsGrid {
                                 cardItems
                             }
-                            .padding(.horizontal, BrandSpacing.base)
                         }
                     }
                     .padding(.bottom, BrandSpacing.xxl)
@@ -296,49 +316,85 @@ public struct ReportsView: View {
         .accessibilityLabel("Loading reports…")
     }
 
-    // MARK: - Phone card stack (single column)
-
-    private var cardStack: some View {
-        VStack(spacing: BrandSpacing.md) {
-            cardItems
-        }
-        .padding(.horizontal, BrandSpacing.base)
-    }
-
-    // MARK: - Card items (shared between phone/iPad)
+    // MARK: - Card items (shared between phone/iPad via ReportsGrid)
+    //
+    // §91.16 item 4: each empty card surfaces a CTA that guides the operator
+    // toward the action that will generate the missing data.
 
     @ViewBuilder
     private var cardItems: some View {
         // §15.2 Revenue chart — line + bar via /reports/sales
-        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-            drillContext = .revenue(date: pt.date)
+        VStack(spacing: BrandSpacing.sm) {
+            RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
+                drillContext = .revenue(date: pt.date)
+            }
+            if vm.revenue.isEmpty {
+                ReportCardCTA(spec: .revenue(action: onGoToPOS))
+                    .padding(.horizontal, BrandSpacing.base)
+            }
         }
 
         // §15.9 Expenses chart — bar via /reports/dashboard-kpis
-        ExpensesChartCard(report: vm.expensesReport)
+        VStack(spacing: BrandSpacing.sm) {
+            ExpensesChartCard(report: vm.expensesReport)
+            if vm.expensesReport == nil {
+                ReportCardCTA(spec: .expenses())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
+        }
 
         // §15.5 Inventory movement chart — bar via /reports/inventory
         InventoryMovementCard(report: vm.inventoryReport)
 
         // §15.3 Tickets by status
-        TicketsByStatusCard(points: vm.ticketsByStatus)
+        VStack(spacing: BrandSpacing.sm) {
+            TicketsByStatusCard(points: vm.ticketsByStatus)
+            if vm.ticketsByStatus.isEmpty {
+                ReportCardCTA(spec: .tickets())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
+        }
 
         // §15.2 Avg ticket value KPI
         AvgTicketValueCard(value: vm.avgTicketValue)
 
         // §15.4 Employee performance
-        TopEmployeesCard(employees: vm.employeePerf)
-
-        // §15.5 Inventory turnover (category table)
-        InventoryTurnoverCard(rows: vm.inventoryTurnover)
-
-        // §15.7 CSAT + NPS
-        CSATScoreCard(score: vm.csatScore) {
-            showCSATDetail = true
+        VStack(spacing: BrandSpacing.sm) {
+            TopEmployeesCard(employees: vm.employeePerf)
+            if vm.employeePerf.isEmpty {
+                ReportCardCTA(spec: .employeePerformance())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
         }
 
-        NPSScoreCard(score: vm.npsScore) {
-            showNPSDetail = true
+        // §15.5 Inventory turnover (category table)
+        VStack(spacing: BrandSpacing.sm) {
+            InventoryTurnoverCard(rows: vm.inventoryTurnover)
+            if vm.inventoryTurnover.isEmpty {
+                ReportCardCTA(spec: .inventoryHealth())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
+        }
+
+        // §15.7 CSAT + NPS
+        VStack(spacing: BrandSpacing.sm) {
+            CSATScoreCard(score: vm.csatScore) {
+                showCSATDetail = true
+            }
+            if vm.csatScore == nil {
+                ReportCardCTA(spec: .customerSatisfaction())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
+        }
+
+        VStack(spacing: BrandSpacing.sm) {
+            NPSScoreCard(score: vm.npsScore) {
+                showNPSDetail = true
+            }
+            if vm.npsScore == nil {
+                ReportCardCTA(spec: .customerSatisfaction())
+                    .padding(.horizontal, BrandSpacing.base)
+            }
         }
     }
 

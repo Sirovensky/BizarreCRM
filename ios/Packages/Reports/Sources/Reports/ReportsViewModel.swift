@@ -40,6 +40,22 @@ public final class ReportsViewModel {
     public var npsScore: NPSScore?
     public var lastSyncedAt: Date?
 
+    // MARK: - Tenant zero-state  (§91.16 item 1)
+
+    /// Minimum completed transactions required before the full reports surface is shown.
+    /// Tenants below this threshold see `TenantZeroStateView` instead of the card grid.
+    public static let tenantZeroTransactionThreshold: Int = 1
+
+    /// `true` when the tenant has fewer than `tenantZeroTransactionThreshold` transactions
+    /// in the selected period and the load has completed without error.
+    public var isTenantZeroState: Bool {
+        guard !isLoading, errorMessage == nil else { return false }
+        let totalSales = salesTotals.totalInvoices > 0
+            ? salesTotals.totalInvoices
+            : revenue.reduce(0) { $0 + $1.saleCount }
+        return totalSales < Self.tenantZeroTransactionThreshold
+    }
+
     // MARK: - Loading / error
 
     public var isLoading = false
