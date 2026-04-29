@@ -195,6 +195,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] **Tenant accent** — `BrandAccent` color layered via `LocalContentColor` + `primary` swap; increase-contrast mode bumps to AA 7:1 palette. (commit 6a14dfd — `Theme.kt:171-191` `BrandAccent` + `tenantAccentOrFallback()` + `LocalBrandAccent` staticCompositionLocal; AA 7:1 increase-contrast ramp pending)
 - [x] No glassmorphism. No translucent blurred nav bars. That is iOS Liquid Glass; Android stays on tonal M3 surfaces to keep the platform voice distinct. (commit 6a14dfd — `Theme.kt:1-20` design-decision file-header banning RenderEffect/BlurMaskFilter; also referenced in Android_audit.md §1.4)
 
+### 1.5 Navigation shell — tablet rail
+- [ ] Tablet sidebar shows a "Recent" / "Frequently used" row of dynamic shortcut icons that surface the user's most-tapped destinations (e.g. a tech who lives in Reports gets Reports promoted to the rail; a cashier who lives in Cash Register gets Cash Register promoted). Persist a per-user usage histogram in `AppPreferences` (route → tap count + last-used timestamp), expose top-N as a `recentRailItems` flow consumed by `AppNavGraph`'s `NavigationRail`, gate behind `isMediumOrExpandedWidth()` so phones aren't affected.
+
 ### 1.5 Navigation shell
 - [x] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+). (String-based sealed `Screen` class ships; `@Serializable` data-class migration tracked as future refactor — all routes, back-stack, deep links, transitions working.)
 - [x] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`. (Implemented via manual adaptive `Row` logic in `AppNavGraph.kt` lines 919-1145 using `rememberWindowMode()` / `isMediumOrExpandedWidth()` / `isPermanentDrawerWidth()`; `NavigationSuiteScaffold` migration deferred — same breakpoints honoured.)
@@ -493,6 +496,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ## 3. Dashboard & Home
 
 _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET /reports/aging`, `GET /tickets/my-queue`, `GET /inbox`, `GET /sms/unread-count`, `GET /notifications`._
+
+### 3.0 Performance & scroll (CROSS)
+- [ ] Dashboard scroll feels janky and CPU-bound on a stock Pixel 6 Pro (user-reported 2026-04-28). Variable scroll speed across regions points at nested scrollables — most likely a `LazyVerticalStaggeredGrid` with `userScrollEnabled = true` inside an outer `Column { verticalScroll(...) }` so the parent and child contend for the touch slop. Audit `DashboardScreen` composition: ensure exactly one scrollable in the vertical axis, fix the nested-scroll hierarchy, then profile the chart/donut composables (Vico-free pure-Canvas charts) for missed `remember` keys causing recomputes per frame.
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`. (commit 059e249 — `ui/screens/dashboard/components/KpiGrid.kt` + `KpiTile` model wired into DashboardScreen with responsive branching)
@@ -2562,6 +2568,9 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ## 16. POS / Checkout
 
 _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST /pos/carts/{id}/lines`, `POST /blockchyp/charge`, `POST /pos/cash-sessions`, `POST /pos/cash-sessions/{id}/close`._
+
+### 16.0 PosEntry customer search overlay polish
+- [ ] When tapped to active=true the M3 SearchBar covers the LinearWavyProgressIndicator wave at the top of `PosFlowScaffold`, AND its rectangular full-screen overlay shape no longer matches M3 Expressive 1.5.0-alpha18 brand-rounded corners (user-reported 2026-04-28). Switch from `SearchBar` to `DockedSearchBar` so results render as a docked card below the input without the fullscreen takeover, OR pass `windowInsets` so the overlay respects the topBar height + apply `inputFieldShape = SearchBarDefaults.inputFieldShape` and a rounded `SearchBarDefaults.fullScreenShape` for the active state. Either approach preserves the existing collapsed-bottom-dock behaviour fixed in `dbfa9251`.
 
 ### 16.1 POS shell
 - [x] 2-pane layout on tablet (catalog left, cart right) via `Row` + weight modifiers. Phone: tabs — Catalog / Cart. (commit 002cdf6 — `PosScreen.kt` full rewrite)

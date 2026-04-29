@@ -989,14 +989,34 @@ fun AppNavGraph(
         }
     }
 
-    // Routes that are children of the "More" tab
-    val moreChildRoutes = setOf(
-        Screen.Customers.route, Screen.Inventory.route, Screen.Invoices.route,
-        Screen.Reports.route, Screen.Employees.route, Screen.Notifications.route,
-        Screen.Settings.route, Screen.GlobalSearch.route,
-        Screen.Leads.route, Screen.Estimates.route, Screen.Expenses.route,
-        Screen.Appointments.route,
+    // Routes that belong to one of the four primary tabs (Dashboard, Tickets,
+    // POS, Messages). Anything else — settings sub-pages, More-section detail
+    // routes, customer/inventory/invoice detail screens, etc. — belongs to
+    // the More tab and should keep More highlighted in the bottom nav.
+    val primaryTabBases = listOf(
+        Screen.Dashboard.route,
+        Screen.Tickets.route,
+        Screen.Pos.route,
+        Screen.Messages.route,
     )
+    val isUnderPrimaryTab: (String?) -> Boolean = { route ->
+        route != null && primaryTabBases.any { base ->
+            route == base || route.startsWith("$base/") || route.startsWith("$base?")
+        } ||
+        // POS detail routes don't share a common prefix with the Pos tab base.
+        route == Screen.PosCart.route ||
+        route == Screen.PosTender.route ||
+        route == Screen.PosSplitCart.route ||
+        route?.startsWith("pos/receipt/") == true ||
+        // Ticket detail / create live under their own prefixes already
+        // covered by primaryTabBases ("tickets/...") plus check-in flow that
+        // is conceptually a ticket-create surface.
+        route?.startsWith("checkin/") == true ||
+        route?.startsWith(Screen.CheckInEntry.route) == true
+    }
+    // Kept for compatibility with downstream selectors below — empty set
+    // forces them to fall through to !isUnderPrimaryTab via the new helper.
+    val moreChildRoutes = emptySet<String>()
 
     // Determine if we should show the bottom nav.
     //
@@ -1163,7 +1183,7 @@ fun AppNavGraph(
                     bottomNavItems.forEach { item ->
                         val isMoreTab = item.screen == Screen.More
                         val isSelected = if (isMoreTab) {
-                            currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                            currentRoute == Screen.More.route || (currentRoute != null && !isUnderPrimaryTab(currentRoute))
                         } else {
                             currentRoute == item.screen.route
                         }
@@ -1343,7 +1363,7 @@ fun AppNavGraph(
                             bottomNavItems.forEach { item ->
                                 val isMoreTab = item.screen == Screen.More
                                 val isSelected = if (isMoreTab) {
-                                    currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                                    currentRoute == Screen.More.route || (currentRoute != null && !isUnderPrimaryTab(currentRoute))
                                 } else {
                                     currentRoute == item.screen.route
                                 }
@@ -1364,7 +1384,7 @@ fun AppNavGraph(
                             bottomNavItems.forEach { item ->
                                 val isMoreTab = item.screen == Screen.More
                                 val isSelected = if (isMoreTab) {
-                                    currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                                    currentRoute == Screen.More.route || (currentRoute != null && !isUnderPrimaryTab(currentRoute))
                                 } else {
                                     currentRoute == item.screen.route
                                 }
