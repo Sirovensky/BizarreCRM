@@ -77,8 +77,16 @@ public struct RevenueChartCard: View {
                 .brandChartAxisStyle()
                 .chartXAxisLabel("Date", alignment: .center)
                 .chartYAxisLabel("Revenue ($K)", position: .leading)
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                        AxisGridLine()
+                    }
+                }
                 .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                 .chartOverlay { proxy in drillOverlay(proxy: proxy) }
+            if !points.isEmpty { revenueLegendRow }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -101,8 +109,16 @@ public struct RevenueChartCard: View {
                         .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                                AxisGridLine()
+                            }
+                        }
                         .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                         .chartOverlay { proxy in drillOverlay(proxy: proxy) }
+                    if !points.isEmpty { revenueLegendRow }
                 }
                 .frame(maxWidth: .infinity)
 
@@ -116,6 +132,13 @@ public struct RevenueChartCard: View {
                         .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                                AxisGridLine()
+                            }
+                        }
                         .accessibilityLabel("Revenue bar chart by period")
                 }
                 .frame(maxWidth: .infinity)
@@ -211,7 +234,7 @@ public struct RevenueChartCard: View {
     @ViewBuilder
     private var chartContent: some View {
         if points.isEmpty {
-            emptyState
+            ChartDashedSilhouette(systemImage: "chart.line.uptrend.xyaxis", label: "No revenue data for this period.")
         } else {
             switch chartMode {
             case .line: lineChart
@@ -222,10 +245,24 @@ public struct RevenueChartCard: View {
 
     // MARK: - Line chart (AreaMark + LineMark)
 
+    private var revenueLegendRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle().fill(Color.bizarreOrange).frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text("Revenue $K")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend: Revenue in thousands of dollars")
+    }
+
     private var lineChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                ChartDashedSilhouette(systemImage: "chart.line.uptrend.xyaxis", label: "No revenue data for this period.")
             } else {
                 Chart(points) { pt in
                     AreaMark(
@@ -267,7 +304,7 @@ public struct RevenueChartCard: View {
     private var barChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                ChartDashedSilhouette(systemImage: "chart.bar", label: "No revenue data for this period.")
             } else {
                 Chart(points) { pt in
                     BarMark(
@@ -359,12 +396,6 @@ public struct RevenueChartCard: View {
     }
 
     // MARK: - Shared helpers
-
-    private var emptyState: some View {
-        ContentUnavailableView("No Revenue Data",
-                               systemImage: "chart.line.uptrend.xyaxis",
-                               description: Text("No revenue data for this period."))
-    }
 
     private var strokeBorder: some View {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)

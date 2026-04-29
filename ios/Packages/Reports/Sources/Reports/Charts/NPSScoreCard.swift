@@ -26,9 +26,7 @@ public struct NPSScoreCard: View {
                     notEnoughDataView(respondentCount: s.respondentCount)
                 }
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityLabel("Loading NPS score")
+                ChartDashedSilhouette(systemImage: "heart.fill", label: "No NPS data for this period.")
             }
         }
         .padding(BrandSpacing.base)

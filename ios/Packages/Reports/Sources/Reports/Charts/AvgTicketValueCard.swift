@@ -32,9 +32,7 @@ public struct AvgTicketValueCard: View {
             } else if let v = value {
                 metricRow(v)
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityLabel("Loading average ticket value")
+                ChartDashedSilhouette(systemImage: "dollarsign.circle.fill", label: "No ticket value data for this period.")
             }
         }
         .padding(BrandSpacing.base)

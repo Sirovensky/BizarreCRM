@@ -185,24 +185,46 @@ public struct InventoryMovementCard: View {
     @ViewBuilder
     private var movementChart: some View {
         if topItems.isEmpty {
-            emptyState
+            ChartDashedSilhouette(systemImage: "shippingbox", label: "No inventory movement data for this period.")
         } else {
-            Chart(topItems) { item in
-                BarMark(
-                    x: .value("Units Used", item.usedQty),
-                    y: .value("Item", item.name)
-                )
-                .foregroundStyle(Color.bizarreTeal.opacity(0.75))
-                .cornerRadius(DesignTokens.Radius.xs)
-                .annotation(position: .trailing) {
-                    Text("\(item.usedQty)")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Chart(topItems) { item in
+                    BarMark(
+                        x: .value("Units Used", item.usedQty),
+                        y: .value("Item", item.name)
+                    )
+                    .foregroundStyle(Color.bizarreTeal.opacity(0.75))
+                    .cornerRadius(DesignTokens.Radius.xs)
+                    .annotation(position: .trailing) {
+                        Text("\(item.usedQty)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
                 }
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
+                           value: topItems.count)
+
+                inventoryLegendRow
             }
-            .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
-                       value: topItems.count)
         }
+    }
+
+    private var inventoryLegendRow: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Circle().fill(Color.bizarreTeal.opacity(0.75)).frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text("Units used (30d)")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend: units used in last 30 days")
     }
 
     // MARK: - Value summary table (iPad sidebar)
@@ -242,13 +264,6 @@ public struct InventoryMovementCard: View {
         }
     }
 
-    // MARK: - Empty state
-
-    private var emptyState: some View {
-        ContentUnavailableView("No Movement Data",
-                               systemImage: "shippingbox",
-                               description: Text("No inventory movement data for this period."))
-    }
 
     // MARK: - Helpers
 
