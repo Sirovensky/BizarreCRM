@@ -21,6 +21,9 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisi
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSort
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
+import com.bizarreelectronics.crm.util.ScrollPosition
+import com.bizarreelectronics.crm.util.restoreScrollPosition
+import com.bizarreelectronics.crm.util.saveScrollPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -623,11 +626,25 @@ class TicketListViewModel @Inject constructor(
         }
     }
 
+    // §75.5 — scroll position persistence.
+    // Called from the screen's SaveScrollOnDispose effect so that if the
+    // process is killed while the user is on the Ticket detail and they
+    // return, the list is restored at the same scroll offset.
+    fun saveScrollPosition(position: ScrollPosition) {
+        savedStateHandle.saveScrollPosition(SSH_SCOPE_SCROLL, position)
+    }
+
+    /** Reads the last-persisted scroll position; returns (0, 0) on first launch. */
+    fun restoreScrollPosition(): ScrollPosition =
+        savedStateHandle.restoreScrollPosition(SSH_SCOPE_SCROLL)
+
     private companion object {
         private const val TAG = "TicketListViewModel"
         /** SavedStateHandle keys for process-death restoration (§1.8). */
         const val SSH_KEY_QUERY  = "ticket_list_search_query"
         const val SSH_KEY_FILTER = "ticket_list_selected_filter"
+        /** SavedStateHandle key-scope for §75.5 scroll position. */
+        const val SSH_SCOPE_SCROLL = "ticket_list"
     }
 }
 

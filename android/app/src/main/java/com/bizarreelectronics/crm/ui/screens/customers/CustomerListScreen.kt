@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -91,7 +90,9 @@ import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSortDr
 import com.bizarreelectronics.crm.ui.screens.customers.components.ImportedContact
 import com.bizarreelectronics.crm.ui.screens.customers.components.rememberCustomerContactImport
 import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
+import com.bizarreelectronics.crm.util.SaveScrollOnDispose
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
+import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
@@ -116,7 +117,14 @@ fun CustomerListScreen(
     }
     val state by viewModel.state.collectAsState()
     val lazyPagingItems = viewModel.customersPaged.collectAsLazyPagingItems()
-    val listState = rememberLazyListState()
+    // §75.5 — scroll position preserved across back-nav and process death.
+    val restoredPos = remember { viewModel.restoreScrollPosition() }
+    val listState = rememberSaveableLazyListState(
+        key = "customer_list",
+        initialIndex = restoredPos.firstVisibleItemIndex,
+        initialOffset = restoredPos.firstVisibleItemScrollOffset,
+    )
+    SaveScrollOnDispose(listState = listState) { pos -> viewModel.saveScrollPosition(pos) }
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

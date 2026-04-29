@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -78,7 +77,9 @@ import com.bizarreelectronics.crm.util.dropTarget
 import com.bizarreelectronics.crm.util.textClipData
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.LocalScrollToTopBus
+import com.bizarreelectronics.crm.util.SaveScrollOnDispose
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
+import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -129,7 +130,15 @@ fun TicketListScreen(
             listOf("All", "Open", "In Progress", "Waiting", "Closed")
         }
     }
-    val listState = rememberLazyListState()
+    // §75.5 — scroll position is restored from SavedStateHandle (process-death)
+    // and also from rememberSaveable (back-nav within the same session).
+    val restoredPos = remember { viewModel.restoreScrollPosition() }
+    val listState = rememberSaveableLazyListState(
+        key = "ticket_list",
+        initialIndex = restoredPos.firstVisibleItemIndex,
+        initialOffset = restoredPos.firstVisibleItemScrollOffset,
+    )
+    SaveScrollOnDispose(listState = listState) { pos -> viewModel.saveScrollPosition(pos) }
 
     // Toast observer
     val toastMessage = state.toastMessage
