@@ -131,17 +131,45 @@ public struct MessageTemplateListView: View {
 
     // MARK: - Empty / error
 
+    // MARK: - Empty state  (§12)
+
     private var emptyView: some View {
         VStack(spacing: BrandSpacing.md) {
             Image(systemName: "text.bubble")
                 .font(.system(size: 48))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
-            Text("No templates")
-                .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            if vm.onPick == nil {
+
+            // Distinguish "filter returned nothing" from "no templates at all".
+            let isFiltered = !searchText.isEmpty || vm.filterChannel != nil
+            Text(isFiltered ? "No matching templates" : "No templates yet")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+
+            Text(
+                isFiltered
+                    ? "Try a different search or channel filter."
+                    : "Save reusable SMS and email copy here so your team can\ninsert it with one tap."
+            )
+            .font(.brandBodyMedium())
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, BrandSpacing.xl)
+
+            if isFiltered {
+                Button("Clear filters") {
+                    searchText = ""
+                    vm.searchQuery = ""
+                    vm.filterChannel = nil
+                }
+                .buttonStyle(.bordered)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Clear search and channel filters")
+            } else if vm.onPick == nil {
                 Button("Create your first template") { showEditor = true }
-                    .buttonStyle(.borderedProminent).tint(.bizarreOrange)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Create a new message template")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

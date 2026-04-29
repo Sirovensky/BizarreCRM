@@ -15,11 +15,20 @@ import DesignSystem
 public struct TypingIndicatorView: View {
     public let isVisible: Bool
 
+    /// When `true` the placeholder copy ("Contact is typing…") is inserted into
+    /// the VoiceOver reading order even while the animated bubble is hidden.
+    /// Set this flag only when the WS typing channel is confirmed available on
+    /// the current tenant so screen-reader users know the feature is active.
+    /// Defaults to `false` so legacy tenants without WS typing support remain
+    /// unchanged.
+    public var announcePlaceholder: Bool = false
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: Double = 0
 
-    public init(isVisible: Bool) {
+    public init(isVisible: Bool, announcePlaceholder: Bool = false) {
         self.isVisible = isVisible
+        self.announcePlaceholder = announcePlaceholder
     }
 
     public var body: some View {
@@ -31,6 +40,15 @@ public struct TypingIndicatorView: View {
             .accessibilityLabel("Contact is typing")
             .accessibilityAddTraits(.updatesFrequently)
             .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .bottomLeading)))
+        } else if announcePlaceholder {
+            // §12 typing indicator placeholder — zero-size view that keeps the
+            // VoiceOver cursor stable so its position in the scroll view
+            // doesn't shift when the bubble appears.  The "not typing" state
+            // is intentionally silent; only the *appearing* transition
+            // announces "Contact is typing" above.
+            Color.clear
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
     }
 

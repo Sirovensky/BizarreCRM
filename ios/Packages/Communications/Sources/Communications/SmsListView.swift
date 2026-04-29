@@ -530,7 +530,10 @@ private struct ConversationRow: View {
                     }
                 }
                 if let msg = conversation.lastMessage, !msg.isEmpty {
-                    Text(msg)
+                    // §12 — cap preview to 100 chars so long messages don't
+                    // overflow the row on compact widths.
+                    let preview = msg.count > 100 ? String(msg.prefix(100)) + "…" : msg
+                    Text(preview)
                         .font(.brandBodyMedium())
                         .foregroundStyle(conversation.unreadCount > 0 ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
                         .lineLimit(1)
@@ -547,10 +550,17 @@ private struct ConversationRow: View {
                         .monospacedDigit()
                 }
                 if conversation.unreadCount > 0 {
-                    Circle()
-                        .fill(Color.bizarreMagenta)
-                        .frame(width: 10, height: 10)
-                        .accessibilityHidden(true)
+                    // §12 — unread-count chip; capped at "99+" to prevent
+                    // the chip from growing too wide on very active threads.
+                    let label = conversation.unreadCount > 99 ? "99+" : "\(conversation.unreadCount)"
+                    Text(label)
+                        .font(.brandLabelSmall())
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.bizarreMagenta, in: Capsule())
+                        .accessibilityHidden(true) // announced via combined a11y label
                 }
             }
         }
