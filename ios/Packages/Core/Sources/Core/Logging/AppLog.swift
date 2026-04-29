@@ -27,6 +27,12 @@ public enum AppLog {
     public static let db             = Logger(subsystem: subsystem, category: "db")
     /// §91.1 §91.14 — SMS / Communications decode + pipeline errors.
     public static let communications = Logger(subsystem: subsystem, category: "communications")
+    /// §32.1 — Reports generation, chart-data fetch, export pipeline.
+    public static let reports        = Logger(subsystem: subsystem, category: "reports")
+    /// §32.1 — Push + in-app notification delivery and permission state.
+    public static let notifications  = Logger(subsystem: subsystem, category: "notifications")
+    /// §32.1 — Inbound/outbound SMS routing distinct from full communications pipeline.
+    public static let sms            = Logger(subsystem: subsystem, category: "sms")
 
     // MARK: — §32.6 PII redaction helper (new)
 

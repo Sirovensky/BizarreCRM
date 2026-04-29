@@ -118,4 +118,58 @@ public extension Analytics {
             "reason": .string(reason)
         ])
     }
+
+    // MARK: — §32.4 Sync event helpers
+
+    /// §32.4 — `sync_start`.
+    static func trackSyncStarted(entity: String) {
+        track(.syncStarted, properties: ["entity": .string(entity)])
+    }
+
+    /// §32.4 — `sync_complete { delta_count, duration_ms }`.
+    static func trackSyncCompleted(entity: String, deltaCount: Int, durationMs: Int) {
+        track(.syncCompleted, properties: [
+            "entity": .string(entity),
+            "delta_count": .int(deltaCount),
+            "duration_ms": .int(durationMs)
+        ])
+    }
+
+    /// §32.4 — `sync_failed { reason }`.
+    static func trackSyncFailed(entity: String, reason: String) {
+        track(.syncFailed, properties: [
+            "entity": .string(entity),
+            "reason": .string(reason)
+        ])
+    }
+
+    // MARK: — §32.4 POS event helpers
+
+    /// §32.4 — `pos_sale_complete { total_cents, tender }`.
+    /// - Parameters:
+    ///   - totalCents: Integer total in cents — numeric, no PII.
+    ///   - tender: Payment method enum string, e.g. `"card"`, `"cash"`, `"gift_card"`.
+    static func trackPosSaleComplete(totalCents: Int, tender: String) {
+        track(.posSaleComplete, properties: [
+            "total_cents": .int(totalCents),
+            "tender": .string(tender)
+        ])
+    }
+
+    /// §32.4 — `pos_sale_failed { reason }`.
+    static func trackPosSaleFailed(reason: String) {
+        track(.posSaleFailed, properties: ["reason": .string(reason)])
+    }
+
+    // MARK: — §32.4 Performance event helpers
+
+    /// §32.4 — `cold_launch_ms`.
+    static func trackColdLaunch(durationMs: Int) {
+        track(.coldLaunchMs, properties: ["duration_ms": .int(durationMs)])
+    }
+
+    /// §32.4 — `first_paint_ms`.
+    static func trackFirstPaint(durationMs: Int) {
+        track(.firstPaintMs, properties: ["duration_ms": .int(durationMs)])
+    }
 }
