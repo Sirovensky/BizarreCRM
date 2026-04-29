@@ -210,23 +210,29 @@ private struct AuditEntryRow: View {
 
     private var badgeLabel: String {
         switch entry.eventType {
-        case "void_line":           return "VOID"
-        case "no_sale":             return "NO SALE"
-        case "discount_override":   return "DISC OVR"
-        case "price_override":      return "PRICE OVR"
-        case "delete_line":         return "DELETE"
-        default:                    return entry.eventType.uppercased()
+        case "void_line":               return "VOID"
+        case "no_sale":                 return "NO SALE"
+        case "discount_override":       return "DISC OVR"
+        case "price_override":          return "PRICE OVR"
+        case "delete_line":             return "DELETE"
+        case "manager_approved_refund": return "REFUND"
+        case "cash_drop":               return "DROP"
+        case "drawer_open":             return "DRAWER"
+        default:                        return entry.eventType.uppercased()
         }
     }
 
     private var badgeColor: Color {
         switch entry.eventType {
-        case "void_line":           return .red
-        case "no_sale":             return .bizarreWarning
-        case "discount_override":   return .purple
-        case "price_override":      return .indigo
-        case "delete_line":         return .red
-        default:                    return .gray
+        case "void_line":               return .red
+        case "no_sale":                 return .bizarreWarning
+        case "discount_override":       return .purple
+        case "price_override":          return .indigo
+        case "delete_line":             return .red
+        case "manager_approved_refund": return .orange
+        case "cash_drop":               return .teal
+        case "drawer_open":             return .teal
+        default:                        return .gray
         }
     }
 }
