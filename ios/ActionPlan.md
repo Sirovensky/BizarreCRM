@@ -4766,7 +4766,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] `defaultScrollAnchor(.bottom)` on active compose
 - [ ] `.scrollDismissesKeyboard(.interactively)` so dragging sheet down dismisses keyboard
 - [ ] Start at `.medium` detent; promote to `.large` on keyboard show
-- [ ] Smooth detent transition with `.animation`
+- [x] Smooth detent transition with `.animation` (`BrandMotion.sheetDetentTransition` spring(0.36, 0.82) + `.sheetDetentAnimated(_:)` modifier in `Motion/Section30MotionExtras.swift`. feat(§30))
 - [ ] Date / segmented pickers in sheets need `.submitLabel(.done)` + explicit commit
 - [ ] External keyboard: avoidance no-ops; sheet stays as sized
 - [ ] Three levels: Strong (iOS 26 full refraction), Medium (thin material + slight tint), Minimal (opaque tint for Reduce Transparency / Low Power).
@@ -4801,6 +4801,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers. (`inline_animation_duration` WARNING rule in `ios/.swiftlint.yml` — regex catches `withAnimation(.easeInOut(duration: <digit>`. feat(§67): b12)
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
 - [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion. (`StaggeredAppearModifier` + `.staggeredAppear(index:trigger:)` in `DesignSystem/BrandMotion.swift`; Reduce Motion → opacity fade only. feat(§67): d8b0c172)
+- [x] Tab-bar pop animation — scale-bounce when user re-taps the active tab to pop to root. (`.tabBarPopAnimation(trigger:)` in `Motion/Section30MotionExtras.swift`; spring compress 0.78 → spring back 1.0; Reduce Motion: instant. feat(§30))
+- [x] Search-bar focus glow — brand-primary glow ring animates in when search field gains focus. (`.searchBarFocusGlow(isFocused:cornerRadius:)` in `Motion/Section30MotionExtras.swift`; stroke + shadow; spring(0.28, 0.80); Reduce Motion: easeInOut 0.10s. feat(§30))
+- [x] Badge bounce on new content — scale overshoot + `.selection` haptic when badge count increases. (`.badgeBounceOnNew(count:)` in `Motion/Section30MotionExtras.swift`; spring 1.30 → 1.0 with delay; no-op on decrease; Reduce Motion: instant. feat(§30))
+- [x] Swipe-back gesture indicator — leading-edge chevron tracks drag-right progress, fades/scales with gesture. (`.swipeBackIndicator(dragOffset:)` in `Motion/Section30MotionExtras.swift`; opacity + scale proportional to 0…80pt drag; Reduce Motion: hidden. feat(§30))
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).
 - [ ] Variant rules: `.fill` on active/selected, outline on inactive; default `.monochrome`, `.multicolor` for status (warning/error), `.hierarchical` for brand surfaces where depth helps.
 - [ ] Custom SF Symbols for brand glyphs (wrench-spark) in `Assets.xcassets/Symbols/`; naming `brand.wrench.spark`.
