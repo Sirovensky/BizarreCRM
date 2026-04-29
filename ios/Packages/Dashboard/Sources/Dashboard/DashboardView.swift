@@ -8,6 +8,40 @@ import Timeclock
 import UIKit
 #endif
 
+// MARK: - §3.6 Recent Activity
+
+/// A single event in the recent-activity feed.
+/// The feed is a thin stub: icon + description + relative timestamp.
+/// Real data will come from `GET /activity?limit=20` (§3.6).
+public struct ActivityEvent: Identifiable, Sendable {
+    public let id: UUID
+    public let icon: String   // SF Symbol name
+    public let description: String
+    public let date: Date
+
+    public init(id: UUID = UUID(), icon: String, description: String, date: Date) {
+        self.id = id
+        self.icon = icon
+        self.description = description
+        self.date = date
+    }
+}
+
+// MARK: - §3.7 Announcement
+
+/// A single announcement from the system.
+/// In production these come from `GET /system/announcements?since=<last_seen>`.
+/// `lastSeenKey` is the `UserDefaults` key used to persist the dismissed ID.
+public struct DashboardAnnouncement: Sendable {
+    public let id: String
+    public let body: String
+
+    public init(id: String, body: String) {
+        self.id = id
+        self.body = body
+    }
+}
+
 public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
@@ -64,7 +98,7 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot, clockVM: clockVM)
+            LoadedBody(snapshot: snapshot, clockVM: clockVM, lastSyncedAt: vm.lastSyncedAt)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
@@ -75,15 +109,34 @@ public struct DashboardView: View {
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
+    /// §3.10 — last sync timestamp for the inline sync-status pill.
+    var lastSyncedAt: Date? = nil
+    /// §3.7 — announcement to show above the KPI grid (nil = none).
+    var announcement: DashboardAnnouncement? = nil
+    /// §3.6 — recent-activity events (empty = section hidden).
+    var recentActivity: [ActivityEvent] = []
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
-                greeting
+                // §3.10 — greeting row with inline sync-status pill
+                HStack(alignment: .firstTextBaseline, spacing: BrandSpacing.sm) {
+                    greeting
+                    Spacer(minLength: BrandSpacing.xs)
+                    SyncStatusPill(lastSyncedAt: lastSyncedAt)
+                }
+                // §3.7 — announcement banner above KPI grid
+                if let ann = announcement {
+                    AnnouncementBanner(announcement: ann)
+                }
                 ClockInOutTile(vm: clockVM)
                 heroCard
                 secondaryGrid
                 attentionCard
+                // §3.6 — recent activity feed below attention card
+                if !recentActivity.isEmpty {
+                    RecentActivityCard(events: recentActivity)
+                }
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.sm)
@@ -102,6 +155,7 @@ private struct LoadedBody: View {
             .font(.brandTitleLarge())
             .foregroundStyle(.bizarreOnSurface)
             .accessibilityAddTraits(.isHeader)
+            .layoutPriority(1)
     }
 
     // greetingText extracted to module-level `dashboardGreeting(for:)` for testability.
@@ -120,13 +174,16 @@ private struct LoadedBody: View {
     // Compact stat tiles — muted hierarchy.
     // iPhone: 2-column grid (adaptive minimum 140 pt).
     // iPad (regular-width): fixed 3-column grid per §3 spec.
+    //
+    // §3.1 — delta field is nil until the server returns a prior-period
+    // comparison value. When present, a green ▲ / red ▼ badge appears.
     private var secondaryGrid: some View {
         let s = snapshot.summary
         let tiles: [StatTile] = [
-            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
+            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle", delta: nil),
+            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal",    delta: nil),
+            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar",           delta: nil),
+            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox",        delta: nil),
         ]
 
         let columns: [GridItem] = Platform.isCompact
@@ -157,6 +214,9 @@ private struct LoadedBody: View {
 
         if total > 0 {
             AttentionCard(items: items)
+        } else {
+            // §3.3 — empty state: "All clear. Nothing needs your attention."
+            AttentionEmptyCard()
         }
     }
 
@@ -214,6 +274,9 @@ private struct StatTile: Identifiable {
     let label: String
     let value: String
     let icon: String
+    /// §3.1 — previous-period delta as a percentage (positive = up, negative = down).
+    /// `nil` means no comparison data is available (no badge rendered).
+    let delta: Double?
 }
 
 private struct StatTileCard: View {
@@ -221,10 +284,17 @@ private struct StatTileCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Image(systemName: tile.icon)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .accessibilityHidden(true)
+            HStack(alignment: .top) {
+                Image(systemName: tile.icon)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Spacer(minLength: BrandSpacing.xs)
+                // §3.1 — delta badge
+                if let delta = tile.delta {
+                    DeltaBadge(delta: delta)
+                }
+            }
             Text(tile.value)
                 .font(.brandTitleLarge())
                 .foregroundStyle(.bizarreOnSurface)
@@ -244,7 +314,51 @@ private struct StatTileCard: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tile.label)
-        .accessibilityValue(tile.value)
+        .accessibilityValue(deltaBadgeA11yValue)
+    }
+
+    private var deltaBadgeA11yValue: String {
+        guard let delta = tile.delta else { return tile.value }
+        let sign = delta >= 0 ? "up" : "down"
+        let pct = abs(delta)
+        let formatted = String(format: "%.0f", pct)
+        return "\(tile.value), \(sign) \(formatted) percent vs prior period"
+    }
+}
+
+// MARK: - §3.1 Delta badge
+
+/// Green ▲ / red ▼ percentage change vs. the prior period.
+/// Positive delta = green (improvement), negative = red (decline).
+private struct DeltaBadge: View {
+    let delta: Double
+
+    private var isPositive: Bool { delta >= 0 }
+    private var arrow: String { isPositive ? "arrow.up" : "arrow.down" }
+    private var color: Color { isPositive ? .bizarreSuccess : .bizarreError }
+    private var label: String {
+        let pct = abs(delta)
+        if pct < 10 {
+            return String(format: "%.1f%%", pct)
+        } else {
+            return String(format: "%.0f%%", pct)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: arrow)
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text(label)
+                .font(.brandLabelSmall())
+                .monospacedDigit()
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, BrandSpacing.xs)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(color.opacity(0.15), in: Capsule())
+        .accessibilityHidden(true)  // parent tile exposes the full a11y value
     }
 }
 
@@ -288,6 +402,39 @@ private struct AttentionCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
         )
+    }
+}
+
+// MARK: - §3.3 Needs-attention empty state
+
+/// Shown when there are zero attention items.
+/// "All clear. Nothing needs your attention." + sparkle icon.
+private struct AttentionEmptyCard: View {
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.bizarreSuccess)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("All clear")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Nothing needs your attention right now.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.bizarreSuccess.opacity(0.3), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Needs attention: all clear. Nothing needs your attention right now.")
     }
 }
 
@@ -358,6 +505,181 @@ func dashboardGreeting(for date: Date) -> String {
     case 12..<17: return "Good afternoon"
     case 17..<22: return "Good evening"
     default:      return "Working late"
+    }
+}
+
+// MARK: - §3.10 Sync-status pill
+
+/// Glass pill in the dashboard greeting row showing sync health.
+///
+/// States mirror `StalenessLevel` from the Sync package:
+///   - fresh  → "Synced N min ago"  (green)
+///   - warning → "Synced N hr ago"  (amber)
+///   - stale  → "Stale data"         (red)
+///   - never  → "Never synced"       (red)
+///
+/// Tap → §3.10 deep-link to Settings → Data → Sync Issues (wiring TBD).
+private struct SyncStatusPill: View {
+    let lastSyncedAt: Date?
+
+    private var logic: StalenessLogic { StalenessLogic(lastSyncedAt: lastSyncedAt) }
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            Circle()
+                .fill(logic.stalenessLevel.color)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(logic.label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(logic.stalenessLevel.color)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .brandGlass(.clear, in: Capsule(), tint: logic.stalenessLevel.color.opacity(0.12))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(logic.a11yLabel)
+    }
+}
+
+// MARK: - §3.7 Announcement banner
+
+/// Sticky glass banner shown above the KPI grid when `announcement` is non-nil.
+/// "Dismiss" persists the last-seen announcement ID in `UserDefaults` so the
+/// banner doesn't reappear after dismissal.
+///
+/// Key used: `dashboard.announcement.lastSeenId`
+private struct AnnouncementBanner: View {
+    let announcement: DashboardAnnouncement
+    @State private var dismissed = false
+
+    private static let defaultsKey = "dashboard.announcement.lastSeenId"
+
+    var body: some View {
+        if !dismissed {
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                Image(systemName: "megaphone.fill")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+
+                Text(announcement.body)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    withAnimation(BrandMotion.snappy) {
+                        dismissed = true
+                    }
+                    UserDefaults.standard.set(
+                        announcement.id,
+                        forKey: Self.defaultsKey
+                    )
+                } label: {
+                    Image(systemName: "xmark")
+                        .imageScale(.small)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss announcement")
+            }
+            .padding(BrandSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .brandGlass(.clear, in: RoundedRectangle(cornerRadius: 14),
+                        tint: Color.bizarreOrange.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.bizarreOrange.opacity(0.3), lineWidth: 0.5)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Announcement: \(announcement.body)")
+            .onAppear {
+                // Re-check dismissal in case the view re-appeared after background.
+                let seen = UserDefaults.standard.string(forKey: Self.defaultsKey)
+                if seen == announcement.id { dismissed = true }
+            }
+        }
+    }
+}
+
+// MARK: - §3.6 Recent activity feed
+
+/// Compact last-N-events list below the attention card.
+/// Chronological, icon per event type, tap → deep link (deep-link wiring TBD).
+private struct RecentActivityCard: View {
+    let events: [ActivityEvent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            // Header
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.bizarreTeal)
+                    .accessibilityHidden(true)
+                Text("Recent activity")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer(minLength: 0)
+            }
+
+            // Rows
+            VStack(spacing: 0) {
+                ForEach(Array(events.prefix(5).enumerated()), id: \.element.id) { idx, event in
+                    ActivityRow(event: event)
+                    if idx < min(events.count, 5) - 1 {
+                        Divider()
+                            .overlay(Color.bizarreOutline.opacity(0.2))
+                    }
+                }
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Recent activity")
+    }
+}
+
+private struct ActivityRow: View {
+    let event: ActivityEvent
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: event.icon)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.bizarreTeal)
+                .frame(width: 22, alignment: .center)
+                .accessibilityHidden(true)
+
+            Text(event.description)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .lineLimit(1)
+
+            Spacer(minLength: BrandSpacing.xs)
+
+            Text(event.date, style: .relative)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(event.description), \(event.date.formatted(.relative(presentation: .named)))")
     }
 }
 

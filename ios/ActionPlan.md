@@ -452,7 +452,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
 - [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
-- [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
+- [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [ ] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present.
 - [ ] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column.
@@ -475,7 +475,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
 - [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
-- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
+- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
@@ -496,11 +496,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.6 Recent activity feed
 - [ ] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing.
-- [ ] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link.
+- [x] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link.
 
 ### 3.7 Announcements / what's new
 - [ ] **Backend:** `GET /system/announcements?since=<last_seen>` (verify).
-- [ ] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`.
+- [x] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`.
 
 ### 3.8 Quick-action FAB / toolbar
 - [ ] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. We want to be aware about liquid glass design standards here - android like FAB may not be the way to go, but need to research.
@@ -513,7 +513,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge
-- [ ] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
+- [x] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
 - [ ] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
