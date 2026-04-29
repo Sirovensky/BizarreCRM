@@ -118,6 +118,11 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case supportEmailSent     = "help.support.email.sent"
     case bugReportSubmitted   = "help.bugreport.submitted"
 
+    // MARK: SMS / Communications
+
+    /// §91.14 — fired when `GET /sms/conversations` response fails JSON decode.
+    case smsDecodeFailure     = "sms.conversations.decode_failure"
+
     // MARK: Error / Crash
 
     case crashDetected        = "crash.detected"
@@ -180,7 +185,7 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
         case .helpArticleViewed, .supportEmailSent, .bugReportSubmitted:
             return .support
 
-        case .crashDetected, .errorPresented:
+        case .crashDetected, .errorPresented, .smsDecodeFailure:
             return .error
         }
     }

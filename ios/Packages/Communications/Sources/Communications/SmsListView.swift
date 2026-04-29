@@ -9,11 +9,14 @@ public struct SmsListView: View {
     @State private var searchText: String = ""
     @State private var path: [String] = []
     @State private var showTemplates: Bool = false
-    @State private var showCompose: Bool = false      // §12.1 Compose FAB
+    /// §12.1 Compose FAB + §91.1 — compose sheet for "+ New conversation" CTA on empty state.
+    @State private var showCompose: Bool = false
+    private let repo: SmsRepository
     private let threadRepo: SmsThreadRepository
     private let api: APIClient
 
     public init(repo: SmsRepository, threadRepo: SmsThreadRepository, api: APIClient) {
+        self.repo = repo
         self.threadRepo = threadRepo
         self.api = api
         _vm = State(wrappedValue: SmsListViewModel(repo: repo))
@@ -70,6 +73,15 @@ public struct SmsListView: View {
             .sheet(isPresented: $showTemplates) {
                 MessageTemplateListView(api: api)
             }
+            // §5 — compose sheet triggered by "+ New conversation" empty-state CTA (iPhone path).
+            .sheet(isPresented: $showCompose) {
+                SmsComposerInlineBar(api: api, repo: repo, onSend: { [self] phone, _ in
+                    await MainActor.run {
+                        showCompose = false
+                        if !phone.isEmpty { path.append(phone) }
+                    }
+                })
+            }
             .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
                 vm.clearActionError()
             }
@@ -116,6 +128,18 @@ public struct SmsListView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 480)
+            .sheet(isPresented: $showTemplates) {
+                MessageTemplateListView(api: api)
+            }
+            // §91.1 §5 — compose sheet triggered by "+ New conversation" empty-state CTA.
+            .sheet(isPresented: $showCompose) {
+                SmsComposerInlineBar(api: api, repo: repo, onSend: { [self] phone, _ in
+                    await MainActor.run {
+                        showCompose = false
+                        if !phone.isEmpty { path.append(phone) }
+                    }
+                })
+            }
         } detail: {
             if let phone = selectedPhone {
                 NavigationStack {
@@ -135,6 +159,20 @@ public struct SmsListView: View {
                         Text("Pick a thread on the left or start a new one.")
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
+                        // §91.1 §5 — start-new CTA on iPad detail-column empty state.
+                        Button {
+                            showCompose = true
+                        } label: {
+                            Label("New Conversation", systemImage: "square.and.pencil")
+                                .font(.brandLabelLarge())
+                                .padding(.horizontal, BrandSpacing.lg)
+                                .padding(.vertical, BrandSpacing.sm)
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Start a new SMS conversation")
+                        .accessibilityIdentifier("sms.empty.newConversation")
                     }
                 }
             }
@@ -157,20 +195,20 @@ public struct SmsListView: View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 36)).foregroundStyle(.bizarreError)
-                    .accessibilityHidden(true)
-                Text("Couldn't load conversations")
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center).padding(.horizontal, BrandSpacing.lg)
-                Button("Try again") { Task { await vm.load() } }
-                    .buttonStyle(.borderedProminent).tint(.bizarreOrange)
-            }
+            SmsErrorStateView(
+                message: err,
+                technicalDetail: vm.rawErrorDetail,
+                onRetry: { Task { await vm.load() } }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.conversations.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "conversations")
+        } else if vm.conversations.isEmpty {
+            SmsEmptyStateView(
+                isSearch: !searchText.isEmpty,
+                onNewConversation: { showCompose = true }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.filteredConversations.isEmpty {
             emptyFilteredState
         } else {
@@ -349,6 +387,102 @@ public struct SmsListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+    }
+}
+
+// MARK: - SmsErrorStateView (§91.1)
+
+/// Full-screen error state for the conversations list.
+///
+/// - Shows a friendly headline + user-readable message.
+/// - Collapses the raw technical detail behind a "Show details" `DisclosureGroup`
+///   so power-users and support staff can copy the error without it being the
+///   first thing a regular user reads.
+/// - "Try again" is a brand-prominent CTA button with a ≥44 pt tap target (§3).
+/// - Shared across `SmsListView` (iPhone) and `SmsThreeColumnView` (iPad columns).
+struct SmsErrorStateView: View {
+    let message: String
+    let technicalDetail: String?
+    let onRetry: () -> Void
+
+    @State private var showDetail: Bool = false
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+
+            Text("Couldn't load conversations")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
+
+            // §91.1 — technical payload collapsed behind disclosure; never the lead.
+            if let detail = technicalDetail, !detail.isEmpty {
+                DisclosureGroup("Show details", isExpanded: $showDetail) {
+                    Text(detail)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.leading)
+                        .textSelection(.enabled)
+                        .padding(.top, BrandSpacing.xxs)
+                }
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.horizontal, BrandSpacing.lg)
+            }
+
+            // §91.3 — brand-prominent CTA, minimum 44 pt height, correct VoiceOver label.
+            Button(action: onRetry) {
+                Text("Try again")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Retry loading conversations")
+        }
+    }
+}
+
+// MARK: - SmsEmptyStateView (§91.5)
+
+/// Empty state shown when there are no conversations (or no search results).
+///
+/// On a non-search empty state a prominent "+ New conversation" CTA is shown
+/// so staff can immediately start a thread without hunting for the compose button.
+struct SmsEmptyStateView: View {
+    let isSearch: Bool
+    let onNewConversation: () -> Void
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "message")
+                .font(.system(size: 48))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+
+            Text(isSearch ? "No results" : "No conversations yet")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+
+            if !isSearch {
+                // §5 — CTA on empty landing; ≥44 pt, brand orange, clear VoiceOver label.
+                Button(action: onNewConversation) {
+                    Label("New conversation", systemImage: "square.and.pencil")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Start a new SMS conversation")
+            }
+        }
     }
 }
 

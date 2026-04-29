@@ -20,11 +20,13 @@ public enum AppLog {
     public static let hardware    = Logger(subsystem: subsystem, category: "hardware")
     public static let ui          = Logger(subsystem: subsystem, category: "ui")
     public static let perf        = Logger(subsystem: subsystem, category: "performance")
-    public static let telemetry   = Logger(subsystem: subsystem, category: "telemetry")
+    public static let telemetry      = Logger(subsystem: subsystem, category: "telemetry")
     /// §32 Background-task category (`bg`).
-    public static let bg          = Logger(subsystem: subsystem, category: "bg")
+    public static let bg             = Logger(subsystem: subsystem, category: "bg")
     /// §32 Database category (`db`).
-    public static let db          = Logger(subsystem: subsystem, category: "db")
+    public static let db             = Logger(subsystem: subsystem, category: "db")
+    /// §91.1 §91.14 — SMS / Communications decode + pipeline errors.
+    public static let communications = Logger(subsystem: subsystem, category: "communications")
 
     // MARK: — §32.6 PII redaction helper (new)
 
