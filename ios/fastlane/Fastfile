@@ -6,6 +6,36 @@ platform :ios do
     sh("cd .. && xcodegen generate")
   end
 
+  # ── Preflight ────────────────────────────────────────────────────────────
+  # Run before ANY lane that uploads to Apple. Catches common blockers early.
+  # Usage: bundle exec fastlane preflight
+  #        (also called automatically by :beta and :release)
+  desc "Pre-flight gate: launch-readiness + smoke checks; blocks upload on failure"
+  lane :preflight do
+    # 1. Confirm PrivacyInfo.xcprivacy is present and has no tracking domains
+    sh("cd .. && scripts/launch-readiness.sh") do |status, result, _|
+      UI.user_error!("launch-readiness.sh failed:\n#{result}") unless status.success?
+    end
+
+    # 2. SwiftLint — zero errors (warnings allowed)
+    sh("cd .. && swiftlint lint --strict --quiet 2>&1 | grep -E 'error:|FAIL' && exit 1; exit 0") do |status, result, _|
+      UI.user_error!("SwiftLint errors:\n#{result}") unless status.success?
+    end
+
+    # 3. App Review lint (purpose strings, no private APIs, no debug prints,
+    #    no hardcoded credentials)
+    sh("cd .. && scripts/app-review-lint.sh") do |status, result, _|
+      UI.user_error!("app-review-lint failed:\n#{result}") unless status.success?
+    end
+
+    # 4. SDK sovereignty
+    sh("cd .. && scripts/sdk-ban.sh") do |status, result, _|
+      UI.user_error!("sdk-ban.sh failed:\n#{result}") unless status.success?
+    end
+
+    UI.success("Preflight passed. Safe to proceed.")
+  end
+
   desc "Run unit tests"
   lane :tests do
     run_tests(
@@ -15,8 +45,42 @@ platform :ios do
     )
   end
 
-  desc "Build + upload a TestFlight beta"
+  # ── Screenshots ──────────────────────────────────────────────────────────
+  # Generates App Store screenshots for all required device sizes + locales.
+  # Light and dark variants are produced in two passes.
+  # Output lands in fastlane/screenshots/ — commit to match repo.
+  # Usage: bundle exec fastlane screenshots
+  desc "Generate App Store screenshots via fastlane snapshot (light + dark)"
+  lane :screenshots do
+    # Pass 1: light mode (UIUserInterfaceStyle = Light)
+    capture_screenshots(
+      scheme: "BizarreCRM",
+      xcargs: "-testPlan ScreenshotTests -launch_arguments '-UIUserInterfaceStyle Light'",
+      output_directory: "./fastlane/screenshots/light",
+      clear_previous_screenshots: true,
+    )
+
+    # Pass 2: dark mode
+    capture_screenshots(
+      scheme: "BizarreCRM",
+      xcargs: "-testPlan ScreenshotTests -launch_arguments '-UIUserInterfaceStyle Dark'",
+      output_directory: "./fastlane/screenshots/dark",
+      clear_previous_screenshots: true,
+    )
+
+    # Frame screenshots with device bezels using frameit
+    frame_screenshots(
+      white: false,
+      path: "./fastlane/screenshots",
+    )
+
+    UI.success("Screenshots generated in fastlane/screenshots/. Upload with: fastlane deliver --skip_binary_upload --skip_metadata")
+  end
+
+  # ── Beta (TestFlight) ────────────────────────────────────────────────────
+  desc "Build + upload a TestFlight beta (runs preflight first)"
   lane :beta do
+    preflight
     setup_ci if ENV["CI"]
     match(type: "appstore", readonly: true)
     build_app(
@@ -27,6 +91,26 @@ platform :ios do
     upload_to_testflight(
       skip_waiting_for_build_processing: true,
       changelog: "Latest internal build."
+    )
+  end
+
+  # ── Release ──────────────────────────────────────────────────────────────
+  desc "Build + submit to App Store (runs preflight + screenshots first)"
+  lane :release do
+    preflight
+    screenshots
+    setup_ci if ENV["CI"]
+    match(type: "appstore", readonly: true)
+    build_app(
+      scheme: "BizarreCRM",
+      export_method: "app-store",
+      output_directory: "build"
+    )
+    deliver(
+      submit_for_review: true,
+      automatic_release: false,
+      phased_release: true,
+      force: true,        # skip HTML report prompt in CI
     )
   end
 end

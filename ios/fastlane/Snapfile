@@ -1,0 +1,50 @@
+# Snapfile — fastlane snapshot configuration for BizarreCRM
+# Run: bundle exec fastlane screenshots
+# Produces screenshots for App Store Connect in all required device sizes.
+
+# ── Devices ──────────────────────────────────────────────────────────────────
+# Required App Store sizes (as of 2026):
+#   6.9" iPhone 16 Pro Max  → 1320 × 2868 px
+#   6.7" iPhone 16 Plus     → 1290 × 2796 px  (covers 6.5" slot too)
+#   5.5" iPhone 8 Plus      → 1242 × 2208 px  (legacy, still required)
+#   13"  iPad Pro M4        → 2064 × 2752 px
+#   12.9" iPad Pro (5th)    → 2048 × 2732 px
+devices([
+  "iPhone 16 Pro Max",
+  "iPhone 16 Plus",
+  "iPhone 8 Plus",
+  "iPad Pro 13-inch (M4)",
+  "iPad Pro 12.9-inch (5th generation)",
+])
+
+# ── Languages / locales ──────────────────────────────────────────────────────
+languages([
+  "en-US",
+  "es-ES",
+  "fr-FR",
+  "de-DE",
+  "ja",
+  "ar",   # RTL — snapshot runner sets -AppleTextDirection YES
+])
+
+# ── Schemes & test plan ──────────────────────────────────────────────────────
+# ScreenshotUITests contains all XCUITest screenshot capture actions.
+scheme("BizarreCRM")
+xcargs("-testPlan ScreenshotTests")
+
+# ── Output ───────────────────────────────────────────────────────────────────
+output_directory("./fastlane/screenshots")
+output_simulator_logs(false)
+clear_previous_screenshots(false)   # keep previous run for diff; CI sets to true
+override_status_bar(true)           # 9:41 AM, full signal, full battery
+
+# ── Appearance variants ──────────────────────────────────────────────────────
+# Light mode: default run.
+# Dark mode:  re-run with UIUserInterfaceStyle=Dark launch arg.
+# The screenshot lane in Fastfile handles both passes via two snapshot calls.
+
+# ── Number of retries on flaky simulator ────────────────────────────────────
+number_of_retries(3)
+
+# ── Skip open summary HTML in headless/CI mode ──────────────────────────────
+skip_open_summary(true)

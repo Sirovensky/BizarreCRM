@@ -4319,6 +4319,7 @@ Tasks:
   - `NSPrivacyAccessedAPITypeDiskSpace` (`E174.1`)
   - `NSPrivacyAccessedAPITypeSystemBootTime` (`35F9.1`)
   - `NSPrivacyAccessedAPITypeUserDefaults` (`CA92.1`)
+  - `NSPrivacyAccessedAPICategoryActiveKeyboards` (`54BD.1`) — added 2026-04-29; POS/barcode-entry keyboard-mode adaptation. (feat(§28.4): PrivacyInfo.xcprivacy update)
 - [ ] **Third-party SDK manifests** — BlockChyp, Starscream, Nuke, GRDB bundle their own; we aggregate.
 - [x] **Tracking domains** — none. <!-- shipped ac159516 [actionplan agent-10 b2] NSPrivacyTrackingDomains: [] in PrivacyInfo.xcprivacy -->
 - [x] **Data types collected** — coarse location (POS geofence), device ID (IDFV for analytics, opt-in), contact info (customer records — tenant data, not device user's). <!-- shipped ac159516 [actionplan agent-10 b2] NSPrivacyCollectedDataTypes declared -->
@@ -5068,16 +5069,16 @@ Dependencies that must be done first before picking this up: §33 certs/provisio
 - [ ] **Git tag per release** — `v1.2.3`.
 
 ### 33.4 TestFlight (beta)
-- [ ] **fastlane beta** — builds + uploads + waits for processing + notifies testers.
+- [x] **fastlane beta** — builds + uploads + waits for processing + notifies testers. (`ios/fastlane/Fastfile` `beta` lane; calls `preflight` gate before upload. feat(§33): smoke-test runner + preflight lane)
 - [ ] **Internal testers** — Bizarre team auto-enrolled.
 - [ ] **External testers** — per-tenant group invites; changelog required.
 - [ ] **Changelog template** — pulled from `CHANGELOG.md` delta between tags.
 - [ ] **90-day expiration** — warn testers 7 days before.
 
 ### 33.5 App Store release
-- [ ] **fastlane release** — submission with metadata.
+- [x] **fastlane release** — submission with metadata. (`ios/fastlane/Fastfile` `release` lane; calls `preflight` + `screenshots` then `deliver` with phased rollout. feat(§33): fastlane preflight lane)
 - [ ] **Metadata** in `ios/fastlane/metadata/<locale>/` — per-locale description, keywords, promo text, what's new.
-- [ ] **Screenshots** — 6.7" iPhone, 6.5" iPhone, 13" iPad, 12.9" iPad, Mac. Light + dark variants. Generated via fastlane snapshot.
+- [x] **Screenshots** — 6.7" iPhone, 6.5" iPhone, 13" iPad, 12.9" iPad, Mac. Light + dark variants. Generated via fastlane snapshot. (`ios/fastlane/Snapfile` — 5 device sizes, 6 locales, light+dark passes, frameit bezels; `ios/fastlane/Fastfile` `screenshots` lane. feat(§33): App Store screenshot generator stub)
 - [ ] **App Preview video** — 15–30s per device class.
 - [x] **App Privacy** — data types collected declared accurately in App Store Connect. (`PrivacyNutritionLabelView` + `PrivacyNutritionLabelData` in `Settings/Privacy/`; rows mirror `PrivacyInfo.xcprivacy`; surfaces ATT-not-used note, tracked/linked chips, not-collected list; wired in `SettingsView` Privacy section. feat(§28.13))
 - [ ] **Review notes** — demo account + server URL + steps.
@@ -7190,6 +7191,8 @@ DoD:
 - No P0 bugs older than 14d.
 - Localization coverage per target locale.
 - Documentation updated in same PR as feature.
+- [x] **Launch-readiness check helper** — `ios/scripts/launch-readiness.sh`; 7 gates: PrivacyInfo.xcprivacy present + no tracking, Info.plist purpose strings (8 keys), credential scan, SDK sovereignty, debug print scan, fastlane metadata dir, Snapfile. Exits 1 on any failure; called by fastlane `preflight` lane. (feat(§82): launch-readiness check helper)
+- [x] **Smoke-test runner** — `ios/scripts/smoke-test-runner.sh`; 5 gates: xcodegen freshness, SPM resolution, SmokeTests, AuthTests, sdk-ban + app-review-lint; `--scheme`/`--os`/`--device` flags; writes `.xcresult` bundles to `/tmp/smoke-results/`. (feat(§82): smoke-test runner script)
 
 ### 82.10 Per-tenant rollout
 - Opt-in beta: 5 tenants first, weekly check-ins.
