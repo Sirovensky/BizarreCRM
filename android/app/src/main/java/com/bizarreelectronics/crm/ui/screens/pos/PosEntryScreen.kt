@@ -141,7 +141,14 @@ fun PosEntryScreen(
                           // overlay). Stuffing it into the bottomBar slot would
                           // collide with that overlay.
     ) { innerPadding ->
-    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    // Drop the bottom inset from innerPadding so the SearchBar (BottomCenter)
+    // pins to the actual visual bottom rather than floating above the empty
+    // PosFlowScaffold shelf. The shelf is empty when bottomBar = null, so
+    // overlapping it gives back the wasted vertical space.
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .padding(top = innerPadding.calculateTopPadding())
+    ) {
         // TASK-4: offline banner defensive placement (top of entry screen)
         PosOfflineBanner(
             isOnline = state.isOnline,

@@ -169,6 +169,15 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 2026-04-28 — Lock to portrait on phones (smallestScreenWidth < 600 dp).
+        // Tablets and ChromeOS / DeX (sw >= 600) keep free orientation. Pixel-class
+        // landscape was unusable: POS flow steps designed for vertical real estate
+        // collapse below input minimums in landscape on a phone-sized screen.
+        if (resources.configuration.smallestScreenWidthDp < 600) {
+            requestedOrientation =
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+
         // AUDIT-AND-011 / §1.7 line 239 — FLAG_SECURE is now driven reactively by
         // AppPreferences.screenCapturePreventionFlow so the user can toggle it
         // from Settings without an activity recreate.

@@ -126,7 +126,11 @@ private fun TriStateToggle(
                 !isSelected -> MaterialTheme.colorScheme.surfaceVariant
                 state == TriState.PASS -> ext.successContainer
                 state == TriState.FAIL -> MaterialTheme.colorScheme.errorContainer
-                else -> MaterialTheme.colorScheme.surfaceVariant
+                // UNKNOWN selected ("?" tested but indeterminate) — paint the
+                // brand-cream primaryContainer so the chip visibly distinguishes
+                // from the unselected surfaceVariant. Without this, selecting
+                // "?" looked identical to no selection.
+                else -> MaterialTheme.colorScheme.primaryContainer
             }
             Card(
                 colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
@@ -144,7 +148,7 @@ private fun TriStateToggle(
                         !isSelected -> MaterialTheme.colorScheme.onSurfaceVariant
                         state == TriState.PASS -> ext.success
                         state == TriState.FAIL -> MaterialTheme.colorScheme.onErrorContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
                     },
                 )
             }

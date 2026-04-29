@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.checkin
 
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -82,6 +83,13 @@ fun CheckInHostScreen(
     }
     val stepLabel = stepTitles.getOrElse(state.currentStep) { "" }
     val globalStepIndex = state.currentStep + 3   // host 0 = global 4 (POS=1, Customer=2, Device=3)
+
+    // System back gesture: while past step 0, intercept to step-back instead
+    // of popping the whole NavController destination. At step 0 fall through
+    // to the default back behaviour (exits the check-in flow).
+    BackHandler(enabled = state.currentStep > 0) {
+        viewModel.goBack()
+    }
     com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
         // Title slot owns just the screen name to match the sibling
         // PosFlowScaffold callers ("POS", "Check-in", "Cart", "Tender").

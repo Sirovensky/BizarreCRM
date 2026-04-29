@@ -1036,8 +1036,11 @@ fun AppNavGraph(
             // check against the bare `ticket-create` literal would never hit
             // and the wizard would wrongly show the bottom-nav. Match by
             // prefix instead.
-            !currentRoute.startsWith(Screen.CheckInEntry.route) &&
-            !currentRoute.startsWith("checkin/") &&
+            // Bottom nav stays visible during the 6-step check-in flow per
+            // user request 2026-04-28 — cashier can drop out of check-in to
+            // POS / Tickets / Messages without backing out the wizard.
+            // !currentRoute.startsWith(Screen.CheckInEntry.route) &&
+            // !currentRoute.startsWith("checkin/") &&
             currentRoute != Screen.ClockInOut.route &&
             currentRoute != Screen.EmployeeCreate.route &&
             !currentRoute.startsWith("customers/") &&

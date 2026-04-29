@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.checkin.entry
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -124,6 +125,11 @@ fun CheckInEntryScreen(
     val ctaLabel = if (effectiveStep == 1) "Start check-in →" else "Next — Device info"
     val canAdvance = if (effectiveStep == 0) step1.attachedCustomer != null
                      else step2.deviceModel.isNotBlank()
+
+    // System back gesture: at step 1 (Device) intercept and step back to
+    // Customer instead of popping the destination. At step 0 fall through
+    // to default back (calls onCancel via the top-bar arrow path).
+    BackHandler(enabled = effectiveStep > 0) { viewModel.goBack() }
     com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
         title = "Check-in",
         subtitle = if (effectiveStep == 0) "Step 2 of 8 · Customer" else "Step 3 of 8 · Device",

@@ -295,7 +295,11 @@ class CheckInViewModel @Inject constructor(
     }
 
     fun setSignature(base64: String) {
-        _uiState.update { it.copy(signatureBase64 = base64) }
+        // Re-sign: when caller passes "" treat it as a clear, not a captured
+        // empty signature. Without this, signatureBase64 was still non-null
+        // after pressing Re-sign so the UI stayed on "Signature captured ✓"
+        // and canAdvance() at step 5 still passed.
+        _uiState.update { it.copy(signatureBase64 = base64.ifBlank { null }) }
     }
 
     // ── Submit ─────────────────────────────────────────────────────────────────

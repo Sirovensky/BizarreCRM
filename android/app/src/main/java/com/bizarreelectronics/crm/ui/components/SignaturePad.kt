@@ -139,6 +139,9 @@ fun SignaturePad(
                                             ?: continue
                                         currentStrokePoints =
                                             listOf(SignaturePoint(pos.x, pos.y))
+                                        // Consume so parent LazyColumn does not
+                                        // intercept this press as a scroll start.
+                                        event.changes.forEach { it.consume() }
                                     }
                                     PointerEventType.Move -> {
                                         val pos = event.changes.firstOrNull()?.position
@@ -146,6 +149,10 @@ fun SignaturePad(
                                         currentStrokePoints =
                                             currentStrokePoints +
                                             SignaturePoint(pos.x, pos.y)
+                                        // Consume so vertical drags inside the
+                                        // pad never bubble up to the host
+                                        // scrollable container.
+                                        event.changes.forEach { it.consume() }
                                     }
                                     PointerEventType.Release -> {
                                         val pos = event.changes.firstOrNull()?.position
@@ -161,6 +168,7 @@ fun SignaturePad(
                                             )
                                         }
                                         currentStrokePoints = emptyList()
+                                        event.changes.forEach { it.consume() }
                                     }
                                     else -> Unit
                                 }
