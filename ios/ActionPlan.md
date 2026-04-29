@@ -4110,7 +4110,7 @@ iOS broadcasts the user's text-size preference via `\.dynamicTypeSize`. Layout a
 ### 26.3 Reduce Motion
 Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
-- [ ] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion.
+- [x] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion. (`brandSpring(_:value:)` in `DesignSystem/Motion/ReduceMotionFallback.swift` reads the OS flag and uses `ReduceMotionFallback.fadeOrFull`; wired on both `OfflineBanner` chip variants — feat(§26))
 - [ ] **Cart confetti** → static checkmark only when the flag is set.
 - [ ] **Parallax on Dashboard** → disabled only when the flag is set.
 - [ ] **Auto-playing animations** → paused until tap only when the flag is set (`UIAccessibility.isVideoAutoplayEnabled` for media).
@@ -4118,21 +4118,21 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
 ### 26.4 Reduce Transparency
 - [ ] `@Environment(\.accessibilityReduceTransparency)` gate — `.brandGlass` returns solid `bizarreSurfaceBase` fill only when the OS flag is set. Default ships full glass.
-- [ ] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart.
+- [x] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart. (`ReduceTransparencyFallbackModifier` `.onReceive` hook in `DesignSystem/ReduceTransparencyFallback.swift`; SwiftUI environment also re-renders on flag change. Wired in `BrandToast` + `BrandBanner` (`Components.swift`). feat(§26))
 
 ### 26.5 Increase Contrast
 - [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
-- [ ] **Borders** around cards become visible (1pt solid stroke) only when the flag is set.
+- [x] **Borders** around cards become visible (1pt solid stroke) only when the flag is set. (`SelectedCardBorderModifier` reads `\.colorSchemeContrast` and thickens stroke under `.increased`; wired on `CustomerMergeFieldRowView` side cards via `.selectedCardBorder(...)`. feat(§26))
 - [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
 - [x] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80. (`DesignSystem/Tokens+Accessibility.swift` — `boldTextEnabled` EnvironmentKey, `adaptiveFontWeight`, `BoldTextReader` modifier, `DesignTokens.BoldText`. feat(§80): 2e0846c9)
-- [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
+- [x] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set. (`StatusPill.swift` — every `Hue` carries an SF Symbol (`tray`/`wrench`/`hourglass`/`checkmark.seal`/`flag.checkered`/`archivebox`); under DifferentiateWithoutColor the glyph weight steps to `.heavy` and a 1pt foreground-tint capsule outline is added. feat(§26))
 - [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
 ### 26.7 Tap targets
 - [x] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI. (`Core/A11y/TappableFrame.swift` — `TappableFrameModifier` + `View.tappableFrame(minWidth:minHeight:)`; DEBUG `assertionFailure` via GeometryReader.onAppear; RELEASE no-op; `bare_on_tap_gesture` SwiftLint rule already in `.swiftlint.yml`. feat(§26.6): b12)
-- [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
+- [x] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check). (`DesignSystem/Accessibility/AdjacentRowSpacing.swift` — `AdjacentRowSpacing.minimum = BrandSpacing.sm` (8pt); `View.adjacentRowSpacing(_:)` modifier with DEBUG `assertionFailure` on sub-8pt callers; wired on the `CustomerMergeView` field-row VStack. feat(§26))
 
 ### 26.8 Voice Control
 Metadata emitted always; surfaced only when iOS Voice Control is active.
