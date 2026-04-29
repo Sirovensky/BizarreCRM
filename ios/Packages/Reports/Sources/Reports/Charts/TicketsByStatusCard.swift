@@ -26,6 +26,7 @@ public struct TicketsByStatusCard: View {
             } else {
                 chart
                     .frame(height: 160)
+                    .brandChartAxisStyle()
                     .chartXAxisLabel("Count", alignment: .center)
                     .chartYAxisLabel("Status", position: .leading)
                     .accessibilityChartDescriptor(TicketStatusChartDescriptor(points: points))

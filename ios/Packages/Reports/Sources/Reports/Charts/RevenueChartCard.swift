@@ -45,6 +45,7 @@ public struct RevenueChartCard: View {
             modeToggle
             chartContent
                 .frame(height: 180)
+                .brandChartAxisStyle()
                 .chartXAxisLabel("Date", alignment: .center)
                 .chartYAxisLabel("Revenue ($K)", position: .leading)
                 .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
@@ -68,6 +69,7 @@ public struct RevenueChartCard: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     lineChart
                         .frame(height: 200)
+                        .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
                         .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
@@ -82,6 +84,7 @@ public struct RevenueChartCard: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     barChart
                         .frame(height: 200)
+                        .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
                         .accessibilityLabel("Revenue bar chart by period")
@@ -120,11 +123,13 @@ public struct RevenueChartCard: View {
             Divider()
             if let p = peak {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    // §91.10: label primary, value uses unified brandKpiValue
                     Text("Peak")
                         .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .foregroundStyle(.bizarreOnSurface)
                     Text(p.amountDollars, format: .currency(code: "USD"))
-                        .font(.brandTitleSmall())
+                        .font(.brandKpiValue())
+                        .monospacedDigit()
                         .foregroundStyle(.bizarreSuccess)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -144,11 +149,13 @@ public struct RevenueChartCard: View {
 
     private func revenueKpiCell(label: String, value: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            // §91.10: label = primary text, value = semantic color (not reversed)
             Text(label)
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .foregroundStyle(.bizarreOnSurface)
             Text(value, format: .currency(code: "USD"))
-                .font(.brandTitleSmall())
+                .font(.brandKpiValue())
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)

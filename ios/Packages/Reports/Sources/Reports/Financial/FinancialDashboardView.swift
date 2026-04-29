@@ -160,9 +160,10 @@ public struct FinancialDashboardView: View {
 
     private func pnlHeroTile(_ pnl: PnLSnapshot) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+            // §91.10: report section title uses primary text (body title style)
             Text("Profit & Loss")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .font(.brandHeadlineLarge())
+                .foregroundStyle(.bizarreOnSurface)
             HStack(spacing: BrandSpacing.xl) {
                 pnlMetric("Revenue",     cents: pnl.revenueCents,      color: .bizarreOrange)
                 pnlMetric("COGS",        cents: pnl.cogsCents,          color: .bizarreWarning)
@@ -189,11 +190,13 @@ public struct FinancialDashboardView: View {
 
     private func pnlMetric(_ label: String, cents: Int, color: Color) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            // §91.10 Period Summary color correction: label uses primary text
+            // (was muted — reversed from spec). Value keeps semantic color.
             Text(label)
                 .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .foregroundStyle(.bizarreOnSurface)
             Text(cents.financialString)
-                .font(.brandTitleMedium())
+                .font(.brandKpiValue())
                 .monospacedDigit()
                 .foregroundStyle(color)
         }
