@@ -115,6 +115,9 @@ public struct GiftReceiptCheckoutSheet: View {
                             // ── Channel picker ─────────────────────────────
                             channelSection
 
+                            // ── Personal message ───────────────────────────
+                            messageSection
+
                             // ── Per-line partial toggle ─────────────────────
                             if sale.lines.count > 1 {
                                 partialSection
@@ -294,6 +297,46 @@ public struct GiftReceiptCheckoutSheet: View {
         .accessibilityLabel("\(line.name), \(included ? "included" : "excluded")")
         .accessibilityAddTraits(included ? .isSelected : [])
         .accessibilityIdentifier("giftReceiptCheckout.line.\(line.id)")
+    }
+
+    // MARK: - §16 Gift message
+
+    private var messageSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+            HStack {
+                Text("Gift message")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Spacer()
+                Text("\(vm.options.message?.count ?? 0)/120")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(
+                        (vm.options.message?.count ?? 0) >= 120
+                            ? .bizarreError
+                            : .bizarreOnSurfaceMuted
+                    )
+            }
+            TextField("e.g. Happy Birthday!", text: Binding(
+                get: { vm.options.message ?? "" },
+                set: { vm.options.message = $0.isEmpty ? nil : String($0.prefix(120)) }
+            ), axis: .vertical)
+            .font(.brandBodyMedium())
+            .foregroundStyle(.bizarreOnSurface)
+            .lineLimit(3, reservesSpace: false)
+            .padding(.horizontal, DesignTokens.Spacing.md)
+            .padding(.vertical, DesignTokens.Spacing.sm)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
+            .submitLabel(.done)
+            .accessibilityLabel("Gift message, optional")
+            .accessibilityIdentifier("giftReceiptCheckout.messageField")
+            Text("Printed on the gift receipt; hidden from your copy.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
     }
 
     private var returnBySection: some View {

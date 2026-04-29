@@ -74,6 +74,18 @@ public struct GiftReceiptOptions: Sendable, Equatable {
     /// Return credit destination.
     public var returnCredit: GiftReceiptReturnCredit
 
+    // MARK: - §16 Gift-receipt optional message
+    //
+    // The cashier can type a short personal message (e.g. "Happy Birthday!")
+    // that is printed on the gift receipt below the line items. The message
+    // is stripped in the plain-sale receipt so the buyer's copy never shows it.
+    // Max 120 characters enforced at the UI layer.
+
+    /// Optional personalised message from the cashier / gift giver.
+    /// Printed on the gift receipt only; suppressed on the standard receipt.
+    /// `nil` or empty means no message section is shown.
+    public var message: String?
+
     // MARK: - §16 Gift-receipt QR (scoped one-time return token)
     //
     // The QR code on a gift receipt encodes a **one-time return token** (GUID)
@@ -125,7 +137,8 @@ public struct GiftReceiptOptions: Sendable, Equatable {
         channel: .print,
         returnByDays: 30,
         returnCredit: .storeCredit,
-        returnToken: nil
+        returnToken: nil,
+        message: nil
     )
 
     public init(
@@ -134,7 +147,8 @@ public struct GiftReceiptOptions: Sendable, Equatable {
         channel: GiftReceiptChannel = .print,
         returnByDays: Int = 30,
         returnCredit: GiftReceiptReturnCredit = .storeCredit,
-        returnToken: String? = nil
+        returnToken: String? = nil,
+        message: String? = nil
     ) {
         self.enabled         = enabled
         self.includedLineIds = includedLineIds
@@ -142,5 +156,6 @@ public struct GiftReceiptOptions: Sendable, Equatable {
         self.returnByDays    = returnByDays
         self.returnCredit    = returnCredit
         self.returnToken     = returnToken
+        self.message         = message
     }
 }
