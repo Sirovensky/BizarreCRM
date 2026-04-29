@@ -8081,3 +8081,23 @@ Limitations:
 
 Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
 `/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.
+
+---
+
+## §91.1 SMS landing bugfixes
+
+_Sources: `SmsListView.swift`, `SmsThreeColumnView.swift`, `SmsListViewModel.swift`, `SmsEndpoints.swift`._
+
+- [x] **Item 1 — Raw `DecodingError` exposed in UI**: Wrap in friendly `SmsError.localizedDescription`; collapse technical payload behind "Show details" `DisclosureGroup` in `SmsErrorStateView`. Raw error still logged to `AppLog.communications`.
+- [x] **Item 2 — `SmsConversation.conv_phone` optional**: Use `decodeIfPresent` in `init(from:)` so missing key logs a warning to `AppLog.communications` and falls back to empty string instead of crashing the whole list decode.
+- [x] **Item 3 — `Try again` button**: Promoted to brand-prominent CTA (`.borderedProminent` + `.bizarreOrange` tint) with `frame(minHeight: 44)` for ≥44 pt touch target; VoiceOver label set to "Retry loading conversations".
+- [x] **Item 4 — `errorMessage` rendering pipeline**: `SmsListViewModel.handleFetchError(_:)` logs raw error to `AppLog.communications` before setting friendly `errorMessage`; raw detail also published as `rawErrorDetail` for the "Show details" disclosure.
+- [x] **Item 5 — `+ New conversation` button on empty state**: `SmsEmptyStateView` shows a brand-prominent "New conversation" CTA (≥44 pt, `.bizarreOrange`) when list is empty and not a search result. Same CTA added to iPad right-pane (`SmsThreeColumnView` detail column empty state). Taps present `SmsComposerInlineBar` sheet.
+- [x] **Item 6 — Telemetry on decode failure (§32 hook)**: `handleFetchError` fires `Analytics.track(.smsDecodeFailure, ...)` when a `DecodingError` is caught. `AnalyticsEvent.smsDecodeFailure` added to catalog with `.error` category.
+
+## §91.14 SMS engineering follow-up
+
+- [x] `AppLog.communications` logger added to `AppLog` enum (Core package) for SMS/communications-specific diagnostic logging.
+- [x] `AnalyticsEvent.smsDecodeFailure = "sms.conversations.decode_failure"` added to `AnalyticsEventCatalog`; category `.error`.
+- [x] `SmsError` domain error type added to `SmsEndpoints.swift` (Networking package) — `decodeFailed(underlying:)` + `missingPhone` cases; `technicalDetail` property for log-safe raw description.
+- [x] `SmsErrorStateView` and `SmsEmptyStateView` extracted as module-internal components so both `SmsListView` (iPhone) and `SmsThreeColumnView` (iPad) share the same error/empty UI.

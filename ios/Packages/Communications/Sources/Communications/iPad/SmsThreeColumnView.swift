@@ -148,24 +148,13 @@ public struct SmsThreeColumnView: View {
         }
     }
 
+    // §91.1 §91.3 — delegate to shared SmsErrorStateView for consistent friendly error UI.
     private func errorView(message: String) -> some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.bizarreError)
-                .accessibilityHidden(true)
-            Text("Couldn't load conversations")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Text(message)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, BrandSpacing.lg)
-            Button("Try again") { Task { await vm.load() } }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-        }
+        SmsErrorStateView(
+            message: message,
+            technicalDetail: vm.rawErrorDetail,
+            onRetry: { Task { await vm.load() } }
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -232,6 +221,7 @@ public struct SmsThreeColumnView: View {
                     }
             }
         } else {
+            // §91.5 — right-pane empty state: show brand CTA to start a new conversation.
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "message.badge.circle")
                     .font(.system(size: 56))
@@ -240,6 +230,13 @@ public struct SmsThreeColumnView: View {
                 Text("Select a conversation")
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                Button(action: { showCompose = true }) {
+                    Label("New conversation", systemImage: "square.and.pencil")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Start a new SMS conversation")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.bizarreSurfaceBase)
