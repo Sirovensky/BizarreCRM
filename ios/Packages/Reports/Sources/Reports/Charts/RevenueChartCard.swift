@@ -46,7 +46,18 @@ public struct RevenueChartCard: View {
             chartContent
                 .frame(height: 180)
                 .chartXAxisLabel("Date", alignment: .center)
-                .chartYAxisLabel("Revenue ($K)", position: .leading)
+                // §91.2-5: show "$K" suffix on Y-axis tick values instead of bare numbers
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text("$\(String(format: "%.0fK", v))")
+                                    .font(.brandLabelSmall())
+                            }
+                        }
+                        AxisGridLine()
+                    }
+                }
                 .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                 .chartOverlay { proxy in drillOverlay(proxy: proxy) }
         }
@@ -55,13 +66,17 @@ public struct RevenueChartCard: View {
         .overlay(strokeBorder)
     }
 
-    // MARK: - iPad 3-column layout: chart | legend | KPI panel
+    // MARK: - iPad layout: primary Trend chart | KPI panel; By Period behind DisclosureGroup
+    // §91.2-4: avoid duplicating Trend + By Period simultaneously — secondary chart
+    // is now collapsed behind a DisclosureGroup so the primary chart dominates.
+
+    @State private var showByPeriod = false
 
     private var ipadBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             HStack(alignment: .top, spacing: BrandSpacing.md) {
-                // Column 1 — line chart
+                // Column 1 — primary line chart (Trend)
                 VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                     Text("Trend")
                         .font(.brandLabelSmall())
@@ -69,26 +84,24 @@ public struct RevenueChartCard: View {
                     lineChart
                         .frame(height: 200)
                         .chartXAxisLabel("Date", alignment: .center)
-                        .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        // §91.2-5: label Y-axis with $K unit
+                        .chartYAxis {
+                            AxisMarks(position: .leading) { value in
+                                AxisValueLabel {
+                                    if let v = value.as(Double.self) {
+                                        Text("$\(String(format: "%.0fK", v))")
+                                            .font(.brandLabelSmall())
+                                    }
+                                }
+                                AxisGridLine()
+                            }
+                        }
                         .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                         .chartOverlay { proxy in drillOverlay(proxy: proxy) }
                 }
                 .frame(maxWidth: .infinity)
 
-                // Column 2 — bar chart (acts as period legend)
-                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-                    Text("By Period")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    barChart
-                        .frame(height: 200)
-                        .chartXAxisLabel("Date", alignment: .center)
-                        .chartYAxisLabel("Revenue ($K)", position: .leading)
-                        .accessibilityLabel("Revenue bar chart by period")
-                }
-                .frame(maxWidth: .infinity)
-
-                // Column 3 — KPI side panel
+                // Column 2 — KPI side panel (primary)
                 VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                     Text("KPIs")
                         .font(.brandTitleSmall())
@@ -99,6 +112,32 @@ public struct RevenueChartCard: View {
                 .frame(minWidth: 140, maxWidth: 180)
                 .padding(.top, BrandSpacing.xxs)
             }
+
+            // §91.2-4: "By Period" bar chart hidden by default; user can expand.
+            DisclosureGroup(isExpanded: $showByPeriod) {
+                barChart
+                    .frame(height: 160)
+                    .chartXAxisLabel("Date", alignment: .center)
+                    // §91.2-5: label Y-axis with $K unit
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisValueLabel {
+                                if let v = value.as(Double.self) {
+                                    Text("$\(String(format: "%.0fK", v))")
+                                        .font(.brandLabelSmall())
+                                }
+                            }
+                            AxisGridLine()
+                        }
+                    }
+                    .accessibilityLabel("Revenue bar chart by period")
+                    .padding(.top, BrandSpacing.xs)
+            } label: {
+                Text("By Period")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .accessibilityLabel(showByPeriod ? "By Period chart, expanded" : "By Period chart, collapsed")
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -276,22 +315,31 @@ public struct RevenueChartCard: View {
         .accessibilityLabel("Revenue chart. Tap a data point to drill through.")
     }
 
+    // §91.2-1: flat delta (0.0%) → neutral dash, not green up-arrow.
     @ViewBuilder
     private func periodBadge(pct: Double) -> some View {
-        let isUp = pct >= 0
+        let isFlat = (pct == 0.0)
+        let isUp   = pct > 0
+        let icon: String = isFlat ? "minus" : (isUp ? "arrow.up.right" : "arrow.down.right")
+        let label: String = isFlat
+            ? "Unchanged vs prior period"
+            : (isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
+                    : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
+        let displayText: String = isFlat ? "–" : String(format: "%.1f%%", abs(pct))
+        let badgeColor: Color = isFlat ? .bizarreOnSurfaceMuted : (isUp ? .bizarreSuccess : .bizarreError)
+
         HStack(spacing: BrandSpacing.xxs) {
-            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+            Image(systemName: icon)
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            Text(String(format: "%.1f%%", abs(pct)))
+            Text(displayText)
                 .font(.brandLabelLarge())
         }
-        .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
+        .foregroundStyle(badgeColor)
         .padding(.horizontal, BrandSpacing.sm)
         .padding(.vertical, BrandSpacing.xxs)
-        .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
-        .accessibilityLabel(isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
-                                 : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
+        .background(badgeColor.opacity(0.12), in: Capsule())
+        .accessibilityLabel(label)
     }
 
     // MARK: - Drill overlay

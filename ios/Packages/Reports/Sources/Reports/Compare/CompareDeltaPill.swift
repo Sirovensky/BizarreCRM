@@ -54,19 +54,26 @@ public struct CompareDeltaPill: View {
 
     // MARK: - Private helpers
 
+    // §91.2-1: 0.0 % is flat — show dash glyph instead of up-arrow + green.
+    private var isFlat: Bool {
+        guard let pct else { return false }
+        return pct == 0.0
+    }
+
     private var arrowImage: Image {
-        guard let pct else {
+        guard let pct, !isFlat else {
             return Image(systemName: "minus")
         }
         if pct > 0 { return Image(systemName: "arrow.up.right") }
-        if pct < 0 { return Image(systemName: "arrow.down.right") }
-        return Image(systemName: "minus")
+        return Image(systemName: "arrow.down.right")
     }
 
     private var formattedPct: String {
         guard let pct else { return "—" }
+        // Zero change: show just a dash, not "+0.0%"
+        if isFlat { return "–" }
         let abs = Swift.abs(pct)
-        let sign = pct >= 0 ? "+" : "-"
+        let sign = pct > 0 ? "+" : "-"
         return "\(sign)\(String(format: "%.1f", abs))%"
     }
 
@@ -74,6 +81,7 @@ public struct CompareDeltaPill: View {
         guard let pct else { return .bizarreOnSurfaceMuted }
         if pct > 0 { return .bizarreSuccess }
         if pct < 0 { return .bizarreError }
+        // Flat (0.0): neutral
         return .bizarreOnSurfaceMuted
     }
 
@@ -81,7 +89,10 @@ public struct CompareDeltaPill: View {
         guard let pct else {
             return periodLabel.map { "\($0): no comparison data" } ?? "No comparison data"
         }
-        let direction = pct > 0 ? "up" : (pct < 0 ? "down" : "unchanged")
+        let direction: String
+        if isFlat        { direction = "unchanged" }
+        else if pct > 0  { direction = "up" }
+        else             { direction = "down" }
         let absStr = String(format: "%.1f", Swift.abs(pct))
         let base = "\(direction) \(absStr) percent vs prior period"
         return periodLabel.map { "\($0): \(base)" } ?? base
