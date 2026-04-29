@@ -90,29 +90,11 @@ public final class WebSocketClient {
         }
     }
 
-    // MARK: - Reconnect backoff constants (§29.11)
-
-    /// Base delay for the first reconnect attempt (seconds).
-    private static let backoffBase: Double = 1.0
-    /// Maximum backoff ceiling (seconds). Keeps reconnects from backing off indefinitely.
-    private static let backoffMaxSeconds: Double = 60.0
-    /// Jitter fraction in [0, 1]. A value of 0.25 means ±25% random spread.
-    private static let backoffJitter: Double = 0.25
-
     private func scheduleReconnect() {
         guard !intentionallyClosed else { return }
         reconnectAttempt += 1
-        // Exponential backoff: 1s, 2s, 4s, 8s … capped at 60s.
-        let exponential = min(
-            Self.backoffBase * pow(2.0, Double(reconnectAttempt - 1)),
-            Self.backoffMaxSeconds
-        )
-        // Full-jitter: randomise in [0, exponential * (1 + jitter)] to spread
-        // reconnect storms when many clients drop at once.
-        let jitterRange = exponential * Self.backoffJitter
-        let delay = Double.random(in: max(0, exponential - jitterRange) ... (exponential + jitterRange))
+        let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
         connectionState = .reconnecting(attempt: reconnectAttempt)
-        AppLog.ws.info("WebSocket reconnect #\(reconnectAttempt, privacy: .public) in \(String(format: "%.1f", delay), privacy: .public)s")
         Task {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             if !intentionallyClosed { self.socket?.connect() }
@@ -132,6 +114,12 @@ public enum WSEvent: Decodable, Sendable {
     case smsTyping(String)
     case invoicePaid(InvoiceDTO)
     case notification(NotificationDTO)
+    /// §14.5 Team chat — server pushes a freshly inserted message. Server hookup
+    /// is §74 gap; iOS decodes & ignores until then so future deploys turn live
+    /// updates on without a client release.
+    case chatMessage(TeamChatMessageDTO)
+    /// §14.5 Team chat typing indicator — payload is the channel id.
+    case chatTyping(TeamChatTypingDTO)
     case unknown(String)
 
     enum CodingKeys: String, CodingKey { case type, data }
@@ -146,6 +134,8 @@ public enum WSEvent: Decodable, Sendable {
         case "sms.typing":     self = .smsTyping(try c.decode(String.self, forKey: .data))
         case "invoice.paid":   self = .invoicePaid(try c.decode(InvoiceDTO.self, forKey: .data))
         case "notification":   self = .notification(try c.decode(NotificationDTO.self, forKey: .data))
+        case "chat.message":   self = .chatMessage(try c.decode(TeamChatMessageDTO.self, forKey: .data))
+        case "chat.typing":    self = .chatTyping(try c.decode(TeamChatTypingDTO.self, forKey: .data))
         default:               self = .unknown(type)
         }
     }
@@ -155,6 +145,18 @@ public struct TicketDTO: Decodable, Sendable      { public let id: Int64; public
 public struct SmsDTO: Decodable, Sendable         { public let id: Int64; public let threadId: Int64; public let body: String; public let createdAt: Date }
 public struct InvoiceDTO: Decodable, Sendable     { public let id: Int64; public let displayId: String; public let totalCents: Int; public let paidAt: Date? }
 public struct NotificationDTO: Decodable, Sendable{ public let id: Int64; public let title: String; public let body: String; public let createdAt: Date }
+public struct TeamChatMessageDTO: Decodable, Sendable {
+    public let id: Int64
+    public let channelId: Int64
+    public let userId: Int64
+    public let body: String
+    public let createdAt: Date
+}
+public struct TeamChatTypingDTO: Decodable, Sendable {
+    public let channelId: Int64
+    public let userId: Int64
+    public let username: String?
+}
 
 public extension JSONDecoder {
     static let bizarre: JSONDecoder = {

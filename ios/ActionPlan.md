@@ -1806,10 +1806,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Custom role creation** — Settings → Team → Roles matrix. (Covered by §47.2: `CreateRoleSheet`, `RolesMatrixViewModel.createRole`, `RolesRepository`.)
 
 ### 14.5 Team chat
-- [ ] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`).
-- [ ] Messages with @mentions; real-time via WS.
-- [ ] Image / file attachment.
-- [ ] Pin messages.
+- [x] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`). (feat(§14): `APIClient+TeamChat` list/post/delete against `/api/v1/team-chat/...` + `TeamChatRepositoryImpl` resolves seeded `general` channel; bubble icon entry on `EmployeeListView` toolbar)
+- [x] Messages with @mentions; real-time via WS. (feat(§14): 4s polling tail in `TeamChatViewModel` + mention regex highlights inline + `WSEvent.chatMessage`/`chatTyping` decoded so server push lands without client release)
+- [x] Image / file attachment. (feat(§14): `TeamChatPhotoPicker` + `TeamChatFilePicker`; attachment metadata encoded with `TeamChatAttachmentEncoder` `[[attach:url|mime|name]]` shim until server adds attachment columns)
+- [x] Pin messages. (feat(§14): `UserDefaultsPinnedMessagesStore` per-channel; iPad sidebar panel + iPhone pinned sheet; row context-menu pin/unpin)
 
 ### 14.6 Team shifts (weekly schedule)
 - [x] **Week grid** (7 columns, employees rows) — `ShiftSchedulePostView` (iPhone list / iPad horizontal grid); `ShiftScheduleConflictChecker` pure engine (double-booking + PTO overlap); `ShiftPublishBanner` Liquid Glass sticky footer; `POST /team/shifts`, `GET /team/shifts`. (feat(ios post-phase §14))
