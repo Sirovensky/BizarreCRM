@@ -437,13 +437,13 @@ class TicketDetailViewModel @Inject constructor(
         }
     }
 
-    fun addNote(text: String) {
+    fun addNote(text: String, type: String = "internal") {
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
-                    val response = ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                    val response = ticketApi.addNote(ticketId, mapOf("type" to type, "content" to text))
                     val noteId = response.data?.id ?: -1L
                     _state.value = _state.value.copy(
                         isActionInProgress = false,
@@ -1992,6 +1992,10 @@ fun TicketDetailScreen(
                     if (com.bizarreelectronics.crm.util.isCompactWidth()) {
                         existingRowBody()
                     } else {
+                        // Hoist phone resolution so both panes can use it.
+                        val tabletPhone: String? = state.ticketDetail?.customer?.phone?.takeIf { it.isNotBlank() }
+                            ?: state.ticketDetail?.customer?.mobile?.takeIf { it.isNotBlank() }
+                            ?: ticket.customerPhone
                         com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.TicketDetailTabletLayoutV2(
                             ticket = ticket,
                             ticketId = ticketId,
@@ -2053,9 +2057,7 @@ fun TicketDetailScreen(
                             // tablet here; phone keeps it via existingRowBody.
                             leftPaneContent = {
                                 val firstDevice = state.devices.firstOrNull()
-                                val phone = state.ticketDetail?.customer?.phone?.takeIf { it.isNotBlank() }
-                                    ?: state.ticketDetail?.customer?.mobile?.takeIf { it.isNotBlank() }
-                                    ?: ticket.customerPhone
+                                val phone = tabletPhone
                                 com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.LeftMetaPane(
                                     device = firstDevice,
                                     customer = state.ticketDetail?.customer,
@@ -2104,12 +2106,23 @@ fun TicketDetailScreen(
                                     onBenchStop = { viewModel.stopBenchTimer() },
                                 )
                             },
-                            // T-C8 — right pane Activity feed. Compose bar
-                            // lands in T-C9 (added below the feed once wired).
+                            // T-C9 — right pane Activity feed (weight 1) +
+                            // pinned compose bar at the bottom.
                             rightPaneContent = {
-                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.feed.ActivityFeed(
-                                    history = state.history,
-                                )
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.feed.ActivityFeed(
+                                            history = state.history,
+                                        )
+                                    }
+                                    com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.compose.TabletComposeBar(
+                                        onAddNote = { text, type ->
+                                            viewModel.addNote(text, type)
+                                        },
+                                        onNavigateToSms = onNavigateToSms,
+                                        customerPhone = tabletPhone,
+                                    )
+                                }
                             },
                         )
                     }
