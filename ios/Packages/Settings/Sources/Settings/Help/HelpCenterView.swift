@@ -13,6 +13,7 @@ public struct HelpCenterView: View {
     @State private var searchVM = HelpSearchViewModel()
     @State private var selectedArticle: HelpArticle?
     @State private var selectedCategory: HelpArticle.Category?
+    @State private var showSupportSheet = false
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
@@ -33,6 +34,9 @@ public struct HelpCenterView: View {
             #endif
         }
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .sheet(isPresented: $showSupportSheet) {
+            SupportEmailComposerView()
+        }
     }
 
     // MARK: - iPhone layout (vertical)
@@ -74,8 +78,10 @@ public struct HelpCenterView: View {
             if searchVM.query.isEmpty {
                 categoriesSection
                 allArticlesSection
+                contactSupportFooterSection
             } else {
                 searchResultsSection
+                contactSupportFooterSection
             }
         }
         #if os(iOS)
@@ -149,6 +155,40 @@ public struct HelpCenterView: View {
             ForEach(HelpArticleCatalog.all) { article in
                 articleRow(article)
             }
+        }
+    }
+
+    /// Footer shown below articles with a direct "Contact Support" link.
+    @ViewBuilder
+    private var contactSupportFooterSection: some View {
+        Section {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "envelope")
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text("Still need help?")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Contact our support team — we respond within one business day.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                Spacer()
+            }
+            .padding(.vertical, BrandSpacing.xs)
+            .contentShape(Rectangle())
+            .onTapGesture { showSupportSheet = true }
+            .listRowBackground(Color.bizarreSurface1)
+            .accessibilityLabel("Contact Support — opens email composer")
+            .accessibilityAddTraits(.isButton)
+            #if os(iOS)
+            .hoverEffect(.highlight)
+            #endif
+        } footer: {
+            Text("bizarrecrm.com/support · Typical response: 1 business day")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
         }
     }
 

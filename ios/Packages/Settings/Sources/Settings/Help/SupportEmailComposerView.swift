@@ -114,11 +114,11 @@ public struct SupportEmailComposerView: View {
                     .accessibilityHidden(true)
 
                 VStack(spacing: BrandSpacing.sm) {
-                    Text("Get in Touch")
+                    Text("We're Here to Help")
                         .font(.brandHeadlineMedium())
                         .foregroundStyle(.bizarreOnSurface)
 
-                    Text("Diagnostic info (app version, device, recent logs — no personal data) will be pre-filled in the email.")
+                    Text("Describe your issue and we'll get back to you within one business day. Diagnostic info (app version, device model, recent error logs — no personal data) is pre-filled so our team can reproduce the problem faster.")
                         .font(.brandBodyLarge())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .multilineTextAlignment(.center)
@@ -128,6 +128,7 @@ public struct SupportEmailComposerView: View {
                         .font(.brandMono(size: 14))
                         .foregroundStyle(.bizarreOrange)
                         .textSelection(.enabled)
+                        .accessibilityLabel("Support email: \(vm.supportEmail)")
                 }
 
                 if let err = vm.loadError {

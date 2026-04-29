@@ -4138,8 +4138,10 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] Manual QA scripts (§26) remain per release — automation is not full replacement.
 - [x] TipKit integration (iOS 17+) surfaces rules-based tips — `DesignSystem/Tips/TipCatalog.swift` (feat(ios phase-10 §26+§29))
 - [x] Each tip: title, message, image, eligibility rules (e.g. "shown after 3rd ticket create") — all 5 tips ship with rules + MaxDisplayCount(1)
+- [x] Catalog tip: "POS quick-start — tap POS to start a sale" shown after first app launch — `PosQuickStartTip` (`TipCatalog.swift`; `TipsRegistrar.donatePosQuickStartLaunch()`)
+- [x] Catalog tip: "Export Reports — tap Export for CSV/PDF" shown on first Reports tab open — `ReportsExportTip` (`TipCatalog.swift`; `TipsRegistrar.donateReportsTabOpened()`)
 - [ ] Catalog tip: "Try swipe right to start ticket" after 5 tickets viewed but zero started via swipe
-- [ ] Catalog tip: "⌘N creates new ticket faster" shown once user connects hardware keyboard
+- [x] Catalog tip: "⌘N creates new ticket faster" shown once user connects hardware keyboard — `NewTicketKeyboardTip` (`TipCatalog.swift`; hardware-keyboard event; `TipsRegistrar.donateHardwareKeyboardConnected()`)
 - [x] Catalog tip: "Long-press inventory row for quick actions" after 10 inventory views — `ContextMenuTip`
 - [ ] Catalog tip: "Turn on Biometric Login in Settings" after 3 sign-ins
 - [x] Dismissal: per-tip "Don't show again" — `Tips.MaxDisplayCount(1)` on each tip
@@ -5428,6 +5430,11 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Localization: per-locale strings. — `PassLocale` enum (7 locales) + `stringKeys` contract for server .lproj files; iOS consumes via native PKPass archive. (f026f0d6)
 - [ ] Web-side Add-to-Wallet button on public page (§53.4). (server-side §53.4 — not iOS scope; iOS only presents `PKAddPassesViewController`)
 - [x] Sovereignty: pass signing certificate + Apple Pass web service URL live on tenant server, never our infra. — `PassSovereigntyPolicy` documents signing ownership contract; iOS only presents binary. (f026f0d6)
+- [x] **Redemption catalog row** — `RewardCatalogRow` tappable row for loyalty rewards catalog; shows icon, title, description, points-cost badge; dims + shows tier-lock label when ineligible. `Rewards/RewardCatalogRow.swift`. (feat(§38): 5 loyalty UX items)
+- [x] **Points expiry warning** — `PointsExpiryWarningView` inline banner; amber/red urgency based on ≤7d threshold; dismissible with animation. `Engine/PointsExpiryWarningView.swift`. (feat(§38): 5 loyalty UX items)
+- [x] **Tier-progress chart** — `TierProgressChartView` segmented horizontal bar across all 4 tiers; animated fill; current-tier callout legend; VoiceOver. `Engine/TierProgressChartView.swift`. (feat(§38): 5 loyalty UX items)
+- [x] **Member-since chip** — `MemberSinceChip` `.compact` pill and `.card` variant with years-as-member label; ISO 8601 date parse. `MemberSinceChip.swift`. (feat(§38): 5 loyalty UX items)
+- [x] **Refer-a-friend share sheet** — `ReferAFriendShareSheet` modal with referral link, copy-to-clipboard chip, native `ShareLink`, bonus-points callout; URL built as `https://biz.re/<handle>?ref=<code>`. `ReferAFriendShareSheet.swift`. (feat(§38): 5 loyalty UX items)
 
 ---
 ## §39. Cash Register & Z-Report
@@ -6447,9 +6454,11 @@ Slug resolution rules:
 - [x] **Settings → Help** — searchable FAQ. (`HelpCenterView`, `HelpSearchViewModel`)
 - [x] **Topic articles** — bundled markdown + images. (`HelpArticleCatalog` — 15 articles, `HelpArticleView`)
 - [x] **Context-aware help** — "?" icon on complex screens → relevant article. (`ContextualHelpButton`)
+- [x] **FAQ footer contact link** — "Still need help?" footer row with "Contact Support" tap target and `bizarrecrm.com/support` copy; opens `SupportEmailComposerView` sheet (`HelpCenterView.contactSupportFooterSection`)
 
 ### 69.2 Contact support
 - [x] **Send support email** — prefilled with diagnostic bundle. Recipient resolved from `GET /tenants/me/support-contact`. (`SupportEmailComposerView`, `DiagnosticsBundleBuilder`)
+- [x] **Contact-support sheet copy** — updated headline "We're Here to Help", expanded body with 1-business-day SLA and plain-language diagnostic disclosure, `accessibilityLabel` on support email address (`SupportEmailComposerView`)
 - [x] **Live chat** (if server supports) — embedded. (`LiveChatSupportView` — MVP placeholder "coming soon")
 
 ### 69.3 Release notes

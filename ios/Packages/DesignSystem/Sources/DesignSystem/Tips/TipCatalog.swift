@@ -134,4 +134,72 @@ public struct ScanBarcodeTip: BrandTip {
 
     public init() {}
 }
+
+/// "Open POS to start your first sale — tap POS in the tab bar"
+/// Shown once after the first app launch, guiding new users to the Point of Sale.
+@available(iOS 17, *)
+public struct PosQuickStartTip: BrandTip {
+    public static let appLaunched = Event<TipEventPayload>(id: "app_launched_for_pos_quick_start")
+
+    public var title: Text { Text("Start a Sale") }
+    public var message: Text? { Text("Tap POS in the tab bar to open the register. Add items by tapping tiles, scanning barcodes, or typing in the search bar.") }
+    public var image: Image? { Image(systemName: "cart") }
+
+    public var rules: [Rule] {
+        [
+            #Rule(Self.appLaunched) { $0.donations.count >= 1 }
+        ]
+    }
+
+    public var options: [any TipOption] {
+        [Tips.MaxDisplayCount(1)]
+    }
+
+    public init() {}
+}
+
+/// "⌘N creates a new ticket faster" — shown once a hardware keyboard is detected
+@available(iOS 17, *)
+public struct NewTicketKeyboardTip: BrandTip {
+    public static let hardwareKeyboardConnected = Event<TipEventPayload>(id: "hardware_keyboard_connected_for_new_ticket")
+
+    public var title: Text { Text("New Ticket Shortcut") }
+    public var message: Text? { Text("Press ⌘N anywhere in Tickets to create a new ticket instantly — no need to tap the + button.") }
+    public var image: Image? { Image(systemName: "keyboard") }
+
+    public var rules: [Rule] {
+        [
+            #Rule(Self.hardwareKeyboardConnected) { $0.donations.count >= 1 }
+        ]
+    }
+
+    public var options: [any TipOption] {
+        [Tips.MaxDisplayCount(1)]
+    }
+
+    public init() {}
+}
+
+/// "Tap Export in Reports to generate a CSV or PDF"
+/// Shown the first time the user opens the Reports tab.
+@available(iOS 17, *)
+public struct ReportsExportTip: BrandTip {
+    public static let reportsTabOpened = Event<TipEventPayload>(id: "reports_tab_opened_for_export_tip")
+
+    public var title: Text { Text("Export Reports") }
+    public var message: Text? { Text("Tap Export (top right) to save a CSV or PDF. Share via email, AirDrop, or Files.") }
+    public var image: Image? { Image(systemName: "square.and.arrow.up") }
+
+    public var rules: [Rule] {
+        [
+            #Rule(Self.reportsTabOpened) { $0.donations.count >= 1 }
+        ]
+    }
+
+    public var options: [any TipOption] {
+        [Tips.MaxDisplayCount(1)]
+    }
+
+    public init() {}
+}
 #endif // canImport(TipKit)
