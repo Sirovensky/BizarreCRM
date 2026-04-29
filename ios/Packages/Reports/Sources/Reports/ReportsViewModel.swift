@@ -3,11 +3,55 @@ import SwiftUI
 import Observation
 import Networking
 
+// MARK: - ReportTab
+
+public enum ReportTab: String, CaseIterable, Identifiable, Sendable {
+    case sales      = "Sales"
+    case tickets    = "Tickets"
+    case inventory  = "Inventory"
+    case insights   = "Insights"
+
+    public var id: String { rawValue }
+}
+
 // MARK: - ReportsViewModel
 
 @Observable
 @MainActor
 public final class ReportsViewModel {
+
+    // MARK: - Tab selection
+
+    public var activeTab: ReportTab = .sales {
+        didSet {
+            guard activeTab != oldValue else { return }
+            Task { await loadForActiveTab() }
+        }
+    }
+
+    public func loadForActiveTab() async {
+        isLoading = true
+        errorMessage = nil
+        await withTaskGroup(of: Void.self) { group in
+            switch activeTab {
+            case .sales:
+                group.addTask { await self.loadRevenue() }
+                group.addTask { await self.loadAvgTicketValue() }
+                group.addTask { await self.loadEmployeePerf() }
+            case .tickets:
+                group.addTask { await self.loadTicketsByStatus() }
+                group.addTask { await self.loadAvgTicketValue() }
+            case .inventory:
+                group.addTask { await self.loadInventoryReport() }
+                group.addTask { await self.loadInventoryTurnover() }
+            case .insights:
+                group.addTask { await self.loadCSAT() }
+                group.addTask { await self.loadNPS() }
+            }
+        }
+        lastSyncedAt = Date()
+        isLoading = false
+    }
 
     // MARK: - Date range
 
