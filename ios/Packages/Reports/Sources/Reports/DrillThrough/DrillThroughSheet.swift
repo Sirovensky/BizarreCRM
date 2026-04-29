@@ -11,13 +11,16 @@ public enum DrillThroughContext: Sendable {
     case ticketStatusFilter(status: String)
     /// §91.11 — drill by technician name.
     case employee(name: String)
+    /// Drill from any KPI tile by metric identifier (e.g. "avg_ticket_value", "utilisation", etc.).
+    case metric(id: String, label: String)
 
     var metric: String {
         switch self {
-        case .revenue:              return "revenue"
-        case .ticketStatus:         return "tickets"
-        case .ticketStatusFilter:   return "tickets"
-        case .employee:             return "employee_tickets"
+        case .revenue:                  return "revenue"
+        case .ticketStatus:             return "tickets"
+        case .ticketStatusFilter:       return "tickets"
+        case .employee:                 return "employee_tickets"
+        case .metric(let id, _):        return id
         }
     }
 
@@ -27,6 +30,7 @@ public enum DrillThroughContext: Sendable {
         case .ticketStatus(_, let d):  return d
         case .ticketStatusFilter:      return ""
         case .employee:                return ""
+        case .metric:                  return ""
         }
     }
 
@@ -36,6 +40,7 @@ public enum DrillThroughContext: Sendable {
         case .ticketStatus(let s, let d):     return "\(s) Tickets on \(d)"
         case .ticketStatusFilter(let s):      return "\(s) Tickets"
         case .employee(let n):                return "\(n) — Tickets"
+        case .metric(_, let label):           return label
         }
     }
 }

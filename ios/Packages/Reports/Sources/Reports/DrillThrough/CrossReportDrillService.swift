@@ -99,10 +99,69 @@ public struct CrossReportDrillService: Sendable {
                 ),
             ]
 
-        case .ticketStatusFilter, .employee:
-            // §91.11 — these new context cases originate from chart-tap drill-through
-            // and don't yet have cross-report targets defined. Return empty list.
-            return []
+        case .ticketStatusFilter(let status):
+            // §91.11 → revenue impact for that status + ticket trend filtered to status.
+            return [
+                CrossReportDrillTarget(
+                    id: "revenue-impact-status-\(status)",
+                    label: "Revenue impact — \(status.capitalized) tickets",
+                    targetSubTab: .sales,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "status:\(status)"
+                ),
+                CrossReportDrillTarget(
+                    id: "ticket-trend-status-\(status)",
+                    label: "Ticket trend — \(status.capitalized) filter",
+                    targetSubTab: .tickets,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "status:\(status)"
+                ),
+            ]
+
+        case .employee(let name):
+            // §91.11 → employee performance card + technician hours table.
+            let slug = name.lowercased().replacingOccurrences(of: " ", with: "_")
+            return [
+                CrossReportDrillTarget(
+                    id: "employee-perf-\(slug)",
+                    label: "\(name) — Performance card",
+                    targetSubTab: .employees,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "employee:\(name)"
+                ),
+                CrossReportDrillTarget(
+                    id: "tech-hours-\(slug)",
+                    label: "\(name) — Technician hours",
+                    targetSubTab: .employees,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "employee:\(name):hours"
+                ),
+            ]
+
+        case .metric(let id, let label):
+            // Drill from any KPI tile: trend over the selected period + employee breakdown.
+            return [
+                CrossReportDrillTarget(
+                    id: "metric-trend-\(id)",
+                    label: "\(label) — Trend over period",
+                    targetSubTab: .insights,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "metric:\(id)"
+                ),
+                CrossReportDrillTarget(
+                    id: "metric-by-employee-\(id)",
+                    label: "\(label) — By employee",
+                    targetSubTab: .employees,
+                    fromDate: fromDate,
+                    toDate: toDate,
+                    entityFilter: "metric:\(id)"
+                ),
+            ]
         }
     }
 }
