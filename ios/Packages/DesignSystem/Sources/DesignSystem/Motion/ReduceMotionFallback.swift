@@ -59,3 +59,42 @@ public extension View {
         )
     }
 }
+
+// MARK: - Environment-aware spring gate — §26.3
+
+/// Reads `@Environment(\.accessibilityReduceMotion)` automatically and
+/// swaps any spring animation for a cross-fade when the OS flag is set.
+/// Call sites need no manual `reduceMotion` parameter — the environment
+/// value is resolved at render time.
+///
+/// Usage:
+/// ```swift
+/// MyView()
+///     .brandSpring(BrandMotion.modalSheet, value: isPresented)
+/// ```
+private struct BrandSpringModifier<V: Equatable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let animation: Animation
+    let value: V
+
+    func body(content: Content) -> some View {
+        content.animation(
+            ReduceMotionFallback.fadeOrFull(animation, reduced: reduceMotion),
+            value: value
+        )
+    }
+}
+
+public extension View {
+    /// Applies `animation` and swaps it for a cross-fade when the system
+    /// Reduce Motion flag is set. Reads the OS flag automatically from the
+    /// SwiftUI environment — no manual gate needed at the call site.
+    ///
+    /// When Reduce Motion is **off** (default), the full `animation` runs.
+    /// When Reduce Motion is **on**, a 0.15 s ease-in-out cross-fade is used
+    /// instead of springs or bouncy curves — §26.3.
+    func brandSpring<V: Equatable>(_ animation: Animation, value: V) -> some View {
+        modifier(BrandSpringModifier(animation: animation, value: value))
+    }
+}

@@ -3987,8 +3987,8 @@ Always-on data (labels, hints, traits) — these cost nothing and only matter wh
 - [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
 - [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
 - [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
-- [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
-- [ ] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise.
+- [x] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work. (`ToastPresenter.show()` posts announcement gated on `isVoiceOverRunning` — §26-batch-ae146b)
+- [x] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise. (`SheetFocusModifier` + `.focusOnSheetAppear()` — §26-batch-ae146b)
 - [ ] **Custom actions** — swipe actions exposed as accessibility custom actions.
 - [ ] **Image descriptions** — customer avatars use initials; ticket photos labeled "Photo N of M on ticket X".
 
@@ -4003,7 +4003,7 @@ iOS broadcasts the user's text-size preference via `\.dynamicTypeSize`. Layout a
 ### 26.3 Reduce Motion
 Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
-- [ ] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion.
+- [x] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion. (`BrandSpringModifier` + `.brandSpring(_:value:)` in `ReduceMotionFallback.swift` — §26-batch-ae146b)
 - [ ] **Cart confetti** → static checkmark only when the flag is set.
 - [ ] **Parallax on Dashboard** → disabled only when the flag is set.
 - [ ] **Auto-playing animations** → paused until tap only when the flag is set (`UIAccessibility.isVideoAutoplayEnabled` for media).
@@ -4011,7 +4011,7 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
 ### 26.4 Reduce Transparency
 - [ ] `@Environment(\.accessibilityReduceTransparency)` gate — `.brandGlass` returns solid `bizarreSurfaceBase` fill only when the OS flag is set. Default ships full glass.
-- [ ] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart.
+- [x] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart. (`ReduceTransparencyFallbackModifier.onReceive` + SwiftUI env propagation — §26-batch-ae146b)
 
 ### 26.5 Increase Contrast
 - [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
@@ -4030,7 +4030,7 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 ### 26.8 Voice Control
 Metadata emitted always; surfaced only when iOS Voice Control is active.
 
-- [ ] **`.accessibilityInputLabels([])`** — alt names for each action ("new" for "Create ticket"). Unconditional.
+- [x] **`.accessibilityInputLabels([])`** — alt names for each action ("new" for "Create ticket"). Unconditional. (`BrandIcon.voiceControlLabels` + `IconButton` wiring — §26-batch-ae146b)
 - [ ] **Show numbers overlay** mode (iOS renders) — every tappable has a number label; works automatically when the user turns on Voice Control.
 - [ ] **Custom command phrases** documented in Help.
 

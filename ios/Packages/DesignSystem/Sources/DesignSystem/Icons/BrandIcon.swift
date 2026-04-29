@@ -374,6 +374,59 @@ public extension BrandIcon {
         }
     }
 
+    /// Alternative spoken / typed names for Voice Control — §26.8.
+    ///
+    /// Voice Control lets users interact by speaking element names. When the
+    /// primary `accessibilityLabel` is verbose (e.g. "Filter Active") users
+    /// may prefer shorter synonyms. This list is fed to
+    /// `.accessibilityInputLabels(_:)` on every `IconButton`; the label list
+    /// always includes the primary label so "Filter Active" still works.
+    ///
+    /// Rules:
+    /// - First element MUST equal `accessibilityLabel` (primary).
+    /// - Keep synonyms short and unambiguous within a single screen context.
+    /// - Add new entries only when a synonym is genuinely useful; don't pad.
+    var voiceControlLabels: [String] {
+        let primary = accessibilityLabel
+        switch self {
+        // Actions — these are the most frequently spoken via Voice Control
+        case .plus, .plusCircleFill, .plusRectangleFolder:
+            return [primary, "new", "create", "add"]
+        case .trash:
+            return [primary, "delete", "remove"]
+        case .xmark, .xmarkCircleFill, .xmarkBinFill:
+            return [primary, "dismiss", "cancel"]
+        case .pencil, .squarePencil:
+            return [primary, "edit"]
+        case .magnifyingGlass, .magnifyingGlassCircle:
+            return [primary, "find", "look up"]
+        case .filter, .filterFill:
+            return [primary, "filter"]
+        case .refresh:
+            return [primary, "reload", "refresh"]
+        case .sync:
+            return [primary, "sync", "reload"]
+        case .barcode, .barcodeScanner:
+            return [primary, "scan", "barcode"]
+        case .paperPlane:
+            return [primary, "send"]
+        case .checkmarkCircleFill, .checkmarkCircle:
+            return [primary, "done", "complete"]
+        case .ellipsisCircle:
+            return [primary, "more", "actions"]
+        case .message, .messageFill, .messageBadgeCircle, .messageBadgeFill:
+            return [primary, "message", "sms"]
+        case .bell, .bellBadge:
+            return [primary, "notifications", "alerts"]
+        case .calendarBadgePlus:
+            return [primary, "add appointment", "schedule"]
+        case .cameraBadgePlus:
+            return [primary, "add photo", "camera"]
+        default:
+            return [primary]
+        }
+    }
+
     /// Localised VoiceOver label for the icon.
     ///
     /// Using `NSLocalizedString` so strings are extracted by the standard
