@@ -270,21 +270,86 @@ public struct ExpenseListView: View {
         } else if vm.items.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "expenses")
         } else if vm.items.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "dollarsign.circle").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(vm.isFiltered ? "No results for this filter" : (searchText.isEmpty ? "No expenses" : "No results"))
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                if vm.isFiltered {
-                    Button("Clear filter") { vm.clearFilter() }
-                        .buttonStyle(.bordered)
-                        .tint(.bizarreOrange)
-                        .accessibilityLabel("Clear expense filter")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // §11 Expense list empty state — distinct messaging for each scenario
+            expenseEmptyState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             expenseList
+        }
+    }
+
+    /// §11 Expense list empty state — three distinct scenarios each get a
+    /// dedicated icon + headline + body + optional CTA.
+    @ViewBuilder
+    private var expenseEmptyState: some View {
+        if !searchText.isEmpty {
+            // Search returned nothing
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No results for "\(searchText)"")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .multilineTextAlignment(.center)
+                Text("Try a different vendor, category, or date range.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No results for \(searchText). Try a different search term.")
+        } else if vm.isFiltered {
+            // Filter active, nothing matches
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No expenses match this filter")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Adjust or clear the filter to see all expenses.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+                Button("Clear filter") { vm.clearFilter() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Clear expense filter")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No expenses match the current filter. Double-tap to clear.")
+        } else {
+            // No expenses at all — encourage the user to add one
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "dollarsign.circle")
+                    .font(.system(size: 52, weight: .ultraLight))
+                    .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.55))
+                    .accessibilityHidden(true)
+                Text("No expenses yet")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Track your first business expense to keep your books up to date.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+                Button {
+                    showingCreate = true
+                } label: {
+                    Label("Add expense", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Add first expense")
+                .accessibilityIdentifier("expenses.emptyState.add")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No expenses yet. Double-tap the Add expense button to get started.")
         }
     }
 
@@ -427,9 +492,13 @@ public struct ExpenseListView: View {
             return parts.joined(separator: ". ")
         }
 
+        /// §11 Amount format — uses device locale so non-USD tenants see their
+        /// local currency symbol instead of a hard-coded "$".
         private static func formatMoney(_ v: Double) -> String {
-            let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
-            return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+            let f = NumberFormatter()
+            f.numberStyle = .currency
+            f.locale = .current
+            return f.string(from: NSNumber(value: v)) ?? String(format: "%.2f", v)
         }
 
         private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
