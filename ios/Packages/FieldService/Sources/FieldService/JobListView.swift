@@ -22,20 +22,29 @@ public struct JobListView: View {
     }
 
     public var body: some View {
-        Group {
-            switch vm.state {
-            case .idle, .loading:
-                loadingView
-            case .loaded(let jobs):
-                jobList(jobs)
-            case .empty:
-                emptyView
-            case .failed(let msg):
-                errorView(msg)
+        VStack(spacing: 0) {
+            // Horizontal filter chips — always visible so switching status is a
+            // single tap rather than two taps through a menu.
+            JobStatusFilterChips(selectedStatus: $vm.selectedStatus) {
+                Task { await vm.applyFilters() }
+            }
+            .padding(.vertical, DesignTokens.Spacing.xs)
+            Divider()
+
+            Group {
+                switch vm.state {
+                case .idle, .loading:
+                    loadingView
+                case .loaded(let jobs):
+                    jobList(jobs)
+                case .empty:
+                    emptyView
+                case .failed(let msg):
+                    errorView(msg)
+                }
             }
         }
         .navigationTitle("My Jobs")
-        .toolbar { filterToolbar }
         .refreshable { await vm.refresh() }
         .task { await vm.load() }
     }
@@ -95,28 +104,6 @@ public struct JobListView: View {
         }
         .padding(DesignTokens.Spacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var filterToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Picker("Status", selection: $vm.selectedStatus) {
-                    Text("All").tag(Optional<FSJobStatus>.none)
-                    ForEach(FSJobStatus.allCases, id: \.self) { s in
-                        Text(s.displayLabel).tag(Optional(s))
-                    }
-                }
-            } label: {
-                Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
-                    .symbolVariant(vm.selectedStatus != nil ? .fill : .none)
-            }
-            .onChange(of: vm.selectedStatus) { _, _ in
-                Task { await vm.applyFilters() }
-            }
-        }
     }
 
     // MARK: - A11y helpers
@@ -215,5 +202,73 @@ private struct PriorityBadge: View {
                 .padding(.vertical, DesignTokens.Spacing.xxs)
                 .background(color, in: Capsule())
         }
+    }
+}
+
+// MARK: - JobStatusFilterChips
+
+/// Horizontal scrollable row of status filter chips.
+///
+/// Replaces the Menu/Picker toolbar item with always-visible one-tap chips.
+/// "All" chip is shown first and acts as a clear button.
+///
+/// A11y: each chip is a button; selected chip announces "selected" via trait.
+struct JobStatusFilterChips: View {
+    @Binding var selectedStatus: FSJobStatus?
+    let onChanged: () -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                // "All" chip
+                FilterChip(
+                    label: "All",
+                    isSelected: selectedStatus == nil
+                ) {
+                    selectedStatus = nil
+                    onChanged()
+                }
+
+                ForEach(FSJobStatus.allCases, id: \.self) { status in
+                    FilterChip(
+                        label: status.displayLabel,
+                        isSelected: selectedStatus == status
+                    ) {
+                        selectedStatus = (selectedStatus == status) ? nil : status
+                        onChanged()
+                    }
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.lg)
+        }
+        .frame(height: DesignTokens.Touch.minTargetSide)
+        .accessibilityLabel("Filter jobs by status")
+    }
+}
+
+// MARK: - FilterChip
+
+private struct FilterChip: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.horizontal, DesignTokens.Spacing.md)
+                .padding(.vertical, DesignTokens.Spacing.xs)
+                .background(
+                    isSelected
+                        ? Color.bizarreOrange
+                        : Color.bizarreSurface1,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(isSelected ? "\(label), selected" : label)
     }
 }
