@@ -4745,10 +4745,11 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `APIClient` — request building, envelope parsing, error mapping, 401 handling.
   - `Repositories` — CRUD vs cache vs queue, optimistic + rollback.
   - `SyncService` — queue drain, backoff, dead-letter, conflict resolution.
-  - `Formatters` — date/currency/phone locale edge cases.
+  - [x] `Formatters` — date/currency/phone locale edge cases. (`Core/Tests/CoreTests/CurrencyFormatterTests.swift` — Currency.formatCents USD/EUR/JPY edge cases + ISO8601Factory round-trip. feat(§31.1): actionplan/§31-batch-4f2a9c)
   - `Validators` — email, phone, SKU, IMEI.
   - `URL construction` — host/path safety, query encoding, no force-unwraps.
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
+- [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
 
 ### 31.2 Snapshot tests (swift-snapshot-testing)
 - [ ] **Per-component** — every reusable brand component (BrandButton, BrandCard, BrandChip, BrandTextField, BrandBanner, BrandToast) rendered in:
@@ -4782,8 +4783,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 
 ### 31.6 Accessibility audit
 - [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
-- [ ] **Contrast** asserted on brand palette.
-- [ ] **Tap target sizing** asserted on primary actions.
+- [x] **Contrast** asserted on brand palette. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — WCAG AA 4.5:1 / 3:1 pairs for dark + light mode BrandPalette tokens. feat(§31.6): actionplan/§31-batch-4f2a9c)
+- [x] **Tap target sizing** asserted on primary actions. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — TappableFrameModifier defaults + Icon size floor sweep. feat(§31.6): actionplan/§31-batch-4f2a9c)
 
 ### 31.7 TDD workflow (per project rule)
 - [ ] **Write failing test first** (RED).
@@ -4792,8 +4793,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Use tdd-guide agent** when stuck.
 
 ### 31.8 Fixtures
-- [ ] **Seed data** — JSON fixtures per domain (20 tickets / 30 customers / 50 inventory).
-- [ ] **Parameterized tests** using fixtures.
+- [~] **Seed data** — JSON fixtures per domain (20 tickets / 30 customers / 50 inventory). (`Core/Tests/CoreTests/TestFixtures/Fixtures/ticket_default.json` + `inventory_item_default.json` — ticket + inventory seed fixtures with realistic data. feat(§31.8): actionplan/§31-batch-4f2a9c) <!-- full 20/30/50 set pending -->
+- [x] **Parameterized tests** using fixtures. (`Core/Tests/CoreTests/TestFixtures/ParameterizedFixtureTests.swift` — TicketFixtureTests + InventoryFixtureTests with per-fixture invariant sweeps. feat(§31.8): actionplan/§31-batch-4f2a9c)
 
 ### 31.9 CI reporting
 - [ ] **Coverage HTML** posted to PR.
