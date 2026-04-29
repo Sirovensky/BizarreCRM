@@ -20,6 +20,19 @@ public struct CustomerListFilter: Equatable, Sendable {
         hasOpenTickets || city != nil || state != nil || tag != nil
     }
 
+    /// Number of independently active filter criteria — used to badge the filter toolbar button.
+    public var activeCount: Int {
+        [
+            ltvTier != nil,
+            healthBand != nil,
+            balanceGtZero,
+            hasOpenTickets,
+            city != nil,
+            state != nil,
+            tag != nil
+        ].filter { $0 }.count
+    }
+
     public init() {}
 }
 

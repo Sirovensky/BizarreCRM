@@ -252,6 +252,7 @@ public struct CustomerListView: View {
             }
             .keyboardShortcut("N", modifiers: .command)
             .accessibilityLabel("New customer")
+            .accessibilityIdentifier("customers.list.toolbar.newCustomer")
         }
     }
 
@@ -277,26 +278,38 @@ public struct CustomerListView: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("customers.list.sort.\(order.rawValue)")
                 }
             } label: {
                 Label("Sort", systemImage: "arrow.up.arrow.down")
             }
             .accessibilityLabel("Sort customers by \(vm.sortOrder.rawValue)")
+            .accessibilityIdentifier("customers.list.toolbar.sort")
         }
     }
 
-    /// §5.1 Filter button.
+    /// §5.1 Filter button — badge shows active filter count.
     private var filterToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .secondaryAction) {
             Button {
                 showingFilter = true
             } label: {
-                Label(
-                    vm.filter.isActive ? "Filter (active)" : "Filter",
-                    systemImage: vm.filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
-                )
+                // Show active filter count alongside icon when filters are on.
+                if vm.filter.isActive {
+                    Label(
+                        "Filter (\(vm.filter.activeCount))",
+                        systemImage: "line.3.horizontal.decrease.circle.fill"
+                    )
+                } else {
+                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                }
             }
-            .accessibilityLabel(vm.filter.isActive ? "Filter active, tap to edit" : "Filter customers")
+            .accessibilityLabel(
+                vm.filter.isActive
+                    ? "\(vm.filter.activeCount) filter\(vm.filter.activeCount == 1 ? "" : "s") active, tap to edit"
+                    : "Filter customers"
+            )
+            .accessibilityIdentifier("customers.list.toolbar.filter")
         }
     }
 
@@ -312,6 +325,7 @@ public struct CustomerListView: View {
                 )
             }
             .accessibilityLabel(vm.showStats ? "Hide customer stats" : "Show customer stats")
+            .accessibilityIdentifier("customers.list.toolbar.stats")
         }
     }
 
@@ -327,6 +341,7 @@ public struct CustomerListView: View {
                 )
             }
             .accessibilityLabel(vm.isBulkSelecting ? "Done selecting" : "Select multiple customers")
+            .accessibilityIdentifier("customers.list.toolbar.bulkSelect")
         }
     }
 
@@ -340,6 +355,7 @@ public struct CustomerListView: View {
                     Label("Export CSV", systemImage: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Export customer list as CSV")
+                .accessibilityIdentifier("customers.list.toolbar.exportCSV")
             }
         }
     }
@@ -353,6 +369,7 @@ public struct CustomerListView: View {
                 Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
             }
             .accessibilityLabel("Import customers from Contacts")
+            .accessibilityIdentifier("customers.list.toolbar.import")
         }
     }
 
@@ -493,6 +510,8 @@ public struct CustomerListView: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)
+                    .accessibilityLabel("End of customer list")
+                    .accessibilityIdentifier("customers.list.endOfList")
             }
         }
         .listStyle(.plain)
@@ -838,6 +857,7 @@ private struct CustomerRow: View {
         )
         .accessibilityHint(RowAccessibilityFormatter.customerRowHint)
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("customers.list.row.\(customer.id)")
     }
 }
 
@@ -935,7 +955,13 @@ private struct CustomerEmptyState: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .multilineTextAlignment(.center)
 
-            if !isSearching {
+            if isSearching && !query.isEmpty {
+                Text("Try a different name, phone, or email.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.xl)
+            } else if !isSearching {
                 Text("Add your first customer or import from your device contacts.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -949,16 +975,19 @@ private struct CustomerEmptyState: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.bizarreOrange)
                     .accessibilityLabel("Create new customer")
+                    .accessibilityIdentifier("customers.list.emptyState.create")
 
                     Button(action: onImport) {
                         Label("Import", systemImage: "person.crop.circle.badge.plus")
                     }
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Import customers from Contacts")
+                    .accessibilityIdentifier("customers.list.emptyState.import")
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("customers.list.emptyState")
     }
 
     private var title: String {
