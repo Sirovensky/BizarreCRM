@@ -9,7 +9,7 @@ public enum BrandSpacing {
     public static let lg:   CGFloat = 24
     public static let xl:   CGFloat = 32
     public static let xxl:  CGFloat = 48
-    public static let xxxl: CGFloat = 64
+    public static let xxxl: CGFloat = 72
 }
 
 public extension CGFloat {

@@ -33,6 +33,13 @@ public extension BrandMotion {
     /// Fire on `.onHover` with `isHovered` flag.
     /// Reduce Motion alt: no animation.
     static let cardHover: Animation = .interactiveSpring(response: 0.20, dampingFraction: 0.90)
+
+    // MARK: §30.5 — Named spring (§30.6 spec)
+
+    /// Canonical brand spring: response 0.3s, damping 0.75.
+    /// Specified in §30.6 as the shared interactive-spring baseline.
+    /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
+    static let brandSpring: Animation = .interactiveSpring(response: 0.30, dampingFraction: 0.75)
 }
 
 // MARK: - ReduceMotionFallback §30 convenience
@@ -65,5 +72,10 @@ public extension ReduceMotionFallback {
     /// hover state change is instant (pointer users see immediate response).
     static func cardHover(reduced: Bool) -> Animation? {
         animation(BrandMotion.cardHover, reduced: reduced)
+    }
+
+    /// Pre-resolved token for the canonical brand spring, honouring Reduce Motion.
+    static func brandSpring(reduced: Bool) -> Animation? {
+        animation(BrandMotion.brandSpring, reduced: reduced)
     }
 }

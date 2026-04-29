@@ -192,6 +192,34 @@ private struct LowStockPulseModifier: ViewModifier {
     }
 }
 
+// MARK: - NewBadgePulse
+
+/// Scale-pulse used on "new" badges and counters.
+/// Spec §30.6: scale 1.0 ↔ 1.05 over 600ms, repeating.
+/// Reduce Motion: no animation (badge still visible; only the pulse is suppressed).
+private struct NewBadgePulseModifier: ViewModifier {
+    let isActive: Bool
+    @State private var pulsing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pulsing && !reduceMotion ? 1.05 : 1.0)
+            .animation(
+                isActive && !reduceMotion
+                    ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
+                    : nil,
+                value: pulsing
+            )
+            .onAppear {
+                if isActive && !reduceMotion { pulsing = true }
+            }
+            .onChange(of: isActive) { _, newValue in
+                pulsing = newValue && !reduceMotion
+            }
+    }
+}
+
 // MARK: - Public View extensions
 
 public extension View {
@@ -223,5 +251,13 @@ public extension View {
     /// Red badge pulse for low-stock state.
     func lowStockPulse(isActive: Bool) -> some View {
         modifier(LowStockPulseModifier(isActive: isActive))
+    }
+
+    /// Gentle scale pulse (1.0 ↔ 1.05, 600ms) for "new" badges.
+    ///
+    /// Spec §30.6. Pass `isActive: false` to stop pulsing once the user
+    /// has acknowledged the badge. Reduce Motion: no animation.
+    func newBadgePulse(isActive: Bool) -> some View {
+        modifier(NewBadgePulseModifier(isActive: isActive))
     }
 }
