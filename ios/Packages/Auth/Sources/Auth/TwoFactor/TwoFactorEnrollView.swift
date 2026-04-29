@@ -321,12 +321,20 @@ private struct BackupCodesStep: View {
     private var actionsSection: some View {
         HStack(spacing: BrandSpacing.md) {
             Button {
-                UIPasteboard.general.string = vm.recoveryCodeList.exportText
+                // §28.9 — Recovery codes are sensitive backup credentials.
+                // Copy with a 60-second expiry so they are automatically
+                // cleared from the pasteboard even if the user forgets to.
+                let expiry: TimeInterval = 60
+                UIPasteboard.general.setItems(
+                    [[UIPasteboard.typeAutomatic: vm.recoveryCodeList.exportText]],
+                    options: [.expirationDate: Date(timeIntervalSinceNow: expiry)]
+                )
+                PasteboardAudit.logWrite(screen: "twoFactorEnroll.recoveryCodes", expiresIn: expiry)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }
             .buttonStyle(.brandGlass)
-            .accessibilityLabel("Copy all recovery codes to clipboard")
+            .accessibilityLabel("Copy all recovery codes to clipboard (cleared after 60 seconds)")
 
             Button {
                 exportToFiles()

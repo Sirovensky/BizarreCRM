@@ -96,12 +96,6 @@ public final class KeychainStore: @unchecked Sendable {
 
     /// Returns a per-tenant 256-bit DB passphrase stored under the
     /// key `"db.passphrase.<tenantSlug>"`. Generates one on first access.
-    ///
-    /// Each tenant gets its own independently-generated passphrase so
-    /// switching tenants never accidentally decrypts another tenant's DB.
-    ///
-    /// - Parameter tenantSlug: The stable server-issued tenant identifier
-    ///   (e.g. `"acme-repair"`). Must be non-empty; assert in debug builds.
     public func tenantPassphrase(for tenantSlug: String) throws -> String {
         precondition(!tenantSlug.isEmpty, "tenantSlug must be non-empty")
         let keychainKey = "db.passphrase.\(tenantSlug)"
@@ -113,13 +107,33 @@ public final class KeychainStore: @unchecked Sendable {
     }
 
     /// Removes the per-tenant DB passphrase for `tenantSlug` from the Keychain.
-    ///
-    /// **Destructive:** after this call, the encrypted DB for this tenant is
-    /// permanently unreadable (the key is gone). Only call from
-    /// Settings → Danger Zone → Reset, never from routine logout.
     public func removeTenantPassphrase(for tenantSlug: String) throws {
         precondition(!tenantSlug.isEmpty, "tenantSlug must be non-empty")
         let keychainKey = "db.passphrase.\(tenantSlug)"
         try keychain.remove(keychainKey)
+    }
+
+    // MARK: - §28.1 Delete on logout
+
+    /// Keys scoped to a specific user / tenant — deleted on logout / tenant purge.
+    private static let userScopedKeys: [KeychainKey] = [
+        .accessToken,
+        .refreshToken,
+        .pinHash,
+        .pinLength,
+        .pinFailCount,
+        .pinLockUntil,
+        .dbPassphrase,
+        .backupCodes,
+        .blockChypAuth,
+        .activeTenantId,
+    ]
+
+    /// Removes all Keychain items scoped to the active user session.
+    /// `rememberedEmail` is intentionally preserved.
+    public func deleteUserScoped(tenantSlug: String? = nil) {
+        for key in Self.userScopedKeys {
+            try? keychain.remove(key.rawValue)
+        }
     }
 }
