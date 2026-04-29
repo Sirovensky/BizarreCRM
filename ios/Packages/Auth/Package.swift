@@ -11,7 +11,8 @@ let package = Package(
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
-        .package(path: "../Persistence")
+        .package(path: "../Persistence"),
+        .package(path: "../Tickets")
     ],
     targets: [
         .target(
@@ -20,7 +21,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AuthTests",
-            dependencies: ["Auth"]
+            dependencies: ["Auth", "Core", "Tickets"]
         )
     ]
 )
