@@ -6,6 +6,9 @@ import Networking
 
 public struct InvoiceDetailView: View {
     @State private var vm: InvoiceDetailViewModel
+    /// §7 Customer card link — optional callback invoked when user taps the customer name.
+    /// Caller (e.g. the host NavigationStack) should push `CustomerDetailView(customerId:)`.
+    public var onNavigateToCustomer: ((Int64) -> Void)?
     @State private var showPaySheet = false
     @State private var showRefundSheet = false
     @State private var showVoidAlert = false
@@ -47,10 +50,16 @@ public struct InvoiceDetailView: View {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let repo: InvoiceDetailRepository
 
-    public init(repo: InvoiceDetailRepository, invoiceId: Int64, api: APIClient) {
+    public init(
+        repo: InvoiceDetailRepository,
+        invoiceId: Int64,
+        api: APIClient,
+        onNavigateToCustomer: ((Int64) -> Void)? = nil
+    ) {
         _vm = State(wrappedValue: InvoiceDetailViewModel(repo: repo, invoiceId: invoiceId))
         self.api = api
         self.repo = repo
+        self.onNavigateToCustomer = onNavigateToCustomer
     }
 
     public var body: some View {
@@ -559,7 +568,7 @@ public struct InvoiceDetailView: View {
         case .loaded(let inv):
             ScrollView {
                 VStack(spacing: BrandSpacing.base) {
-                    HeaderCard(invoice: inv)
+                    HeaderCard(invoice: inv, onNavigateToCustomer: onNavigateToCustomer)
                     if let items = inv.lineItems, !items.isEmpty {
                         LineItemsCard(items: items)
                     }
@@ -615,6 +624,10 @@ public struct InvoiceDetailView: View {
 
 private struct HeaderCard: View {
     let invoice: InvoiceDetail
+    /// §7 Customer card link callback — nil hides the chevron.
+    var onNavigateToCustomer: ((Int64) -> Void)?
+
+    @State private var didCopyLink = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -639,9 +652,28 @@ private struct HeaderCard: View {
                 StatusBadge(status: invoice.status)
             }
 
-            Text(invoice.customerDisplayName)
-                .font(.brandBodyLarge())
-                .foregroundStyle(.bizarreOnSurface)
+            // §7 Customer card link — tapping navigates to customer detail.
+            if let custId = invoice.customerId, let navigate = onNavigateToCustomer {
+                Button {
+                    navigate(custId)
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(invoice.customerDisplayName)
+                            .font(.brandBodyLarge())
+                            .foregroundStyle(.bizarreOrange)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Customer: \(invoice.customerDisplayName)")
+                .accessibilityHint("Opens customer detail")
+            } else {
+                Text(invoice.customerDisplayName)
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
 
             // §7.2 Balance-due chip
             if let due = invoice.amountDue, due > 0 {
@@ -702,15 +734,39 @@ private struct HeaderCard: View {
                 }
             }
 
-            HStack {
+            HStack(alignment: .top) {
                 if let created = invoice.createdAt {
                     DateTile(label: "Issued", value: String(created.prefix(10)))
                 }
+                // §7 Due-date badge with color states: overdue=red, ≤3d=amber, ok=muted.
                 if let due = invoice.dueOn, !due.isEmpty {
-                    DateTile(label: "Due", value: String(due.prefix(10)))
+                    DueDateBadge(dueOn: String(due.prefix(10)), status: invoice.status)
                 }
             }
             .padding(.top, BrandSpacing.xs)
+
+            // §7 Share-link button — copies the customer-facing payment URL to the clipboard.
+            if let orderId = invoice.orderId, !orderId.isEmpty {
+                let payURL = "https://pay.bizarrecrm.com/\(orderId)"
+                Button {
+                    UIPasteboard.general.string = payURL
+                    didCopyLink = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { didCopyLink = false }
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: didCopyLink ? "checkmark.circle.fill" : "link")
+                            .foregroundStyle(didCopyLink ? .bizarreSuccess : .bizarreOrange)
+                            .font(.system(size: 15))
+                        Text(didCopyLink ? "Link copied!" : "Copy payment link")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(didCopyLink ? .bizarreSuccess : .bizarreOrange)
+                    }
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 0.2), value: didCopyLink)
+                .accessibilityLabel(didCopyLink ? "Payment link copied to clipboard" : "Copy payment link")
+                .accessibilityHint("Copies the customer payment URL to the clipboard")
+            }
         }
         .cardBackground()
     }
@@ -726,6 +782,73 @@ private struct DateTile: View {
             Text(value).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// §7 Due-date badge — color-coded by urgency.
+// overdue (past due date and not fully paid) → red
+// due within 3 days → amber
+// otherwise → muted (normal)
+private struct DueDateBadge: View {
+    let dueOn: String   // "YYYY-MM-DD"
+    let status: String?
+
+    private static let isoDay: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private var urgency: Urgency {
+        let s = (status ?? "").lowercased()
+        // Void / paid invoices never show urgency coloring.
+        guard s != "paid" && s != "void" else { return .normal }
+        guard let date = Self.isoDay.date(from: dueOn) else { return .normal }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+        if days < 0 { return .overdue }
+        if days <= 3 { return .soon }
+        return .normal
+    }
+
+    enum Urgency { case overdue, soon, normal }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Due")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.xxs) {
+                if urgency != .normal {
+                    Image(systemName: urgency == .overdue ? "exclamationmark.circle.fill" : "clock.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(badgeColor)
+                        .accessibilityHidden(true)
+                }
+                Text(dueOn)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(badgeColor)
+                    .monospacedDigit()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel(a11yLabel)
+    }
+
+    private var badgeColor: Color {
+        switch urgency {
+        case .overdue: return .bizarreError
+        case .soon:    return .bizarreWarning
+        case .normal:  return .bizarreOnSurface
+        }
+    }
+
+    private var a11yLabel: String {
+        switch urgency {
+        case .overdue: return "Due \(dueOn), overdue"
+        case .soon:    return "Due \(dueOn), due soon"
+        case .normal:  return "Due \(dueOn)"
+        }
     }
 }
 

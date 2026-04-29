@@ -195,10 +195,17 @@ public struct InvoiceTimelineView: View {
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .monospacedDigit()
+                    // §7 Timeline a11y: timestamp is decorative for sighted; VoiceOver
+                    // sees it via the combined element below.
+                    .accessibilityHidden(true)
             }
             .padding(.bottom, isLast ? 0 : BrandSpacing.base)
         }
+        // §7 Status timeline a11y — combined label + timestamp so VoiceOver reads a
+        // full sentence. Role .staticText (default) is correct; no action available.
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(event.title), \(formatTimestamp(event.timestamp))")
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 

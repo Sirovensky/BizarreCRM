@@ -1189,11 +1189,11 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
-- [x] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip. (feat(§7.2) 34788e7d)
-- [x] **Customer card** — name + phone + email + quick-actions (tel:/mailto: Links). (feat(§7.2) 34788e7d)
+- [x] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip. `DueDateBadge` — overdue=red / ≤3d=amber / normal=muted; `share-link` copy-to-clipboard button for customer payment URL. (feat(§7.2) 34788e7d; §7-polish agent-aa4a1e8d)
+- [x] **Customer card** — name + phone + email + quick-actions (tel:/mailto: Links); customer name tappable with `onNavigateToCustomer` callback → customer detail deep-link. (feat(§7.2) 34788e7d; §7-polish agent-aa4a1e8d)
 - [x] **Line items** — editable table (if status allows); tax per line (read display done feat(§7.2) 34788e7d). `InvoiceLineItemEditorSheet` + `InvoiceLineItemEditorViewModel`; PUT /invoices/:id/lines; `canEditLines` gate on InvoiceDetail; 8 tests. ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Totals panel** — subtotal / discount / tax / total / paid / balance due. `TotalsCard` wired in `InvoiceDetailView.content` (existing `TotalsCard`). ([actionplan agent-6 b7] 55e60eb3)
-- [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
+- [x] **Payment history** — method / amount / date / reference / status; tap → payment detail; per-tender SF Symbol icon (cash/card/gift_card/store_credit/check/other). (feat(ios phase-4 §7); §7-polish agent-aa4a1e8d)
 - [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
 - [x] **Issue refund** — `POST /invoices/:id/refund`; role-gated; partial + full; manager PIN > $100. `InvoiceRefundSheet` + `InvoiceRefundViewModel` + `ManagerPinSheet`. (feat(ios phase-4 §7))
 - [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`. (`InvoiceCreditNoteSheet` + `InvoiceCreditNoteViewModel`; wired in `InvoiceDetailView` ⋯ menu when amountPaid > 0; success shows ref number; 9 tests) (3c5f3522)
@@ -1204,7 +1204,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer. `InvoicePrintService.generatePDF` + `presentAirPrint`. (feat(§7.2) e9c1737e)
 - [x] **Clone invoice** — duplicate line items for new invoice. `POST /api/v1/invoices/:id/clone` + `CloneInvoiceResponse`; cloned detail sheet; error alert. (feat(§7.2) 34788e7d)
 - [x] **Convert to credit note** — if overpaid. `isOverpaid` helper + "Convert Overpayment to Credit" toolbar menu entry → `InvoiceCreditNoteSheet`; `showConvertToCreditNote` state. ([actionplan agent-6 b7] 55e60eb3)
-- [x] **Timeline** — every status change, payment, note, email/SMS send. `InvoiceTimelineView` + `buildInvoiceTimeline()`; 12 tests. (feat(§7.2) e9c1737e)
+- [x] **Timeline** — every status change, payment, note, email/SMS send. `InvoiceTimelineView` + `buildInvoiceTimeline()`; 12 tests. Row a11y: combined `accessibilityLabel` = title + formatted timestamp; `.isStaticText` trait; timestamp span marked `.accessibilityHidden`. (feat(§7.2) e9c1737e; §7-polish agent-aa4a1e8d)
 - [x] **Deposit invoices linked** — nested card showing connected deposit invoices. `DepositInvoicesCard` (GET /invoices?deposit_parent_id; status badge; tap → nested detail sheet); wired in `InvoiceDetailView`. ([actionplan agent-6 b7] 55e60eb3)
 
 ### 7.3 Create

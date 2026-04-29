@@ -84,17 +84,36 @@ private struct PaymentHistoryRow: View {
     }
 
     private var kindBadge: some View {
-        VStack {
+        VStack(spacing: BrandSpacing.xxs) {
             Image(systemName: entry.kind.systemIcon)
                 .font(.system(size: 22))
                 .foregroundStyle(entry.kind.badgeColor)
                 .accessibilityHidden(true)
+            // §7 Payment-method icon — SF Symbol per tender type.
+            if let tender = entry.tender, !tender.isEmpty {
+                Image(systemName: tenderIcon(for: tender))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+            }
             Text(entry.kind.badgeLabel)
                 .font(.brandLabelSmall())
                 .foregroundStyle(entry.kind.badgeColor)
                 .accessibilityHidden(true)
         }
         .frame(width: 56)
+    }
+
+    /// Maps raw tender strings from the server to SF Symbols.
+    private func tenderIcon(for tender: String) -> String {
+        switch tender.lowercased() {
+        case "cash":         return "banknote"
+        case "card":         return "creditcard"
+        case "gift_card":    return "gift"
+        case "store_credit": return "arrow.counterclockwise.circle"
+        case "check":        return "checkmark.rectangle"
+        default:             return "ellipsis.circle"
+        }
     }
 
     private var amountColor: Color {
