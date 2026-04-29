@@ -20,9 +20,15 @@ public struct CSATScoreCard: View {
                 gaugeRow(s)
                 trendRow(s)
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityLabel("Loading CSAT score")
+                HStack(spacing: BrandSpacing.sm) {
+                    ProgressView()
+                    Text("Loading…")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, BrandSpacing.sm)
+                .accessibilityLabel("Loading CSAT score")
             }
         }
         .padding(BrandSpacing.base)

@@ -314,10 +314,27 @@ public struct WarrantyClaimsTrendCard: View {
     }
 
     private var emptyState: some View {
-        Text("No warranty claims in selected period")
-            .font(.brandBodyMedium())
-            .foregroundStyle(.bizarreOnSurfaceMuted)
-            .accessibilityLabel("No warranty claims data")
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            // Sparkline outline placeholder — communicates shape even when no data
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                    .strokeBorder(
+                        Color.bizarreOutline.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                    )
+                    .frame(height: 56)
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.5))
+                        .imageScale(.small)
+                        .accessibilityHidden(true)
+                    Text("No claims in selected period")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+        }
+        .accessibilityLabel("No warranty claims data in the selected period")
     }
 }
 
@@ -384,6 +401,7 @@ public struct DeviceModelsRepairedCard: View {
     }
 
     private var chart: some View {
+        // Sort descending by frequency so highest-volume model appears at top
         let topRows = Array(rows.sorted { $0.repairCount > $1.repairCount }.prefix(8))
         return Chart(topRows) { row in
             BarMark(
@@ -391,6 +409,12 @@ public struct DeviceModelsRepairedCard: View {
                 y: .value("Model", row.model)
             )
             .foregroundStyle(Color.bizarreOrange.opacity(0.8))
+            .annotation(position: .trailing, alignment: .leading, spacing: 4) {
+                Text("\(row.repairCount)")
+                    .font(.brandLabelSmall()).monospacedDigit()
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+            }
             .accessibilityLabel("\(row.model): \(row.repairCount) repairs")
         }
         .chartXAxis {
@@ -743,32 +767,59 @@ public struct CustomerAcquisitionChurnCard: View {
     }
 
     private func content(_ d: CustomerAcquisitionChurn) -> some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.md) {
-            // KPI row
-            HStack(spacing: BrandSpacing.lg) {
-                kpiTile(value: "+\(d.newCustomers)", label: "new", color: .bizarreSuccess)
-                kpiTile(value: "-\(d.churnedCustomers)", label: "churned", color: .bizarreError)
-                kpiTile(value: "\(d.returningCustomers)", label: "returning", color: .bizarreOrange)
-                Spacer()
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(d.newCustomers) new, \(d.churnedCustomers) churned, \(d.returningCustomers) returning customers")
+        // When all three values are zero, render a single aggregate empty state
+        // instead of three colored zeros which create misleading visual noise.
+        if d.newCustomers == 0 && d.churnedCustomers == 0 && d.returningCustomers == 0 {
+            return AnyView(allZeroState)
+        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: BrandSpacing.md) {
+                // KPI row
+                HStack(spacing: BrandSpacing.lg) {
+                    kpiTile(value: "+\(d.newCustomers)", label: "new", color: .bizarreSuccess)
+                    kpiTile(value: "-\(d.churnedCustomers)", label: "churned", color: .bizarreError)
+                    kpiTile(value: "\(d.returningCustomers)", label: "returning", color: .bizarreOrange)
+                    Spacer()
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(d.newCustomers) new, \(d.churnedCustomers) churned, \(d.returningCustomers) returning customers")
 
-            // Net growth chip
-            HStack(spacing: BrandSpacing.xs) {
-                Image(systemName: d.netGrowth >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    .foregroundStyle(d.netGrowth >= 0 ? Color.bizarreSuccess : Color.bizarreError)
-                    .accessibilityHidden(true)
-                Text("Net: \(d.netGrowth >= 0 ? "+" : "")\(d.netGrowth) customers")
+                // Net growth chip
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: d.netGrowth >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .foregroundStyle(d.netGrowth >= 0 ? Color.bizarreSuccess : Color.bizarreError)
+                        .accessibilityHidden(true)
+                    Text("Net: \(d.netGrowth >= 0 ? "+" : "")\(d.netGrowth) customers")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Spacer()
+                    Text(String(format: "%.1f%% churn rate", d.churnRatePct))
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(d.churnRatePct > 15 ? Color.bizarreError : Color.bizarreWarning)
+                }
+                .accessibilityLabel("Net growth \(d.netGrowth), churn rate \(String(format: "%.1f%%", d.churnRatePct))")
+            }
+        )
+    }
+
+    private var allZeroState: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "person.2.slash")
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.5))
+                .imageScale(.large)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No customer activity yet")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                Spacer()
-                Text(String(format: "%.1f%% churn rate", d.churnRatePct))
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(d.churnRatePct > 15 ? Color.bizarreError : Color.bizarreWarning)
+                Text("Acquisition and churn data will appear once customers are recorded")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
-            .accessibilityLabel("Net growth \(d.netGrowth), churn rate \(String(format: "%.1f%%", d.churnRatePct))")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityLabel("No customer activity in selected period. Acquisition and churn data will appear once customers are recorded.")
     }
 
     private func kpiTile(value: String, label: String, color: Color) -> some View {

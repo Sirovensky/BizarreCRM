@@ -659,13 +659,30 @@ public struct ConversionFunnelCard: View {
     }
 
     private var skeletonState: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            ForEach(0..<3, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
-                    .fill(Color.bizarreSurface2).frame(height: 24)
+        // Show labeled stage placeholders so the funnel shape is readable even before data loads
+        let stages: [(label: String, icon: String)] = [
+            ("Lead", "person.badge.plus"),
+            ("Quoted", "doc.text"),
+            ("Won", "checkmark.seal.fill"),
+        ]
+        return VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            ForEach(stages, id: \.label) { stage in
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: stage.icon)
+                        .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.5))
+                        .imageScale(.small)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.xs)
+                        .fill(Color.bizarreSurface2)
+                        .frame(height: 24)
+                    Text(stage.label)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
             }
         }
-        .accessibilityLabel("Conversion funnel data loading")
+        .accessibilityLabel("Conversion funnel loading: Lead, Quoted, Won stages")
     }
 }
 
