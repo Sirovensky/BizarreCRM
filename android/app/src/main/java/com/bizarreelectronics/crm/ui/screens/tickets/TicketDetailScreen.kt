@@ -2192,6 +2192,16 @@ fun TicketDetailScreen(
                                 // Route through the same notify-preview flow phone uses.
                                 viewModel.requestStatusChangeWithNotify(id)
                             },
+                            deviceChipLabel = run {
+                                val firstDev = state.devices.firstOrNull()
+                                val model = listOfNotNull(
+                                    firstDev?.manufacturerName?.takeIf { it.isNotBlank() },
+                                    firstDev?.name?.takeIf { it.isNotBlank() }
+                                        ?: firstDev?.deviceName?.takeIf { it.isNotBlank() },
+                                ).joinToString(" ").ifBlank { null }
+                                val svc = firstDev?.category?.takeIf { it.isNotBlank() }
+                                listOfNotNull(model, svc).joinToString(" · ").ifBlank { null }
+                            },
                             topBarActions = {
                                 // Print — opens server's /print/ticket/:id route. Disabled offline.
                                 run {
@@ -2303,6 +2313,10 @@ fun TicketDetailScreen(
                                     Box(modifier = Modifier.weight(1f)) {
                                         com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.feed.ActivityFeed(
                                             history = state.history,
+                                            createdAt = state.ticketDetail?.createdAt ?: ticket.createdAt,
+                                            updatedAt = state.ticketDetail?.updatedAt ?: ticket.updatedAt,
+                                            assignedTo = state.ticketDetail?.assignedUser?.fullName,
+                                            slaHint = null,
                                         )
                                     }
                                     com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.compose.TabletComposeBar(

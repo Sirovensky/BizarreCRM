@@ -125,6 +125,7 @@ internal fun TicketDetailTabletLayoutV2(
     currentStatusName: String,
     currentStatusId: Long?,
     onStatusSelected: (Long) -> Unit,
+    deviceChipLabel: String? = null,
     topBarActions: @Composable RowScope.() -> Unit = {},
     @Suppress("UNUSED_PARAMETER") onNavigateToCustomer: (Long) -> Unit,
     @Suppress("UNUSED_PARAMETER") onEditDevice: (Long) -> Unit = {},
@@ -148,6 +149,7 @@ internal fun TicketDetailTabletLayoutV2(
             currentStatusName = currentStatusName,
             onStatusPillClick = { showStatusSheet = true },
             actions = topBarActions,
+            deviceChipLabel = deviceChipLabel,
         )
 
         Row(modifier = Modifier.fillMaxSize()) {

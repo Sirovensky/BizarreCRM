@@ -73,6 +73,7 @@ internal fun TabletTopAppBar(
     currentStatusName: String,
     onStatusPillClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit,
+    deviceChipLabel: String? = null,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -103,6 +104,30 @@ internal fun TabletTopAppBar(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { contentDescription = "Ticket $ticketTitle" },
             )
+
+            // Device chip — model + service summary in a pill, surface bg.
+            if (!deviceChipLabel.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .height(32.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            deviceChipLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
 
             // Spacer
             Box(modifier = Modifier.weight(1f))

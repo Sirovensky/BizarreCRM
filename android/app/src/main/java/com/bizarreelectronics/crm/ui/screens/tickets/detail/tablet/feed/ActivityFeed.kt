@@ -66,7 +66,13 @@ import java.time.temporal.ChronoUnit
  * @param history server-supplied history events.
  */
 @Composable
-internal fun ActivityFeed(history: List<TicketHistory>) {
+internal fun ActivityFeed(
+    history: List<TicketHistory>,
+    createdAt: String? = null,
+    updatedAt: String? = null,
+    assignedTo: String? = null,
+    slaHint: String? = null,
+) {
     val ascending = remember(history) { history.reversed() }
     val grouped = remember(ascending) { groupByDay(ascending) }
 
@@ -91,6 +97,36 @@ internal fun ActivityFeed(history: List<TicketHistory>) {
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 6.dp),
                     )
+
+                    // Header meta pills row (Created / Updated / Assigned / SLA).
+                    val pills = listOfNotNull(
+                        createdAt?.takeIf { it.isNotBlank() }?.let { "Created ${formatDayShort(it)}" },
+                        updatedAt?.takeIf { it.isNotBlank() }?.let { "Updated ${formatTime(it)}" },
+                        assignedTo?.takeIf { it.isNotBlank() }?.let { "Assigned: $it" },
+                        slaHint?.takeIf { it.isNotBlank() },
+                    )
+                    if (pills.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            pills.take(4).forEach { p ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = CircleShape,
+                                ) {
+                                    Text(
+                                        p,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     if (ascending.isEmpty()) {
                         Box(
@@ -323,6 +359,15 @@ private fun formatTime(iso: String?): String {
             else -> zoned.format(TIME_LABEL_FMT)
         }
     }.getOrDefault(iso)
+}
+
+private fun formatDayShort(iso: String?): String {
+    if (iso.isNullOrBlank()) return ""
+    return runCatching {
+        Instant.parse(iso.replace(" ", "T") + if (!iso.endsWith("Z")) "Z" else "")
+            .atZone(ZoneId.systemDefault())
+            .format(DAY_LABEL_FMT)
+    }.getOrDefault(iso.take(10))
 }
 
 private val DAY_LABEL_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")

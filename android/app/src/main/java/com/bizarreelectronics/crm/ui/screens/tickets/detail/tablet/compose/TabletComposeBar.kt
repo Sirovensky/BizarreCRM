@@ -180,7 +180,7 @@ private const val KIND_SMS = "sms"
 private data class KindOption(val id: String, val label: String)
 
 private val KIND_OPTIONS = listOf(
-    KindOption(KIND_INTERNAL, "Int."),
-    KindOption(KIND_DIAGNOSTIC, "Diag"),
-    KindOption(KIND_SMS, "sms"),
+    KindOption(KIND_INTERNAL, "Note"),
+    KindOption(KIND_DIAGNOSTIC, "Diagnostic"),
+    KindOption(KIND_SMS, "SMS"),
 )
