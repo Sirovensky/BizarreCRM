@@ -4887,7 +4887,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `SyncService` — queue drain, backoff, dead-letter, conflict resolution.
   - [x] `Formatters` — date/currency/phone locale edge cases. (`Core/Tests/CoreTests/CurrencyFormatterTests.swift` — Currency.formatCents USD/EUR/JPY edge cases + ISO8601Factory round-trip. feat(§31.1): actionplan/§31-batch-4f2a9c)
   - `Validators` — email, phone, SKU, IMEI.
-  - `URL construction` — host/path safety, query encoding, no force-unwraps.
+  - [x] `URL construction` — host/path safety, query encoding, no force-unwraps. (`Networking/Tests/NetworkingTests/TypedEndpoints/EndpointURLConstructionSafetyTests.swift` — host/scheme/port preservation across multi-tenant + self-hosted bases, percent-encoding round-trip for reserved + unicode query values, empty/nil query stripping, EndpointError.invalidURL on malformed paths, error context preservation. feat(§31.1): Ios-actionplan)
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
 - [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
 - [x] **PreviewTraitsHelper** — composable SwiftUI preview environment helper; `PreviewTrait` enum covers appearance, size class, Dynamic Type, layout direction, locale; `View.previewTraits(...)` variadic API. (`Core/Sources/Core/TestFixtures/PreviewTraitsHelper.swift`. feat(§31): Ios-actionplan)
@@ -4906,7 +4906,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **End-to-end API** — start local server (Docker Compose) against real endpoints; assert envelopes.
 - [ ] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency.
 - [ ] **WebSocket** — mock server with Starscream client; assert reconnect + event handling.
-- [ ] **Keychain** — real Keychain access with test service; cleanup after.
+- [x] **Keychain** — real Keychain access with test service; cleanup after. (`Core/Tests/CoreTests/TenantSession/KeychainIntegrationTests.swift` — exercises real `TenantKeychainStore` (SecItemAdd/Update/CopyMatching/Delete) under per-test UUID-scoped service name; covers write→read round-trip, idempotent overwrite, missing-account → nil, idempotent delete, account isolation, service isolation; aggressive setUp+tearDown cleanup keeps suite hermetic. feat(§31.3): Ios-actionplan)
 
 ### 31.4 UI tests (XCUITest)
 - [x] **Golden paths** — login → dashboard → new ticket → add payment → print receipt. (Scaffold: `BizarreCRMUITestCase` base class + `LoginPage`/`DashboardPage`/`TicketPage`/`POSCartPage` page objects + `GoldenPathTicketFlowTests`, `GoldenPathPOSFlowTests`, `GoldenPathSMSFlowTests`, `OfflineSyncFlowTests`, `AuthFlowTests` placeholder classes + `UITestLaunchArg`/`UITestEnvVar` typed constants. `ios/Tests/UITestScaffold.swift`. feat(§31.4): Ios-actionplan)
@@ -4917,14 +4917,14 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Accessibility audits** — `XCUIApplication.performAccessibilityAudit()` per screen (iOS 17+).
 
 ### 31.5 Performance tests (XCTMetric)
-- [ ] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement.
-- [ ] **Scroll frame drops** — `XCTOSSignpostMetric` for tickets list.
+- [x] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement. (`ios/Tests/Performance/ColdStartTests.swift` — `testLaunchTimeApplicationMetric` measures process spawn → first-frame across 5 iterations using Apple's purpose-built `XCTApplicationLaunchMetric`; baseline stored in `.xcresult` for PR diff regression detection. Complements existing `testColdStartTime` wall-clock + `testColdStartMeasured` `XCTClockMetric` baselines. feat(§31.5): Ios-actionplan)
+- [x] **Scroll frame drops** — `XCTOSSignpostMetric` for tickets list. (`ios/Tests/Performance/PerformanceTestCase.swift` — `measureScroll(on:)` captures `XCTOSSignpostMetric.scrollDecelerationMetric` + `navigationTransitionMetric` + `XCTClockMetric`; consumed by `TicketListScrollTests`, `CustomerListScrollTests`, `InventoryListScrollTests`, `InvoiceListScrollTests`, `SmsThreadListScrollTests`. Asserts per-frame budget from `PerformanceBudgets`. feat(§31.5): Ios-actionplan)
 - [x] **Memory** — `XCTMemoryMetric` baseline. (`Core/Tests/CoreTests/Performance/PerfBaselineRunnerTests.swift` — `test_baseline_logCaptureSink_memoryFootprint` XCTMemoryMetric measure block; `PerfBudgetEnforcementTests` hard-ceiling guards. feat(§31.5): Ios-actionplan)
 - [x] **Storage writes** — `XCTStorageMetric` on heavy sync. (`PerfBaselineRunnerTests` — `test_baseline_fixtureLoader_200Items` multi-metric clock+CPU+memory baseline; storage-metric UITest scaffolded in `UITestScaffold.swift`. feat(§31.5): Ios-actionplan)
 - [x] **CPU** — per-flow CPU time budget. (`PerfBaselineRunnerTests` — `test_baseline_currencyFormat_cpuTime` XCTCPUMetric + `test_baseline_fixtureLoader_200Items` combined; `PerfBudgetEnforcementTests.test_budget_singleCurrencyFormat_under1ms`. feat(§31.5): Ios-actionplan)
 
 ### 31.6 Accessibility audit
-- [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
+- [x] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations. (`ios/Tests/AccessibilityAuditCIGateTests.swift` — `AccessibilityAuditCIGateTests` (iOS 17+ guarded) launches app with mock-auth + mock-api flags and runs `XCUIApplication.performAccessibilityAudit(for:)` per primary surface (dashboard, tickets list, settings) with the full audit category set: `.contrast`, `.elementDetection`, `.hitRegion`, `.sufficientElementDescription`, `.dynamicType`, `.textClipped`, `.trait`, `.action`. Any new violation throws → test fails → CI build fails. feat(§31.6): Ios-actionplan)
 - [x] **Contrast** asserted on brand palette. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — WCAG AA 4.5:1 / 3:1 pairs for dark + light mode BrandPalette tokens. feat(§31.6): actionplan/§31-batch-4f2a9c)
 - [x] **Tap target sizing** asserted on primary actions. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — TappableFrameModifier defaults + Icon size floor sweep. feat(§31.6): actionplan/§31-batch-4f2a9c)
 
