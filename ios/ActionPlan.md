@@ -3984,7 +3984,7 @@ Always-on data (labels, hints, traits) — these cost nothing and only matter wh
 
 - [x] **Label + hint** on every interactive element — `.accessibilityLabel("Ticket 1234, iPhone repair")`, `.accessibilityHint("Double tap to open")`. Present in every build; iOS uses them only when VoiceOver is active. (feat(ios post-phase §26): A11y retrofit — Tickets/Customers/Inventory/Invoices list rows + RowAccessibilityFormatter helper)
 - [x] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`. (Tickets/Customers/Inventory/Invoices rows: `.accessibilityAddTraits(.isButton)` — feat(ios post-phase §26))
-- [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
+- [x] **Rotor support** — on long lists: heading / form control / link rotors work. (`RotorSupportModifier.swift`: `.rotorHeading(_:)`, `.rotorLink(_:)`, `.rotorNavigation(headings:)`, `.rotorLinksNavigation(labels:)` — feat(a11y §26-batch2): rotor support helpers)
 - [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
 - [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
 - [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
@@ -3997,7 +3997,7 @@ iOS broadcasts the user's text-size preference via `\.dynamicTypeSize`. Layout a
 
 - [ ] **Support up through XXXL** (AX5 extra-large); test with `environment(\.sizeCategory, .accessibilityExtraExtraExtraLarge)` in previews.
 - [ ] **No truncation** on any primary heading when the OS-reported size is accessibility-large — use `.lineLimit(nil)` + ScrollView fallback, triggered when `dynamicTypeSize.isAccessibilitySize == true`.
-- [ ] **Tabular layouts** switch to vertical stacks at large sizes via `ViewThatFits` — automatic response to OS size, no app-level override.
+- [x] **Tabular layouts** switch to vertical stacks at large sizes via `ViewThatFits` — automatic response to OS size, no app-level override. (`AdaptiveStackLayout.swift`: `AdaptiveStack` + `.adaptiveStack()` — feat(a11y §26-batch2): XXXL ViewThatFits scaffolding)
 - [ ] **Icons scale** via `.imageScale(.medium)` and SF Symbols; this respects both size and iOS Bold-Text.
 
 ### 26.3 Reduce Motion
@@ -4015,16 +4015,16 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
 ### 26.5 Increase Contrast
 - [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
-- [ ] **Borders** around cards become visible (1pt solid stroke) only when the flag is set.
+- [x] **Borders** around cards become visible (1pt solid stroke) only when the flag is set. (`SelectedCardBorderModifier.swift`: `.selectedCardBorder(isSelected:)` — thickens on `.increased` contrast — feat(a11y §26-batch2): contrast borders on selected cards)
 - [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
 - [ ] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80.
 - [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
-- [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
+- [x] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true. (`ColorBlindSafePalette.swift`: `.colorBlindSafeStatus(systemImage:accessibilityLabel:)` + `.colorBlindSafeChartPattern(pattern:)` with `diagonal/horizontal/vertical/dots` — feat(a11y §26-batch2): color-blind-safe palette adjustments)
 
 ### 26.7 Tap targets
-- [ ] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI.
+- [x] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI. (`TappableFrameModifier.swift`: `.tappableFrame(assert:)` — `assertionFailure` in DEBUG, `contentShape` expansion always — feat(a11y §26-batch2): tap-target enforcement modifier)
 - [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
 
 ### 26.8 Voice Control
