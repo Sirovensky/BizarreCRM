@@ -327,20 +327,67 @@ public struct TransferListView: View {
     // MARK: Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "shippingbox.and.arrow.backward")
-                .font(.system(size: 44))
-                .foregroundStyle(Color.bizarrePrimary)
-            Text("No transfers")
-                .font(.bizarreHeadline)
-            Text("Create a transfer to move inventory between locations.")
-                .font(.bizarreBody)
-                .foregroundStyle(Color.bizarreTextSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("New Transfer") { vm.showCreateSheet = true }
-                .buttonStyle(.borderedProminent)
+        TransferListEmptyState(onCreateTapped: { vm.showCreateSheet = true })
+    }
+}
+
+// MARK: - §6.8 Location-Transfer Empty State
+
+/// Shown when the transfer list has no items yet (no filter active).
+/// Provides a clear illustration, contextual copy, and a primary CTA.
+private struct TransferListEmptyState: View {
+    let onCreateTapped: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared: Bool = false
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.lg) {
+            // Stacked icon illustration
+            ZStack {
+                Circle()
+                    .fill(Color.bizarrePrimary.opacity(0.08))
+                    .frame(width: 120, height: 120)
+                ZStack(alignment: .bottomTrailing) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 48, weight: .semibold))
+                        .foregroundStyle(Color.bizarrePrimary.opacity(0.5))
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Color.bizarrePrimary)
+                        .background(Color.bizarreSurfaceBase, in: Circle())
+                        .offset(x: 6, y: 6)
+                }
+            }
+            .scaleEffect(appeared ? 1.0 : (reduceMotion ? 1.0 : 0.8))
+            .opacity(appeared ? 1.0 : (reduceMotion ? 1.0 : 0.0))
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.7),
+                value: appeared
+            )
+
+            VStack(spacing: BrandSpacing.xs) {
+                Text("No transfers yet")
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Move stock between locations by creating a transfer. The source location initiates; the destination confirms receipt.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.xl)
+            }
+
+            Button(action: onCreateTapped) {
+                Label("Create Transfer", systemImage: "plus")
+                    .font(.brandLabelLarge())
+                    .padding(.horizontal, BrandSpacing.lg)
+                    .padding(.vertical, BrandSpacing.sm)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.bizarrePrimary)
+            .accessibilityLabel("Create a new inventory transfer")
         }
+        .padding(BrandSpacing.xl)
+        .onAppear { appeared = true }
     }
 }
 #endif
