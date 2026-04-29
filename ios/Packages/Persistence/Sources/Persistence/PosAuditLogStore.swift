@@ -100,11 +100,13 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
 
 public extension PosAuditEntry {
     enum EventType {
-        public static let voidLine          = "void_line"
-        public static let noSale            = "no_sale"
-        public static let discountOverride  = "discount_override"
-        public static let priceOverride     = "price_override"
-        public static let deleteLine        = "delete_line"
+        public static let voidLine               = "void_line"
+        public static let noSale                 = "no_sale"
+        public static let discountOverride       = "discount_override"
+        public static let priceOverride          = "price_override"
+        public static let deleteLine             = "delete_line"
+        /// §16.9 — manager approved a refund above the tenant PIN threshold.
+        public static let managerApprovedRefund  = "manager_approved_refund"
     }
 }
 

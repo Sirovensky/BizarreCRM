@@ -465,13 +465,20 @@ private struct LineEditStepper: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Decrease quantity")
+            .accessibilityIdentifier("pos.lineEdit.qty.decrease")
 
-            // Value
+            // Value — read out as the live stepper value so a screen-reader
+            // sweep over the three controls says "Decrease quantity, Quantity 3,
+            // Increase quantity" instead of an unlabeled middle node.
             Text("\(quantity)")
                 .font(.custom("BarlowCondensed-Bold", size: 22))
                 .foregroundStyle(.bizarreOnSurface)
                 .monospacedDigit()
                 .frame(minWidth: 26, alignment: .center)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Quantity")
+                .accessibilityValue("\(quantity)")
+                .accessibilityIdentifier("pos.lineEdit.qty.value")
 
             // Plus — orange circle
             Button(action: onIncrement) {
@@ -487,7 +494,10 @@ private struct LineEditStepper: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Increase quantity")
+            .accessibilityIdentifier("pos.lineEdit.qty.increase")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Quantity stepper")
     }
 }
 #endif

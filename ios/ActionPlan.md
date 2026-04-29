@@ -1998,16 +1998,20 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Summary tile** — total + method label. Full tender breakdown + sale # deferred.
 - [x] **Next-action CTAs** — New sale / Email / Text / Print (disabled). ⌘N/⌘R shortcuts deferred. Print gift receipt deferred.
 - [x] **Auto-dismiss** after 10s → empty catalog + cart for next customer. Countdown + `startAutoDismissCountdown` in `PosPostSaleView`; cancels on any user interaction or sheet open. (feat(§16.8): auto-dismiss post-sale)
+  - [x] **Visible countdown badge** — "Starting new sale in Ns · tap to cancel" text rendered while the timer is live; tapping the row cancels the timer. Closes the gap between the existing background countdown and the spec line "Starting new sale in Ns…" from §16.24. (feat(§16.8): visible auto-dismiss countdown)
 - [x] **Cash drawer kick** — pulse drawer via printer ESC command if cash tender used. `PosDrawerKickService` actor maps cash/check tenders → `DrawerTriggerTender`; silent for card/gift/store-credit. (feat(§16.8): cash drawer kick on cash tender 55ba3fb8)
+  - [x] **Wire `openDrawer()` into cash tender completion** — `PosCashTenderSheet.onCompleted` now calls `openDrawer()` so the drawer pops automatically once the cashier counts cash; previously the kick service existed without a callsite at the cash-tender boundary. (feat(§16.8): kick drawer on cash tender complete)
 
 ### 16.9 Returns / refunds
 - [x] **Entry** — POS toolbar "Process return" button (⌘⇧R) → `PosReturnsView` search by order/phone.
 - [x] **Original lookup** — show invoice detail with per-line checkbox + "Qty to return" stepper. `PosReturnDetailView` + `PosReturnLineSelector` + `PosReturnDetailViewModel`; fetches GET /api/v1/invoices/:id. (6c9d0ddc)
 - [x] **Reason required** — text field + tender picker in `PosRefundSheet`. Dropdown presets deferred.
+  - [x] **Reason dropdown presets** — new `PosRefundReason` enum (defective / wrong item / customer changed mind / duplicate charge / size or fit / late delivery / price match / other) surfaced as a `Picker(.menu)` in `PosRefundSheet`; selecting `.other` reveals the free-text field. `mergedReason()` joins preset label + free text into the wire payload. (feat(§16.9): refund reason presets)
 - [x] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment). `ReturnableLine.restock` toggle per line in `PosReturnLineSelector`. (6c9d0ddc)
 - [x] **Refund amount** — editable cents input in sheet. Per-line calc + restocking fee deferred.
 - [ ] **Tender** — original card (BlockChyp refund with token) / cash / store credit / gift card issuance.
 - [x] **Manager PIN** — required above $X threshold (tenant config). Gate in `PosReturnDetailViewModel` at $50 (5000¢) via `ManagerPinSheet`. (6c9d0ddc)
+  - [x] **First-class `refundManagerPinThresholdCents` on `PosTenantLimits`** + matching `UserDefaults` key + `PosRefundSheet` PIN gate (was only wired in `PosReturnDetailViewModel`). The PIN-approved manager id flows into `PosAuditEntry.EventType.managerApprovedRefund` so the action shows up in the audit log next to `void_line` / `no_sale`. (feat(§16.9): refund manager PIN gate)
 - [x] **Audit** — `POST /pos/returns` with `/refunds/credits/:customerId` fallback. "Coming soon" banner on 404/501.
 - [x] **Receipt** — "RETURN" printed; refund amount; signature if required. `PosReturnReceiptView` — mandatory "RETURN" red badge in header, refund lines with negative amounts, tender method, optional signature section from `PKDrawing` data; phone/iPad adaptive layouts; print + done toolbar. (feat(§16.9): return receipt view cad69018)
 
@@ -2273,6 +2277,7 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 **Status**
 - [x] `CartLineEditSheet` + `CartLineEditViewModel` (new files). (feat(§16.22): CartLineEditSheet + ViewModel)
 - [x] Qty stepper with haptic + bounds. (feat(§16.22): qty stepper)
+  - [x] **Stepper VoiceOver value** — `LineEditStepper` value text now reads "Quantity, value: N" via `accessibilityValue("\(quantity)")`; the inc/dec buttons get stable `accessibilityIdentifier` hooks (`pos.lineEdit.qty.{value,increase,decrease}`) and the cluster announces as "Quantity stepper" (matches the §16.22 a11y spec line "stepper announces 'Quantity: 3'"). (feat(§16.22): stepper VoiceOver value + stable identifiers)
 - [x] Discount chip row + custom-amount expansion. (feat(§16.22): discount chip row)
 - [x] Per-line note field with dictation hook. (feat(§16.22): per-line note field)
 - [x] Dimmed-background + sheet presentation from `PosCartView`. (feat(§16.22): dimmed scrim overlay on line-edit sheet open)
