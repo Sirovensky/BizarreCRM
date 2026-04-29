@@ -25,6 +25,11 @@ public final class TicketDetailViewModel {
     public var deletedOnServerBanner: Bool = false  // 404 after initial load
     public var permissionDeniedToast: Bool = false  // 403 on action
 
+    // §4.13 — Network error overlay: when a background refresh fails but cached
+    // data is still visible we surface a glass retry pill rather than wiping the
+    // content. `networkErrorMessage` non-nil = pill visible.
+    public var networkErrorMessage: String? = nil
+
     // §4.5 — action results
     public var convertedInvoiceId: Int64?
     public var duplicatedTicketId: Int64?
@@ -38,14 +43,15 @@ public final class TicketDetailViewModel {
     }
 
     public func load() async {
-        if case .loaded = state { /* soft-refresh keeps old data visible */ } else {
-            state = .loading
-        }
+        let hasCachedData: Bool
+        if case .loaded = state { hasCachedData = true } else { hasCachedData = false }
+        if !hasCachedData { state = .loading }
         concurrentEditBanner = false
         do {
             state = .loaded(try await repo.detail(id: ticketId))
             // Clear server-error banners on successful refresh
             deletedOnServerBanner = false
+            networkErrorMessage = nil
         } catch {
             let appError = AppError.from(error)
             AppLog.ui.error("Ticket detail load failed: \(error.localizedDescription, privacy: .public)")
@@ -62,7 +68,13 @@ public final class TicketDetailViewModel {
                 // §4 — 409 stale edit detected
                 concurrentEditBanner = true
             default:
-                state = .failed(error.localizedDescription)
+                if hasCachedData {
+                    // §4.13 — Keep cached content visible; show glass retry pill overlay.
+                    networkErrorMessage = AppError.from(error).errorDescription
+                        ?? error.localizedDescription
+                } else {
+                    state = .failed(error.localizedDescription)
+                }
             }
         }
     }
