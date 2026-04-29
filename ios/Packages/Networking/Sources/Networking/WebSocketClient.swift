@@ -90,11 +90,29 @@ public final class WebSocketClient {
         }
     }
 
+    // MARK: - Reconnect backoff constants (§29.11)
+
+    /// Base delay for the first reconnect attempt (seconds).
+    private static let backoffBase: Double = 1.0
+    /// Maximum backoff ceiling (seconds). Keeps reconnects from backing off indefinitely.
+    private static let backoffMaxSeconds: Double = 60.0
+    /// Jitter fraction in [0, 1]. A value of 0.25 means ±25% random spread.
+    private static let backoffJitter: Double = 0.25
+
     private func scheduleReconnect() {
         guard !intentionallyClosed else { return }
         reconnectAttempt += 1
-        let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
+        // Exponential backoff: 1s, 2s, 4s, 8s … capped at 60s.
+        let exponential = min(
+            Self.backoffBase * pow(2.0, Double(reconnectAttempt - 1)),
+            Self.backoffMaxSeconds
+        )
+        // Full-jitter: randomise in [0, exponential * (1 + jitter)] to spread
+        // reconnect storms when many clients drop at once.
+        let jitterRange = exponential * Self.backoffJitter
+        let delay = Double.random(in: max(0, exponential - jitterRange) ... (exponential + jitterRange))
         connectionState = .reconnecting(attempt: reconnectAttempt)
+        AppLog.ws.info("WebSocket reconnect #\(reconnectAttempt, privacy: .public) in \(String(format: "%.1f", delay), privacy: .public)s")
         Task {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             if !intentionallyClosed { self.socket?.connect() }

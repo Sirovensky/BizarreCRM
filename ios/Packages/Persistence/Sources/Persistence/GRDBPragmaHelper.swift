@@ -68,6 +68,36 @@ public enum GRDBPragmaHelper {
         try db.execute(sql: "PRAGMA mmap_size = \(mmapSizeBytes)")
     }
 
+    // MARK: - Connection pool sizing (§29 GRDB pool tuning)
+
+    /// Recommended maximum number of reader connections for the GRDB
+    /// `DatabasePool`.
+    ///
+    /// GRDB defaults to 5 concurrent readers on iOS. For BizarreCRM the main
+    /// read-heavy paths are:
+    ///  • Tickets / Customer / Inventory `ValueObservation` feeds (3 concurrent).
+    ///  • Background sync read-back after writes (1–2).
+    ///  • Search FTS5 (bursts to 2).
+    ///
+    /// Setting the pool to **8** covers burst overlap without exhausting iOS
+    /// file-descriptor limits. Raising it beyond 10 rarely helps because SQLite
+    /// WAL readers still share a single mmap window.
+    ///
+    /// Apply to the pool via:
+    /// ```swift
+    /// var config = Configuration()
+    /// config.maximumReaderCount = GRDBPragmaHelper.recommendedMaxReaderCount
+    /// ```
+    public static let recommendedMaxReaderCount: Int = 8
+
+    /// Recommended idle-connection timeout before GRDB closes surplus readers (seconds).
+    ///
+    /// GRDB closes idle reader connections after this interval so that the OS
+    /// can reclaim file descriptors between long idle periods (e.g. app in
+    /// background). 300 s (5 min) balances connection-setup latency against FD
+    /// pressure on low-end devices.
+    public static let readerIdleTimeoutSeconds: Double = 300
+
     // MARK: - Diagnostic
 
     /// Returns a snapshot of current PRAGMA values for the connection.
