@@ -1,11 +1,18 @@
 package com.bizarreelectronics.crm.ui.components.shared
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 
 /**
  * Brand-aligned top app bar wrapper.
@@ -71,6 +78,32 @@ fun BrandTopAppBar(
     activeActionIndex: Int? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
+    // Tablet: navigation rail already shows the active section, so
+    // duplicating the section name in a 64dp top bar wastes vertical
+    // space. Render a compact 44dp Row with just the nav icon + actions.
+    // The title is still passed to the semantics heading so screen
+    // readers announce the screen.
+    if (com.bizarreelectronics.crm.util.isMediumOrExpandedWidth() && navigationIcon == null) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .semantics { heading() },
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+            ) {
+                actions()
+            }
+        }
+        return
+    }
+
     TopAppBar(
         title = {
             // §26.1 — every BrandTopAppBar title is a screen heading so
