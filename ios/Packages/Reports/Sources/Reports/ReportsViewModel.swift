@@ -3,6 +3,27 @@ import SwiftUI
 import Observation
 import Networking
 
+// MARK: - ReportTab
+//
+// §91.15 Per-tab data scoping: each tab fetches only the data it needs,
+// preventing cross-tab endpoint mismatches.
+//
+// - .sales   → GET /api/v1/reports/sales + dashboard-kpis (expenses)
+// - .tickets → GET /api/v1/reports/tickets (ticket-revenue, avg ticket value)
+//              NOT sales-revenue — tickets have their own revenue field.
+// - .inventory → GET /api/v1/reports/inventory + inventory-turnover KPIs.
+// - .insights  → GET /api/v1/reports/employees + csat + nps-trend.
+
+public enum ReportTab: String, CaseIterable, Identifiable, Sendable {
+    case sales     = "Sales"
+    case tickets   = "Tickets"
+    case inventory = "Inventory"
+    case insights  = "Insights"
+
+    public var id: String { rawValue }
+    public var displayLabel: String { rawValue }
+}
+
 // MARK: - ReportsViewModel
 
 @Observable
@@ -21,6 +42,13 @@ public final class ReportsViewModel {
     public var customFrom: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     public var customTo: Date = Date()
 
+    // MARK: - Active tab
+    // §91.15 Per-tab data scoping: changing tabs triggers a scoped load.
+
+    public var activeTab: ReportTab = .sales {
+        didSet { Task { await loadForActiveTab() } }
+    }
+
     // MARK: - Granularity (day / week / month)
     // Controls the group_by parameter sent to GET /api/v1/reports/sales.
     public var granularity: ReportGranularity = .day
@@ -33,6 +61,7 @@ public final class ReportsViewModel {
     /// Revenue by payment method.
     public var revenueByMethod: [PaymentMethodPoint] = []
     public var ticketsByStatus: [TicketStatusPoint] = []
+    /// Avg ticket value — derived from /reports/tickets (ticket-revenue), not sales-revenue.
     public var avgTicketValue: AvgTicketValue?
     public var employeePerf: [EmployeePerf] = []
     public var inventoryTurnover: [InventoryTurnoverRow] = []
@@ -158,17 +187,21 @@ public final class ReportsViewModel {
 
     // MARK: - Public API
 
+    /// Load all data across every tab (used on initial load and pull-to-refresh).
     public func loadAll() async {
         isLoading = true
         errorMessage = nil
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadRevenue() }
+            group.addTask { await self.loadExpensesReport() }
+            // Tickets tab: ticket-revenue endpoint, not sales-revenue.
             group.addTask { await self.loadTicketsByStatus() }
             group.addTask { await self.loadAvgTicketValue() }
-            group.addTask { await self.loadEmployeePerf() }
+            // Inventory tab: dedicated inventory KPI endpoints.
             group.addTask { await self.loadInventoryTurnover() }
             group.addTask { await self.loadInventoryReport() }
-            group.addTask { await self.loadExpensesReport() }
+            // Insights tab.
+            group.addTask { await self.loadEmployeePerf() }
             group.addTask { await self.loadCSAT() }
             group.addTask { await self.loadNPS() }
             group.addTask { await self.loadTechnicianPerf() }
@@ -200,6 +233,38 @@ public final class ReportsViewModel {
             group.addTask { await self.loadCohortRetention() }
             // §15.5 shrinkage trend
             group.addTask { await self.loadShrinkageReport() }
+        }
+        lastSyncedAt = Date()
+        isLoading = false
+    }
+
+    /// §91.15 Per-tab scoped load — fetches only the data the active tab needs.
+    /// Avoids fetching sales-revenue on the Tickets tab or inventory KPIs on Sales.
+    public func loadForActiveTab() async {
+        isLoading = true
+        errorMessage = nil
+        await withTaskGroup(of: Void.self) { group in
+            switch activeTab {
+            case .sales:
+                group.addTask { await self.loadRevenue() }
+                group.addTask { await self.loadExpensesReport() }
+
+            case .tickets:
+                // Tickets tab uses ticket-revenue from /reports/tickets,
+                // not sales-revenue from /reports/sales.
+                group.addTask { await self.loadTicketsByStatus() }
+                group.addTask { await self.loadAvgTicketValue() }
+
+            case .inventory:
+                // Inventory tab fetches dedicated inventory KPI endpoints.
+                group.addTask { await self.loadInventoryReport() }
+                group.addTask { await self.loadInventoryTurnover() }
+
+            case .insights:
+                group.addTask { await self.loadEmployeePerf() }
+                group.addTask { await self.loadCSAT() }
+                group.addTask { await self.loadNPS() }
+            }
         }
         lastSyncedAt = Date()
         isLoading = false
