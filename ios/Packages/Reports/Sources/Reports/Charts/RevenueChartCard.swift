@@ -7,19 +7,48 @@ import DesignSystem
 // Wired to GET /api/v1/reports/sales.
 // Shows AreaMark + LineMark (period mode) or BarMark (bar mode) toggled by
 // the user on iPhone. iPad shows 3 columns: trend chart | bar-by-period | KPI panel.
+//
+// §91.12 (1): The card is context-aware. When displayed inside the Inventory tab,
+// pass `.inventory` so the title and data reflect inventory revenue only.
+// Pass `.hidden` to suppress the card entirely from the Inventory tab when no
+// inventory-specific revenue series is available.
+
+public enum RevenueCardContext: Sendable {
+    /// Standard sales-tab revenue (default).
+    case sales
+    /// Inventory-tab revenue — title changes and a note is shown.
+    case inventory
+    /// Card is fully suppressed; callers should not render it at all.
+    case hidden
+}
 
 public struct RevenueChartCard: View {
     public let points: [RevenuePoint]
     /// Period-over-period change % from server totals (nil when unavailable).
     public let periodChangePct: Double?
+    /// Which dashboard tab is hosting this card (§91.12 item 1).
+    public let context: RevenueCardContext
     public let onDrillThrough: (RevenuePoint) -> Void
 
     public init(points: [RevenuePoint],
                 periodChangePct: Double? = nil,
+                context: RevenueCardContext = .sales,
                 onDrillThrough: @escaping (RevenuePoint) -> Void) {
         self.points = points
         self.periodChangePct = periodChangePct
+        self.context = context
         self.onDrillThrough = onDrillThrough
+    }
+
+    /// Returns `nil` (suppress card) when context is `.hidden`.
+    public var isVisible: Bool { context != .hidden }
+
+    private var cardTitle: String {
+        switch context {
+        case .sales:      return "Revenue"
+        case .inventory:  return "Inventory Revenue"
+        case .hidden:     return "Revenue"
+        }
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -261,26 +290,34 @@ public struct RevenueChartCard: View {
 
     @ViewBuilder
     private var cardHeader: some View {
-        HStack {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .foregroundStyle(.bizarreOrange)
-                .accessibilityHidden(true)
-            Text("Revenue")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Spacer()
-            // Period-over-period badge when available
-            if let pct = periodChangePct {
-                periodBadge(pct: pct)
-            } else if let pt = selectedPoint {
-                Text(pt.amountDollars, format: .currency(code: "USD"))
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreTeal)
-                    .transition(.opacity)
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            HStack {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                Text(cardTitle)
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                // Period-over-period badge when available
+                if let pct = periodChangePct {
+                    periodBadge(pct: pct)
+                } else if let pt = selectedPoint {
+                    Text(pt.amountDollars, format: .currency(code: "USD"))
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreTeal)
+                        .transition(.opacity)
+                }
+            }
+            // §91.12 (1): inventory-tab note so users know this is scoped revenue
+            if context == .inventory {
+                Text("Showing inventory product revenue only — not service revenue.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Revenue chart. Tap a data point to drill through.")
+        .accessibilityLabel("\(cardTitle) chart. Tap a data point to drill through.")
     }
 
     @ViewBuilder

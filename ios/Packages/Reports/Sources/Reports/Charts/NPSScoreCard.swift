@@ -17,23 +17,18 @@ public struct NPSScoreCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if let s = score {
-                if s.respondentCount < 10 {
-                    insufficientDataView(s)
-                } else {
+                if s.hasEnoughData {
+                    // §91.12 (4): only render score when N ≥ 10
                     gaugeRow(s)
                     splitBar(s)
                     themeChips(s.themes)
+                } else {
+                    notEnoughDataView(respondentCount: s.respondentCount)
                 }
             } else {
-                HStack(spacing: BrandSpacing.sm) {
-                    ProgressView()
-                    Text("Loading…")
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, BrandSpacing.sm)
-                .accessibilityLabel("Loading NPS score")
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("Loading NPS score")
             }
         }
         .padding(BrandSpacing.base)
@@ -62,27 +57,6 @@ public struct NPSScoreCard: View {
             }
         }
         .accessibilityAddTraits(.isHeader)
-    }
-
-    @ViewBuilder
-    private func insufficientDataView(_ s: NPSScore) -> some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "chart.bar.xaxis")
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .imageScale(.large)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Not enough data")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text("Need 10+ responses · \(s.respondentCount) so far")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, BrandSpacing.xs)
-        .accessibilityLabel("NPS not enough data. Need 10 or more responses. \(s.respondentCount) received so far.")
     }
 
     private func gaugeRow(_ s: NPSScore) -> some View {
@@ -151,9 +125,9 @@ public struct NPSScoreCard: View {
                 legendChip("Passives", pct: s.passivePct, color: .bizarreWarning)
                 legendChip("Detractors", pct: s.detractorPct, color: .bizarreError)
             }
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: .combine)
             .accessibilityLabel(
-                "NPS legend: Promoters (green) \(String(format: "%.0f", s.promoterPct))%, Passives (amber) \(String(format: "%.0f", s.passivePct))%, Detractors (red) \(String(format: "%.0f", s.detractorPct))%"
+                "Promoters \(String(format: "%.0f", s.promoterPct))%, Passives \(String(format: "%.0f", s.passivePct))%, Detractors \(String(format: "%.0f", s.detractorPct))%"
             )
         }
     }
@@ -188,6 +162,31 @@ public struct NPSScoreCard: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Themes: \(themes.joined(separator: ", "))")
         }
+    }
+
+    // MARK: - Not enough data placeholder (§91.12 item 4)
+
+    private func notEnoughDataView(respondentCount: Int) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "person.3.fill")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text("Not enough data")
+                    .font(.brandHeadlineMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Text("NPS requires at least 10 respondents. \(respondentCount) collected so far.")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Not enough data for NPS. Requires at least 10 respondents; \(respondentCount) collected so far."
+        )
     }
 
     private func npsColor(_ nps: Int) -> Color {

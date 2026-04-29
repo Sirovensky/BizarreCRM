@@ -5,15 +5,31 @@ import DesignSystem
 
 public struct AvgTicketValueCard: View {
     public let value: AvgTicketValue?
+    /// Total revenue for the period in dollars (§91.12 item 2 inconsistency check).
+    public let periodRevenueDollars: Double
+    /// Number of closed tickets used to derive the average (§91.12 item 2).
+    public let ticketCount: Int
 
-    public init(value: AvgTicketValue?) {
+    public init(value: AvgTicketValue?,
+                periodRevenueDollars: Double = 0,
+                ticketCount: Int = 0) {
         self.value = value
+        self.periodRevenueDollars = periodRevenueDollars
+        self.ticketCount = ticketCount
+    }
+
+    /// §91.12 (2): revenue > 0 but ticketCount == 0 means the avgTicket math is wrong.
+    private var isDataInconsistent: Bool {
+        periodRevenueDollars > 0 && ticketCount == 0
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            if let v = value {
+            // §91.12 (2): warn before showing the (misleading) $0.00 value
+            if isDataInconsistent {
+                dataInconsistencyWarning
+            } else if let v = value {
                 metricRow(v)
             } else {
                 ProgressView()
@@ -27,6 +43,26 @@ public struct AvgTicketValueCard: View {
             RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
                 .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
         )
+    }
+
+    // MARK: - Data inconsistency warning (§91.12 item 2)
+
+    private var dataInconsistencyWarning: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.bizarreWarning)
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text("Data inconsistent — revenue recorded but ticket count is zero.")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreWarning)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(Color.bizarreWarning.opacity(0.1), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Data inconsistent: revenue is recorded but ticket count is zero. Average ticket value cannot be calculated.")
     }
 
     private var cardHeader: some View {

@@ -322,10 +322,13 @@ public struct NPSScore: Codable, Sendable {
     public let promoterPct: Double
     public let detractorPct: Double
     public let themes: [String]
-    /// Total number of survey respondents in the period.
+    /// Number of survey respondents. Scores with fewer than 10 respondents are
+    /// statistically unreliable and the card renders "Not enough data" instead.
     public let respondentCount: Int
 
     public var passivePct: Double { max(0, 100.0 - promoterPct - detractorPct) }
+    /// True when the sample is large enough to display a meaningful NPS.
+    public var hasEnoughData: Bool { respondentCount >= 10 }
 
     enum CodingKeys: String, CodingKey {
         case current
@@ -345,16 +348,6 @@ public struct NPSScore: Codable, Sendable {
         self.detractorPct = detractorPct
         self.themes = themes
         self.respondentCount = respondentCount
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.current = (try? c.decode(Int.self, forKey: .current)) ?? 0
-        self.previous = (try? c.decode(Int.self, forKey: .previous)) ?? 0
-        self.promoterPct = (try? c.decode(Double.self, forKey: .promoterPct)) ?? 0
-        self.detractorPct = (try? c.decode(Double.self, forKey: .detractorPct)) ?? 0
-        self.themes = (try? c.decode([String].self, forKey: .themes)) ?? []
-        self.respondentCount = (try? c.decode(Int.self, forKey: .respondentCount)) ?? 0
     }
 }
 
@@ -430,7 +423,7 @@ public enum ScheduleFrequency: String, Codable, Sendable, CaseIterable {
 
 // MARK: - DateRangePreset
 
-public enum DateRangePreset: String, Codable, Sendable, CaseIterable, Identifiable {
+public enum DateRangePreset: String, Sendable, CaseIterable, Identifiable {
     case sevenDays   = "7D"
     case thirtyDays  = "30D"
     case ninetyDays  = "90D"
@@ -610,56 +603,6 @@ public struct InventoryMovementItem: Codable, Sendable, Identifiable {
         try c.encodeIfPresent(sku, forKey: .sku)
         try c.encode(usedQty, forKey: .usedQty)
         try c.encode(inStock, forKey: .inStock)
-    }
-}
-
-// MARK: - SLABreachReport
-//
-// Maps to GET /api/v1/reports/sla-breaches (endpoint stub — not yet on server).
-// Server shape (anticipated): { breach_count: Int, breach_types: [{ type: String, count: Int }] }
-
-public struct SLABreachReport: Codable, Sendable {
-    public let breachCount: Int
-    public let breachTypes: [SLABreachType]
-
-    public var hasBreaches: Bool { breachCount > 0 }
-
-    enum CodingKeys: String, CodingKey {
-        case breachCount  = "breach_count"
-        case breachTypes  = "breach_types"
-    }
-
-    public init(breachCount: Int, breachTypes: [SLABreachType]) {
-        self.breachCount = breachCount
-        self.breachTypes = breachTypes
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.breachCount = (try? c.decode(Int.self, forKey: .breachCount)) ?? 0
-        self.breachTypes = (try? c.decode([SLABreachType].self, forKey: .breachTypes)) ?? []
-    }
-}
-
-public struct SLABreachType: Codable, Sendable, Identifiable {
-    public let id: String
-    /// Human-readable breach type, e.g. "First Response", "Resolution Time".
-    public let type: String
-    public let count: Int
-
-    enum CodingKeys: String, CodingKey { case type, count }
-
-    public init(type: String, count: Int) {
-        self.id = type
-        self.type = type
-        self.count = count
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.type = (try? c.decode(String.self, forKey: .type)) ?? ""
-        self.id = self.type
-        self.count = (try? c.decode(Int.self, forKey: .count)) ?? 0
     }
 }
 
