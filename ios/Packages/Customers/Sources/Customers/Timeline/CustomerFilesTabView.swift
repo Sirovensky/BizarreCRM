@@ -35,18 +35,14 @@ public struct CustomerFile: Decodable, Identifiable, Sendable {
         case uploadedAt = "uploaded_at"
     }
 
-    var icon: String {
-        if mimeType.hasPrefix("image") { return "photo" }
-        if mimeType == "application/pdf" { return "doc.richtext" }
-        if mimeType.hasPrefix("text") { return "doc.text" }
-        return "doc"
-    }
+    /// SF Symbol name derived from the file's MIME type.
+    var icon: String { MimeTypeIcon.resolve(mimeType: mimeType).symbolName }
 
-    var sizeLabel: String {
-        let kb = Double(sizeBytes) / 1024
-        if kb < 1024 { return String(format: "%.0f KB", kb) }
-        return String(format: "%.1f MB", kb / 1024)
-    }
+    /// Icon tint colour derived from the file's MIME type.
+    var iconTint: Color { MimeTypeIcon.resolve(mimeType: mimeType).tintColor }
+
+    /// Human-readable file size using the shared `FileSizeFormatter`.
+    var sizeLabel: String { FileSizeFormatter.string(fromBytes: sizeBytes) }
 }
 
 // MARK: - File version model (§5.7 versioning)
@@ -141,6 +137,8 @@ public struct CustomerFilesTabView: View {
     @State private var showingPhotoPicker = false
     @State private var showingFilePicker = false
     @State private var showingCamera = false
+    /// Set to the file the user wants to delete; triggers the removal confirmation alert.
+    @State private var pendingDelete: CustomerFile?
 
     public init(customerId: Int64, api: APIClient) {
         self.customerId = customerId
@@ -173,8 +171,9 @@ public struct CustomerFilesTabView: View {
                         Label("Photos Library", systemImage: "photo.on.rectangle")
                     }
                     Button { showingFilePicker = true } label: {
-                        // iCloud Drive and external drives are accessible via Files picker
-                        Label("Files / iCloud Drive", systemImage: "folder")
+                        // Files picker surfaces iCloud Drive, On My iPhone, and
+                        // any third-party cloud storage providers (Dropbox, Google Drive…).
+                        Label("Browse Files…", systemImage: "folder.badge.plus")
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -185,6 +184,12 @@ public struct CustomerFilesTabView: View {
         .task { await vm.load() }
         .refreshable { await vm.load() }
         .quickLookPreview($vm.previewURL)
+        // §5.7 — Attachment removal confirmation (prevents accidental destructive swipe)
+        .attachmentRemovalConfirmation(
+            item: $pendingDelete,
+            fileName: { $0.name },
+            onConfirm: { file in await vm.deleteFile(file) }
+        )
         // §5.7 — Share sheet (AirDrop / email)
         .sheet(item: $vm.sharingFile) { file in
             CustomerFileShareSheet(file: file, api: api)
@@ -224,7 +229,7 @@ public struct CustomerFilesTabView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
-                            Task { await vm.deleteFile(file) }
+                            pendingDelete = file
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -250,7 +255,7 @@ public struct CustomerFilesTabView: View {
                         }
                         Divider()
                         Button(role: .destructive) {
-                            Task { await vm.deleteFile(file) }
+                            pendingDelete = file
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -267,10 +272,10 @@ public struct CustomerFilesTabView: View {
             }
         } label: {
             HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: file.icon)
-                    .font(.system(size: 24))
-                    .foregroundStyle(.bizarreOrange)
-                    .frame(width: 32)
+                // Thumbnail: show image preview for image files, placeholder for others.
+                thumbnailIcon(for: file)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -316,6 +321,28 @@ public struct CustomerFilesTabView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(file.name), \(file.sizeLabel). \(file.tags.isEmpty ? "" : "Tags: \(file.tags.joined(separator: ", "))"). Tap to preview.")
         .hoverEffect(.highlight)
+    }
+
+    /// Returns a 44×44 thumbnail for image files (AsyncImage with placeholder shimmer)
+    /// or a MIME-type icon placeholder for non-image files.
+    @ViewBuilder
+    private func thumbnailIcon(for file: CustomerFile) -> some View {
+        if file.mimeType.hasPrefix("image/"), let url = URL(string: file.url) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                default:
+                    // Loading or failure — show shimmer placeholder with MIME icon
+                    AttachmentThumbnailPlaceholder(
+                        mimeType: file.mimeType,
+                        showShimmer: phase == .empty
+                    )
+                }
+            }
+        } else {
+            AttachmentThumbnailPlaceholder(mimeType: file.mimeType, showShimmer: false)
+        }
     }
 
     // MARK: - Empty state
