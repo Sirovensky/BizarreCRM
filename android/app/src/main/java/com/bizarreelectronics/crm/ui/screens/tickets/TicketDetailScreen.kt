@@ -2046,40 +2046,38 @@ fun TicketDetailScreen(
                             onDeletePhoto = { viewModel.deletePhoto(it) },
                             onBenchStart = { viewModel.startBenchTimer() },
                             onBenchStop = { viewModel.stopBenchTimer() },
-                            // T-C3 — left pane = existing TicketDetailContent (single
-                            // column squeezed into 38 % width). Phases T-C4..T-C7
-                            // replace this slot one card at a time. The Rail no
-                            // longer renders on tablet — its photos role moves
-                            // into the new PhotosCard in T-C7.
+                            // T-C4 — left pane uses the new LeftMetaPane with the
+                            // redesigned Device + Customer cards. Quote / Photos /
+                            // Bench Timer slots are placeholders until T-C5..T-C7
+                            // land. Existing TicketDetailContent retired from
+                            // tablet here; phone keeps it via existingRowBody.
                             leftPaneContent = {
-                                TicketDetailContent(
-                                    modifier = Modifier.fillMaxSize(),
-                                    ticket = ticket,
-                                    ticketId = ticketId,
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedContentScope = animatedContentScope,
-                                    ticketDetail = state.ticketDetail,
-                                    devices = state.devices,
-                                    notes = state.notes,
-                                    history = state.history,
-                                    photos = state.photos,
-                                    statuses = state.statuses,
-                                    payments = state.ticketDetail?.payments ?: emptyList(),
-                                    employees = state.employees,
-                                    isActionInProgress = state.isActionInProgress,
-                                    isBenchTimerRunning = state.isBenchTimerRunning,
-                                    reduceMotion = reduceMotion,
-                                    padding = padding,
-                                    onNavigateToCustomer = onNavigateToCustomer,
-                                    onEditDevice = onEditDevice,
-                                    onAddPhotos = onAddPhotos,
-                                    serverUrl = viewModel.serverUrl,
-                                    onStatusSelected = { viewModel.changeStatus(it) },
-                                    onAddNote = { viewModel.addNote(it) },
-                                    onNavigateToSms = onNavigateToSms,
-                                    onDeletePhoto = { viewModel.deletePhoto(it) },
-                                    onBenchStart = { viewModel.startBenchTimer() },
-                                    onBenchStop = { viewModel.stopBenchTimer() },
+                                val firstDevice = state.devices.firstOrNull()
+                                val phone = state.ticketDetail?.customer?.phone?.takeIf { it.isNotBlank() }
+                                    ?: state.ticketDetail?.customer?.mobile?.takeIf { it.isNotBlank() }
+                                    ?: ticket.customerPhone
+                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.LeftMetaPane(
+                                    device = firstDevice,
+                                    customer = state.ticketDetail?.customer,
+                                    fallbackCustomerName = ticket.customerName,
+                                    fallbackCustomerPhone = ticket.customerPhone,
+                                    onCustomerClick = ticket.customerId
+                                        ?.takeIf { it > 0 }
+                                        ?.let { id -> { onNavigateToCustomer(id) } },
+                                    onCall = phone?.takeIf { it.isNotBlank() }?.let { p ->
+                                        {
+                                            val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+                                                data = android.net.Uri.parse("tel:$p")
+                                            }
+                                            context.startActivity(dialIntent)
+                                        }
+                                    },
+                                    onSms = phone?.takeIf { it.isNotBlank() }?.let { p ->
+                                        onNavigateToSms?.let { sms -> { sms(p) } }
+                                    },
+                                    onEditDevice = {
+                                        firstDevice?.id?.let(onEditDevice)
+                                    },
                                 )
                             },
                             // T-C3 — right pane placeholder until T-C8 (Activity
