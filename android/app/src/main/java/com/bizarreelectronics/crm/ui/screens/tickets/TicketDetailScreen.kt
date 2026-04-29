@@ -2104,11 +2104,11 @@ fun TicketDetailScreen(
                                     onBenchStop = { viewModel.stopBenchTimer() },
                                 )
                             },
-                            // T-C3 — right pane placeholder until T-C8 (Activity
-                            // feed) and T-C9 (compose bar) land.
+                            // T-C8 — right pane Activity feed. Compose bar
+                            // lands in T-C9 (added below the feed once wired).
                             rightPaneContent = {
-                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.TabletPanePlaceholder(
-                                    label = "Activity feed lands in T-C8 · compose bar lands in T-C9",
+                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.feed.ActivityFeed(
+                                    history = state.history,
                                 )
                             },
                         )
