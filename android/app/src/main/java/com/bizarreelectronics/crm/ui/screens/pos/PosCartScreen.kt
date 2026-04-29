@@ -49,7 +49,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionTaxResult
@@ -965,6 +970,7 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
     // Math.round avoids float-truncation (e.g. 16.31 → 1630.999... → 1630).
     val priceCents = Math.round((priceInput.toDoubleOrNull() ?: 0.0) * 100)
     val canAdd = name.isNotBlank() && priceCents > 0L
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -976,6 +982,7 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
                     onValueChange = { name = it.take(120) },
                     label = { Text("Name") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -984,9 +991,11 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
                     label = { Text("Price") },
                     prefix = { Text("$") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
                     ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -1021,6 +1030,7 @@ private fun CartDiscountDialog(
     val cents = Math.round((input.toDoubleOrNull() ?: 0.0) * 100)
     val overflow = cents > subtotalCents
     val canApply = cents > 0L && !overflow
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1036,9 +1046,11 @@ private fun CartDiscountDialog(
                 supportingText = if (overflow) {
                     { Text("Discount cannot exceed subtotal ${subtotalCents.toDollarString()}") }
                 } else null,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done,
                 ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth(),
             )
         },
@@ -1076,6 +1088,7 @@ private fun TipDialog(
             if (currentTipCents > 0) "%.2f".format(currentTipCents / 100.0) else ""
         )
     }
+    val focusManager = LocalFocusManager.current
 
     val tipCents: Long = when {
         selectedPct != null -> subtotalCents * (selectedPct ?: 0) / 100
@@ -1128,9 +1141,11 @@ private fun TipDialog(
                         label = { Text("Tip amount") },
                         prefix = { Text("$") },
                         singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
                         ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

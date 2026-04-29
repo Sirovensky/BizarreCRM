@@ -5678,7 +5678,7 @@ All events target tenant server (§32).
 
 ### 75.3 Keyboard dismiss
 - [x] Tap-outside + scroll dismiss soft keyboard via `WindowInsets.isImeVisible` + `LocalFocusManager.current.clearFocus()`.
-- [ ] "Done" button on number pads. <!-- NOTE-defer: POS screens (CartLineBottomSheet, PosCartScreen, PosTenderScreen) use KeyboardType.Decimal/Number without ImeAction.Done — needs fix across POS + other numeric fields -->
+- [x] "Done" button on number pads. (session 2026-04-28 — `CartLineBottomSheet.kt`: `ImeAction.Done` + `KeyboardActions(onDone={focusManager.clearFocus()})` on price-override, flat-discount ($), and custom-discount (%) fields; `PosCartScreen.kt`: misc-item price field `ImeAction.Done`; misc-item name field `ImeAction.Next`; cart-discount amount `ImeAction.Done`; tip custom-amount `ImeAction.Done`; `PosTenderScreen.kt`: cash-received amount `ImeAction.Done`; loyalty membership-ID `ImeAction.Next`; loyalty points-to-redeem `ImeAction.Done`; `LocalFocusManager.clearFocus()` wired in each `KeyboardActions.onDone`; `KeyboardActions` + `ImeAction` imports added to all three files; build green)
 
 ### 75.4 Loading → Done transitions
 - [x] Skeleton cross-fades to content; never jump. (SkeletonErrorTransition + SkeletonTransition composables in SkeletonLoader.kt; wired into TicketListScreen replacing abrupt when-branch with 200ms AnimatedContent dissolve)
