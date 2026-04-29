@@ -719,6 +719,11 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Frontend:** Bench tab (or dashboard tile) — queue of my bench tickets with device template shortcut + big timer.
 - [ ] **Live Activity** — Dynamic Island & Lock Screen show active-repair timer.
 - [ ] **Foreground-service equivalent** — persistent Lock-Screen Live Activity while repair is active (iOS parallel to Android `RepairInProgressService`).
+- [x] **Bench-status timer chip** — color-coded phase pill under `BenchTimerView` HUD: Awaiting Parts / In Repair / On Hold / Diagnosing / Ready; tint + icon per phase. `BenchWorkflowView.benchStatusChip(detail:)` + `benchStatusChipContent(_:)`. (feat(§42): bench-status timer chip)
+- [x] **Parts-on-hold a11y** — `partsOrdered` action button gets richer VoiceOver label "Parts Ordered — place ticket on hold awaiting parts" + descriptive hint "Marks this ticket as waiting for parts. The ticket moves to Awaiting Parts status."; disabled-state hint surfaced for all actions. `BenchWorkflowView.actionButton(_:)`. (feat(§42): parts-on-hold a11y)
+- [x] **Photos-needed banner** — amber warning card shown when `detail.photos.isEmpty`; copy "Add before-repair photos so the customer can verify device condition."; combined a11y label. `BenchWorkflowView.photosNeededBanner`. (feat(§42): photos-needed banner)
+- [x] **Escalation flag UI** — flame icon (`flame.fill`, `.bizarreError`) beside order-id in header when `detail.urgency` is "high" / "urgent" / "escalated"; VoiceOver label "Escalated ticket". `BenchWorkflowView.isEscalated(detail:)`. (feat(§42): escalation flag UI)
+- [x] **Completed-at copy** — green completion row with `checkmark.seal.fill` showing formatted `updatedAt` timestamp when status `isClosed` or name contains "completed"; copy-to-clipboard button. `BenchWorkflowView.completedAtRow(text:)`. (feat(§42): completed-at copy)
 
 ### 4.10 Device templates
 - [ ] **Backend:** `GET /device-templates`, `POST /device-templates`.
