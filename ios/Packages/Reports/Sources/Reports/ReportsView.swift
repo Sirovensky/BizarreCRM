@@ -204,6 +204,7 @@ public struct ReportsView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .frame(minHeight: 44)
             .onChange(of: vm.selectedPreset) { _, _ in
                 Task { await vm.loadAll() }
             }
@@ -220,6 +221,7 @@ public struct ReportsView: View {
             }
         }
         .pickerStyle(.segmented)
+        .frame(minHeight: 44)
         .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }

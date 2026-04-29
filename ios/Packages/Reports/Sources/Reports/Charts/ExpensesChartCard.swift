@@ -161,7 +161,7 @@ public struct ExpensesChartCard: View {
         if let r = report, !r.dailyBreakdown.isEmpty {
             chartBody(r)
         } else {
-            emptyState
+            emptySparklineSilhouette
         }
     }
 
@@ -190,11 +190,74 @@ public struct ExpensesChartCard: View {
             "Revenue": Color.bizarreTeal.opacity(0.75),
             "COGS": Color.bizarreWarning.opacity(0.55)
         ])
+        .chartYAxis {
+            AxisMarks { _ in
+                AxisGridLine()
+                AxisValueLabel()
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.bizarreOnSurface)
+            }
+        }
         .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
                    value: r.dailyBreakdown.count)
+        // Legend — explicit color-name + value a11y (§91.13 item 4)
+        legendRow(r)
+    }
+
+    private func legendRow(_ r: ExpensesReport) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            legendChip(label: "Revenue", color: .bizarreTeal, value: r.revenueDollars)
+            legendChip(label: "COGS", color: .bizarreWarning, value: r.totalDollars)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Chart legend: Revenue (teal) \(String(format: "$%.2f", r.revenueDollars)), COGS (amber) \(String(format: "$%.2f", r.totalDollars))"
+        )
+    }
+
+    private func legendChip(label: String, color: Color, value: Double) -> some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Circle().fill(color).frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text("\(label) \(value, format: .currency(code: "USD"))")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
     }
 
     // MARK: - Empty state
+
+    /// Dashed sparkline silhouette shown when there are zero data points (§91.13 item 5).
+    private var emptySparklineSilhouette: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            // Two gentle humps representing the stacked bar silhouette
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: h * 0.7))
+                path.addCurve(
+                    to: CGPoint(x: w * 0.4, y: h * 0.4),
+                    control1: CGPoint(x: w * 0.15, y: h * 0.6),
+                    control2: CGPoint(x: w * 0.25, y: h * 0.35)
+                )
+                path.addCurve(
+                    to: CGPoint(x: w, y: h * 0.55),
+                    control1: CGPoint(x: w * 0.6, y: h * 0.45),
+                    control2: CGPoint(x: w * 0.8, y: h * 0.6)
+                )
+            }
+            .stroke(
+                Color.bizarreOnSurface.opacity(0.18),
+                style: StrokeStyle(lineWidth: 2, dash: [6, 4], dashPhase: 0)
+            )
+        }
+        .overlay(alignment: .center) {
+            Text("No data")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityLabel("No expense data for this period")
+    }
 
     private var emptyState: some View {
         ContentUnavailableView("No Expense Data",

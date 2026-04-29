@@ -22,13 +22,23 @@ public struct TicketsByStatusCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if points.isEmpty {
-                emptyState
+                emptySparklineSilhouette
+                    .frame(height: 160)
             } else {
                 chart
                     .frame(height: 160)
                     .chartXAxisLabel("Count", alignment: .center)
                     .chartYAxisLabel("Status", position: .leading)
+                    .chartXAxis {
+                        AxisMarks { _ in
+                            AxisGridLine()
+                            AxisValueLabel()
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.bizarreOnSurface)
+                        }
+                    }
                     .accessibilityChartDescriptor(TicketStatusChartDescriptor(points: points))
+                legendRow
             }
         }
         .padding(BrandSpacing.base)
@@ -68,6 +78,65 @@ public struct TicketsByStatusCard: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: points.count)
+    }
+
+    // MARK: - Legend
+
+    /// Color-name + count pairs for each status bar (§91.13 item 4).
+    private var legendRow: some View {
+        let chips = points.indices.map { idx -> (String, Color, Int) in
+            let pt = points[idx]
+            let color = Self.statusColors[idx % Self.statusColors.count]
+            return (pt.status, color, pt.count)
+        }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(chips.indices, id: \.self) { idx in
+                    let (status, color, count) = chips[idx]
+                    HStack(spacing: BrandSpacing.xxs) {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                        Text("\(status) \(count)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Chart legend: " + chips.map { "\($0.0) \($0.2)" }.joined(separator: ", ")
+        )
+    }
+
+    // MARK: - Empty state
+
+    /// Dashed sparkline silhouette when zero data points (§91.13 item 5).
+    private var emptySparklineSilhouette: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            // Horizontal bar silhouette
+            Path { path in
+                let barHeights: [CGFloat] = [0.3, 0.55, 0.45, 0.2, 0.65]
+                let step = h / CGFloat(barHeights.count + 1)
+                for (i, frac) in barHeights.enumerated() {
+                    let y = step * CGFloat(i + 1)
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: w * frac, y: y))
+                }
+            }
+            .stroke(
+                Color.bizarreOnSurface.opacity(0.18),
+                style: StrokeStyle(lineWidth: 6, lineCap: .round, dash: [8, 4])
+            )
+        }
+        .overlay(alignment: .center) {
+            Text("No data")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityLabel("No ticket status data for this period")
     }
 
     private var emptyState: some View {
