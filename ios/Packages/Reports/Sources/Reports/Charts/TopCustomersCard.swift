@@ -45,10 +45,17 @@ public struct TopCustomerRow: Decodable, Sendable, Identifiable {
 public struct TopCustomersCard: View {
     public let rows: [TopCustomerRow]
     public let onTapCustomer: (Int64) -> Void
+    /// §91.16 — shown in the zero-customer empty state to guide the tenant to create a customer.
+    public let onAddCustomer: (() -> Void)?
 
-    public init(rows: [TopCustomerRow], onTapCustomer: @escaping (Int64) -> Void = { _ in }) {
+    public init(
+        rows: [TopCustomerRow],
+        onTapCustomer: @escaping (Int64) -> Void = { _ in },
+        onAddCustomer: (() -> Void)? = nil
+    ) {
         self.rows = rows
         self.onTapCustomer = onTapCustomer
+        self.onAddCustomer = onAddCustomer
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -197,14 +204,20 @@ public struct TopCustomersCard: View {
             .frame(width: 28, alignment: .leading)
     }
 
-    // MARK: - Empty state
+    // MARK: - Empty state (§91.16 per-card CTA)
 
     private var emptyState: some View {
-        ContentUnavailableView(
-            "No Customer Data",
-            systemImage: "person.3.sequence.fill",
-            description: Text("No customer spend data for this period.")
-        )
+        VStack(spacing: BrandSpacing.md) {
+            ContentUnavailableView(
+                "No Customer Data",
+                systemImage: "person.3.sequence.fill",
+                description: Text("Add a customer to start tracking spend and loyalty metrics.")
+            )
+            if let onAddCustomer {
+                ReportCardCTAView(destination: .customerCreate, onAction: { _ in onAddCustomer() })
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Helpers

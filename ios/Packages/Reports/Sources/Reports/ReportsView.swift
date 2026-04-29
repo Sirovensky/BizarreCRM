@@ -9,18 +9,20 @@ import Sync
 /// Full Reports dashboard — Phase 8 §15.
 ///
 /// iPhone: single-column card scroll.
-/// iPad: 3-column `LazyVGrid`.
+/// iPad: shared `ReportsGrid` (top-aligned columns, §91.16 audit).
 ///
 /// Liquid Glass only on toolbar and hero tile chrome; never on chart surfaces.
+///
+/// Per-card CTA routing (§91.16):
+///   `onNavigateToPOS`             — zero-sales cards → Point of Sale
+///   `onNavigateToInventoryCreate` — zero-inventory cards → create item flow
+///   `onNavigateToCustomerCreate`  — zero-customer cards → create customer flow
 public struct ReportsView: View {
     @State private var vm: ReportsViewModel
     private let exportService: ReportExportService
 
     // §15.9 compare-periods picker state
     @State private var showComparePicker = false
-
-    // §15.1 Custom date-range picker sheet
-    @State private var showCustomDateSheet = false
 
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
@@ -37,13 +39,36 @@ public struct ReportsView: View {
 
     private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
+    // §91.16 per-card CTA destinations
+    private let onNavigateToPOS: (() -> Void)?
+    private let onNavigateToInventoryCreate: (() -> Void)?
+    private let onNavigateToCustomerCreate: (() -> Void)?
 
-    public init(repository: ReportsRepository,
-                onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
+    public init(
+        repository: ReportsRepository,
+        onTapSaleRecord: @escaping (Int64) -> Void = { _ in },
+        onNavigateToPOS: (() -> Void)? = nil,
+        onNavigateToInventoryCreate: (() -> Void)? = nil,
+        onNavigateToCustomerCreate: (() -> Void)? = nil
+    ) {
         _vm = State(wrappedValue: ReportsViewModel(repository: repository))
         self.exportService = ReportExportService(repository: repository)
         self.csvService = ReportCSVService()
         self.onTapSaleRecord = onTapSaleRecord
+        self.onNavigateToPOS = onNavigateToPOS
+        self.onNavigateToInventoryCreate = onNavigateToInventoryCreate
+        self.onNavigateToCustomerCreate = onNavigateToCustomerCreate
+    }
+
+    // MARK: - CTA dispatch helper
+
+    /// Routes a `ReportCardActionDestination` tap to the appropriate callback.
+    private func handleCardCTA(_ destination: ReportCardActionDestination) {
+        switch destination {
+        case .pos:             onNavigateToPOS?()
+        case .inventoryCreate: onNavigateToInventoryCreate?()
+        case .customerCreate:  onNavigateToCustomerCreate?()
+        }
     }
 
     // MARK: - Body
@@ -98,13 +123,7 @@ public struct ReportsView: View {
         }
         // §15.4 Per-tech detail drill-through
         .sheet(item: $selectedTechForDrill) { tech in
-            // TechDetailSheet not yet implemented — placeholder until §15.4 sheet ships.
-            VStack(spacing: BrandSpacing.md) {
-                Text(tech.name).font(.brandTitleLarge())
-                Text("Tech detail view coming soon.")
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            .padding(BrandSpacing.lg)
+            TechDetailSheet(row: tech)
         }
         .alert("Email Report", isPresented: $showEmailSheet) {
             TextField("Recipient email", text: $emailRecipient)
@@ -116,17 +135,6 @@ public struct ReportsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(exportError ?? "")
-        }
-        // §15.1 Custom date-range sheet with quick-presets
-        .sheet(isPresented: $showCustomDateSheet) {
-            CustomDateRangeSheet(
-                from: $vm.customFrom,
-                to: $vm.customTo
-            ) {
-                vm.applyCustomRange(from: vm.customFrom, to: vm.customTo)
-                Task { await vm.loadAll() }
-                showCustomDateSheet = false
-            }
         }
     }
 
@@ -185,17 +193,11 @@ public struct ReportsView: View {
                         if vm.isLoading {
                             loadingPlaceholders
                         } else {
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md)
-                                ],
-                                spacing: BrandSpacing.md
-                            ) {
+                            // §91.16 grid alignment audit: ReportsGrid enforces top-aligned
+                            // cells, consistent breakpoint columns, and uniform padding.
+                            ReportsGrid {
                                 cardItems
                             }
-                            .padding(.horizontal, BrandSpacing.base)
                         }
                     }
                     .padding(.bottom, BrandSpacing.xxl)
@@ -266,20 +268,9 @@ public struct ReportsView: View {
                 Label(vm.comparePeriod?.displayLabel ?? "Compare",
                       systemImage: "arrow.left.arrow.right")
                     .font(.brandLabelSmall())
-                    // Tint orange when a comparison period is active so the
-                    // chip is visually distinct from the inactive/idle state.
-                    .foregroundStyle(vm.comparePeriod != nil ? Color.bizarreOrange : Color.bizarreOnSurface)
             }
-            .brandGlass(
-                vm.comparePeriod != nil ? .regular : .clear,
-                in: Capsule(),
-                tint: vm.comparePeriod != nil ? Color.bizarreOrange.opacity(0.15) : .clear
-            )
-            .accessibilityLabel(
-                vm.comparePeriod != nil
-                    ? "Comparing to \(vm.comparePeriod!.displayLabel). Tap to change."
-                    : "Compare to prior period"
-            )
+            .brandGlass(.clear, in: Capsule())
+            .accessibilityLabel("Compare to prior period")
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
@@ -346,14 +337,6 @@ public struct ReportsView: View {
                     } label: {
                         Label(tab.displayLabel, systemImage: tab.systemImage)
                             .font(.brandLabelSmall())
-                            // §91.13 — clamp Dynamic Type on tab pills so they stay
-                            // on one line across all accessibility sizes.  The pill row
-                            // is inside a horizontal ScrollView so larger sizes simply
-                            // scroll; clamping at accessibility3 prevents layout
-                            // explosion while remaining readable at the largest
-                            // non-accessibility size (xxxLarge).
-                            .dynamicTypeSize(.xSmall ... .accessibility3)
-                            .lineLimit(1)
                             .padding(.horizontal, BrandSpacing.md)
                             .padding(.vertical, BrandSpacing.sm)
                             .foregroundStyle(vm.selectedSubTab == tab ? .white : .bizarreOnSurface)
@@ -365,8 +348,6 @@ public struct ReportsView: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    // ⌘1…⌘6 keyboard shortcuts for iPad / Mac Catalyst
-                    .keyboardShortcut(tab.keyEquivalent, modifiers: .command)
                     .accessibilityLabel("\(tab.displayLabel) report section")
                     .accessibilityAddTraits(vm.selectedSubTab == tab ? .isSelected : [])
                 }
@@ -386,13 +367,8 @@ public struct ReportsView: View {
             ForEach(DateRangePreset.allCases) { preset in
                 let isSelected = vm.selectedPreset == preset
                 Button {
-                    if preset == .custom {
-                        // Open quick-presets + DatePicker sheet for custom range.
-                        showCustomDateSheet = true
-                    } else {
-                        vm.selectedPreset = preset
-                        Task { await vm.loadAll() }
-                    }
+                    vm.selectedPreset = preset
+                    Task { await vm.loadAll() }
                 } label: {
                     Text(preset.displayLabel)
                         .font(.brandLabelLarge())
@@ -539,21 +515,6 @@ public struct ReportsView: View {
                 overallVariancePct: vm.compareVariancePct ?? vm.salesTotals.revenueChangePct,
                 onDrillThrough: { pt in drillContext = .revenue(date: pt.date) }
             )
-            // §91.13 — alt-text for chart screenshots: label the card as a
-            // static image with a narrative summary so VoiceOver reads it
-            // correctly when the view is exported or shared as an image.
-            .chartScreenshotAltText(
-                "Revenue trend chart for the selected period. "
-                + "Total: \(String(format: "$%.2f", vm.revenueTotalDollars)). "
-                + "Tap a data point to drill through to daily transactions."
-            )
-            // §91.13 — Switch Control timer extension: collapse the chart card
-            // (which has zoom gestures, drill overlay, and compare controls) into
-            // a single scan stop so auto-scanning doesn't thrash across sub-elements.
-            .switchControlGroup(
-                label: "Revenue chart. Total \(String(format: "$%.2f", vm.revenueTotalDollars)) for period.",
-                hint: "Double-tap to interact with chart."
-            )
             // §15.2 Revenue by payment method pie
             RevenueByMethodPieCard(points: vm.revenueByMethod)
             // §15.9 Expenses chart
@@ -570,10 +531,11 @@ public struct ReportsView: View {
                     }()
                 )
             }
-            // §15.2 Top 10 customers
-            if !vm.topCustomers.isEmpty {
-                TopCustomersCard(rows: vm.topCustomers)
-            }
+            // §15.2 Top 10 customers — always show; empty state has CTA (§91.16)
+            TopCustomersCard(
+                rows: vm.topCustomers,
+                onAddCustomer: onNavigateToCustomerCreate.map { cb in { cb() } }
+            )
             // §15.2 Cohort revenue retention
             CohortRetentionCard(data: vm.cohortRetention, isLoading: vm.isLoading && vm.cohortRetention == nil)
 
@@ -587,9 +549,9 @@ public struct ReportsView: View {
                 TicketsTrendCard(points: vm.ticketsTrend)
             }
             // §15.3 Tickets by tech bar
-            if !vm.employeePerf.isEmpty {
-                TicketsByTechCard(employees: vm.employeePerf) { name in
-                    if let row = vm.technicianPerf.first(where: { $0.name == name }) {
+            if !vm.ticketsByTech.isEmpty {
+                TicketsByTechCard(points: vm.ticketsByTech) { techId in
+                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
                         selectedTechForDrill = row
                     }
                 }
@@ -609,11 +571,17 @@ public struct ReportsView: View {
 
         case .inventory:
             // §15.5 Low stock / out-of-stock + inventory value (cost + retail)
-            if let report = vm.inventoryReport {
-                InventoryStockCard(report: report)
-            }
-            // §15.5 Inventory movement
-            InventoryMovementCard(report: vm.inventoryReport)
+            // §91.16: always show so empty state surfaces "Add Inventory Item" CTA.
+            InventoryStockCard(
+                report: vm.inventoryReport ?? .empty,
+                isLoading: vm.isLoading && vm.inventoryReport == nil,
+                onAddItem: onNavigateToInventoryCreate.map { cb in { cb() } }
+            )
+            // §15.5 Inventory movement — CTA wired for zero-movement state (§91.16)
+            InventoryMovementCard(
+                report: vm.inventoryReport,
+                onAddItem: onNavigateToInventoryCreate.map { cb in { cb() } }
+            )
             // §15.5 Inventory turnover
             InventoryTurnoverCard(rows: vm.inventoryTurnover)
             // §15.5 Shrinkage trend

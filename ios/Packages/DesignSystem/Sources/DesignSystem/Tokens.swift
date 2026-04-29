@@ -181,9 +181,8 @@ public enum DesignTokens {
         //  surfaceRaised → popovers/chips one step above cards (Surface2 / SurfaceElevated asset)
         //  surfaceInset  → inset wells inside cards (SurfaceDepth asset)
         public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: DesignSystemBundle.bundle)
-        /// Canonical card background.  All report cards that currently use
-        /// `Color.bizarreSurface1` directly should migrate to this token so a
-        /// palette swap only requires changing the `Surface1` asset entry.
+        /// Canonical card background. Migrate from `Color.bizarreSurface1` to this token
+        /// so a palette swap only requires changing the `Surface1` asset entry.
         public static let cardSurface    = Color("Surface1",               bundle: DesignSystemBundle.bundle)
         public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: DesignSystemBundle.bundle)
         public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: DesignSystemBundle.bundle)

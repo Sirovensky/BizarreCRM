@@ -13,9 +13,15 @@ import DesignSystem
 
 public struct InventoryMovementCard: View {
     public let report: InventoryReport?
+    /// §91.16 — shown in the zero-movement empty state to guide the tenant to add items.
+    public let onAddItem: (() -> Void)?
 
-    public init(report: InventoryReport?) {
+    public init(
+        report: InventoryReport?,
+        onAddItem: (() -> Void)? = nil
+    ) {
         self.report = report
+        self.onAddItem = onAddItem
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -25,6 +31,8 @@ public struct InventoryMovementCard: View {
         guard let r = report else { return [] }
         return Array(r.topMoving.sorted { $0.usedQty > $1.usedQty }.prefix(10))
     }
+
+    private var hasMovementData: Bool { !topItems.isEmpty }
 
     /// §91.12 (5): total retail value across all value-summary entries.
     private func totalInventoryValue(_ r: InventoryReport) -> Double {
@@ -50,12 +58,16 @@ public struct InventoryMovementCard: View {
     private var phoneBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            alertRow
-            stockHealthWarning
-            movementChart
-                .frame(height: max(160, Double(topItems.count) * 28))
-                .chartXAxisLabel("Units Used (30d)", alignment: .center)
-                .accessibilityLabel(axLabel)
+            if hasMovementData {
+                alertRow
+                stockHealthWarning
+                movementChart
+                    .frame(height: max(160, Double(topItems.count) * 28))
+                    .chartXAxisLabel("Units Used (30d)", alignment: .center)
+                    .accessibilityLabel(axLabel)
+            } else {
+                movementEmptyState
+            }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -65,35 +77,60 @@ public struct InventoryMovementCard: View {
     // MARK: - iPad 2-up layout
 
     private var ipadBody: some View {
-        HStack(alignment: .top, spacing: BrandSpacing.md) {
-            // Left: movement bar chart
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                cardHeader
-                stockHealthWarning
-                movementChart
-                    .frame(height: max(200, Double(topItems.count) * 28))
-                    .chartXAxisLabel("Units Used (30d)", alignment: .center)
-                    .accessibilityLabel(axLabel)
-            }
-            .frame(maxWidth: .infinity)
+        Group {
+            if hasMovementData {
+                HStack(alignment: .top, spacing: BrandSpacing.md) {
+                    // Left: movement bar chart
+                    VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                        cardHeader
+                        stockHealthWarning
+                        movementChart
+                            .frame(height: max(200, Double(topItems.count) * 28))
+                            .chartXAxisLabel("Units Used (30d)", alignment: .center)
+                            .accessibilityLabel(axLabel)
+                    }
+                    .frame(maxWidth: .infinity)
 
-            // Right: value summary table
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                Text("Stock Value")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityAddTraits(.isHeader)
-                alertRow
-                if let r = report {
-                    valueSummaryTable(r.valueSummary)
+                    // Right: value summary table
+                    VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                        Text("Stock Value")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityAddTraits(.isHeader)
+                        alertRow
+                        if let r = report {
+                            valueSummaryTable(r.valueSummary)
+                        }
+                    }
+                    .frame(maxWidth: 200)
+                    .padding(.top, BrandSpacing.xxs)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                    cardHeader
+                    movementEmptyState
                 }
             }
-            .frame(maxWidth: 200)
-            .padding(.top, BrandSpacing.xxs)
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .overlay(strokeBorder)
+    }
+
+    // MARK: - Empty state (§91.16 per-card CTA)
+
+    private var movementEmptyState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            ContentUnavailableView(
+                "No Movement Data",
+                systemImage: "shippingbox",
+                description: Text("Add inventory items to start tracking stock movement.")
+            )
+            if let onAddItem {
+                ReportCardCTAView(destination: .inventoryCreate, onAction: { _ in onAddItem() })
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Card header

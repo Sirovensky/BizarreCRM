@@ -10,10 +10,22 @@ import DesignSystem
 public struct InventoryStockCard: View {
     public let report: InventoryReport
     public let isLoading: Bool
+    /// §91.16 — called when the tenant taps "Add Inventory Item" in the zero-data state.
+    public let onAddItem: (() -> Void)?
 
-    public init(report: InventoryReport, isLoading: Bool = false) {
+    public init(
+        report: InventoryReport,
+        isLoading: Bool = false,
+        onAddItem: (() -> Void)? = nil
+    ) {
         self.report = report
         self.isLoading = isLoading
+        self.onAddItem = onAddItem
+    }
+
+    // True when the report has no items at all (both value summary and movement are empty).
+    private var isEmpty: Bool {
+        report.valueSummary.isEmpty && report.topMoving.isEmpty
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -23,6 +35,8 @@ public struct InventoryStockCard: View {
             cardHeader
             if isLoading {
                 skeletonState
+            } else if isEmpty {
+                emptyState
             } else if sizeClass == .regular {
                 ipadLayout
             } else {
@@ -188,6 +202,22 @@ public struct InventoryStockCard: View {
         .chartXAxisLabel("Retail Value ($K)", alignment: .center)
         .frame(height: max(CGFloat(report.valueSummary.count) * 32, 80))
         .accessibilityLabel("Inventory value breakdown by category")
+    }
+
+    // MARK: - Empty state (§91.16 per-card CTA)
+
+    private var emptyState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            ContentUnavailableView(
+                "No Inventory Items",
+                systemImage: "shippingbox",
+                description: Text("Add inventory items to enable stock health tracking.")
+            )
+            if let onAddItem {
+                ReportCardCTAView(destination: .inventoryCreate, onAction: { _ in onAddItem() })
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Skeleton

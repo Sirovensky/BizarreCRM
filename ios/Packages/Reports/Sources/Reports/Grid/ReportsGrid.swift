@@ -1,18 +1,21 @@
 import SwiftUI
 import DesignSystem
 
-// MARK: - ReportsGrid  (§91.16 item 3)
+// MARK: - ReportsGrid  (§91.16 items 3 + elevation-audit)
 //
 // Shared container that wraps all card-grid layouts so column counts, row heights,
 // and horizontal padding stay consistent across iPhone and iPad regardless of which
 // caller assembles the cards.
 //
 // iPhone:  1 column, cards in a plain VStack.
-// iPad 9":  2 columns.
-// iPad 12"+ (regular width ≥ 1024 pt): 3 columns.
+// iPad 9-inch / split-view:  2 columns.
+// iPad 12-inch full screen (width ≥ 900 pt): 3 columns.
 //
-// `cardMinHeight` controls the uniform minimum row height so taller cards don't cause
-// visual thrash. Cards may grow taller but will never be clipped below the minimum.
+// Row-alignment audit (§91.16):
+//  • LazyVGrid uses `.flexible()` items so all cells in a row get equal width.
+//  • `alignment: .top` on each GridItem pins cards to the row top edge — prevents
+//    a short card floating to the vertical midpoint of a taller neighbour.
+//  • `cardMinHeight` enforces a floor so the shortest card never looks like a stub.
 
 public struct ReportsGrid<Content: View>: View {
 
@@ -25,13 +28,11 @@ public struct ReportsGrid<Content: View>: View {
         self.content = content()
     }
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
     public var body: some View {
         GeometryReader { geo in
             let columns = columnCount(for: geo.size.width)
             if columns == 1 {
-                // iPhone: single column; use VStack so cards expand to full width.
+                // iPhone: single column; VStack expands cards to full width.
                 VStack(spacing: BrandSpacing.md) {
                     content
                 }
@@ -39,9 +40,15 @@ public struct ReportsGrid<Content: View>: View {
             } else {
                 LazyVGrid(
                     columns: Array(
-                        repeating: GridItem(.flexible(), spacing: BrandSpacing.md),
+                        repeating: GridItem(
+                            .flexible(),
+                            spacing: BrandSpacing.md,
+                            // Top-align so short cards don't float to midpoint of a taller row.
+                            alignment: .top
+                        ),
                         count: columns
                     ),
+                    alignment: .leading,
                     spacing: BrandSpacing.md
                 ) {
                     content
@@ -68,6 +75,13 @@ public struct ReportsGrid<Content: View>: View {
 
 /// Container applied to every individual report card to enforce uniform
 /// minimum height, corner radius, background, and stroke border.
+///
+/// Surface elevation (§91.16 audit):
+///   `DesignTokens.SemanticColor.cardSurface` → Surface1 asset (one step above
+///   page background). Cards must NOT use `bizarreSurface2` or inline hex for
+///   their outermost background. Inner skeleton/chip fills inside a card use
+///   `DesignTokens.SemanticColor.surfaceRaised` (Surface2) so they sit one rung
+///   above the card surface itself.
 public struct ReportsCard<Content: View>: View {
 
     private let content: Content
@@ -80,7 +94,10 @@ public struct ReportsCard<Content: View>: View {
         content
             .frame(minHeight: 160, alignment: .top)
             .padding(BrandSpacing.base)
-            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+            .background(
+                DesignTokens.SemanticColor.cardSurface,
+                in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
                     .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)

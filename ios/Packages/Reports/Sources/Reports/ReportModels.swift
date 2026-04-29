@@ -423,7 +423,7 @@ public enum ScheduleFrequency: String, Codable, Sendable, CaseIterable {
 
 // MARK: - DateRangePreset
 
-public enum DateRangePreset: String, Sendable, CaseIterable, Identifiable, Codable {
+public enum DateRangePreset: String, Sendable, CaseIterable, Identifiable {
     case sevenDays   = "7D"
     case thirtyDays  = "30D"
     case ninetyDays  = "90D"
@@ -516,6 +516,15 @@ public struct InventoryReport: Sendable {
         self.valueSummary = valueSummary
         self.topMoving = topMoving
     }
+
+    /// Zero-filled placeholder used when the tenant has no inventory data yet (§91.16).
+    /// Lets InventoryStockCard render its empty-state CTA rather than disappearing.
+    public static let empty = InventoryReport(
+        outOfStockCount: 0,
+        lowStockCount: 0,
+        valueSummary: [],
+        topMoving: []
+    )
 }
 
 public struct InventoryValueEntry: Codable, Sendable, Identifiable {
