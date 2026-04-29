@@ -63,6 +63,16 @@ android {
             ?: (System.currentTimeMillis() / 1000L / 60L).toInt()
         versionName = "0.5.0"
 
+        // Optional ABI filter via -PtargetAbi=arm64-v8a (or comma-separated
+        // list). Used to produce smaller per-arch APKs when distributing a
+        // build outside Play (Play handles per-ABI splits server-side). Off
+        // by default — universal APK with all four ABIs is shipped otherwise.
+        providers.gradleProperty("targetAbi").orNull?.let { raw ->
+            ndk {
+                abiFilters += raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            }
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Default server URL - users can override with custom host in the app.
