@@ -44,8 +44,12 @@ public struct SetupStepIndicator: View {
         .padding(.horizontal, BrandSpacing.base)
         .padding(.vertical, BrandSpacing.sm)
         .brandGlass(.regular, in: Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(currentStep.rawValue) of \(SetupStep.totalCount): \(currentStep.title)")
+        // §36.1 a11y — expose the composite chip as a single progress element.
+        // The outer element announces current progress; individual dots get
+        // their own traits so VoiceOver swipe can traverse them.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Setup progress")
+        .accessibilityValue("Step \(currentStep.rawValue) of \(SetupStep.totalCount): \(currentStep.title)")
     }
 
     @ViewBuilder
@@ -57,6 +61,16 @@ public struct SetupStepIndicator: View {
             .fill(dotColor(completed: isCompleted, current: isCurrent))
             .frame(width: isCurrent ? 10 : 6, height: isCurrent ? 10 : 6)
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isCurrent)
+            // Per-dot a11y: VoiceOver can swipe to individual steps.
+            .accessibilityLabel(dotAccessibilityLabel(step: step, completed: isCompleted, current: isCurrent))
+            .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
+    }
+
+    private func dotAccessibilityLabel(step: SetupStep, completed: Bool, current: Bool) -> String {
+        var parts = ["Step \(step.rawValue)", step.title]
+        if current    { parts.append("current") }
+        if completed  { parts.append("completed") }
+        return parts.joined(separator: ", ")
     }
 
     private func dotColor(completed: Bool, current: Bool) -> Color {

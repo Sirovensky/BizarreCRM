@@ -236,6 +236,16 @@ public struct LoginFlowView: View {
                         .padding(.leading, BrandSpacing.xs)
                         .padding(.trailing, BrandSpacing.xxs)
                 }
+                // §36 slug validation copy — friendly inline hint while the user types
+                if let hint = slugValidationHint {
+                    Text(hint)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .animation(.easeInOut(duration: 0.15), value: hint)
+                        .accessibilityLabel(hint)
+                }
             }
 
             if let name = flow.resolvedServerName {
@@ -699,6 +709,19 @@ public struct LoginFlowView: View {
     }
 
     // MARK: - Helpers
+
+    /// §36 slug validation copy — returns a friendly inline hint while the slug field has input.
+    /// nil = field is empty (no hint shown), non-nil = guidance or positive feedback.
+    private var slugValidationHint: String? {
+        let slug = flow.shopSlug
+        guard !slug.isEmpty else { return nil }
+        if slug.count < 3  { return "Shop name must be at least 3 characters." }
+        if slug.count > 28 { return "Shop name must be 30 characters or fewer." }
+        if slug.hasPrefix("-") || slug.hasSuffix("-") {
+            return "Shop name cannot start or end with a hyphen."
+        }
+        return nil   // valid — no hint needed; resolved-name banner shows on success
+    }
 
     private enum FocusField: Hashable {
         case slug, serverUrl, username, password

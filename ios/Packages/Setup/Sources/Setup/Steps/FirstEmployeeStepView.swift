@@ -244,21 +244,75 @@ public struct FirstEmployeeStepView: View {
         }
     }
 
-    // MARK: - Role picker
+    // MARK: - Role picker (chip row)
+    // §36 role-pick — use branded chips instead of a segmented control so
+    // that each role button can carry an icon, an a11y trait, and a hint.
 
     private var rolePicker: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             Text("Role")
                 .font(.brandLabelLarge())
                 .foregroundStyle(Color.bizarreOnSurfaceMuted)
-            Picker("Role", selection: $vm.role) {
-                ForEach(FirstEmployeeRole.allCases, id: \.self) { r in
-                    Text(r.displayName).tag(r)
+
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(FirstEmployeeRole.allCases, id: \.self) { role in
+                    roleChip(role)
                 }
             }
-            .pickerStyle(.segmented)
             .accessibilityLabel("Employee role")
             .accessibilityValue(vm.role.displayName)
+        }
+    }
+
+    @ViewBuilder
+    private func roleChip(_ role: FirstEmployeeRole) -> some View {
+        let isSelected = vm.role == role
+        Button {
+            vm.role = role
+        } label: {
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: roleIcon(role))
+                    .font(.system(size: 13, weight: .medium))
+                    .accessibilityHidden(true)
+                Text(role.displayName)
+                    .font(.brandLabelLarge())
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(isSelected ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
+            .background(
+                isSelected ? Color.bizarreOrange.opacity(0.18) : Color.bizarreSurface1.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(role.displayName)
+        .accessibilityHint(roleHint(role))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    private func roleIcon(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "person.badge.key.fill"
+        case .technician: return "wrench.and.screwdriver.fill"
+        case .sales:      return "cart.fill"
+        }
+    }
+
+    private func roleHint(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "Full access including settings and staff management"
+        case .technician: return "Access to tickets and repairs"
+        case .sales:      return "Access to POS and customer records"
         }
     }
 
