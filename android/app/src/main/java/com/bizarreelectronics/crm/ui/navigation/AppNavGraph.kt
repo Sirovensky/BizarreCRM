@@ -6,6 +6,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1462,21 +1463,27 @@ fun AppNavGraph(
                 // handling predictive back means these transitions are replayed
                 // during the drag automatically. 200ms tween is fast enough to feel
                 // snappy on a phone but slow enough to be visible on a large tablet.
+                // Smoother list↔detail transitions: shorter duration with
+                // FastOutSlowInEasing so the screen settles instead of
+                // sliding linearly. Reduce the slide distance by half so the
+                // destination is "almost in place" when the user starts seeing
+                // it — masks the brief frame where the destination's
+                // ViewModel is still warming up.
                 enterTransition = {
-                    slideInHorizontally(animationSpec = tween(200)) { it } +
-                        fadeIn(animationSpec = tween(200))
+                    slideInHorizontally(
+                        animationSpec = tween(160, easing = FastOutSlowInEasing),
+                    ) { it / 2 } + fadeIn(animationSpec = tween(140))
                 },
                 exitTransition = {
-                    slideOutHorizontally(animationSpec = tween(200)) { -it / 3 } +
-                        fadeOut(animationSpec = tween(200))
+                    fadeOut(animationSpec = tween(120))
                 },
                 popEnterTransition = {
-                    slideInHorizontally(animationSpec = tween(200)) { -it / 3 } +
-                        fadeIn(animationSpec = tween(200))
+                    fadeIn(animationSpec = tween(140))
                 },
                 popExitTransition = {
-                    slideOutHorizontally(animationSpec = tween(200)) { it } +
-                        fadeOut(animationSpec = tween(200))
+                    slideOutHorizontally(
+                        animationSpec = tween(160, easing = FastOutSlowInEasing),
+                    ) { it / 2 } + fadeOut(animationSpec = tween(120))
                 },
             ) {
             // §2.7 L330 — the Login route accepts an optional `setupToken` query arg
