@@ -109,6 +109,15 @@ public struct UserPreferencesResponse: Codable, Sendable {
     public var notificationSound: Bool?
     public var notificationDesktop: Bool?
     public var compactMode: Bool?
+    /// Per-user preferred currency code (ISO 4217, e.g. "USD", "EUR").
+    /// Overrides the tenant-level currency when set.
+    public var preferredCurrency: String?
+    /// Per-user date format override (e.g. "MM/dd/yyyy", "dd/MM/yyyy").
+    /// Overrides the tenant-level date format when set.
+    public var dateFormatOverride: String?
+    /// Per-user number format override (e.g. "1,234.56", "1.234,56").
+    /// Overrides the tenant-level number format when set.
+    public var numberFormatOverride: String?
 
     public init(
         theme: String? = nil,
@@ -121,7 +130,10 @@ public struct UserPreferencesResponse: Codable, Sendable {
         ticketPageSize: Int? = nil,
         notificationSound: Bool? = nil,
         notificationDesktop: Bool? = nil,
-        compactMode: Bool? = nil
+        compactMode: Bool? = nil,
+        preferredCurrency: String? = nil,
+        dateFormatOverride: String? = nil,
+        numberFormatOverride: String? = nil
     ) {
         self.theme = theme
         self.defaultView = defaultView
@@ -134,6 +146,9 @@ public struct UserPreferencesResponse: Codable, Sendable {
         self.notificationSound = notificationSound
         self.notificationDesktop = notificationDesktop
         self.compactMode = compactMode
+        self.preferredCurrency = preferredCurrency
+        self.dateFormatOverride = dateFormatOverride
+        self.numberFormatOverride = numberFormatOverride
     }
 
     enum CodingKeys: String, CodingKey {
@@ -148,6 +163,9 @@ public struct UserPreferencesResponse: Codable, Sendable {
         case notificationSound = "notification_sound"
         case notificationDesktop = "notification_desktop"
         case compactMode = "compact_mode"
+        case preferredCurrency = "preferred_currency"
+        case dateFormatOverride = "date_format_override"
+        case numberFormatOverride = "number_format_override"
     }
 }
 

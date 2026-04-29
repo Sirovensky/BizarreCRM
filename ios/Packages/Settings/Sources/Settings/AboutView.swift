@@ -63,6 +63,9 @@ public struct AboutView: View {
     @State private var versionTapCount = 0
     @State private var showDiagnosticsUnlocked = false
 
+    // Feedback link copy
+    @State private var feedbackLinkCopied = false
+
     public init() {}
 
     public var body: some View {
@@ -80,17 +83,26 @@ public struct AboutView: View {
                         .font(.brandMono(size: 13))
                         .foregroundStyle(.bizarreOnSurface)
                         .textSelection(.enabled)
+                    if versionTapCount > 0 && versionTapCount < 7 {
+                        Text("\(7 - versionTapCount)")
+                            .font(.brandMono(size: 10))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .transition(.opacity)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.3) {
-                    versionTapCount += 1
+                .onTapGesture {
+                    withAnimation(BrandMotion.snappy) {
+                        versionTapCount += 1
+                    }
                     if versionTapCount >= 7 {
                         versionTapCount = 0
                         showDiagnosticsUnlocked = true
                     }
                 }
                 .accessibilityLabel("Version \(Platform.appVersion) build \(Platform.buildNumber)")
-                .accessibilityHint("Long-press 7 times to unlock diagnostics")
+                .accessibilityHint("Tap 7 times to unlock diagnostics")
                 .accessibilityIdentifier("about.version")
             }
 
@@ -111,6 +123,30 @@ public struct AboutView: View {
                 linkRow(icon: "envelope",  title: "Email support",    url: "mailto:support@bizarrecrm.com", identifier: "about.supportEmail")
                 linkRow(icon: "hand.raised", title: "Privacy policy", url: "https://bizarrecrm.com/privacy", identifier: "about.privacyPolicy")
                 linkRow(icon: "doc.text",  title: "Terms of service", url: "https://bizarrecrm.com/terms", identifier: "about.termsOfService")
+
+                // §19 — Copy shareable feedback link to clipboard
+                Button {
+                    let feedbackURL = "https://bizarrecrm.com/feedback?source=ios&v=\(Platform.appVersion)"
+                    #if canImport(UIKit)
+                    UIPasteboard.general.string = feedbackURL
+                    #endif
+                    withAnimation(BrandMotion.snappy) { feedbackLinkCopied = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation(BrandMotion.snappy) { feedbackLinkCopied = false }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: feedbackLinkCopied ? "checkmark.circle" : "link")
+                            .foregroundStyle(feedbackLinkCopied ? .bizarreSuccess : .bizarreOrange)
+                            .accessibilityHidden(true)
+                        Text(feedbackLinkCopied ? "Feedback link copied!" : "Copy feedback link")
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                    }
+                    .animation(BrandMotion.snappy, value: feedbackLinkCopied)
+                }
+                .accessibilityLabel(feedbackLinkCopied ? "Feedback link copied" : "Copy feedback link to clipboard")
+                .accessibilityIdentifier("about.copyFeedbackLink")
 
                 Button {
                     Task { @MainActor in AppEngagementCounter.requestReviewIfEligible() }

@@ -138,6 +138,8 @@ public struct UserProfileDTO: Codable, Sendable {
     public var jobTitle: String?
     public var username: String?
     public var isAdmin: Bool?
+    /// §19 — user's assigned role (e.g. "admin", "manager", "technician", "cashier", "viewer").
+    public var role: String?
 }
 
 public struct UserProfileUpdateDTO: Encodable, Sendable {

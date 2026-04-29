@@ -21,6 +21,8 @@ public final class ProfileSettingsViewModel: Sendable {
     /// §19.1 — read-only unless admin; comes from server `/auth/me`.
     var username: String = ""
     var isAdmin: Bool = false
+    /// §19 — role-based permission badge; read-only; e.g. "admin", "manager", "technician".
+    var role: String = ""
     /// §19 batch2 — transient copy-confirmation state for the slug copy button.
     var slugCopied: Bool = false
 
@@ -103,6 +105,7 @@ public final class ProfileSettingsViewModel: Sendable {
             // §19.1 — username/slug: read-only display from server
             username = profile.username ?? ""
             isAdmin = profile.isAdmin ?? false
+            role = profile.role ?? ""
             // Snapshot loaded state for dirty tracking
             savedFirstName = firstName
             savedLastName = lastName
@@ -266,6 +269,36 @@ public struct ProfileSettingsPage: View {
                 }
             }
             .listRowBackground(Color.clear)
+
+            // §19 — role-based permission badge
+            if !vm.role.isEmpty {
+                Section {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Image(systemName: RolePermissionBadge.icon(for: vm.role))
+                            .foregroundStyle(RolePermissionBadge.color(for: vm.role))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Role")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Text(RolePermissionBadge.label(for: vm.role))
+                                .font(.brandBodyMedium().bold())
+                                .foregroundStyle(RolePermissionBadge.color(for: vm.role))
+                        }
+                        Spacer()
+                        Text(RolePermissionBadge.accessLevel(for: vm.role))
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .padding(.horizontal, BrandSpacing.sm)
+                            .padding(.vertical, BrandSpacing.xxs)
+                            .background(Color.bizarreSurface2, in: Capsule())
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Role: \(RolePermissionBadge.label(for: vm.role)). Access level: \(RolePermissionBadge.accessLevel(for: vm.role)).")
+                    .accessibilityIdentifier("profile.roleBadge")
+                }
+                .listRowBackground(Color.bizarreSurface1)
+            }
 
             Section("Identity") {
                 TextField("First name", text: $vm.firstName)

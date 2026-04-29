@@ -3126,6 +3126,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Username / slug** — read-only unless admin. (`ProfileSettingsPage` Identity section; `UserProfileWire.username` + `isAdmin` fields added; admin sees `TextField`, non-admin sees read-only `.textSelection(.enabled)` `Text`; `ProfileSettingsViewModel.username/isAdmin` loaded from `/auth/me`; agent-9 b9)
 - [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
 - [x] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device). (`ProfileSettingsPage.swift` `signOutEverywhere()` → `settingsRevokeAllSessions()`; 449eeceb)
+- [x] **Role-based permission badge** — Profile page surfaces the user's assigned role (admin / manager / technician / cashier / viewer) as a labeled chip with role-specific icon + accent color + access-level text ("Full access", "Elevated", …). `UserProfileDTO.role` field added; `ProfileSettingsViewModel.role` loaded from `GET /auth/me`; `RolePermissionBadge` enum maps role → icon/color/label/accessLevel; badge section inserted below avatar. (`Settings/Profile/RolePermissionBadge.swift` + `ProfileSettingsPage.swift`; this commit)
 
 ### 19.2 Security
 - [x] **PIN** — 6-digit PIN for quick re-auth (locally enforced). (`Settings/Pages/PINSetupSheet.swift`; `PINSetupViewModel` modes .set/.change; `PINDotField`; uses `PINStore.shared` from Persistence; agent-9 b10)
@@ -3165,6 +3166,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Timezone** — `TimeZone.knownTimeZoneIdentifiers` picker. (`Settings/Pages/LanguageRegionPage.swift`)
 - [x] **Currency** — `Locale.commonISOCurrencyCodes` picker. (`LanguageRegionPage.swift`)
 - [x] **Locale** — `Locale.availableIdentifiers` picker. (`LanguageRegionPage.swift`)
+- [x] **Preferred currency override** (per-user) — `UserPreferencesResponse.preferredCurrency` field (`preferred_currency` key) + Picker in Settings → Preferences → Currency section; "Default (use tenant setting)" option clears override; encoded as `nil` on save when empty. (`APIClient+Settings.swift` + `PreferencesPage.swift`; this commit)
+- [x] **Region-format override** (per-user) — `UserPreferencesResponse.dateFormatOverride` + `numberFormatOverride` fields (`date_format_override`, `number_format_override`); Pickers in Settings → Preferences → Region formats section; footer note explains fallback to tenant setting. (`APIClient+Settings.swift` + `PreferencesPage.swift`; this commit)
 - [x] **Business hours** — per day of week with multiple blocks, holiday exceptions, presets, open/closed indicator. (`Settings/Hours/`: `HoursModels`, `BusinessHoursEditorView`, `HolidayListView`, `HolidayEditorSheet`, `HolidayPresetsSheet`, `OpenClosedIndicator`, `HoursCalculator`, `HoursValidator`, `HoursRepository`, `HoursEndpoints`. 27 pure-logic tests passing.)
 - [ ] **Location management** — sibling agent: `Settings/Locations/`.
 - [x] **Receipt footer** + invoice footer text. (`OrganizationSettings` `receiptFooter`/`invoiceFooter` fields; `OrganizationSettingsView` TextEditor sections; `store_config` keys `receipt_footer`/`invoice_footer`; agent-9 b10)
@@ -3300,7 +3303,8 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [x] **Privacy policy**, **Terms of Service**, **Support email** — deep links. (`Settings/AboutView.swift` section "Support" links `mailto:support@bizarrecrm.com`, privacy policy, and terms of service.)
 - [x] **App Store review** — `SKStoreReviewController` after N engaged sessions. (`AppEngagementCounter.requestReviewIfEligible()` — gates on ≥10 sessions + `ratedKey` not set; called from "Rate Bizarre CRM" button; db65cb55)
 - [x] **Device info** — iOS version, model, free storage. (`AboutView` Device section: `UIDevice.current.systemVersion` + model + `FileManager` free storage; db65cb55)
-- [x] **Secret gesture** — long-press version 7x → Diagnostics. (`versionTapCount` counter on version row `onLongPressGesture`; 7 taps shows `DiagnosticsUnlockedBanner` glass overlay, auto-dismiss 4s; db65cb55)
+- [x] **Secret gesture** — tap version row 7× → Diagnostics. Converted from `onLongPressGesture` to `.onTapGesture` counter; countdown hint label (e.g. "3") appears after first tap, auto-hides; 7 taps shows `DiagnosticsUnlockedBanner` glass overlay, auto-dismiss 4s. (`AboutView.swift` `versionTapCount` state + `.onTapGesture`; db65cb55 → this commit)
+- [x] **Feedback link copy** — "Copy feedback link" button in Settings → About → Support section; copies `https://bizarrecrm.com/feedback?source=ios&v={version}` to clipboard; icon transitions to checkmark for 2s. (`AboutView.swift` `feedbackLinkCopied` state + `UIPasteboard`; this commit)
 
 ### 19.25 Diagnostics (dev/admin)
 - [x] **Log viewer** — `OSLog` stream, filter by subsystem + level. (`LogViewerSection` in `DiagnosticsPage.swift` — reads `OSLogStore.currentProcessIdentifier`, last 1h, `com.bizarrecrm` subsystem, text+level filter; pre-existing in b4)
