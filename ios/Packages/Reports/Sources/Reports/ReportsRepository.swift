@@ -199,7 +199,8 @@ public actor LiveReportsRepository: ReportsRepository {
         }
         let response = try await api.get("/api/v1/reports/nps-trend", as: NpsTrendResponse.self)
         let overall = response.overall
-        let total = Double((overall?.promoters ?? 0) + (overall?.passives ?? 0) + (overall?.detractors ?? 0))
+        let respondentCount = (overall?.promoters ?? 0) + (overall?.passives ?? 0) + (overall?.detractors ?? 0)
+        let total = Double(respondentCount)
         let promoterPct = total > 0 ? (Double(overall?.promoters ?? 0) / total) * 100.0 : 0.0
         let detractorPct = total > 0 ? (Double(overall?.detractors ?? 0) / total) * 100.0 : 0.0
         return NPSScore(
@@ -207,7 +208,8 @@ public actor LiveReportsRepository: ReportsRepository {
             previous: 0,
             promoterPct: promoterPct,
             detractorPct: detractorPct,
-            themes: []
+            themes: [],
+            respondentCount: respondentCount
         )
     }
 

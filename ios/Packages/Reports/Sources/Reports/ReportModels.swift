@@ -322,25 +322,39 @@ public struct NPSScore: Codable, Sendable {
     public let promoterPct: Double
     public let detractorPct: Double
     public let themes: [String]
+    /// Total number of survey respondents in the period.
+    public let respondentCount: Int
 
     public var passivePct: Double { max(0, 100.0 - promoterPct - detractorPct) }
 
     enum CodingKeys: String, CodingKey {
         case current
         case previous
-        case promoterPct   = "promoter_pct"
-        case detractorPct  = "detractor_pct"
+        case promoterPct      = "promoter_pct"
+        case detractorPct     = "detractor_pct"
         case themes
+        case respondentCount  = "respondent_count"
     }
 
     public init(current: Int, previous: Int,
                 promoterPct: Double, detractorPct: Double,
-                themes: [String]) {
+                themes: [String], respondentCount: Int = 0) {
         self.current = current
         self.previous = previous
         self.promoterPct = promoterPct
         self.detractorPct = detractorPct
         self.themes = themes
+        self.respondentCount = respondentCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = (try? c.decode(Int.self, forKey: .current)) ?? 0
+        self.previous = (try? c.decode(Int.self, forKey: .previous)) ?? 0
+        self.promoterPct = (try? c.decode(Double.self, forKey: .promoterPct)) ?? 0
+        self.detractorPct = (try? c.decode(Double.self, forKey: .detractorPct)) ?? 0
+        self.themes = (try? c.decode([String].self, forKey: .themes)) ?? []
+        self.respondentCount = (try? c.decode(Int.self, forKey: .respondentCount)) ?? 0
     }
 }
 
