@@ -534,11 +534,34 @@ public struct PosView: View {
     @ViewBuilder
     private var pathChoiceView: some View {
         let displayName = cart.customer?.displayName ?? "this customer"
-        PosPathChoiceView(
+        let inner = PosPathChoiceView(
             customerName: displayName,
             onSell: { pathChoice = .selling },
             onStartRepair: startRepairFlow
         )
+        if Platform.isCompact {
+            inner
+        } else {
+            // iPad — keep the rail + items + cart layout consistent across
+            // every POS phase. The path-choice cards become the catalog
+            // column; the cart stays pinned on the right so the cashier
+            // never loses sight of the totals/customer-attached state.
+            PosRegisterLayout(
+                catalogFraction: 0.65
+            ) {
+                Color.clear.frame(height: 0)
+            } catalog: {
+                inner
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } cart: {
+                PosIPadCartPanel(
+                    cart: cart,
+                    onCharge: startChargeV5,
+                    onEditItem: { item in editingCartItem = item },
+                    editingItemId: editingCartItem?.id
+                )
+            }
+        }
     }
 
     /// Build a `PosRepairFlowCoordinator`, attach it to the phase machine,
