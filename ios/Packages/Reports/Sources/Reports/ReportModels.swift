@@ -423,7 +423,7 @@ public enum ScheduleFrequency: String, Codable, Sendable, CaseIterable {
 
 // MARK: - DateRangePreset
 
-public enum DateRangePreset: String, Sendable, CaseIterable, Identifiable {
+public enum DateRangePreset: String, Sendable, CaseIterable, Identifiable, Codable {
     case sevenDays   = "7D"
     case thirtyDays  = "30D"
     case ninetyDays  = "90D"

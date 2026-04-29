@@ -405,33 +405,8 @@ private struct DiagnosticsRow: View {
     }
 }
 
-// MARK: - DeviceKind display helpers
-
-extension DeviceKind {
-    /// SF Symbol name for diagnostics and health UI.
-    public var systemImageName: String {
-        switch self {
-        case .scale:          return "scalemass"
-        case .scanner:        return "barcode.viewfinder"
-        case .receiptPrinter: return "printer"
-        case .drawer:         return "tray.full"
-        case .cardReader:     return "creditcard"
-        case .unknown:        return "questionmark.circle"
-        }
-    }
-
-    /// Human-readable display name.
-    public var displayName: String {
-        switch self {
-        case .scale:          return "Weight Scale"
-        case .scanner:        return "Barcode Scanner"
-        case .receiptPrinter: return "Receipt Printer"
-        case .drawer:         return "Cash Drawer"
-        case .cardReader:     return "Card Reader"
-        case .unknown:        return "Unknown Device"
-        }
-    }
-}
+// `DeviceKind.systemImageName` and `displayName` already declared in
+// `Bluetooth/BluetoothConnectionPolicy.swift` — reuse those.
 
 // MARK: - Preview
 

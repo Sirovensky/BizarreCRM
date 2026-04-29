@@ -122,4 +122,59 @@ public extension Font {
     static func brandChartAxisLabel() -> Font {
         .custom("Roboto-Regular", size: 11, relativeTo: .caption2)
     }
+
+    // MARK: - Compatibility aliases for pre-§91.10 callsites
+    //
+    // Older Components.swift / Dashboard call sites reference these older names.
+    // Map them to the closest §91.10 token so existing code keeps working.
+
+    /// Alias of `brandLabelSmall` — 12 pt caption.
+    static func brandCaption1() -> Font { brandLabelSmall() }
+
+    /// Slightly smaller caption — 11 pt Roboto Regular.
+    static func brandCaption2() -> Font {
+        .custom("Roboto-Regular", size: 11, relativeTo: .caption2)
+    }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandCallout() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandFootnote() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandTitleSmall` — 18 pt League Spartan.
+    static func brandTitle2() -> Font { brandTitleSmall() }
+
+    /// Alias of `brandBodyMedium` — 17 pt Roboto Regular.
+    static func brandBody() -> Font { brandBodyMedium() }
+
+    /// Alias of `brandDisplayMedium` — 28 pt Bebas Neue.
+    static func brandDisplaySmall() -> Font { brandDisplayMedium() }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandLabelMedium() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandBodyMedium` — 17 pt Roboto Regular.
+    static func brandBodySmall() -> Font {
+        .custom("Roboto-Regular", size: 14, relativeTo: .footnote)
+    }
+
+    /// Alias of `brandLabelSmall` — 12 pt Roboto Regular.
+    static func brandCaption() -> Font { brandLabelSmall() }
+
+    /// Alias of `brandHeadlineMedium` — 22 pt League Spartan SemiBold.
+    static func brandHeadlineSmall() -> Font {
+        .custom("LeagueSpartan-SemiBold", size: 18, relativeTo: .title3)
+    }
+
+    // MARK: - `bizarre*` legacy aliases used in §9 inventory transfer code.
+
+    static var bizarreCaption: Font { brandLabelSmall() }
+    static var bizarreBody: Font { brandBodyMedium() }
+    static var bizarreHeadline: Font { brandHeadlineMedium() }
+    static var bizarreTitle: Font { brandTitleMedium() }
+    static var bizarreTitle3: Font { brandTitleSmall() }
+    static var bizarreTitle2: Font { brandTitleMedium() }
+    static var bizarreFootnote: Font { brandLabelSmall() }
+    static var bizarreCallout: Font { brandLabelLarge() }
 }

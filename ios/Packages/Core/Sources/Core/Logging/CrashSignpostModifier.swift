@@ -37,7 +37,7 @@ public struct CrashSignpostModifier: ViewModifier {
     )
 
     // State preserved across body evaluations.
-    @State private var intervalState: OSSignposter.IntervalState?
+    @State private var intervalState: OSSignpostIntervalState?
 
     // MARK: - Init
 

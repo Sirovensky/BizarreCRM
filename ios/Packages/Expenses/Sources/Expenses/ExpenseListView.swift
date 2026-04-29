@@ -389,7 +389,7 @@ public struct ExpenseListView: View {
                     .font(.system(size: 44, weight: .light))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityHidden(true)
-                Text("No results for "\(searchText)"")
+                Text("No results for \"\(searchText)\"")
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .multilineTextAlignment(.center)

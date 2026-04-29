@@ -94,8 +94,4 @@ public struct LaunchSceneView: View {
         .preferredColorScheme(.dark)
 }
 
-#Preview("Launch — Reduce Motion") {
-    LaunchSceneView()
-        .environment(\.accessibilityReduceMotion, true)
-}
 #endif

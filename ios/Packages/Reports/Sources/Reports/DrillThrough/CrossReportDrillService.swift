@@ -98,6 +98,11 @@ public struct CrossReportDrillService: Sendable {
                     toDate: date
                 ),
             ]
+
+        case .ticketStatusFilter, .employee:
+            // §91.11 — these new context cases originate from chart-tap drill-through
+            // and don't yet have cross-report targets defined. Return empty list.
+            return []
         }
     }
 }

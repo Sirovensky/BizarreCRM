@@ -37,20 +37,20 @@ public protocol LogSink: Sendable {
     ///   - level:    Severity level of the message.
     ///   - message:  The formatted log message string.
     ///   - category: The subsystem category (mirrors `AppLog` category names).
-    func log(level: LogLevel, message: String, category: String)
+    func log(level: CaptureLogLevel, message: String, category: String)
 }
 
-// MARK: - LogLevel
+// MARK: - CaptureLogLevel
 
 /// Severity levels mirroring OSLog levels used in BizarreCRM.
-public enum LogLevel: Int, Comparable, Sendable, CustomStringConvertible {
+public enum CaptureLogLevel: Int, Comparable, Sendable, CustomStringConvertible {
     case debug   = 0
     case info    = 1
     case notice  = 2
     case error   = 3
     case fault   = 4
 
-    public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
+    public static func < (lhs: CaptureLogLevel, rhs: CaptureLogLevel) -> Bool {
         lhs.rawValue < rhs.rawValue
     }
 
@@ -69,7 +69,7 @@ public enum LogLevel: Int, Comparable, Sendable, CustomStringConvertible {
 
 /// A single captured log entry.
 public struct LogEntry: Sendable, CustomStringConvertible {
-    public let level:    LogLevel
+    public let level:    CaptureLogLevel
     public let message:  String
     public let category: String
 
@@ -112,7 +112,7 @@ public final class LogCaptureSink: LogSink, @unchecked Sendable {
 
     // MARK: — LogSink
 
-    public func log(level: LogLevel, message: String, category: String) {
+    public func log(level: CaptureLogLevel, message: String, category: String) {
         lock.lock()
         _entries.append(LogEntry(level: level, message: message, category: category))
         lock.unlock()
@@ -128,7 +128,7 @@ public final class LogCaptureSink: LogSink, @unchecked Sendable {
     }
 
     /// Entries matching a given minimum severity level.
-    public func entries(atOrAbove level: LogLevel) -> [LogEntry] {
+    public func entries(atOrAbove level: CaptureLogLevel) -> [LogEntry] {
         captured.filter { $0.level >= level }
     }
 
@@ -143,7 +143,7 @@ public final class LogCaptureSink: LogSink, @unchecked Sendable {
     }
 
     /// Convenience: returns `true` if any captured entry at `level` contains `substring`.
-    public func contains(level: LogLevel, substring: String) -> Bool {
+    public func contains(level: CaptureLogLevel, substring: String) -> Bool {
         captured.contains { $0.level == level && $0.message.contains(substring) }
     }
 
@@ -165,6 +165,6 @@ public final class LogCaptureSink: LogSink, @unchecked Sendable {
 /// replacing it with `LogCaptureSink` only in tests.
 public struct NullLogSink: LogSink {
     public init() {}
-    public func log(level: LogLevel, message: String, category: String) {}
+    public func log(level: CaptureLogLevel, message: String, category: String) {}
 }
 #endif

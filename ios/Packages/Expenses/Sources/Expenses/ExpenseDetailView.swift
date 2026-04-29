@@ -679,7 +679,7 @@ public struct ExpenseDetailView: View {
             Text("No receipt attached")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text("Tap "Attach" to add a photo or scan")
+            Text("Tap \"Attach\" to add a photo or scan")
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.7))
                 .multilineTextAlignment(.center)

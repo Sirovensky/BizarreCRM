@@ -114,6 +114,11 @@ public struct PosTenderAmountEntryView: View {
                         coordinator.cancelAmountEntry()
                     }
                 )
+            case .financing:
+                // §16-batch4 financing tender — sheet not yet wired; fallback.
+                ProgressView()
+                    .tint(theme.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             case nil:
                 // Should not happen — parent only shows this view when a
                 // method is selected. Fallback to a progress indicator.

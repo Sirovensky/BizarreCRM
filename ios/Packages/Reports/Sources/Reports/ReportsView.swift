@@ -95,7 +95,13 @@ public struct ReportsView: View {
         }
         // §15.4 Per-tech detail drill-through
         .sheet(item: $selectedTechForDrill) { tech in
-            TechDetailSheet(row: tech)
+            // TechDetailSheet not yet implemented — placeholder until §15.4 sheet ships.
+            VStack(spacing: BrandSpacing.md) {
+                Text(tech.name).font(.brandTitleLarge())
+                Text("Tech detail view coming soon.")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .padding(BrandSpacing.lg)
         }
         .alert("Email Report", isPresented: $showEmailSheet) {
             TextField("Recipient email", text: $emailRecipient)
@@ -526,9 +532,9 @@ public struct ReportsView: View {
                 TicketsTrendCard(points: vm.ticketsTrend)
             }
             // §15.3 Tickets by tech bar
-            if !vm.ticketsByTech.isEmpty {
-                TicketsByTechCard(points: vm.ticketsByTech) { techId in
-                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
+            if !vm.employeePerf.isEmpty {
+                TicketsByTechCard(employees: vm.employeePerf) { name in
+                    if let row = vm.technicianPerf.first(where: { $0.name == name }) {
                         selectedTechForDrill = row
                     }
                 }

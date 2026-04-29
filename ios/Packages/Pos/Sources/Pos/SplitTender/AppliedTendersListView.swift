@@ -143,8 +143,9 @@ public struct AppliedTendersListView: View {
 
     private func iconName(_ kind: AppliedTender.Kind) -> String {
         switch kind {
-        case .giftCard:    return "giftcard"
-        case .storeCredit: return "banknote"
+        case .giftCard:          return "giftcard"
+        case .storeCredit:       return "banknote"
+        case .loyaltyRedemption: return "star.circle.fill"
         }
     }
 }

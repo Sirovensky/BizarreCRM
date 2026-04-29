@@ -318,9 +318,4 @@ final class SyncDiagnosticsViewModel {
 
 // MARK: - Notification name
 
-extension Notification.Name {
-    /// Posted by `SyncDiagnosticsViewModel.forceFullSync()`.
-    /// The `SyncCoordinator` (in the Persistence package) observes this and
-    /// schedules a full wipe + re-fetch of all domains.
-    public static let forceFullSyncRequested = Notification.Name("com.bizarrecrm.forceFullSyncRequested")
-}
+// `Notification.Name.forceFullSyncRequested` is declared in `SyncNotifications.swift`.

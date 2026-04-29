@@ -219,23 +219,20 @@ public final class SmsListViewModel {
             "SMS conversations fetch failed: \(error.localizedDescription, privacy: .public)"
         )
 
-        let smsError: SmsError
+        let smsError: SmsError = .decodingConversations(underlying: error)
         if error is DecodingError {
-            smsError = .decodeFailed(underlying: error)
             // §6 — §32 telemetry hook on decode failure.
             Analytics.track(
                 .smsDecodeFailure,
                 properties: ["error_type": .string("DecodingError")]
             )
             AppLog.communications.error(
-                "SMS decode failure detail (§91.14): \(smsError.technicalDetail, privacy: .public)"
+                "SMS decode failure detail (§91.14): \(String(describing: error), privacy: .public)"
             )
-        } else {
-            smsError = .decodeFailed(underlying: error)
         }
 
         // §1 — expose friendly message; technical payload hidden behind "Show details" in UI.
         errorMessage = smsError.errorDescription
-        rawErrorDetail = smsError.technicalDetail
+        rawErrorDetail = String(describing: error)
     }
 }

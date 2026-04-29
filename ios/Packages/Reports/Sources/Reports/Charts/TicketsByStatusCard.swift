@@ -148,7 +148,7 @@ public struct TicketsByStatusCard: View {
     private var legendRow: some View {
         let chips = points.indices.map { idx -> (String, Color, Int) in
             let pt = points[idx]
-            let color = Self.statusColors[idx % Self.statusColors.count]
+            let color = Self.fallbackColors[idx % Self.fallbackColors.count]
             return (pt.status, color, pt.count)
         }
         return ScrollView(.horizontal, showsIndicators: false) {

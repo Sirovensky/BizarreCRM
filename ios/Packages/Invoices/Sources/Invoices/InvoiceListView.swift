@@ -550,7 +550,7 @@ public struct InvoiceListView: View {
     }
 
     private var emptyStateTitle: String {
-        if !searchText.isEmpty { return "No results for "\(searchText)"" }
+        if !searchText.isEmpty { return "No results for \"\(searchText)\"" }
         if vm.hasActiveFilter { return "No invoices match your filters" }
         switch vm.statusTab {
         case .all:     return "No invoices yet"

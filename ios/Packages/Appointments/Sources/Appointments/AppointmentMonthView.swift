@@ -3,11 +3,11 @@ import Core
 import DesignSystem
 import Networking
 
-// MARK: - AppointmentMonthViewModel
+// MARK: - AppointmentMonthCalendarViewModel
 
 @MainActor
 @Observable
-public final class AppointmentMonthViewModel {
+public final class AppointmentMonthCalendarViewModel {
 
     // MARK: State
 
@@ -116,7 +116,7 @@ public final class AppointmentMonthViewModel {
     }
 }
 
-// MARK: - AppointmentMonthView
+// MARK: - AppointmentMonthCalendarView
 
 /// Month-grid calendar view.
 ///
@@ -125,9 +125,9 @@ public final class AppointmentMonthViewModel {
 /// - Tapping a day reveals the day's appointment agenda in a bottom sheet.
 /// - **"Today" button** in the header bar jumps back to the current month
 ///   and is hidden when already showing the current month.
-public struct AppointmentMonthView: View {
+public struct AppointmentMonthCalendarView: View {
 
-    @State private var vm: AppointmentMonthViewModel
+    @State private var vm: AppointmentMonthCalendarViewModel
     @State private var selectedDay: Date?
     private let api: APIClient
 
@@ -145,7 +145,7 @@ public struct AppointmentMonthView: View {
 
     public init(api: APIClient, referenceDate: Date = Date()) {
         self.api = api
-        _vm = State(wrappedValue: AppointmentMonthViewModel(api: api, referenceDate: referenceDate))
+        _vm = State(wrappedValue: AppointmentMonthCalendarViewModel(api: api, referenceDate: referenceDate))
     }
 
     public var body: some View {

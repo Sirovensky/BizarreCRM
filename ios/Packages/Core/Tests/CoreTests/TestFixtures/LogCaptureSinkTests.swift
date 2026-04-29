@@ -131,17 +131,17 @@ final class LogCaptureSinkTests: XCTestCase {
         XCTAssertFalse(sink.contains(level: .fault, substring: "sync failed"))
     }
 
-    // MARK: — LogLevel ordering
+    // MARK: — CaptureLogLevel ordering
 
     func test_logLevel_ordering() {
-        XCTAssertLessThan(LogLevel.debug,  LogLevel.info)
-        XCTAssertLessThan(LogLevel.info,   LogLevel.notice)
-        XCTAssertLessThan(LogLevel.notice, LogLevel.error)
-        XCTAssertLessThan(LogLevel.error,  LogLevel.fault)
+        XCTAssertLessThan(CaptureLogLevel.debug,  CaptureLogLevel.info)
+        XCTAssertLessThan(CaptureLogLevel.info,   CaptureLogLevel.notice)
+        XCTAssertLessThan(CaptureLogLevel.notice, CaptureLogLevel.error)
+        XCTAssertLessThan(CaptureLogLevel.error,  CaptureLogLevel.fault)
     }
 
     func test_logLevel_descriptions_areNonEmpty() {
-        let levels: [LogLevel] = [.debug, .info, .notice, .error, .fault]
+        let levels: [CaptureLogLevel] = [.debug, .info, .notice, .error, .fault]
         for level in levels {
             XCTAssertFalse(level.description.isEmpty, "\(level).description must not be empty")
         }

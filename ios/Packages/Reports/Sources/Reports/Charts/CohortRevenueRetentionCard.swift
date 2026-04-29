@@ -16,9 +16,9 @@ import DesignSystem
 // the cohort's first-purchase month. Server does not expose a dedicated
 // cohort endpoint yet.
 
-// MARK: - CohortRow model (public for preview / testing)
+// MARK: - CohortRevenueRow model (public for preview / testing)
 
-public struct CohortRow: Identifiable, Sendable {
+public struct CohortRevenueRow: Identifiable, Sendable {
     public let id: String          // cohort label, e.g. "Jan 25"
     public let label: String
     /// Retention percentages indexed by months-since-join (index 0 = M+0).
@@ -35,11 +35,11 @@ public struct CohortRow: Identifiable, Sendable {
 
 public struct CohortRevenueRetentionCard: View {
 
-    public let cohorts: [CohortRow]
+    public let cohorts: [CohortRevenueRow]
     /// Maximum number of month columns to render (default 6).
     public var maxMonths: Int = 6
 
-    public init(cohorts: [CohortRow], maxMonths: Int = 6) {
+    public init(cohorts: [CohortRevenueRow], maxMonths: Int = 6) {
         self.cohorts = cohorts
         self.maxMonths = maxMonths
     }
