@@ -1279,13 +1279,13 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Model: flat fee / percentage / compounding (`LateFeePolicy.flatFeeCents` + `percentPerDay` + `compoundDaily`; `LateFeeCalculator.compute` implements all three branches. feat(ios post-phase §7))
 - [x] Model: grace period before applying (`LateFeePolicy.gracePeriodDays`; `LateFeeCalculator` skips fee when `totalDaysLate ≤ gracePeriodDays`. feat(ios post-phase §7))
 - [x] Model: max cap (`LateFeePolicy.maxFeeCents`; `LateFeeCalculator` applies `min(feeCents, cap)`. feat(ios post-phase §7))
-- [ ] Application: auto-added to invoice on overdue
-- [ ] Status change to "Past due" triggers reminder
+- [x] Application: auto-added to invoice on overdue (feat(§7): `LateFeeApplicationService.evaluate` (pure decision: balance / due-date / grace / already-applied delta) + `POST /api/v1/invoices/:id/apply-late-fee` + "Apply Late Fee" toolbar entry in `InvoiceDetailView` gated on `decision.shouldApply`)
+- [x] Status change to "Past due" triggers reminder (feat(§7): `InvoicePastDueDetector.evaluate` (3-day reminder cooldown, excludes paid/void) + `POST /api/v1/invoices/:id/past-due-reminder` (sms/email/both) + "Send Past-Due Reminder" entry gated on `isPastDue && shouldSendReminder`)
 - [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6) — **wired** into `InvoiceDetailView` toolbar ⋯ menu. ([actionplan agent-6 b11] b556eef5)
 - [x] Threshold above which manager PIN required. (`kLateFeeWaiverManagerPinThresholdCents` = $50 (5 000 cents); `requiresManagerPin` gate in `LateFeeWaiverViewModel`; 13 tests. [actionplan agent-6 b9] 482309e6)
-- [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead)
-- [ ] Customer communication: fee-applied notification with payment link
-- [ ] Jurisdiction limits: some jurisdictions cap late fees by law
+- [x] Customer communication: reminder SMS/email before fee applied (1-3d lead) (feat(§7): `LateFeeReminderScheduler.computeWindow` (lead clamped 1...3, sendOn = due + grace + 1) + `POST /api/v1/invoices/:id/pre-late-fee-reminder` + entry only appears `isInWindow`)
+- [x] Customer communication: fee-applied notification with payment link (feat(§7): `LateFeeAppliedNotificationService.formatMessage` (locale-aware currency) + `POST /api/v1/invoices/:id/late-fee-applied-notification` `{fee_cents,new_balance_cents,payment_link_url,channel}`)
+- [x] Jurisdiction limits: some jurisdictions cap late fees by law (feat(§7): `LateFeeJurisdictionLimit` + `LateFeeJurisdictionRegistry` (CA/NY/TX/FL/IL w/ statutory citations) + `LateFeeJurisdictionValidator.validate` warnings (flat-pct / APR / max-fee) + jurisdiction Picker + warning rows in `LateFeePolicyEditorView`)
 - [ ] Tenant-configurable max; warn on violation
 
 ### 7.8 Recurring invoices
