@@ -498,16 +498,24 @@ public struct AvgTicketValueTrendCard: View {
                     .font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
             }
             .accessibilityLabel(String(format: "Current average ticket value $%.2f", current))
+            // §91.6 / §91.12: zero trend must NOT show ↗ green — show neutral dash.
+            if trendPct == 0 {
+                Text("–")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityLabel("No change vs start of period")
+            } else {
             HStack(spacing: 4) {
-                Image(systemName: trendPct >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    .foregroundStyle(trendPct >= 0 ? Color.bizarreSuccess : Color.bizarreError)
+                Image(systemName: trendPct > 0 ? "arrow.up.right" : "arrow.down.right")
+                    .foregroundStyle(trendPct > 0 ? Color.bizarreSuccess : Color.bizarreError)
                     .imageScale(.small)
                     .accessibilityHidden(true)
                 Text(String(format: "%.1f%% vs start", trendPct))
                     .font(.brandLabelLarge())
-                    .foregroundStyle(trendPct >= 0 ? Color.bizarreSuccess : Color.bizarreError)
+                    .foregroundStyle(trendPct > 0 ? Color.bizarreSuccess : Color.bizarreError)
             }
             .accessibilityLabel(String(format: "Trend: %.1f%% vs start of period", trendPct))
+            } // end else (trendPct != 0)
             Spacer()
         }
     }

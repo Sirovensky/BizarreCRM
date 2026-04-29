@@ -359,7 +359,18 @@ public struct RevenueChartCard: View {
 
     @ViewBuilder
     private func periodBadge(pct: Double) -> some View {
-        let isUp = pct >= 0
+        // §91.6 fix: exact zero delta must NOT show an up-arrow + green pill — it's
+        // not a gain. Render a neutral em-dash pill matching AvgTicketValueCard treatment.
+        if pct == 0 {
+            Text("–")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreOnSurfaceMuted.opacity(0.10), in: Capsule())
+                .accessibilityLabel("No change vs prior period")
+        } else {
+        let isUp = pct > 0
         HStack(spacing: BrandSpacing.xxs) {
             Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
                 .imageScale(.small)
@@ -373,6 +384,7 @@ public struct RevenueChartCard: View {
         .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
         .accessibilityLabel(isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
                                  : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
+        } // end else (pct != 0)
     }
 
     // MARK: - Drill overlay

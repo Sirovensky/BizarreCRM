@@ -8347,7 +8347,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Period segmented control low-contrast selection.** `30D` selected pill is the same near-grey as unselected `90D` — only a tiny shade difference. Use the cream-orange brand selection treatment.
 - [ ] **Day/Week/Month sub-segment same low-contrast issue.** "Day" selected; visually indistinguishable from peers.
 - [ ] **Revenue card sparkline tiny + no axis labels.** A small inline chart with no scale is decorative-only; either drop or label.
-- [ ] **`↗ 0.0%` shown on zero-change.** A 0.0% delta should not render the up-arrow + green colour; show a flat dash or `–`.
+- [x] **`↗ 0.0%` shown on zero-change.** A 0.0% delta should not render the up-arrow + green colour; show a flat dash or `–`.
 - [ ] **Period Summary card content broken.** Four columns: dollar-icon "$0…" truncated to two characters, page-icon "0", people-icon "0", dollar "$0". Missing labels (Sales / Tickets / Customers / Avg). Tile too narrow; either wider tile or vertical stack.
 - [ ] **Period Summary `$0…` truncated.** First-column value appears clipped (`$0…R`). Either widen the column or use compact currency formatting.
 - [ ] **Revenue card duplicates Trend + By Period charts side-by-side.** Two near-identical bar charts render in one card — confusing for non-analyst cashier. Pick one or make the second a tab.
@@ -8366,7 +8366,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **`Tickets by Status` chart text overlays bars.** Status labels (`Created`, `Repaired & Collected`, `Waiting for Inspection`, `Waiting for Parts`, `Parts arrived, need the device — SMS`, etc.) render directly on top of the colored bars. Move labels to the left axis or above the bar.
 - [ ] **`Tickets by Status` X-axis numbers (`0  10  20`) overlap status names too.** Whole chart renders on top of itself.
 - [ ] **All bars same teal color.** Web client has color-coded statuses; iPad doesn't honour the tenant status color (server returns a hex per status).
-- [ ] **`Avg Ticket Value $0.00 ↗ 0.0%` with green pill.** Same zero-vs-trend problem as Sales tab.
+- [x] **`Avg Ticket Value $0.00 ↗ 0.0%` with green pill.** Same zero-vs-trend problem as Sales tab.
 - [ ] **`Avg Ticket Value` subtitle `vs $0.00 prior period`.** Comparing zero to zero is non-actionable; hide row or replace with `Not enough data`.
 - [ ] **`Tickets by Technician` shows only `Admin · 0`.** With one technician and zero tickets, the entire bar chart should be a "Not enough data" empty state, not a chart with a 0-length bar.
 - [ ] **`Tap a bar to view technician details` hint shows even when there are no bars.** Suppress until there is data.
@@ -8408,7 +8408,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **`Net: +0 customers · 0.0% churn rate` row redundant with the three-column block above.** Same data restated in different units.
 - [ ] **`Revenue & Margin by Category` empty.** Either hide on no-data or render a placeholder bar chart.
 - [ ] **`Conversion Funnel` shows three blank horizontal bars.** Skeleton-loading or empty data — UI doesn't say. If empty, label the funnel stages (Lead → Quoted → Won) so the cashier sees the shape even at zero.
-- [ ] **Insights tab is heavy with empty cards.** Aggregate empty-state: when ≥80% of cards have no data, render a single `Insights need more activity to populate · come back after your first 10 sales` card and hide the empties.
+- [x] **Insights tab is heavy with empty cards.** Aggregate empty-state: when ≥80% of cards have no data, render a single `Insights need more activity to populate · come back after your first 10 sales` card and hide the empties.
 - [ ] **`Repeat Customer Rate` shows `0.0% repeat rate` + `0 D avg return time`.** If zero customers repeated, "0 D avg return time" is undefined — show `—` instead of `0`.
 - [ ] **`Labor Utilization by Tech` empty state has no header indicator.** Add the wrench glyph and a clearer "No labor data" state.
 - [ ] **`Avg Ticket Value Trend` empty state lacks trend chart placeholder.** Skeleton bars or sparkline outline would communicate intent better.
@@ -8429,7 +8429,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **No section grouping in rail.** Operations / Reports / Settings should be visually grouped with subtle dividers.
 - [ ] **All 8 nav icons same visual weight.** Selected has a pill background but icons themselves look identical — bump the selected icon weight or color.
 - [ ] **Profile circle bottom-left detached.** Floating avatar with a thin divider above; integrate into the rail's bottom group.
-- [ ] **Rail icons not perfectly center-aligned.** Subtle x-offset between icons; verify HStack alignment.
+- [x] **Rail icons not perfectly center-aligned.** Subtle x-offset between icons; verify HStack alignment.
 
 ### 91.8 Topbar consistency
 
@@ -8470,7 +8470,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 
 - [ ] **Many label texts under 12pt** (period units, axis labels, KPI captions).
 - [ ] **Chart color-only encoding** — VoiceOver / Switch Control can't read which color is which status.
-- [ ] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
+- [x] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
 - [x] **No accessibility labels on charts.** `ChartScreenshotAltText` modifier + `.chartScreenshotAltText()` wired to `ZoomableRevenueChartCard`; `AXChartDescriptor` already present on `RevenueChartCard`.
 - [ ] **Sync chip `Just now` with no `accessibilityLabel`** — VoiceOver reads only "Just now" without context.
 - [x] **Dynamic type clamp on Reports sub-tab pills.** `.dynamicTypeSize(.xSmall ... .accessibility3)` + `.lineLimit(1)` on tab pill labels in `subTabPicker` (`ReportsView.swift`).
