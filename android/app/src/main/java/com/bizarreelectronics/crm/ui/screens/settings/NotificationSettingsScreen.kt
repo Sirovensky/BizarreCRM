@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
@@ -31,9 +32,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.sync.FcmTokenRetryWorker
 import com.bizarreelectronics.crm.service.NotificationHistoryStore
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.DeviceTokenManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.launch
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +101,7 @@ data class NotificationSettingsUiState(
 
 @HiltViewModel
 class NotificationSettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val appPreferences: AppPreferences,
     private val notificationHistoryStore: NotificationHistoryStore,
     private val deviceTokenManager: DeviceTokenManager,
@@ -287,12 +291,21 @@ class NotificationSettingsViewModel @Inject constructor(
     /**
      * §73.9 — Manual FCM token re-registration.
      *
-     * Resets the "registered" flag so [DeviceTokenManager.registerIfNeeded] fetches
-     * and posts a fresh token even if the 24-hour staleness window has not elapsed.
-     * Surfaced in Settings as a "Re-register push" row for support / diagnostics.
+     * Cancels any active exponential-backoff retry chain so the manual attempt
+     * is not racing the WorkManager schedule, then forces an immediate fresh
+     * registration via [DeviceTokenManager.registerIfNeeded].
+     *
+     * Resets the "registered" flag so the fetch+POST happens even if the
+     * 24-hour staleness window has not elapsed.
+     *
+     * Surfaced in Settings → Notifications as a diagnostic/support row.
      */
     fun reRegisterPushToken() {
+        // §73.9 — cancel pending backoff retry before attempting manual re-register
+        // so the two paths don't race each other.
+        FcmTokenRetryWorker.cancel(context)
         appPreferences.fcmTokenRegistered = false
+        appPreferences.fcmRetryAttemptCount = 0
         viewModelScope.launch {
             deviceTokenManager.registerIfNeeded()
         }

@@ -5600,7 +5600,7 @@ Mirror iOS §73. Each row: default on/off per channel; user override per §19.3;
 
 ### 73.9 Rotation / retry
 - [x] Push token rotation: on app start or `onNewToken` post new token.
-- [ ] Retry FCM token register with exponential backoff on failure; manual "Re-register" in Settings. <!-- NOTE-defer: manual "Re-register push token" row is implemented (NotificationSettingsScreen); exponential backoff is not — DeviceTokenManager.register sets fcmTokenRegistered=false on failure and relies on next foreground cycle; no delay/counter backoff logic exists -->
+- [x] Retry FCM token register with exponential backoff on failure; manual "Re-register" in Settings. (session 2026-04-28 — `FcmTokenRetryWorker.kt` `@HiltWorker` one-time worker: `ExistingWorkPolicy.REPLACE`, `BackoffPolicy.EXPONENTIAL` 1-min base, 7-attempt cap, `NetworkType.CONNECTED` constraint; `DeviceTokenManager.register` enqueues on failure + resets `fcmRetryAttemptCount`+cancels worker on success; `AppPreferences.fcmRetryAttemptCount` Int pref tracks retry depth; `NotificationSettingsViewModel.reRegisterPushToken` cancels retry work + resets counter before manual re-register; build green)
 
 ### 73.10 Per-event copy matrix
 - [ ] Title + body + action buttons defined for each event. <!-- NOTE-defer: client has no per-event copy strings; titles and bodies come entirely from server FCM payload with no client-side fallback copy defined per event type -->

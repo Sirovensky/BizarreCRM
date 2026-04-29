@@ -361,6 +361,24 @@ class AppPreferences @Inject constructor(
         get() = prefs.getLong("last_fcm_token_refresh_at_ms", 0L)
         set(value) = prefs.edit().putLong("last_fcm_token_refresh_at_ms", value).apply()
 
+    // --- §73.9 — FCM token retry backoff counter ----------------------------
+    //
+    // Tracks the number of consecutive failed FCM token registration attempts
+    // in the current failure run. Written by FcmTokenRetryWorker on each retry
+    // attempt. Reset to 0 by DeviceTokenManager.register on every successful
+    // registration. Exposed in Settings → Notifications diagnostics row so
+    // support staff can see whether the device is in a retry loop.
+
+    /**
+     * §73.9 — Number of consecutive FCM token registration failures in the
+     * current backoff run. Zero on a fresh install or after a successful
+     * registration. Max value is [FcmTokenRetryWorker.MAX_ATTEMPTS] (7) at
+     * which point the retry chain stops and the foreground cycle takes over.
+     */
+    var fcmRetryAttemptCount: Int
+        get() = prefs.getInt("fcm_retry_attempt_count", 0)
+        set(value) = prefs.edit().putInt("fcm_retry_attempt_count", value).apply()
+
     // --- plan:L653 — pinned ticket IDs (local cache) -----------------------
     //
     // Up to 5 ticket IDs persisted locally as a comma-separated Long string.
