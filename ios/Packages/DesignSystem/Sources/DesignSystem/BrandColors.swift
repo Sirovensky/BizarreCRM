@@ -4,6 +4,10 @@ public extension Color {
     static let bizarreSurfaceBase        = Color("SurfaceBase",           bundle: .main)
     static let bizarreSurface1           = Color("Surface1",              bundle: .main)
     static let bizarreSurface2           = Color("Surface2",              bundle: .main)
+    /// Elevated surface — one step above `Surface2`. Used as the opaque solid
+    /// replacement for `.brandGlass` when Reduce Transparency is active (§1.4).
+    /// Maps to `SurfaceElevated` in the asset catalog (warm-zinc ramp).
+    static let bizarreSurfaceElevated    = Color("SurfaceElevated",       bundle: .main)
     static let bizarreOutline            = Color("Outline",               bundle: .main)
     static let bizarreOnSurface          = Color("OnSurface",             bundle: .main)
     static let bizarreOnSurfaceMuted     = Color("OnSurfaceMuted",        bundle: .main)
@@ -39,6 +43,7 @@ public extension ShapeStyle where Self == Color {
     static var bizarreSurfaceBase:     Color { .bizarreSurfaceBase }
     static var bizarreSurface1:        Color { .bizarreSurface1 }
     static var bizarreSurface2:        Color { .bizarreSurface2 }
+    static var bizarreSurfaceElevated: Color { .bizarreSurfaceElevated }
     static var bizarreOutline:         Color { .bizarreOutline }
     static var bizarreOnSurface:       Color { .bizarreOnSurface }
     static var bizarreOnSurfaceMuted:  Color { .bizarreOnSurfaceMuted }
