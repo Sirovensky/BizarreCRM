@@ -4814,12 +4814,14 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `Repositories` — CRUD vs cache vs queue, optimistic + rollback.
   - `SyncService` — queue drain, backoff, dead-letter, conflict resolution.
   - [x] `Formatters` — date/currency/phone locale edge cases. (`Core/Tests/CoreTests/CurrencyFormatterTests.swift` — Currency.formatCents USD/EUR/JPY edge cases + ISO8601Factory round-trip. feat(§31.1): actionplan/§31-batch-4f2a9c)
-  - `Validators` — email, phone, SKU, IMEI.
+  - [x] `Validators` — email, phone, SKU, IMEI. (`Core/Sources/Core/Validation/Validators.swift` — EmailValidator, PhoneValidator (E.164+NANP), SKUValidator, IMEIValidator (Luhn); `Core/Tests/CoreTests/ValidatorsTests.swift` — 30+ parameterised cases. feat(§31.1): implement validators)
   - `URL construction` — host/path safety, query encoding, no force-unwraps.
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
+- [x] **Network mock builder** — fluent `NetworkMockBuilder` wraps `MockURLProtocol` with method/path stub matching, `stubEnvelope()` convenience, `onUnmatchedRequest()` fallback policy, `buildSession()` factory. (`Networking/Tests/NetworkingTests/NetworkMockBuilder.swift` — includes self-tests. feat(§31.1): network mock builder)
 - [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
 
 ### 31.2 Snapshot tests (swift-snapshot-testing)
+- [x] **Snapshot scaffolding** — `SnapshotVariant` matrix + `SnapshotDriver` render/compare stub; `assertSnapshot(of:variant:)` + `assertSnapshotMatrix(of:)` XCTestCase helpers; PNG reference write/compare; `RECORD_SNAPSHOTS=1` mode. (`DesignSystem/Tests/DesignSystemTests/SnapshotTestHelper.swift`. feat(§31.2): snapshot scaffolding helper)
 - [ ] **Per-component** — every reusable brand component (BrandButton, BrandCard, BrandChip, BrandTextField, BrandBanner, BrandToast) rendered in:
   - Light / dark.
   - Compact / regular width.
@@ -4828,6 +4830,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Screen snapshots** — Dashboard, Tickets list, Ticket detail, POS cart, Settings in their golden states.
 
 ### 31.3 Integration tests
+- [x] **GRDB in-memory test util** — `GRDBTestSupport.makeQueue()` creates a fully migrated in-memory `DatabaseQueue`; `makeEmptyQueue()`, `seed()`, `assertRowCount()`, `assertEmpty()` helpers; `setUpGRDB(into:)` XCTestCase extension. (`Persistence/Tests/PersistenceTests/GRDBTestSupport.swift`. feat(§31.3): GRDB in-memory test util)
 - [ ] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule).
 - [ ] **End-to-end API** — start local server (Docker Compose) against real endpoints; assert envelopes.
 - [ ] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency.
@@ -4850,6 +4853,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **CPU** — per-flow CPU time budget.
 
 ### 31.6 Accessibility audit
+- [x] **Accessibility audit harness** — `AccessibilityAuditHarness.audit()` renders SwiftUI views via UIHostingController and applies composable `AccessibilityAuditRule` suite: `MissingLabelRule`, `TapTargetRule` (44 pt minimum), `DuplicateIdentifierRule`, `TraitConsistencyRule`; `assertAccessible()` XCTestCase extension. (`DesignSystem/Tests/DesignSystemTests/AccessibilityAuditHarness.swift`. feat(§31.6): accessibility audit harness)
 - [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
 - [x] **Contrast** asserted on brand palette. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — WCAG AA 4.5:1 / 3:1 pairs for dark + light mode BrandPalette tokens. feat(§31.6): actionplan/§31-batch-4f2a9c)
 - [x] **Tap target sizing** asserted on primary actions. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — TappableFrameModifier defaults + Icon size floor sweep. feat(§31.6): actionplan/§31-batch-4f2a9c)
