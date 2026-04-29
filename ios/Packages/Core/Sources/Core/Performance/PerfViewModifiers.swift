@@ -37,20 +37,25 @@ public extension View {
 
 // MARK: - EquatableView wrapper (§29.2 stable IDs / EquatableView)
 
-public extension View {
+public extension View where Self: Equatable {
     /// Wraps this view in `EquatableView` so SwiftUI skips re-rendering the
     /// body when the bound value compares equal.
     ///
-    /// Use on complex row content where the parent container may rebuild but
-    /// the underlying model hasn't changed:
+    /// The view **must** conform to `Equatable` for this modifier to be
+    /// available. SwiftUI's `EquatableView` compares the previous and next
+    /// view values and suppresses `body` evaluation when they are equal.
+    ///
+    /// Usage:
     /// ```swift
+    /// struct TicketRowView: View, Equatable {
+    ///     let ticket: Ticket
+    ///     var body: some View { … }
+    /// }
+    ///
+    /// // In the list:
     /// TicketRowView(ticket: ticket)
     ///     .equatableRow()
     /// ```
-    ///
-    /// The view must itself conform to `Equatable` for the optimisation to
-    /// take effect. This modifier is a no-op otherwise (SwiftUI falls through
-    /// to normal diffing).
     func equatableRow() -> EquatableView<Self> {
         EquatableView(content: self)
     }
