@@ -112,17 +112,77 @@ public struct NextJobCardView: View {
     }
 }
 
+// MARK: - NoNextJobCardView
+
+/// Shown in place of NextJobCardView when the technician has no remaining jobs today.
+/// Displayed as the same glass card so the layout stays stable.
+public struct NoNextJobCardView: View {
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init() {}
+
+    public var body: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.bizarreSuccess)
+                .accessibilityHidden(true)
+            Text("All done for today")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.primary)
+            Text("No more jobs scheduled. Check back later or contact dispatch.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(DesignTokens.Spacing.lg)
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xl))
+        .frame(maxWidth: 380)
+        .padding(.horizontal, DesignTokens.Spacing.lg)
+        .padding(.bottom, DesignTokens.Spacing.xl)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("All done for today. No more jobs scheduled.")
+    }
+}
+
 // MARK: - ETAChip
 
+/// Color-coded ETA badge.
+///
+/// States:
+/// - ≤ 5 min  → green  (arriving imminently)
+/// - 6–20 min → orange (normal transit)
+/// - > 20 min → red    (delayed / far out)
+///
+/// A11y: badge is excluded from combine so that `NextJobCardView.combinedA11yLabel`
+/// already describes the ETA value in plain English.
 private struct ETAChip: View {
     let minutes: Int
+
+    private var chipColor: Color {
+        switch minutes {
+        case ...5:  return .bizarreSuccess
+        case 6...20: return .bizarreOrange
+        default:    return .bizarreError
+        }
+    }
+
+    private var a11yLabel: String {
+        switch minutes {
+        case ...5:  return "\(minutes) minutes, arriving soon"
+        case 6...20: return "\(minutes) minutes away"
+        default:    return "\(minutes) minutes, may be delayed"
+        }
+    }
 
     var body: some View {
         Text("\(minutes) min")
             .font(.brandLabelSmall())
-            .foregroundStyle(Color.bizarreOnOrange)
+            .foregroundStyle(.white)
             .padding(.horizontal, DesignTokens.Spacing.sm)
             .padding(.vertical, DesignTokens.Spacing.xxs)
-            .background(Color.bizarreOrange, in: Capsule())
+            .background(chipColor, in: Capsule())
+            .accessibilityLabel(a11yLabel)
     }
 }
