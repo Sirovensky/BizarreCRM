@@ -107,6 +107,10 @@ public struct EndOfShiftSummaryView: View {
                     headerSection
                     metricsGrid
                     trendSection
+                    // §39 — daily-summary copy chip: inline pill that lets the
+                    // manager paste the shift summary into Slack / email without
+                    // hunting for the toolbar button on smaller iPhones.
+                    dailySummaryCopyChip
                     ctaSection
                 }
                 .padding(BrandSpacing.base)
@@ -266,6 +270,52 @@ public struct EndOfShiftSummaryView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
         .accessibilityIdentifier(id)
+    }
+
+    // MARK: - §39 Daily-summary copy chip
+
+    /// Inline pill chip that copies the plain-text shift summary to the
+    /// clipboard. Provides discoverability beyond the toolbar "Copy" button,
+    /// especially on smaller iPhones where the toolbar can feel crowded.
+    ///
+    /// Tapping the chip: copies text, shows a brief "Copied ✓" confirmation
+    /// that auto-resets after 2 seconds (mirrors the toolbar button's state).
+    private var dailySummaryCopyChip: some View {
+        Button {
+            UIPasteboard.general.string = shiftSummaryText
+            BrandHaptics.success()
+            didCopySummary = true
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                didCopySummary = false
+            }
+        } label: {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: didCopySummary ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(didCopySummary ? "Summary copied" : "Copy daily summary")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(didCopySummary ? Color.bizarreSuccess : Color.bizarreOrange)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .background(
+                (didCopySummary ? Color.bizarreSuccess : Color.bizarreOrange).opacity(0.10),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        (didCopySummary ? Color.bizarreSuccess : Color.bizarreOrange).opacity(0.25),
+                        lineWidth: 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(duration: DesignTokens.Motion.snappy), value: didCopySummary)
+        .accessibilityLabel(didCopySummary ? "Shift summary copied to clipboard" : "Copy shift summary to clipboard")
+        .accessibilityIdentifier("endShift.copyChip")
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     // MARK: - Trend section

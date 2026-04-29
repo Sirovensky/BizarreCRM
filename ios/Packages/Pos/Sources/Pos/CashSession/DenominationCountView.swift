@@ -101,6 +101,34 @@ public final class DenominationCountViewModel {
         overShortReason = ""
         managerPinApproved = false
     }
+
+    // MARK: - §39 CSV export
+
+    /// Generates an RFC-4180 CSV of the current denomination count.
+    ///
+    /// Columns: Denomination, Count, Subtotal (USD).
+    /// Final row is the grand total.
+    ///
+    /// Example:
+    /// ```
+    /// Denomination,Count,Subtotal
+    /// $100,2,$200.00
+    /// $20,3,$60.00
+    /// Total,,260.00
+    /// ```
+    public var csvString: String {
+        var rows: [String] = ["Denomination,Count,Subtotal"]
+        for d in denominations where d.count > 0 {
+            let subtotal = String(format: "%.2f", Double(d.subtotalCents) / 100)
+            rows.append("\(d.label),\(d.count),$\(subtotal)")
+        }
+        let total = String(format: "%.2f", Double(totalCountedCents) / 100)
+        rows.append("Total,,$\(total)")
+        return rows.joined(separator: "\n")
+    }
+
+    /// File-ready `Data` for use with `fileExporter` / `ShareLink`.
+    public var csvData: Data { Data(csvString.utf8) }
 }
 
 // MARK: - DenominationCountView
@@ -182,6 +210,24 @@ public struct DenominationCountView: View {
             }
         }
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        // §39 — CSV export toolbar item.
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if vm.totalCountedCents > 0 {
+                    // §39 cash-count CSV export — ShareLink wraps the CSV bytes
+                    // in a named `TransferableCSV` so the system share sheet
+                    // offers save-to-Files, AirDrop, and mail attachment options.
+                    ShareLink(
+                        item: vm.csvString,
+                        subject: Text("Cash Count"),
+                        message: Text("Denomination count export")
+                    ) {
+                        Label("Export CSV", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("denomCount.exportCSV")
+                }
+            }
+        }
         .sheet(isPresented: $showManagerPin) {
             ManagerPinSheet(
                 reason: "Variance \(CartMath.formatCents(abs(vm.varianceCents))) over threshold — manager approval required",

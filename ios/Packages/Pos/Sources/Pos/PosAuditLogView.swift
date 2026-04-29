@@ -52,6 +52,21 @@ public struct PosAuditLogView: View {
 
     private var auditList: some View {
         List {
+            // §39 — no-sale summary row: a dedicated header section that
+            // surfaces today's no-sale count at a glance for loss prevention,
+            // even before the manager scrolls into the chronological log.
+            let todayNoSales = noSaleCountToday
+            if todayNoSales > 0 {
+                Section {
+                    noSaleSummaryRow(count: todayNoSales)
+                        .listRowBackground(Color.bizarreWarning.opacity(0.08))
+                } header: {
+                    Text("Today's no-sale activity")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+
             ForEach(groupedByDay, id: \.day) { group in
                 Section(group.dayLabel) {
                     ForEach(group.entries) { entry in
@@ -63,6 +78,46 @@ public struct PosAuditLogView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - §39 No-sale summary row
+
+    /// Count of no-sale events from today (calendar day of the device).
+    private var noSaleCountToday: Int {
+        let calendar = Calendar.current
+        return entries.filter {
+            $0.eventType == PosAuditEntry.EventType.noSale &&
+            calendar.isDateInToday($0.date)
+        }.count
+    }
+
+    /// Prominent summary row shown at the top of the audit list when there
+    /// are no-sale events today. Highlights the count with the warning color
+    /// and uses an SF Symbol for quick scanability.
+    private func noSaleSummaryRow(count: Int) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(Color.bizarreWarning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No-sale drawer opens today")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Cashier opened drawer without completing a sale.")
+                    .font(.brandBodySmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(count > 2 ? Color.bizarreError : Color.bizarreWarning)
+                .monospacedDigit()
+                .accessibilityLabel("\(count) no-sale events today")
+        }
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pos.auditLog.noSaleSummary")
     }
 
     private var emptyView: some View {

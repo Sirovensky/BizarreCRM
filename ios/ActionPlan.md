@@ -5432,6 +5432,13 @@ See §16.10 for core flow. Additional items:
 - [x] Alerts: variance > threshold triggers manager push. `CashVarianceAlertService` actor: evaluates abs(variance) vs threshold; calls `POST /notifications/send` with `type=cash_variance_alert`; gracefully skips on 404/501. Tests ≥80%. (feat(§39.4): cash variance manager alert 3ad70973)
 - [x] Close period: once reconciled, period locked; changes require manager override + audit. `CashPeriodLock` model + `CashPeriodLockRepository` + `CashPeriodLockRepositoryImpl` (`GET/POST /pos/period-locks`, `POST /pos/period-locks/:id/unlock`) + `CashPeriodLockView` with manager PIN override alert. (feat(§39.4): cash period lock 3ad70973)
 
+### 39.5 Cash-session polish
+- [x] **Z-report PDF preview** — `ZReportView` action row "PDF" button renders the report on-device via `ImageRenderer` + `ZReportPDFRenderer` (A4, 595pt wide); shown in `ZReportPDFPreview` (`QLPreviewController` as `UIViewControllerRepresentable`). `ZReportPrintBody` is a standalone SwiftUI body (no nav chrome). `ZReportPDFItem` is an `Identifiable` URL wrapper for `.sheet(item:)`. Sovereignty: PDF written to tmp dir only.
+- [x] **Daily-summary copy chip** — `EndOfShiftSummaryView` gets an inline `dailySummaryCopyChip` pill centered below the trend section. Tapping copies the plain-text shift summary to `UIPasteboard`, shows 2-second "Summary copied" confirmation; shares `didCopySummary` state with the toolbar button.
+- [x] **Drawer-discrepancy color** — `CashVarianceView.amountCell` extended with `applyDiscrepancyColor: Bool`; the "Counted" amount inherits the variance-band color (green/amber/red) when variance is non-zero.
+- [x] **Cash-count CSV export** — `DenominationCountViewModel.csvString`/`csvData` generate RFC-4180 CSV (Denomination, Count, Subtotal + grand-total row). `DenominationCountView` surfaces a `ShareLink` toolbar item when any denomination count > 0.
+- [x] **No-sale audit-log row** — `PosAuditLogView` gains `noSaleCountToday` + `noSaleSummaryRow(count:)`; when today's no-sale count > 0 a warning section appears at top of list with count badge (orange ≤2, red >2).
+
 ---
 ## §40. Gift Cards / Store Credit / Refunds
 

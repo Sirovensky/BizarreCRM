@@ -60,7 +60,10 @@ public struct CashVarianceView: View {
             HStack(spacing: BrandSpacing.xl) {
                 amountCell("Expected", CartMath.formatCents(expectedCents))
                     .accessibilityIdentifier("cashVariance.expected")
-                amountCell("Counted", CartMath.formatCents(countedCents))
+                // §39 — Counted value is colored by the discrepancy band so
+                // green = balanced, amber = within tolerance, red = investigate.
+                amountCell("Counted", CartMath.formatCents(countedCents),
+                           applyDiscrepancyColor: varianceCents != 0)
                     .accessibilityIdentifier("cashVariance.counted")
             }
         }
@@ -84,14 +87,21 @@ public struct CashVarianceView: View {
         CloseRegisterSheet.formatSigned(cents: varianceCents)
     }
 
-    private func amountCell(_ label: String, _ value: String) -> some View {
+    /// §39 — Discrepancy-color variant: the `Counted` amount inherits the
+    /// variance-band color so the cashier immediately sees whether the count
+    /// is on target (green), within tolerance (amber), or requires investigation (red).
+    private func amountCell(
+        _ label: String,
+        _ value: String,
+        applyDiscrepancyColor: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
             Text(value)
                 .font(.brandBodyLarge())
-                .foregroundStyle(.bizarreOnSurface)
+                .foregroundStyle(applyDiscrepancyColor ? band.color : .bizarreOnSurface)
                 .monospacedDigit()
         }
     }
