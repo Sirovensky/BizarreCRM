@@ -149,6 +149,19 @@ public final class Cart {
     /// "Link to Ticket #NNNN" chip in `PosCartPanel`.
     public private(set) var linkedTicketId: Int64? = nil
 
+    // MARK: - §16 Sale note
+
+    /// Optional cashier-entered note attached to the whole sale (not a line).
+    /// Prints on the receipt below the totals section. 500-char hard cap.
+    public private(set) var saleNote: String? = nil
+
+    // MARK: - §16 Recurring charge
+
+    /// When non-nil this cart will be submitted as the first charge of a
+    /// recurring series. The `PosRecurringChargeSheet` writes this value;
+    /// the Charge flow passes it to `POST /invoices` as `recurring_rule`.
+    public private(set) var recurringRule: RecurringChargeRule? = nil
+
     public init(items: [CartItem] = [], customer: PosCustomer? = nil) {
         self.items = items
         self.customer = customer
@@ -324,6 +337,8 @@ public final class Cart {
         couponDiscountCents = 0
         pricingAdjustments = [:]
         pricingSavingCents = 0
+        saleNote = nil
+        recurringRule = nil
     }
 
     // MARK: - §16 Discount engine integration
@@ -409,6 +424,23 @@ public final class Cart {
     public func setFees(cents: Int, label: String? = nil) {
         feesCents = max(0, cents)
         feesLabel = label
+    }
+
+    // MARK: - §16 Recurring charge mutators
+
+    /// Mark this cart as the first occurrence of a recurring charge.
+    public func setRecurringRule(_ rule: RecurringChargeRule?) {
+        recurringRule = rule
+    }
+
+    // MARK: - §16 Sale note mutator
+
+    /// Set the cart-level sale note. Whitespace-only strings collapse to `nil`.
+    /// Hard-capped at 500 characters to match the receipt renderer budget.
+    public func setSaleNote(_ text: String?) {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else { saleNote = nil; return }
+        saleNote = String(trimmed.prefix(500))
     }
 
     // MARK: - §16.3 — Hold support
