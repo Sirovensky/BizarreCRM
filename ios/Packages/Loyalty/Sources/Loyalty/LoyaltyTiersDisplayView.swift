@@ -65,11 +65,14 @@ public struct LoyaltyTiersDisplayView: View {
     @State private var vm: LoyaltyTiersDisplayViewModel
     /// Optional: highlight the tier the current customer belongs to.
     private let activeTierId: Int?
+    /// Optional: customer lifetime spend in cents, used to show spend-to-next-tier progress.
+    private let customerLifetimeSpendCents: Int?
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
-    public init(api: any APIClient, activeTierId: Int? = nil) {
+    public init(api: any APIClient, activeTierId: Int? = nil, customerLifetimeSpendCents: Int? = nil) {
         _vm = State(wrappedValue: LoyaltyTiersDisplayViewModel(api: api))
         self.activeTierId = activeTierId
+        self.customerLifetimeSpendCents = customerLifetimeSpendCents
     }
 
     public var body: some View {
@@ -164,6 +167,44 @@ public struct LoyaltyTiersDisplayView: View {
                 }
             }
 
+            // Spend threshold display (use sortOrder to derive entry threshold)
+            let thresholdCents = entryThresholdCents(sortOrder: tier.sortOrder)
+            if thresholdCents > 0 {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "arrow.up.circle")
+                        .font(.caption)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(String(format: "Requires $%.0f lifetime spend", Double(thresholdCents) / 100))
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityLabel(String(format: "Requires %.0f dollars lifetime spend", Double(thresholdCents) / 100))
+            }
+
+            // Spend-to-next progress — shown on the active tier when customer spend is known.
+            if isActive, let spendCents = customerLifetimeSpendCents,
+               let nextThreshold = nextTierThresholdCents(sortOrder: tier.sortOrder, allTiers: vm.tiers) {
+                let progress = min(1.0, Double(spendCents) / Double(nextThreshold))
+                let remaining = max(0, nextThreshold - spendCents)
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(accentColor.opacity(0.15))
+                            Capsule()
+                                .fill(accentColor)
+                                .frame(width: geo.size.width * progress)
+                        }
+                    }
+                    .frame(height: 6)
+                    .accessibilityHidden(true)
+                    Text(String(format: "$%.0f to next tier", Double(remaining) / 100))
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(accentColor)
+                        .accessibilityLabel(String(format: "$%.0f more spend to reach next tier", Double(remaining) / 100))
+                }
+            }
+
             // Benefits
             if !tier.benefits.isEmpty {
                 Divider()
@@ -225,6 +266,30 @@ public struct LoyaltyTiersDisplayView: View {
         case 2:  return "trophy"
         default: return "crown.fill"
         }
+    }
+
+    /// Minimum lifetime spend in cents required to enter a tier at the given sort order.
+    /// Falls back to zero (entry tier) when sort order is 0.
+    private func entryThresholdCents(sortOrder: Int) -> Int {
+        // Default thresholds matching LoyaltyTier.minLifetimeSpendCents.
+        // If the server provides a custom value in the future, that should be
+        // preferred; for now we derive from position.
+        switch sortOrder {
+        case 0:  return 0
+        case 1:  return 50_000   // $500
+        case 2:  return 100_000  // $1,000
+        default: return 500_000  // $5,000
+        }
+    }
+
+    /// Returns the entry-threshold (in cents) of the next tier above `sortOrder`,
+    /// or `nil` if the given tier is already the highest.
+    private func nextTierThresholdCents(sortOrder: Int, allTiers: [MembershipTierDTO]) -> Int? {
+        let nextOrder = sortOrder + 1
+        // Check if there is a tier with the next sort order.
+        let hasNextTier = allTiers.contains { $0.sortOrder == nextOrder }
+        guard hasNextTier else { return nil }
+        return entryThresholdCents(sortOrder: nextOrder)
     }
 
     private func tierCardAccessibilityLabel(_ tier: MembershipTierDTO, isActive: Bool) -> String {

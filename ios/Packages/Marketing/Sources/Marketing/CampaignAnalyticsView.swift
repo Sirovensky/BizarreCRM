@@ -240,19 +240,25 @@ public struct CampaignAnalyticsView: View {
     private func unsubscribeRateRow(optedOut: Int, sent: Int) -> some View {
         let rate = sent > 0 ? Double(optedOut) / Double(sent) : 0
         let isHigh = rate >= 0.02
+        // Color semantic: high = error red; non-zero = warning amber; zero = muted.
+        let chipColor: Color = isHigh ? .bizarreError : (optedOut > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
         return HStack(spacing: BrandSpacing.sm) {
             Image(systemName: isHigh ? "exclamationmark.triangle.fill" : "hand.raised.slash.fill")
-                .foregroundStyle(isHigh ? .bizarreError : .bizarreOnSurfaceMuted)
+                .foregroundStyle(chipColor)
                 .frame(width: 20)
                 .accessibilityHidden(true)
             Text("Unsubscribes: \(optedOut)")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
             Spacer(minLength: 0)
+            // Opt-out chip: coloured pill so it stands out from plain metric tiles.
             Text(String(format: "%.1f%%", rate * 100))
                 .font(.brandTitleSmall())
-                .foregroundStyle(isHigh ? .bizarreError : .bizarreOnSurfaceMuted)
                 .monospacedDigit()
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, 2)
+                .foregroundStyle(chipColor)
+                .background(chipColor.opacity(0.12), in: Capsule())
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Unsubscribe rate: \(String(format: "%.1f", rate * 100)) percent")
