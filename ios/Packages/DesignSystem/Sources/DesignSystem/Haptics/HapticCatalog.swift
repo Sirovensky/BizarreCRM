@@ -36,6 +36,16 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case listItemAppear
     /// Fired on card hover-lift (iPad pointer enter, strong enough to be felt on M-series).
     case cardHoverActivate
+    // §30 — Visual / motion / haptics pass
+    /// Fired when a side/bottom drawer finishes its open animation.
+    /// Maps to a medium-heavy thud (UIImpactFeedbackGenerator heavy) per §30
+    /// sound-design spec ("drawer open — thud 250 ms").
+    case drawerOpen
+    /// Fired when a generic success state resolves (form save, sync complete,
+    /// non-POS confirmations). Distinct from `saleComplete` which is POS-only.
+    case successConfirm
+    /// Fired on a hard validation error to accompany the `errorShake` modifier.
+    case errorShake
 }
 
 // MARK: - HapticCatalog
@@ -95,12 +105,17 @@ public enum HapticCatalog: Sendable {
             g.prepare()
             g.notificationOccurred(.success)
 
-        case .scanFail, .validationError, .cardDeclined:
+        case .scanFail, .validationError, .cardDeclined, .errorShake:
             let g = UINotificationFeedbackGenerator()
             g.prepare()
             g.notificationOccurred(.error)
 
-        case .destructiveConfirm, .drawerKick:
+        case .successConfirm:
+            let g = UINotificationFeedbackGenerator()
+            g.prepare()
+            g.notificationOccurred(.success)
+
+        case .destructiveConfirm, .drawerKick, .drawerOpen:
             let g = UIImpactFeedbackGenerator(style: .heavy)
             g.prepare()
             g.impactOccurred()
