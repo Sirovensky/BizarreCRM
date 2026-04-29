@@ -460,6 +460,10 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Business tip of the day** — rotating locally-seeded tip (20 tips, cycled by day-of-year); dismissible per-day via `UserDefaults`; reappears automatically next day. Orange accent, glass chrome header. (`Dashboard/BusinessTipCard.swift`)
 - [x] **Time-spent-today widget** — read-only clock summary for the signed-in employee; fetches `GET /api/v1/employees/:id/timeclock/today`; live-ticks every 60 s while clocked in; hides for untimed roles (404). (`Dashboard/TimeSpentTodayWidget.swift`)
 - [x] **Leaderboard preview** — compact 3-row snapshot of the tech leaderboard on the main dashboard; reuses `TechLeaderboardViewModel`/`DashboardBIRepository`; "See all" → `onSeeFullLeaderboard` callback. (`Dashboard/LeaderboardPreviewCard.swift`)
+- [x] **Appointments-today widget** — compact card showing today's appointment count + next upcoming customer/time; fetches `GET /api/v1/leads/appointments?date=<today>`; hides on empty or 404; tap → `bizarrecrm://appointments` or `onTapAppointments` callback. (`Dashboard/AppointmentsTodayWidget.swift`)
+- [x] **Weather-aware service banner** — contextual tip card for extreme heat (≥95 °F → battery-health), extreme cold (≤32 °F → screen-crack warning), or rain (water-damage upsell); fetches `GET /api/v1/store/weather`; dismissible per condition per day via `UserDefaults`; hides on clear weather or 404. (`Dashboard/WeatherServiceBanner.swift`)
+- [x] **Holiday hours alert** — glass banner when today is a configured holiday or modified-hours day; fetches `GET /api/v1/store/hours/today`; dismissible per day via `UserDefaults`; hides on normal days or 404. (`Dashboard/HolidayHoursAlert.swift`)
+- [x] **Dashboard stats refresh-on-foreground** — `DashboardView` observes `scenePhase`; calls `vm.forceRefresh()` when transitioning to `.active` so KPIs are never stale after background. (`DashboardView.swift` `.onChange(of: scenePhase)`)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
@@ -515,6 +519,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
 - [x] Tap greeting → Settings → Profile. (`DashboardView.greeting` + `LoadedBody.onTapGreeting` callback; when provided, greeting becomes a `Button` → App layer navigates; `DashboardView.init(onTapGreeting:)` parameter added; agent-9 b9)
 - [x] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5). (`DashboardView.swift` `DashboardUserAvatarChip` toolbar item gated on `Platform.isCompact`; `onSwitchUser` callback; LongPressGesture; agent-9 b10)
+- [x] **Hero-greeting fallback for empty profile** — `DashboardView` accepts `userName: String?`; when set, greeting personalises to "Good morning, Jane"; when nil (profile incomplete / `/auth/me` not yet wired), shows impersonal greeting + subtle "Complete your profile" nudge `Label` tapping into `onTapGreeting`. (`DashboardView.swift` `LoadedBody.greeting`; `userName` property on `DashboardView`)
 
 ### 3.10 Sync-status badge
 - [x] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline". (`SyncStatusBadge.swift`; b04ae99b)
