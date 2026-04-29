@@ -4373,7 +4373,7 @@ Tasks:
 - [ ] **`privacySensitive()`** on password, PIN, SSN fields.
 - [x] **`OSLog` privacy levels** — `.private` on tokens, phones, emails. (`LoggingPolicy.swift` catalogs public vs private field types; `AppLog.redacted()` helper for legacy string paths. feat(§28.7): 76e64d39)
 - [ ] **Crash logs** — no PII via symbolication hooks.
-- [ ] **Network inspector** in dev redacts Authorization header.
+- [x] **Network inspector** in dev redacts Authorization header. (`DebugNetworkLogRedactor` in `Networking/DebugNetworkLogRedactor.swift`: scheme-preserving Bearer/Basic redaction with length annotation; case-insensitive header-name match; covers `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-BlockChyp-Auth*`; URL-query redaction for `token`/`access_token`/`api_key`/`password`/`secret`. feat(§28.7))
 
 ### 28.8 Screen protection
 
@@ -4389,7 +4389,7 @@ Three different iOS signals, three different defenses:
 Tasks:
 - [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay 173d99c4)
 - [x] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`. (`ScreenCaptureBlurModifier` + `.screenCaptureProtected()` in `Core/Privacy/ScreenCapturePrivacy.swift`; blurs at 20pt + ultraThinMaterial overlay; animated `.easeInOut(0.22)`. feat(§28.8): ebf86471)
-- [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
+- [x] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it. (`ScreenshotAuditModifier` + `.screenshotAudited(screen:userID:onCapture:)` + `.screenshotAuditedToLog(screen:userID:)` in `Core/Privacy/ScreenshotAuditModifier.swift`; wraps existing `ScreenshotAuditCounter` with SwiftUI lifecycle (`.onAppear` attach, `.onDisappear` detach); `ScreenshotAuditLogSink` writes ISO-8601 entry to OSLog `com.bizarrecrm/screenshotAudit` at `.notice` with `.private` user ID per §28.7. feat(§28.8))
 - [x] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all. (`SecureTextEntryModifier` + `.secureInput()` + `.pixelSecure()` in `Core/Privacy/SecureTextEntryModifier.swift`; UIViewRepresentable introspection sets `UIView.isSecure = true` on iOS 17+; fallback to `screenCaptureProtected()` blur on older OS; feat(§28.8))
 
 ### 28.8.1 Sovereignty note
@@ -4398,10 +4398,10 @@ Screen-protection audit entries go to the tenant server (§32), not third-party 
 ### 28.9 Pasteboard hygiene
 
 - [ ] **OTP paste** — `UITextContentType.oneTimeCode` is the right content type for the 2FA code field. iOS offers the code from the most recent Messages automatically; no need for us to read the pasteboard manually.
-- [ ] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s.
+- [x] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s. (`PasteboardCopyHelper.copySensitive(_:expiresIn:screen:)` in `Core/Privacy/PasteboardCopyHelper.swift`: 60 s default; sets `.expirationDate` + `.localOnly: true` so secret never syncs via Universal Clipboard; fires `PasteboardAudit.logWrite(...)` audit entry; 3-second de-dupe window prevents double-copy. feat(§28.9))
 - [ ] **Card number — we never copy it.** Our app never handles raw PAN (§16.6 + §17.3 — BlockChyp tokenizes on the terminal or in its SDK sheet). So there is no "copy card number" code path in our app to defend; the relevant pasteboard events happen entirely inside the BlockChyp SDK process.
-- [ ] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive).
-- [ ] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast.
+- [x] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive). (`PasteboardCopyHelper.copyNonSensitive(_:)` in `Core/Privacy/PasteboardCopyHelper.swift`: writes plain `UIPasteboard.general.string`, no expiration so Universal Clipboard syncs to other Apple devices; returns `Bool` so callers can suppress duplicate haptics/toasts; 3-second de-dupe across rapid taps. feat(§28.9))
+- [x] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast. (`BrandPasteButton` in `Core/Privacy/BrandPasteButton.swift`: SwiftUI wrapper around Apple `PasteButton` with `[UTType.plainText, UTType.url]`; collects strings via NSItemProvider on a background queue then dispatches `onPaste` on main; optional `auditScreen` + `auditActor` parameters fire `PasteboardAudit.logRead(...)` for sensitive screens; iOS skips the access-banner because of explicit user action. feat(§28.9))
 - [ ] **No pasteboard reads without user action** — SwiftLint rule forbids `UIPasteboard.general.string` in view code.
 
 ### 28.9.1 Manual card entry — disable Apple AutoFill & keyboard predictions
@@ -4424,7 +4424,7 @@ Rules:
 ### 28.10 Biometric auth
 - [ ] **`LAContext`** — `.biometryAny` preferred; fallback to PIN.
 - [ ] **Reuse window** — 10s after unlock so confirm-on-save doesn't double-prompt.
-- [ ] **Failure limits** — after 3 fails, drop to password.
+- [x] **Failure limits** — after 3 fails, drop to password. (`BiometricFailureLimitPolicy` in `Core/Privacy/BiometricFailureLimitPolicy.swift`: `@Observable @MainActor` state machine with `BiometricFailureLimitState.allowed(consecutiveFailures:) | requiresPasswordFallback`; configurable `failureLimit` (default 3) trips before iOS's own 5-attempt sensor lockout so the user sees the PIN sheet first; `recordSuccess()` resets counter; `reset()` clears fallback after PIN succeeds. feat(§28.10))
 
 ### 28.11 Jailbreak / integrity
 - [x] **Heuristic detection** — file presence + sandbox escape checks; informational flag only (log, never block). (`JailbreakDetector` in `Core/Privacy/JailbreakDetector.swift`: suspicious-path scan, sandbox-write probe, dyld image walk, URL-scheme check; returns `JailbreakRiskLevel` + `[JailbreakSignal]`; never blocks UX. `DebuggerDetector` in `Core/Privacy/DebuggerDetector.swift`: sysctl `P_TRACED` bit; returns `DebuggerRiskEntry` for server risk payload. `CodeInjectionGuard` in `Core/Privacy/CodeInjectionGuard.swift`: DYLD_INSERT_LIBRARIES env check, hooking-framework image scan, ObjC IMP-range validation. feat(§28.11))
