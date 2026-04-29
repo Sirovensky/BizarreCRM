@@ -93,6 +93,12 @@ public enum PosReceiptRenderer {
         public let tenders: [Tender]
         public let currencyCode: String
         public let footer: String?
+        /// §16.7 — When `true` the renderer suppresses all monetary amounts from
+        /// the text and HTML output (line prices, discount, tax, tip, total,
+        /// and tender rows). Item names + SKUs + quantities are preserved.
+        /// Set this flag whenever the payload is built from `GiftReceiptGenerator`
+        /// so the recipient never sees what was paid.
+        public let isGiftMode: Bool
 
         public init(
             merchant: Merchant,
@@ -108,7 +114,8 @@ public enum PosReceiptRenderer {
             totalCents: Int,
             tenders: [Tender] = [],
             currencyCode: String = "USD",
-            footer: String? = nil
+            footer: String? = nil,
+            isGiftMode: Bool = false
         ) {
             self.merchant = merchant
             self.date = date
@@ -124,6 +131,7 @@ public enum PosReceiptRenderer {
             self.tenders = tenders
             self.currencyCode = currencyCode
             self.footer = footer
+            self.isGiftMode = isGiftMode
         }
     }
 
@@ -155,35 +163,39 @@ public enum PosReceiptRenderer {
                 ? "\(line.quantity) x \(line.name)"
                 : line.name
             out.append(header)
-            let unitNote = line.quantity > 1
-                ? " @ \(formatCents(line.unitPriceCents, code: payload.currencyCode))"
-                : ""
-            out.append("  \(formatCents(line.lineTotalCents, code: payload.currencyCode))\(unitNote)")
+            if !payload.isGiftMode {
+                let unitNote = line.quantity > 1
+                    ? " @ \(formatCents(line.unitPriceCents, code: payload.currencyCode))"
+                    : ""
+                out.append("  \(formatCents(line.lineTotalCents, code: payload.currencyCode))\(unitNote)")
+            }
             if let sku = line.sku, !sku.isEmpty {
                 out.append("  SKU: \(sku)")
             }
-            if line.discountCents > 0 {
+            if !payload.isGiftMode && line.discountCents > 0 {
                 out.append("  Line discount: -\(formatCents(line.discountCents, code: payload.currencyCode))")
             }
         }
 
-        out.append("")
-        out.append(row(label: "Subtotal", cents: payload.subtotalCents, code: payload.currencyCode))
-        if payload.discountCents > 0 {
-            out.append(row(label: "Discount", cents: -payload.discountCents, code: payload.currencyCode))
+        if !payload.isGiftMode {
+            out.append("")
+            out.append(row(label: "Subtotal", cents: payload.subtotalCents, code: payload.currencyCode))
+            if payload.discountCents > 0 {
+                out.append(row(label: "Discount", cents: -payload.discountCents, code: payload.currencyCode))
+            }
+            if payload.feesCents > 0 {
+                out.append(row(label: "Fees", cents: payload.feesCents, code: payload.currencyCode))
+            }
+            if payload.taxCents > 0 {
+                out.append(row(label: "Tax", cents: payload.taxCents, code: payload.currencyCode))
+            }
+            if payload.tipCents > 0 {
+                out.append(row(label: "Tip", cents: payload.tipCents, code: payload.currencyCode))
+            }
+            out.append(row(label: "Total", cents: payload.totalCents, code: payload.currencyCode))
         }
-        if payload.feesCents > 0 {
-            out.append(row(label: "Fees", cents: payload.feesCents, code: payload.currencyCode))
-        }
-        if payload.taxCents > 0 {
-            out.append(row(label: "Tax", cents: payload.taxCents, code: payload.currencyCode))
-        }
-        if payload.tipCents > 0 {
-            out.append(row(label: "Tip", cents: payload.tipCents, code: payload.currencyCode))
-        }
-        out.append(row(label: "Total", cents: payload.totalCents, code: payload.currencyCode))
 
-        if !payload.tenders.isEmpty {
+        if !payload.isGiftMode && !payload.tenders.isEmpty {
             out.append("")
             for tender in payload.tenders {
                 var label = tender.method
@@ -224,8 +236,10 @@ public enum PosReceiptRenderer {
             out.append("<p style=\"margin:0 0 12px 0;font-size:13px;\">Order: \(escapeHTML(orderNumber))</p>")
         }
 
+        // In gift mode we hide the Amount column header since no prices are shown.
+        let amountHeader = payload.isGiftMode ? "" : "<th align=\"right\" style=\"padding:4px 0;border-bottom:1px solid #ddd;\">Amount</th>"
         out.append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;\">")
-        out.append("<thead><tr><th align=\"left\" style=\"padding:4px 0;border-bottom:1px solid #ddd;\">Item</th><th align=\"right\" style=\"padding:4px 0;border-bottom:1px solid #ddd;\">Amount</th></tr></thead>")
+        out.append("<thead><tr><th align=\"left\" style=\"padding:4px 0;border-bottom:1px solid #ddd;\">Item</th>\(amountHeader)</tr></thead>")
         out.append("<tbody>")
         for line in payload.lines {
             let qty = line.quantity > 1 ? "\(line.quantity) &times; " : ""
@@ -233,40 +247,43 @@ public enum PosReceiptRenderer {
             if let sku = line.sku, !sku.isEmpty {
                 detail += "<div style=\"color:#888;font-size:11px;\">SKU: \(escapeHTML(sku))</div>"
             }
-            if line.discountCents > 0 {
+            if !payload.isGiftMode && line.discountCents > 0 {
                 detail += "<div style=\"color:#888;font-size:11px;\">Line discount: -\(formatCents(line.discountCents, code: payload.currencyCode))</div>"
             }
-            out.append("<tr><td style=\"padding:4px 0;\">\(qty)\(escapeHTML(line.name))\(detail)</td><td align=\"right\" style=\"padding:4px 0;font-variant-numeric:tabular-nums;\">\(formatCents(line.lineTotalCents, code: payload.currencyCode))</td></tr>")
+            let amountCell = payload.isGiftMode ? "" : "<td align=\"right\" style=\"padding:4px 0;font-variant-numeric:tabular-nums;\">\(formatCents(line.lineTotalCents, code: payload.currencyCode))</td>"
+            out.append("<tr><td style=\"padding:4px 0;\">\(qty)\(escapeHTML(line.name))\(detail)</td>\(amountCell)</tr>")
         }
         out.append("</tbody></table>")
 
-        out.append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;\">")
-        out.append(htmlRow(label: "Subtotal", cents: payload.subtotalCents, code: payload.currencyCode))
-        if payload.discountCents > 0 {
-            out.append(htmlRow(label: "Discount", cents: -payload.discountCents, code: payload.currencyCode))
-        }
-        if payload.feesCents > 0 {
-            out.append(htmlRow(label: "Fees", cents: payload.feesCents, code: payload.currencyCode))
-        }
-        if payload.taxCents > 0 {
-            out.append(htmlRow(label: "Tax", cents: payload.taxCents, code: payload.currencyCode))
-        }
-        if payload.tipCents > 0 {
-            out.append(htmlRow(label: "Tip", cents: payload.tipCents, code: payload.currencyCode))
-        }
-        out.append(htmlRow(label: "Total", cents: payload.totalCents, code: payload.currencyCode, emphasize: true))
-        out.append("</table>")
-
-        if !payload.tenders.isEmpty {
+        if !payload.isGiftMode {
             out.append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;\">")
-            for tender in payload.tenders {
-                var label = tender.method
-                if let last4 = tender.last4, !last4.isEmpty {
-                    label += " •" + last4
-                }
-                out.append(htmlRow(label: label, cents: tender.amountCents, code: payload.currencyCode))
+            out.append(htmlRow(label: "Subtotal", cents: payload.subtotalCents, code: payload.currencyCode))
+            if payload.discountCents > 0 {
+                out.append(htmlRow(label: "Discount", cents: -payload.discountCents, code: payload.currencyCode))
             }
+            if payload.feesCents > 0 {
+                out.append(htmlRow(label: "Fees", cents: payload.feesCents, code: payload.currencyCode))
+            }
+            if payload.taxCents > 0 {
+                out.append(htmlRow(label: "Tax", cents: payload.taxCents, code: payload.currencyCode))
+            }
+            if payload.tipCents > 0 {
+                out.append(htmlRow(label: "Tip", cents: payload.tipCents, code: payload.currencyCode))
+            }
+            out.append(htmlRow(label: "Total", cents: payload.totalCents, code: payload.currencyCode, emphasize: true))
             out.append("</table>")
+
+            if !payload.tenders.isEmpty {
+                out.append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;\">")
+                for tender in payload.tenders {
+                    var label = tender.method
+                    if let last4 = tender.last4, !last4.isEmpty {
+                        label += " •" + last4
+                    }
+                    out.append(htmlRow(label: label, cents: tender.amountCents, code: payload.currencyCode))
+                }
+                out.append("</table>")
+            }
         }
 
         if let footer = payload.footer, !footer.isEmpty {
