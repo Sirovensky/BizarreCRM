@@ -529,3 +529,71 @@ private struct LabeledRow: View {
         }
     }
 }
+
+// MARK: - SettingsNavRow (§91.16 settings-row chevron polish)
+//
+// A navigation-row helper that renders an icon + label on the left and a
+// correctly-sized, correctly-coloured chevron on the right. Use this instead
+// of a raw `NavigationLink { Label(…) }` when the cell needs a custom leading
+// icon background or tint, or when a non-link row must look identical to a
+// navigation row (e.g. a button that presents a sheet).
+//
+// The chevron uses `chevron.right` at `.footnote.weight(.semibold)` with
+// `.bizarreOnSurfaceMuted` tint at 0.55 opacity — matching the native `List`
+// secondary-detail style across iOS 16–18 without relying on the system's
+// undocumented separator override.
+//
+// Usage:
+//   Button { showSheet = true } label: {
+//       SettingsNavRow(icon: "bell", label: "Notifications")
+//   }
+//
+//   // With a coloured icon tint and a badge:
+//   SettingsNavRow(icon: "lock.shield", label: "Security",
+//                  iconTint: .bizarreInfo, badgeCount: 2)
+
+struct SettingsNavRow: View {
+
+    let icon: String
+    let label: String
+    /// Optional semantic tint for the leading SF Symbol. Defaults to `.bizarreOnSurface`.
+    var iconTint: Color = Color.bizarreOnSurface
+    /// When non-zero, a small red count badge is shown between the label and chevron.
+    var badgeCount: Int = 0
+
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.md) {
+            Image(systemName: icon)
+                .imageScale(.medium)
+                .foregroundStyle(iconTint)
+                .frame(width: DesignTokens.Icon.large, height: DesignTokens.Icon.large)
+                .accessibilityHidden(true)
+
+            Text(label)
+                .foregroundStyle(Color.bizarreOnSurface)
+
+            Spacer(minLength: DesignTokens.Spacing.sm)
+
+            if badgeCount > 0 {
+                Text("\(badgeCount)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignTokens.Spacing.xs)
+                    .padding(.vertical, 2)
+                    .background(Color.bizarreError, in: Capsule())
+                    .accessibilityLabel("\(badgeCount) pending")
+            }
+
+            // Chevron — matches native List disclosure indicator weight and
+            // opacity. `font(.footnote.weight(.semibold))` produces the
+            // system-standard › glyph size without manual frame sizing.
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted.opacity(0.55))
+                .accessibilityHidden(true)
+        }
+        // Enforce WCAG 44 pt tap target height.
+        .frame(minHeight: DesignTokens.Touch.minTargetSide)
+        .contentShape(Rectangle())
+    }
+}

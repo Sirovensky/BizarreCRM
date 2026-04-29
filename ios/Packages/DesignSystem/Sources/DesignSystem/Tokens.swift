@@ -218,6 +218,33 @@ public enum DesignTokens {
         public static let toastInfo    = Color.bizarreInfo
     }
 
+    // MARK: - List-section divider tokens (§91.16)
+    //
+    // Three divider weights used across Settings, list views, and section
+    // separators. All three share the same base color (`bizarreDivider` asset)
+    // but differ in opacity so a palette swap propagates automatically.
+    //
+    // Usage:
+    //   SectionDivider()              // default (.subtle)
+    //   SectionDivider(.strong)       // after a major section break
+    //   SectionDivider(.inset, leadingInset: 52)  // under a list row with icon
+    public enum SectionDividerWeight {
+        /// Hairline — used inside card bodies and between tight rows (0.4 opacity).
+        case hairline
+        /// Subtle — default inter-section separator (0.6 opacity).
+        case subtle
+        /// Strong — major section breaks, e.g. between Settings sections (0.9 opacity).
+        case strong
+
+        public var opacity: Double {
+            switch self {
+            case .hairline: return 0.40
+            case .subtle:   return 0.60
+            case .strong:   return 0.90
+            }
+        }
+    }
+
     // MARK: - Skeleton tokens (§30.9 / §29 loading states)
     //
     // Used by `SkeletonShape` shimmer and `SkeletonListRow` components.

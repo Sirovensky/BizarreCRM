@@ -162,6 +162,11 @@ public struct FinancialDashboardView: View {
     }
 
     // MARK: - P&L Hero tile (Liquid Glass chrome)
+    //
+    // §91.16 hero-tile compact layout: iPhone uses a 2×2 grid so the four
+    // metrics never overflow horizontally on 375 pt screens.  iPad (regular
+    // width) keeps the original single-row HStack for maximum information
+    // density.
 
     private func pnlHeroTile(_ pnl: PnLSnapshot) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.lg) {
@@ -169,12 +174,30 @@ public struct FinancialDashboardView: View {
             Text("Profit & Loss")
                 .font(.brandHeadlineLarge())
                 .foregroundStyle(.bizarreOnSurface)
-            HStack(spacing: BrandSpacing.xl) {
-                pnlMetric("Revenue",     cents: pnl.revenueCents,      color: .bizarreOrange)
-                pnlMetric("COGS",        cents: pnl.cogsCents,          color: .bizarreWarning)
-                pnlMetric("Expenses",    cents: pnl.expensesCents,      color: .bizarreError)
-                pnlMetric("Net",         cents: pnl.netCents,           color: pnl.netCents >= 0 ? .bizarreSuccess : .bizarreError)
+
+            if Platform.isCompact {
+                // iPhone — 2×2 grid avoids metric truncation at 375 pt width.
+                LazyVGrid(
+                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                    spacing: BrandSpacing.md
+                ) {
+                    pnlMetric("Revenue",  cents: pnl.revenueCents,  color: .bizarreOrange)
+                    pnlMetric("COGS",     cents: pnl.cogsCents,     color: .bizarreWarning)
+                    pnlMetric("Expenses", cents: pnl.expensesCents, color: .bizarreError)
+                    pnlMetric("Net",      cents: pnl.netCents,
+                              color: pnl.netCents >= 0 ? .bizarreSuccess : .bizarreError)
+                }
+            } else {
+                // iPad — original single-row layout; plenty of horizontal space.
+                HStack(spacing: BrandSpacing.xl) {
+                    pnlMetric("Revenue",  cents: pnl.revenueCents,  color: .bizarreOrange)
+                    pnlMetric("COGS",     cents: pnl.cogsCents,     color: .bizarreWarning)
+                    pnlMetric("Expenses", cents: pnl.expensesCents, color: .bizarreError)
+                    pnlMetric("Net",      cents: pnl.netCents,
+                              color: pnl.netCents >= 0 ? .bizarreSuccess : .bizarreError)
+                }
             }
+
             HStack(spacing: BrandSpacing.md) {
                 Text("Gross Margin: \(String(format: "%.1f%%", pnl.grossMarginPct * 100))")
                     .font(.brandLabelLarge())
@@ -183,11 +206,14 @@ public struct FinancialDashboardView: View {
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
         }
         .padding(BrandSpacing.lg)
         .background {
-            RoundedRectangle(cornerRadius: 16)
-                .brandGlass(.identity, in: RoundedRectangle(cornerRadius: 16), tint: .bizarreOrange)
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .brandGlass(.identity, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg),
+                            tint: .bizarreOrange)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("P&L: Revenue \(pnl.revenueCents.financialString), Net \(pnl.netCents.financialString)")
@@ -204,7 +230,10 @@ public struct FinancialDashboardView: View {
                 .font(.brandKpiValue())
                 .monospacedDigit()
                 .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Cash Flow tile

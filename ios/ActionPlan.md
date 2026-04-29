@@ -8391,5 +8391,10 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Empty-state hierarchy review.** Audit every empty state: skeleton (loading) vs zero-data vs error vs offline; pick one of four and label it.
 - [ ] **Card-grid alignment.** Use a single shared `ReportsGrid` with consistent row heights and column counts on landscape vs portrait.
 - [ ] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
+- [x] **Hero-tile compact layout.** `pnlHeroTile` in `FinancialDashboardView` switches to a 2×2 `LazyVGrid` on `Platform.isCompact` so four metrics never overflow on 375 pt iPhone screens; iPad keeps single-row HStack. Margin texts gain `minimumScaleFactor(0.75)`. Raw `cornerRadius: 16` literal replaced with `DesignTokens.Radius.lg`. (feat(§91.16): hero-tile compact layout)
+- [x] **KPI tile placeholder skeleton.** `SkeletonKPITile` (icon circle + label line + large value line + optional delta chip) and `SkeletonKPISummaryCard` (2×2 iPhone / 4-up iPad) added to `DesignSystem/Skeletons/SkeletonKPITile.swift`. Shape-matched to `SalesKPISummaryCard` cell geometry. (feat(§91.16): KPI tile placeholder skeleton)
+- [x] **Settings-row chevron polish.** `SettingsNavRow` added to `Settings/SettingsView.swift`: icon + label + optional badge count + `chevron.right` at `.footnote.weight(.semibold)` tinted `.bizarreOnSurfaceMuted×0.55`; 44 pt min tap target enforced via `DesignTokens.Touch.minTargetSide`. (feat(§91.16): settings-row chevron polish)
+- [x] **List-section divider tokens.** `DesignTokens.SectionDividerWeight` enum (`.hairline` 0.40 / `.subtle` 0.60 / `.strong` 0.90 opacity) added to `Tokens.swift`; `SectionDivider` view + `.sectionDivider()` modifier added to `DesignSystem/Layout/SectionDivider.swift`. (feat(§91.16): list-section divider tokens)
+- [x] **Scroll-edge gradient.** `ScrollEdgeGradientModifier` + `.scrollEdgeGradient(height:edge:color:)` added to `DesignSystem/Layout/ScrollEdgeGradient.swift`; `.top`/`.bottom`/`.both` edges; Reduce Transparency shrinks fade to 8 pt. (feat(§91.16): scroll-edge gradient)
 
 
