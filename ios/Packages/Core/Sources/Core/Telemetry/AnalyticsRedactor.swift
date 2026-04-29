@@ -55,7 +55,9 @@ public enum AnalyticsRedactor {
         // Performance
         "cold_launch_ms", "first_paint_ms",
         // POS
-        "total_cents",
+        "total_cents", "item_count",
+        // §32.4 Sync / launch trigger tags
+        "trigger", "launch_kind",
         // Error
         "crash_type",
     ]
@@ -113,6 +115,9 @@ public enum AnalyticsRedactor {
 
     private static func redactValue(_ value: AnalyticsValue) -> AnalyticsValue {
         guard case .string(let raw) = value else { return value }
-        return .string(LogRedactor.redact(raw))
+        // §32.6 — untagged / legacy property values run through the
+        // shape-detection fallback so anything that *looks* like PII becomes
+        // `*LIKELY_PII*` rather than leaking through.
+        return .string(LogRedactor.redactWithLikelyPIIFallback(raw))
     }
 }

@@ -321,6 +321,135 @@ public enum Analytics {
             "status_code": .int(statusCode),
         ])
     }
+
+    // MARK: — §32.4 Sync lifecycle helpers
+
+    /// §32.4 — Record the start of a sync cycle.
+    ///
+    /// - Parameters:
+    ///   - entityType: Domain entity type being synced, e.g. `"ticket"`, `"customer"`.
+    ///     Must be a developer-defined enum value; never user-supplied.
+    ///   - trigger: Why the sync started: `"foreground"`, `"background"`, `"manual"`,
+    ///     `"push"`, `"scheduled"`. Defaults to `"foreground"`.
+    public static func trackSyncStart(
+        entityType: String,
+        trigger: String = "foreground"
+    ) {
+        track(.syncStarted, properties: [
+            "entity_type": .string(entityType),
+            "trigger": .string(trigger)
+        ])
+    }
+
+    /// §32.4 — Record the successful completion of a sync cycle.
+    ///
+    /// - Parameters:
+    ///   - entityType: Domain entity type that was synced.
+    ///   - deltaCount: Number of records pulled or pushed in this cycle.
+    ///   - durationMs: Wall-clock duration in milliseconds (integer).
+    public static func trackSyncComplete(
+        entityType: String,
+        deltaCount: Int,
+        durationMs: Int
+    ) {
+        track(.syncCompleted, properties: [
+            "entity_type": .string(entityType),
+            "delta_count": .int(deltaCount),
+            "duration_ms": .int(durationMs)
+        ])
+    }
+
+    /// §32.4 — Record a failed sync cycle.
+    ///
+    /// - Parameters:
+    ///   - entityType: Domain entity type that failed.
+    ///   - reason: Machine-readable failure code; passed through `AnalyticsRedactor`
+    ///     so a stray free-form server message cannot leak PII.
+    public static func trackSyncFailed(entityType: String, reason: String) {
+        track(.syncFailed, properties: [
+            "entity_type": .string(entityType),
+            "reason": .string(AnalyticsRedactor.scrubString(reason))
+        ])
+    }
+
+    // MARK: — §32.4 POS sale-lifecycle helpers
+
+    /// §32.4 — Record a successful POS sale.
+    ///
+    /// Per §32.6, **never include customer PII**. Pass only:
+    ///
+    /// - Parameters:
+    ///   - totalCents: Sale total in the smallest currency unit.
+    ///   - tender: Tender enum string, e.g. `"cash"`, `"card"`, `"gift_card"`,
+    ///     `"split"`. Must be a developer-defined value, not user text.
+    ///   - itemCount: Number of line items on the sale.  Optional.
+    public static func trackPosSaleComplete(
+        totalCents: Int,
+        tender: String,
+        itemCount: Int? = nil
+    ) {
+        var props: [String: AnalyticsValue] = [
+            "total_cents": .int(totalCents),
+            "tender": .string(tender)
+        ]
+        if let count = itemCount {
+            props["item_count"] = .int(count)
+        }
+        track(.posSaleComplete, properties: props)
+    }
+
+    /// §32.4 — Record a POS sale failure.
+    ///
+    /// - Parameters:
+    ///   - reason: Machine-readable failure code, e.g. `"declined"`,
+    ///     `"network"`, `"hardware_offline"`. Free-form text is redacted.
+    ///   - tender: Optional tender being attempted; helps correlate
+    ///     failure rates by payment method.
+    public static func trackPosSaleFailed(reason: String, tender: String? = nil) {
+        var props: [String: AnalyticsValue] = [
+            "reason": .string(AnalyticsRedactor.scrubString(reason))
+        ]
+        if let t = tender {
+            props["tender"] = .string(t)
+        }
+        track(.posSaleFailed, properties: props)
+    }
+
+    // MARK: — §32.4 Performance helpers
+
+    /// §32.4 — Record cold-launch duration in milliseconds.
+    ///
+    /// Cold launch = process spawn → first frame committed.  Caller measures the
+    /// interval (e.g. via `MainActor.run` callbacks or `mach_absolute_time`).
+    ///
+    /// - Parameters:
+    ///   - durationMs: Integer milliseconds from process launch to first frame.
+    ///   - launchKind: Optional kind tag, e.g. `"cold"`, `"warm"`, `"resume"`.
+    ///     Provided for future-proofing; defaults to `"cold"`.
+    public static func trackColdLaunchMs(_ durationMs: Int, launchKind: String = "cold") {
+        track(.coldLaunchMs, properties: [
+            "duration_ms": .int(durationMs),
+            "launch_kind": .string(launchKind)
+        ])
+    }
+
+    /// §32.4 — Record first-paint duration in milliseconds.
+    ///
+    /// First paint = scene activation → first meaningful UI committed.
+    ///
+    /// - Parameters:
+    ///   - durationMs: Integer milliseconds from scene activation to first paint.
+    ///   - screen: Optional screen identifier (route name); useful when paint
+    ///     timing is captured for non-root screens.
+    public static func trackFirstPaintMs(_ durationMs: Int, screen: String? = nil) {
+        var props: [String: AnalyticsValue] = [
+            "duration_ms": .int(durationMs)
+        ]
+        if let s = screen {
+            props["screen"] = .string(s)
+        }
+        track(.firstPaintMs, properties: props)
+    }
 }
 
 // MARK: — §32 ServerResponseTimeBucket
