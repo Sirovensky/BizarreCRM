@@ -1,6 +1,8 @@
 #if canImport(UIKit)
 import SwiftUI
 import Core
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import DesignSystem
 import Networking
 
@@ -14,6 +16,9 @@ public struct TicketDetailView: View {
     @State private var showingMerge: Bool = false
     @State private var showingSplit: Bool = false
     @State private var showingSignOff: Bool = false
+    @State private var showingQRCode: Bool = false   // §4.2 line 627
+    /// §4.4 line 670 — optimistic-edit error toast.
+    @State private var editErrorMessage: String? = nil
     private let api: APIClient?
 
     /// Basic init — read-only detail.
@@ -30,10 +35,20 @@ public struct TicketDetailView: View {
     }
 
     public var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             content
+            // §4.4 line 670 — glass error toast after failed optimistic edit
+            if let errMsg = editErrorMessage {
+                EditErrorToast(message: errMsg) {
+                    withAnimation { editErrorMessage = nil }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.lg)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: editErrorMessage)
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
@@ -41,12 +56,24 @@ public struct TicketDetailView: View {
         .toolbar {
             toolbarItems
         }
-        // §4.4 — Deep edit sheet
+        // §4.4 — Deep edit sheet; onError propagates error toast + reloads stale data
         .sheet(isPresented: $showingEdit) {
             if let api, case let .loaded(detail) = vm.state {
-                TicketEditDeepView(api: api, ticket: detail) {
-                    Task { await vm.load() }
-                }
+                TicketEditDeepView(api: api, ticket: detail,
+                    onSaved: {
+                        Task { await vm.load() }
+                    },
+                    onError: { errMsg in
+                        Task { @MainActor in
+                            // Rollback: reload the server's version of the ticket.
+                            await vm.load()
+                            withAnimation { editErrorMessage = errMsg }
+                            // Auto-dismiss toast after 4 seconds.
+                            try? await Task.sleep(nanoseconds: 4_000_000_000)
+                            withAnimation { editErrorMessage = nil }
+                        }
+                    }
+                )
             }
         }
         // Legacy status change (server-driven list)
@@ -120,6 +147,12 @@ public struct TicketDetailView: View {
                     ticketId: detail.id,
                     api: api
                 ))
+            }
+        }
+        // §4.2 line 627 — QR code full-screen sheet
+        .sheet(isPresented: $showingQRCode) {
+            if case let .loaded(detail) = vm.state {
+                TicketQRCodeSheet(orderId: detail.orderId)
             }
         }
     }
@@ -200,6 +233,15 @@ public struct TicketDetailView: View {
                         }
                         .accessibilityIdentifier("ticket.signoff")
                     }
+
+                    // §4.2 line 627 — QR code for counter scanner
+                    Divider()
+                    Button {
+                        showingQRCode = true
+                    } label: {
+                        Label("Show QR Code", systemImage: "qrcode")
+                    }
+                    .accessibilityIdentifier("ticket.qrcode")
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }
@@ -295,7 +337,7 @@ public struct TicketDetailView: View {
     }
 }
 
-// MARK: - Status chip row (§4.6)
+// MARK: - Status chip row (§4.6, §4.7 line 701 — server hex color)
 
 private struct StatusChipRow: View {
     let status: TicketDetail.Status
@@ -303,13 +345,24 @@ private struct StatusChipRow: View {
 
     var body: some View {
         HStack(spacing: BrandSpacing.sm) {
-            Text(status.name)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.xs)
-                .brandGlass(.clear, in: Capsule())
-                .accessibilityLabel("Status: \(status.name)")
+            // §4.7 line 701: render tenant hex color when present.
+            if let hex = status.color, let bg = Color(hexString: hex) {
+                Text(status.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(bg.isDarkBg ? Color.white : Color.black)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.xs)
+                    .background(bg, in: Capsule())
+                    .accessibilityLabel("Status: \(status.name)")
+            } else {
+                Text(status.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.xs)
+                    .brandGlass(.clear, in: Capsule())
+                    .accessibilityLabel("Status: \(status.name)")
+            }
 
             Spacer()
 
@@ -670,5 +723,135 @@ private struct CardBackgroundModifier: ViewModifier {
 
 private extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
+}
+
+// MARK: - Optimistic-edit error toast (§4.4 line 670)
+
+/// Glass pill shown at the bottom of the detail view when an edit fails.
+/// Dismisses itself after 4 seconds (caller also auto-removes) or on tap.
+private struct EditErrorToast: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
+        }
+        .padding(BrandSpacing.md)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.bizarreError.opacity(0.4), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Edit failed: \(message)")
+        .onTapGesture { onDismiss() }
+    }
+}
+
+// MARK: - QR code sheet (§4.2 line 627)
+
+/// Full-screen sheet displaying the ticket's order ID as a QR code.
+/// Tap anywhere to dismiss. Large enough for a counter barcode scanner.
+private struct TicketQRCodeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let orderId: String
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(spacing: BrandSpacing.xl) {
+                    if let qrImage = generateQR(from: orderId, size: CGSize(width: 280, height: 280)) {
+                        Image(uiImage: qrImage)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 280, height: 280)
+                            .padding(BrandSpacing.lg)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+                            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+                            .accessibilityLabel("QR code for ticket \(orderId)")
+                            .accessibilityHint("Show this to scan at the counter")
+                    } else {
+                        Image(systemName: "qrcode")
+                            .font(.system(size: 80))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityHidden(true)
+                    }
+                    Text(orderId)
+                        .font(.brandMono(size: 22))
+                        .foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Order ID: \(orderId)")
+                }
+                .padding(BrandSpacing.xl)
+            }
+            .navigationTitle("QR Code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .accessibilityLabel("Dismiss QR code")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func generateQR(from string: String, size: CGSize) -> UIImage? {
+        guard !string.isEmpty,
+              let data = string.data(using: .utf8) else { return nil }
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = data
+        filter.correctionLevel = "M"
+        guard let ciImage = filter.outputImage else { return nil }
+        let scaleX = size.width / ciImage.extent.width
+        let scaleY = size.height / ciImage.extent.height
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+// MARK: - Color helpers (§4.7 line 701)
+
+private extension Color {
+    /// Initialise from a CSS hex string like `"#3A7DFF"` or `"3A7DFF"`.
+    init?(hexString hex: String) {
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard cleaned.count == 6,
+              let value = UInt64(cleaned, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8) & 0xFF) / 255.0
+        let b = Double(value & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+
+    /// `true` when relative luminance < 0.5 — use white foreground on this background.
+    var isDarkBg: Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a) else { return false }
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.5
+    }
 }
 #endif

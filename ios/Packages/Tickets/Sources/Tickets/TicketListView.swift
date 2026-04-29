@@ -181,7 +181,11 @@ public struct TicketListView: View {
         } else if vm.tickets.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "tickets")
         } else if vm.tickets.isEmpty {
-            TicketEmptyState(hint: emptyHint)
+            // §4.1: CTA only shown on .all filter when create is available (line 610)
+            let showCTA = vm.filter == .all && api != nil && customerRepo != nil
+            TicketEmptyState(hint: emptyHint, showCreateCTA: showCTA) {
+                showingCreate = true
+            }
         } else {
             List(selection: Binding<Int64?>(
                 get: { Platform.isCompact ? nil : selected },
@@ -297,7 +301,12 @@ private struct TicketRow: View {
 
             VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
                 if let status = ticket.status {
-                    StatusPill(status.name, hue: groupHue(status.group))
+                    // §4.7 line 701: render server hex color when present, else group hue
+                    if let hex = status.color, let color = Color(hex: hex) {
+                        ServerColorStatusPill(name: status.name, color: color)
+                    } else {
+                        StatusPill(status.name, hue: groupHue(status.group))
+                    }
                 }
                 Text(formatMoney(ticket.total))
                     .font(.brandLabelLarge())
@@ -351,6 +360,30 @@ private struct TicketRow: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$\(cents / 100)"
+    }
+}
+
+// MARK: - Server-color status pill (§4.7 line 701)
+
+/// Renders a status pill using the tenant-configured hex color from the server.
+/// Automatically picks a contrasting foreground (black or white) based on luminance.
+private struct ServerColorStatusPill: View {
+    let name: String
+    let color: Color
+
+    var body: some View {
+        Text(name)
+            .font(.brandLabelSmall())
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .foregroundStyle(contrastColor)
+            .background(color, in: Capsule())
+            .accessibilityLabel("Status: \(name)")
+    }
+
+    private var contrastColor: Color {
+        // Approximate luminance — prefer black text unless the background is dark.
+        color.isDark ? .white : .black
     }
 }
 
@@ -411,13 +444,16 @@ private struct TicketErrorState: View {
     }
 }
 
+// §4.1 — Empty state with optional "Create your first ticket" CTA (line 610).
 private struct TicketEmptyState: View {
     let hint: String
+    var showCreateCTA: Bool = false
+    var onCreate: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: BrandSpacing.sm) {
+        VStack(spacing: BrandSpacing.md) {
             Image(systemName: "tray")
-                .font(.system(size: 24, weight: .regular))
+                .font(.system(size: 36, weight: .regular))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
             Text(hint)
@@ -425,8 +461,21 @@ private struct TicketEmptyState: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, BrandSpacing.lg)
+            if showCreateCTA, let onCreate {
+                Button(action: onCreate) {
+                    Label("Create your first ticket", systemImage: "plus.circle.fill")
+                        .font(.brandBodyLarge())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Create your first ticket")
+                .accessibilityHint("Opens the new ticket form")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -444,6 +493,32 @@ private struct EmptyTicketDetailPlaceholder: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
+    }
+}
+
+// MARK: - Color helpers (§4.7 line 701)
+
+private extension Color {
+    /// Initialise from a CSS hex string like `"#3A7DFF"` or `"3A7DFF"`.
+    init?(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard cleaned.count == 6,
+              let value = UInt64(cleaned, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8) & 0xFF) / 255.0
+        let b = Double(value & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+
+    /// Returns `true` when the colour's relative luminance is below 0.5
+    /// (i.e. a dark background should use white foreground text).
+    var isDark: Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a) else { return false }
+        // W3C relative luminance approximation (linear coefficients).
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance < 0.5
     }
 }
 #endif

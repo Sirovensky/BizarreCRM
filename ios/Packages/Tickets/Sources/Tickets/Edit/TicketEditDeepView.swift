@@ -24,11 +24,20 @@ public struct TicketEditDeepView: View {
     @State private var showingAssigneePicker: Bool = false
     private let api: APIClient
     private let onSaved: () -> Void
+    /// §4.4 line 670 — called with the error message when save fails.
+    /// The caller is responsible for rolling back any optimistic UI changes.
+    private let onError: ((String) -> Void)?
 
-    public init(api: APIClient, ticket: TicketDetail, onSaved: @escaping () -> Void = {}) {
+    public init(
+        api: APIClient,
+        ticket: TicketDetail,
+        onSaved: @escaping () -> Void = {},
+        onError: ((String) -> Void)? = nil
+    ) {
         self.api = api
         _vm = State(wrappedValue: TicketEditDeepViewModel(api: api, ticket: ticket))
         self.onSaved = onSaved
+        self.onError = onError
     }
 
     public var body: some View {
@@ -320,6 +329,11 @@ public struct TicketEditDeepView: View {
 
     private func saveAndDismiss() async {
         await vm.submit()
+        if let errMsg = vm.errorMessage {
+            // §4.4 line 670 — propagate error so caller can rollback optimistic UI.
+            onError?(errMsg)
+            return
+        }
         guard vm.didSave else { return }
         onSaved()
         if vm.queuedOffline {

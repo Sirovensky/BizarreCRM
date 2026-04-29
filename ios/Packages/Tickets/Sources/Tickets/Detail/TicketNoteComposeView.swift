@@ -9,6 +9,10 @@ import Networking
 // iPhone: modal sheet with .presentationDetents([.medium, .large]).
 // iPad:   same sheet; medium-detent gives quick-add feel on large displays.
 //
+// § 4.6 line 690 — @ trigger: when the user types `@`, an inline suggestion
+// strip appears above the keyboard listing matching employees. Tapping a name
+// inserts `@DisplayName ` at the cursor position.
+//
 // ViewModel is in TicketNoteComposeViewModel.swift (platform-agnostic).
 
 public struct TicketNoteComposeView: View {
@@ -36,20 +40,59 @@ public struct TicketNoteComposeView: View {
                 }
 
                 Section("Content") {
-                    TextEditor(text: $vm.content)
-                        .frame(minHeight: 120)
-                        .overlay(alignment: .topLeading) {
-                            if vm.content.isEmpty {
-                                Text("Write a note…")
-                                    .font(.brandBodyMedium())
-                                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                                    .padding(.top, BrandSpacing.xs)
-                                    .padding(.leading, BrandSpacing.xs)
-                                    .allowsHitTesting(false)
+                    VStack(alignment: .leading, spacing: 0) {
+                        TextEditor(text: $vm.content)
+                            .frame(minHeight: 120)
+                            .overlay(alignment: .topLeading) {
+                                if vm.content.isEmpty {
+                                    Text("Write a note… type @ to mention someone")
+                                        .font(.brandBodyMedium())
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                        .padding(.top, BrandSpacing.xs)
+                                        .padding(.leading, BrandSpacing.xs)
+                                        .allowsHitTesting(false)
+                                }
                             }
+                            .accessibilityLabel("Note content")
+                            .accessibilityHint("Type the note here. Use @ to mention a team member.")
+
+                        // §4.6 line 690 — @ mention suggestion strip
+                        if !vm.mentionSuggestions.isEmpty {
+                            Divider()
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    ForEach(vm.mentionSuggestions) { employee in
+                                        Button {
+                                            vm.pickMention(employee)
+                                        } label: {
+                                            Text("@\(employee.displayName)")
+                                                .font(.brandLabelLarge())
+                                                .foregroundStyle(.bizarreOrange)
+                                                .padding(.horizontal, BrandSpacing.sm)
+                                                .padding(.vertical, BrandSpacing.xs)
+                                                .background(Color.bizarreSurface2, in: Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Mention \(employee.displayName)")
+                                        .accessibilityHint("Inserts @\(employee.displayName) into the note")
+                                    }
+                                    Button {
+                                        vm.dismissMention()
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.caption)
+                                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                                            .padding(BrandSpacing.xs)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Dismiss mention suggestions")
+                                }
+                                .padding(.horizontal, BrandSpacing.xs)
+                                .padding(.vertical, BrandSpacing.xs)
+                            }
+                            .background(Color.bizarreSurface1)
                         }
-                        .accessibilityLabel("Note content")
-                        .accessibilityHint("Type the note here")
+                    }
                 }
 
                 Section("Options") {

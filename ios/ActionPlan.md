@@ -607,7 +607,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
-- [ ] **Empty state** — "No tickets yet. Create one." CTA.
+- [x] **Empty state** — "No tickets yet. Create one." CTA. `TicketEmptyState` shows "Create your first ticket" button on `.all` filter when API is wired. §4.1 line 610.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
@@ -624,7 +624,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
-- [ ] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
+- [x] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below. `TicketQRCodeSheet` via `CIFilter.qrCodeGenerator()`, "Show QR Code" in Actions menu. §4.2 line 627.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [ ] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
 - [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
@@ -667,7 +667,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
 - [x] **Offline enqueue** — network failure routes to `ticket.update` with `entityServerId`; `TicketSyncHandlers` replays on reconnect.
 - [x] **Expanded fields** — notes, estimated cost, priority, tags, discount, source, referral, due_on, customer reassign, state-transition picker, archive. `TicketEditDeepView` + `TicketEditDeepViewModel` with draft auto-save + iPad side-by-side layout. Reassign via `PATCH /tickets/:id/assign`; archive via `POST /tickets/:id/archive`.
-- [ ] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast).
+- [x] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast). `EditErrorToast` glass pill shown at bottom of `TicketDetailView`; `onError` callback in `TicketEditDeepView` triggers server reload + animated toast. §4.4 line 670.
 - [ ] **Audit log** entries streamed back into timeline.
 - [ ] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
 - [ ] **Delete** — destructive confirm; soft-delete server-side.
@@ -687,7 +687,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.6 Notes & mentions
 - [ ] **Compose** — multiline text field, type picker (internal / customer / diagnostic / sms / email), flag toggle.
-- [ ] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token.
+- [x] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token. Horizontal suggestion strip in `TicketNoteComposeView`; `handleContentChange` detects last `@word` token, lazy-loads `ticketAssigneeCandidates()` once, filters client-side. `pickMention(_:)` replaces token. §4.6 line 690.
 - [ ] **Mention push** — server sends APNs to mentioned employee.
 - [ ] **Markdown-lite** — bold / italic / bullet lists / inline code render with `AttributedString`.
 - [ ] **Link detection** — phone / email / URL auto-tappable.
@@ -698,7 +698,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Commit** via `PATCH /tickets/:id/status`; sheet highlights current status with a check, dismisses + refreshes detail on success.
 - [x] **State machine** — `TicketStateMachine` + `TicketStatus` (9 states) + `TicketTransition` (9 actions) in `StateMachine/TicketStateMachine.swift`. `TicketStatusTransitionSheet` shows only allowed transitions; Confirm disabled when illegal. 51 unit tests, 100% transition coverage.
 - [x] **Timeline events** — `TicketTimelineView` + `TicketTimelineViewModel` load `GET /tickets/:id/events`; fallback to embedded `history` on 404/network. Vertical timeline with circle connectors, kind icons, diff chips, Reduce Motion support, full a11y labels. Wired into `TicketDetailView` as sheet + inline preview.
-- [ ] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
+- [x] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet. `ServerColorStatusPill` in `TicketListView` + `StatusChipRow` in `TicketDetailView` both render hex color with auto-contrast foreground (luminance < 0.5 → white). §4.7 line 701.
 - [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
 - [x] **QC sign-off modal** — signature capture (PencilKit `PKCanvasView`), comments, "Work complete" confirm. `TicketSignOffView` + `TicketSignOffViewModel` (GPS if allowed, base-64 PNG, ISO-8601 timestamp). `POST /tickets/:id/sign-off`. Receipt PDF download. Shown when status contains "pickup". Commit `feat(ios post-phase §4)`.
 - [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
