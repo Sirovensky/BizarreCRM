@@ -20,11 +20,21 @@ public struct DashboardSummary: Decodable, Sendable {
     // (server added these fields; decode defensively with defaults)
     public let lowStockCount: Int?
 
+    // §3.1 Week-over-week delta fields (% change vs same day last week).
+    // Server returns these as optional floats: positive = up, negative = down.
+    // Nil means comparison data is unavailable (new tenant, missing history).
+    public let revenueDeltaPct: Double?
+    public let closedDeltaPct: Double?
+    public let appointmentsDeltaPct: Double?
+
     public init(openTickets: Int = 0, revenueToday: Double = 0,
                 closedToday: Int = 0, ticketsCreatedToday: Int = 0,
                 appointmentsToday: Int = 0, avgRepairHours: Double? = nil,
                 inventoryValue: Double = 0,
-                lowStockCount: Int? = nil) {
+                lowStockCount: Int? = nil,
+                revenueDeltaPct: Double? = nil,
+                closedDeltaPct: Double? = nil,
+                appointmentsDeltaPct: Double? = nil) {
         self.openTickets = openTickets
         self.revenueToday = revenueToday
         self.closedToday = closedToday
@@ -33,6 +43,9 @@ public struct DashboardSummary: Decodable, Sendable {
         self.avgRepairHours = avgRepairHours
         self.inventoryValue = inventoryValue
         self.lowStockCount = lowStockCount
+        self.revenueDeltaPct = revenueDeltaPct
+        self.closedDeltaPct = closedDeltaPct
+        self.appointmentsDeltaPct = appointmentsDeltaPct
     }
 
     /// Defensive decode — the server payload returns `revenue_trend` as an
@@ -48,20 +61,26 @@ public struct DashboardSummary: Decodable, Sendable {
         self.closedToday         = (try? c.decode(Int.self, forKey: .closedToday)) ?? 0
         self.ticketsCreatedToday = (try? c.decode(Int.self, forKey: .ticketsCreatedToday)) ?? 0
         self.appointmentsToday   = (try? c.decode(Int.self, forKey: .appointmentsToday)) ?? 0
-        self.avgRepairHours      = try? c.decode(Double.self, forKey: .avgRepairHours)
-        self.inventoryValue      = (try? c.decode(Double.self, forKey: .inventoryValue)) ?? 0
-        self.lowStockCount       = try? c.decode(Int.self, forKey: .lowStockCount)
+        self.avgRepairHours       = try? c.decode(Double.self, forKey: .avgRepairHours)
+        self.inventoryValue       = (try? c.decode(Double.self, forKey: .inventoryValue)) ?? 0
+        self.lowStockCount        = try? c.decode(Int.self, forKey: .lowStockCount)
+        self.revenueDeltaPct      = try? c.decode(Double.self, forKey: .revenueDeltaPct)
+        self.closedDeltaPct       = try? c.decode(Double.self, forKey: .closedDeltaPct)
+        self.appointmentsDeltaPct = try? c.decode(Double.self, forKey: .appointmentsDeltaPct)
     }
 
     enum CodingKeys: String, CodingKey {
-        case openTickets         = "open_tickets"
-        case revenueToday        = "revenue_today"
-        case closedToday         = "closed_today"
-        case ticketsCreatedToday = "tickets_created_today"
-        case appointmentsToday   = "appointments_today"
-        case avgRepairHours      = "avg_repair_hours"
-        case inventoryValue      = "inventory_value"
-        case lowStockCount       = "low_stock_count"
+        case openTickets          = "open_tickets"
+        case revenueToday         = "revenue_today"
+        case closedToday          = "closed_today"
+        case ticketsCreatedToday  = "tickets_created_today"
+        case appointmentsToday    = "appointments_today"
+        case avgRepairHours       = "avg_repair_hours"
+        case inventoryValue       = "inventory_value"
+        case lowStockCount        = "low_stock_count"
+        case revenueDeltaPct      = "revenue_delta_pct"
+        case closedDeltaPct       = "closed_delta_pct"
+        case appointmentsDeltaPct = "appointments_delta_pct"
     }
 }
 

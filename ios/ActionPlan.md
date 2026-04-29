@@ -452,10 +452,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
 - [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (feat(§3): HeroMetricCard + StatTileCard wired with bizarrecrm:// deep-links, openURL, hoverEffect; 09e6a602)
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
-- [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
+- [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field (`revenue_delta_pct`, `closed_delta_pct`, `appointments_delta_pct`) decoded into `DashboardSummary`; `secondaryGrid` switched to `StatTileCardWithDelta`; badge hidden (nil) when server omits the field (new tenants / old server versions). (`DashboardDeltaBadge.swift` + `DashboardSummary` delta fields + `DashboardView.secondaryGrid`)
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (feat(§3): DashboardSkeletonView glass shimmer, Reduce Motion safe; 4ecb468d)
 - [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (feat(§3): kpiGridColumnCount + fourColumnIfWide + adaptive columns; 4ecb468d)
+- [x] **Weekly summary banner** — collapsible glass card showing week-to-date revenue, tickets closed, avg ticket value. Fetches `GET /api/v1/reports/weekly-summary`; hides itself on 404 (endpoint not yet implemented). (`Dashboard/WeeklySummaryBanner.swift`)
+- [x] **Business tip of the day** — rotating locally-seeded tip (20 tips, cycled by day-of-year); dismissible per-day via `UserDefaults`; reappears automatically next day. Orange accent, glass chrome header. (`Dashboard/BusinessTipCard.swift`)
+- [x] **Time-spent-today widget** — read-only clock summary for the signed-in employee; fetches `GET /api/v1/employees/:id/timeclock/today`; live-ticks every 60 s while clocked in; hides for untimed roles (404). (`Dashboard/TimeSpentTodayWidget.swift`)
+- [x] **Leaderboard preview** — compact 3-row snapshot of the tech leaderboard on the main dashboard; reuses `TechLeaderboardViewModel`/`DashboardBIRepository`; "See all" → `onSeeFullLeaderboard` callback. (`Dashboard/LeaderboardPreviewCard.swift`)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 

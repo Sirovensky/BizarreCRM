@@ -69,6 +69,13 @@ public struct DashboardView: View {
     // happens immediately; server call fires async.
     public var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
 
+    // §3 Leaderboard preview — "See all" navigates host to full BI grid.
+    public var onSeeFullLeaderboard: (() -> Void)?
+
+    // §3 Time spent today — current user ID for GET /employees/:id/timeclock/today.
+    // Defaults to 0 (stub) until /auth/me wiring lands.
+    public var currentUserId: Int64 = 0
+
     @ObservationIgnored private let api: APIClient
 
     /// - Parameters:
@@ -231,7 +238,9 @@ public struct DashboardView: View {
                     onTapSMSTab: onTapSMSTab,
                     onTapTeamInbox: onTapTeamInbox,
                     onTapGreeting: onTapGreeting,
-                    onDismissAttentionItem: onDismissAttentionItem
+                    onDismissAttentionItem: onDismissAttentionItem,
+                    onSeeFullLeaderboard: onSeeFullLeaderboard,
+                    currentUserId: currentUserId
                 )
                 // §3.14 — Sticky glass banner when showing cached KPIs after a
                 // network failure. Retains last good data so the screen doesn't go blank.
@@ -269,6 +278,10 @@ private struct LoadedBody: View {
     var onTapGreeting: (() -> Void)?
     // §3.3 Dismiss attention item (server-backed)
     var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
+    // §3 Leaderboard preview — "See all" taps navigate to full BI grid.
+    var onSeeFullLeaderboard: (() -> Void)?
+    // §3 Time-spent-today — current user ID for timeclock endpoint (0 = stub).
+    var currentUserId: Int64 = 0
 
     // §22.1 — `fourColumnIfWide` replaced by `dashboardStatGridColumnCount`
     // (GeometryReader-driven) so the grid responds to split-view / Stage Manager
@@ -283,8 +296,15 @@ private struct LoadedBody: View {
                 greeting
                 ClockInOutTile(vm: clockVM)
 
+                // §3 Weekly summary banner — week-to-date revenue / closed / avg ticket.
+                // Hides itself when the endpoint is absent (new tenant or unimplemented).
+                WeeklySummaryBanner(api: api)
+
                 // §3.12 Unread-SMS tile + Team Inbox tile (shown when tenant has inbox)
                 UnreadSMSTile(api: api, onTapSMSTab: onTapSMSTab, onTapTeamInbox: onTapTeamInbox)
+
+                // §3 Time spent today — read-only timeclock summary; hides for untimed roles.
+                TimeSpentTodayWidget(api: api, userId: currentUserId)
 
                 // §3.1 / §3.14 — New-tenant empty state replaces KPI grid
                 // when the shop has never had any activity.
@@ -295,6 +315,7 @@ private struct LoadedBody: View {
                     )
                 } else {
                     heroCard
+                    // §3.1 week-over-week delta tiles (StatTileCardWithDelta)
                     secondaryGrid
                 }
 
@@ -309,6 +330,16 @@ private struct LoadedBody: View {
                     onMarkReady: onMyQueueMarkReady,
                     onComplete: onMyQueueComplete
                 )
+
+                // §3 Leaderboard preview — compact 3-row snapshot; tap → full BI grid.
+                // Shown below My Queue so operational info leads.
+                LeaderboardPreviewCard(
+                    vm: TechLeaderboardViewModel(repo: DashboardBIRepositoryImpl(api: api)),
+                    onSeeAll: onSeeFullLeaderboard
+                )
+
+                // §3 Business tip of the day — rotating local tips; dismissible daily.
+                BusinessTipCard()
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.sm)
@@ -372,17 +403,19 @@ private struct LoadedBody: View {
     //   11" full-screen / 13" split (600–899 pt): 3 columns
     //   13" full-screen landscape (≥ 900 pt): 4 columns
     // §3.1: each tile deep-links to the filtered list via bizarrecrm:// scheme.
+    // §3.1 week-over-week: tiles show green/red delta badge when server returns
+    //   revenue_delta_pct / closed_delta_pct / appointments_delta_pct fields.
     private var secondaryGrid: some View {
         let s = snapshot.summary
-        let tiles: [StatTile] = [
+        let tiles: [KpiTileItemWithDelta] = [
             .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle",
-                  deepLink: "bizarrecrm://reports/revenue"),
+                  delta: s.revenueDeltaPct),
             .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal",
-                  deepLink: "bizarrecrm://tickets?status_group=closed"),
+                  delta: s.closedDeltaPct),
             .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar",
-                  deepLink: "bizarrecrm://appointments?date=today"),
+                  delta: s.appointmentsDeltaPct),
             .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox",
-                  deepLink: "bizarrecrm://inventory"),
+                  delta: nil),
         ]
 
         return GeometryReader { geo in
@@ -396,19 +429,14 @@ private struct LoadedBody: View {
             )
             LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
                 ForEach(tiles) { tile in
-                    StatTileCard(
-                        tile: tile,
-                        onTap: tile.destination.flatMap { dest -> (@MainActor () -> Void)? in
-                            guard let handler = onTileTap else { return nil }
-                            return { @MainActor in handler(dest) }
-                        }
-                    )
+                    StatTileCardWithDelta(tile: tile, onTap: nil)
                 }
             }
         }
         // Intrinsic height: 2 rows × 92 pt tile height + spacing. GeometryReader
         // collapses to zero height without an explicit frame.
-        .frame(height: 2 * 92 + BrandSpacing.md)
+        // Delta badges add ~18 pt; allow extra headroom so they're not clipped.
+        .frame(height: 2 * 110 + BrandSpacing.md)
     }
 
     @ViewBuilder
