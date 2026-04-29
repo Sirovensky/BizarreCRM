@@ -78,7 +78,7 @@ public struct PosIPadCartPanel: View {
             // Charge / Save-edit-first footer
             chargeFooter
                 .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
         }
         .accessibilityIdentifier("pos.ipad.cartPanel")
     }
@@ -87,23 +87,20 @@ public struct PosIPadCartPanel: View {
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
         HStack(spacing: BrandSpacing.md) {
-            // 42pt teal avatar with strokeBorder ring (mockup: box-shadow 0 0 0 1px rgba(255,255,255,0.12))
+            // 42pt neutral avatar — surface tile with subtle ring + initials.
+            // The earlier teal gradient pulled the eye out of the cream/orange
+            // brand ramp; cashier feedback flagged it as the "colored customer
+            // icon" that broke the smooth-river feel.
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.bizarreOnSurface.opacity(0.06))
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.bizarreOnSurface.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(Color.bizarreOnSurface.opacity(0.18), lineWidth: 1)
                     )
                 Text(customer.initials)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x002D35))
+                    .foregroundStyle(.bizarreOnSurface)
             }
             .frame(width: 42, height: 42)
             .accessibilityHidden(true)
@@ -346,12 +343,14 @@ public struct PosIPadCartPanel: View {
         let isEditing = editingItemId != nil
         return Group {
             if isEditing {
-                // Inspector open — Charge disabled (mockup: "Save edit first")
+                // Inspector open — Charge disabled (mockup: "Save edit first").
+                // Same compact footprint as the live Charge button to keep
+                // the cart bottom edge stable when the inspector toggles.
                 Text("Save edit first")
                     .font(.brandTitleSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .padding(.vertical, 8)
                     .background(Color.bizarreSurface2.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
@@ -365,19 +364,19 @@ public struct PosIPadCartPanel: View {
                 } label: {
                     HStack(spacing: BrandSpacing.sm) {
                         Text(cart.isFullyTendered ? "Complete" : "Charge")
-                            .font(.brandTitleMedium())
+                            .font(.brandTitleSmall())
                         Text(CartMath.formatCents(
                             cart.appliedTenders.isEmpty ? cart.totalCents : cart.remainingCents
                         ))
-                        .font(.brandTitleMedium())
+                        .font(.brandTitleSmall())
                         .monospacedDigit()
                         Spacer()
                         Text("⌘ P")
-                            .font(.system(size: 14))
+                            .font(.system(size: 12))
                     }
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .padding(.vertical, 17)
-                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
                     .foregroundStyle(Color(hex: 0x2B1400))
                     .background(
                         LinearGradient(
@@ -385,7 +384,7 @@ public struct PosIPadCartPanel: View {
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        in: RoundedRectangle(cornerRadius: 18)
+                        in: RoundedRectangle(cornerRadius: 14)
                     )
                     .overlay(
                         // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
@@ -395,10 +394,10 @@ public struct PosIPadCartPanel: View {
                             startRadius: 0,
                             endRadius: 60
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18)
+                        RoundedRectangle(cornerRadius: 14)
                             .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1.5)
                     )
                 }

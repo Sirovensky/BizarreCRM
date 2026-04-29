@@ -55,17 +55,24 @@ public struct PosRepairDevicePickerView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 16)
                     } else {
-                        // "On file" section
-                        let savedOptions = devicePickerVM.options.filter {
-                            if case .addNew = $0 { return false }
-                            return true
+                        // Real customer assets only — `.noSpecificDevice` is
+                        // bucketed below as "Or skip device" so the "On file"
+                        // count reflects actual saved devices.
+                        let assetOptions = devicePickerVM.options.filter {
+                            if case .asset = $0 { return true }
+                            return false
                         }
-                        if !savedOptions.isEmpty {
-                            sectionLabel("On file · \(savedOptions.count)")
+                        let hasNoSpecific = devicePickerVM.options.contains {
+                            if case .noSpecificDevice = $0 { return true }
+                            return false
+                        }
+
+                        if !assetOptions.isEmpty {
+                            sectionLabel("On file · \(assetOptions.count)")
                                 .padding(.horizontal, 16)
 
                             VStack(spacing: 8) {
-                                ForEach(savedOptions) { option in
+                                ForEach(assetOptions) { option in
                                     deviceCard(option: option)
                                 }
                             }
@@ -79,6 +86,15 @@ public struct PosRepairDevicePickerView: View {
 
                         addNewDeviceCard
                             .padding(.horizontal, 16)
+
+                        if hasNoSpecific {
+                            sectionLabel("Or skip device")
+                                .padding(.horizontal, 16)
+                                .padding(.top, 16)
+
+                            deviceCard(option: .noSpecificDevice)
+                                .padding(.horizontal, 16)
+                        }
                     }
                     Spacer().frame(height: 20)
                 }
@@ -129,24 +145,36 @@ public struct PosRepairDevicePickerView: View {
                 errorRow(message: error)
                     .padding(.top, 12)
             } else {
-                let savedOptions = devicePickerVM.options.filter {
-                    if case .addNew = $0 { return false }
-                    return true
+                // Real customer assets only — sentinels (`.addNew`,
+                // `.noSpecificDevice`) are bucketed into their own sections
+                // below so the "On file · N" count reflects the actual
+                // number of devices saved against this customer.
+                let assetOptions = devicePickerVM.options.filter {
+                    if case .asset = $0 { return true }
+                    return false
+                }
+                let hasNoSpecific = devicePickerVM.options.contains {
+                    if case .noSpecificDevice = $0 { return true }
+                    return false
                 }
 
-                if !savedOptions.isEmpty {
-                    sectionLabel("On file · \(savedOptions.count)")
+                if !assetOptions.isEmpty {
+                    sectionLabel("On file · \(assetOptions.count)")
 
                     VStack(spacing: 10) {
-                        ForEach(savedOptions) { option in
+                        ForEach(assetOptions) { option in
                             deviceCard(option: option)
                         }
                     }
                 }
 
                 sectionLabel("Add new")
-
                 addNewDeviceCard
+
+                if hasNoSpecific {
+                    sectionLabel("Or skip device")
+                    deviceCard(option: .noSpecificDevice)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
