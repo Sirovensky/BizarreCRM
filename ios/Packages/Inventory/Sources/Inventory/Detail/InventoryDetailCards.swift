@@ -390,6 +390,10 @@ public struct SupplierPanelCard: View {
         if let lead = d.leadTimeDays {
             KeyValRow(key: "Lead time", value: "\(lead) day\(lead == 1 ? "" : "s")")
         }
+        // §6.9 Supplier-prefer toggle — marks this supplier as the preferred source.
+        Divider()
+            .padding(.vertical, BrandSpacing.xxs)
+        SupplierPreferToggle(itemId: item.id, supplierName: d.name)
     }
 
     @MainActor

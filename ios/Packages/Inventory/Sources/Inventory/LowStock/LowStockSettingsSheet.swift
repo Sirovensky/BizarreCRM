@@ -5,9 +5,10 @@ import Networking
 
 // MARK: - LowStockSettingsSheet
 
-/// A sheet that lets users configure low-stock thresholds:
+/// A sheet that lets users configure low-stock thresholds and email alert settings:
 ///   - Global default threshold (applies to all items without an override)
 ///   - Per-item threshold overrides (displayed for the provided item list)
+///   - Email alert toggle — sends a digest to a nominated address when alerts fire
 ///
 /// All edits are returned via `onSave` as a new `LowStockThreshold` value —
 /// the caller owns persistence.
@@ -29,7 +30,7 @@ public struct LowStockSettingsSheet: View {
     private let items: [InventoryListItem]
     private let onSave: (LowStockThreshold) -> Void
 
-    // MARK: State
+    // MARK: Threshold state
 
     @State private var globalDefault: Int
     /// Tracks edited per-item values as strings for TextField binding.
@@ -37,7 +38,22 @@ public struct LowStockSettingsSheet: View {
     /// Tracks which items have overrides toggled on.
     @State private var itemOverrideEnabled: [Int64: Bool]
 
+    // MARK: Email alert state (§6.4 low-stock email alert toggle)
+
+    /// Whether the low-stock email digest is enabled.
+    /// Persisted in `UserDefaults` under `LowStockSettings.emailAlertsEnabled`.
+    @State private var emailAlertsEnabled: Bool
+    /// Email address to receive the digest.
+    /// Persisted in `UserDefaults` under `LowStockSettings.alertEmail`.
+    @State private var alertEmail: String
+
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var emailFieldFocused: Bool
+
+    // MARK: UserDefaults keys
+
+    private static let udEmailEnabled = "LowStockSettings.emailAlertsEnabled"
+    private static let udAlertEmail   = "LowStockSettings.alertEmail"
 
     // MARK: Init
 
@@ -58,6 +74,12 @@ public struct LowStockSettingsSheet: View {
         }
         _itemOverrideText = State(wrappedValue: textMap)
         _itemOverrideEnabled = State(wrappedValue: enabledMap)
+        _emailAlertsEnabled = State(
+            wrappedValue: UserDefaults.standard.bool(forKey: Self.udEmailEnabled)
+        )
+        _alertEmail = State(
+            wrappedValue: UserDefaults.standard.string(forKey: Self.udAlertEmail) ?? ""
+        )
     }
 
     // MARK: Body
@@ -68,6 +90,7 @@ public struct LowStockSettingsSheet: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 Form {
                     globalSection
+                    emailAlertSection
                     if !items.isEmpty {
                         perItemSection
                     }
@@ -121,6 +144,48 @@ public struct LowStockSettingsSheet: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .listRowBackground(Color.bizarreSurface1)
+    }
+
+    // MARK: - Email alert section (§6.4)
+
+    private var emailAlertSection: some View {
+        Section {
+            Toggle(isOn: $emailAlertsEnabled.animation()) {
+                Label("Email alerts", systemImage: "envelope.badge")
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Low-stock email alerts \(emailAlertsEnabled ? "on" : "off")")
+
+            if emailAlertsEnabled {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "at")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    TextField("Alert email address", text: $alertEmail)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($emailFieldFocused)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .accessibilityLabel("Alert email address")
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        } header: {
+            Text("Notifications")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        } footer: {
+            Text("When enabled, a low-stock digest is emailed to the address above each time alerts are detected.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .listRowBackground(Color.bizarreSurface1)
+        .animation(.easeInOut(duration: 0.2), value: emailAlertsEnabled)
     }
 
     // MARK: - Per-item section
@@ -206,6 +271,14 @@ public struct LowStockSettingsSheet: View {
     }
 
     private func saveAndDismiss() {
+        // Persist email alert preferences.
+        UserDefaults.standard.set(emailAlertsEnabled, forKey: Self.udEmailEnabled)
+        UserDefaults.standard.set(
+            alertEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.udAlertEmail
+        )
+
+        // Build and return the threshold configuration.
         var result = LowStockThreshold(globalDefault: globalDefault, overrides: [:])
         for item in items {
             guard itemOverrideEnabled[item.id] == true else { continue }

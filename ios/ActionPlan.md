@@ -1018,6 +1018,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail. (`Detail/InventoryDetailCards.swift` `PriceHistoryCard` — AreaMark + LineMark, cost/retail toggle Picker, AXChartDescriptor; graceful fallback when endpoint absent. feat(§6/§10) b5ae5c51)
 - [x] **Sales history** — last 30d sold qty × revenue line chart. (`Detail/InventoryDetailCards.swift` `SalesHistoryCard` — 30d BarMark, total units + revenue tiles; graceful fallback. feat(§6/§10) b5ae5c51)
 - [x] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time. (`Detail/InventoryDetailCards.swift` `SupplierPanelCard` — tel:/mailto: Links, lead time days, `GET /api/v1/inventory/:id/supplier`; fallback to supplierName on model. feat(§6/§10) b5ae5c51)
+- [x] **Supplier-prefer toggle** — `SupplierPreferToggle` Toggle row at bottom of `SupplierPanelCard`; starred badge animates in when preferred; preference persisted in `UserDefaults` keyed by `preferredSupplier.<itemId>`. (`Detail/SupplierPreferToggle.swift` + wired into `InventoryDetailCards.swift` `supplierRows` — feat(§6.2): supplier-prefer toggle)
 - [x] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier. (`Detail/InventoryDetailCards.swift` `AutoReorderRuleCard` — threshold + qty TextFields; `PATCH /api/v1/inventory/:id/reorder-rule`; success checkmark animation. feat(§6/§10) b5ae5c51)
 - [x] **Bin location** — text field + picker (Settings → Inventory → Bin Locations). (`Detail/InventoryDetailCards.swift` `BinLocationCard` — monospaced TextField, `PATCH /api/v1/inventory/:id`; success animation. feat(§6/§10) b5ae5c51)
 - [x] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each. (`ItemSerialsCard` — status chip, invoice#, sold date; rendered when `isSerialized==1`. feat(§6.2): fa048dcc)
@@ -1036,12 +1037,14 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Validation** — decimal for prices (2 places), integer for stock. Name + SKU required.
 - [x] **Category Picker** + **currency TextField** for cost/retail cents. **Draft autosave** to `UserDefaults` on every field change; restored on re-open. (feat(ios phase-4 §6))
 - [x] **Save & add another** secondary CTA. (`InventoryCreateView.resetForAddAnother()` + `InventoryFullFormView` secondary button; resets all fields after save. feat(§6.3) b5)
+- [x] **Dimensions input formatter** — `DimensionsInputView` three-field W × H × D component with live formatted preview (`"W × H × D cm"`); decimal keyboard; non-numeric characters stripped on change; unit label configurable. (`Create/DimensionsInputView.swift` — feat(§6.3): dimensions input formatter)
 - [x] **Offline create** — temp ID + queue via `InventoryOfflineQueue`; `PendingSyncInventoryId = -1` sentinel.
 
 ### 6.4 Edit
 - [x] All fields editable (cost/price role gating TBD) — `Inventory/InventoryEditView`.
 - [x] **Stock adjust** — `InventoryAdjustSheet` + `InventoryAdjustViewModel` wired. `POST /inventory/:id/adjust-stock` with delta + 6-reason picker (Recount/Shrinkage/Damage/Receive/Transfer/Other) + notes. Commit `0f43c61`. 404/501 → `APITransportError.notImplemented` surfaces "Coming soon" banner.
 - [x] **Low-stock alerts view** — `InventoryLowStockView` lists items below reorder_level with shortage badge; swipe → `InventoryAdjustSheet`. Toolbar "Low stock" ⌘⇧L on Inventory list.
+- [x] **Low-stock email alert toggle** — `LowStockSettingsSheet` gains "Notifications" section: `Toggle` to enable email digest + `TextField` for recipient address; persisted in `UserDefaults` (`LowStockSettings.emailAlertsEnabled` / `LowStockSettings.alertEmail`); email field animates in/out when toggle changes. (`LowStock/LowStockSettingsSheet.swift` — feat(§6.4): low-stock email alert toggle)
 - [x] **Move between locations** (multi-location tenants). (`MoveToLocationSheet` — `InventoryLocation` DTO; `APIClient.inventoryTransferLocations` GET /api/v1/locations; `MoveToLocationViewModel` auto-dispatches transfer on confirm; secondary toolbar ⌘⇧M in `InventoryDetailView`; sourceLocationId §60 integration pending Agent 8/9. feat(§6.4) b10 8f0e3da5)
 - [x] **Delete** — confirm; prevent if stock > 0 or open PO references it. (`InventoryDetailView.deleteItem()` + confirmationDialog; server returns 409 when stock > 0. feat(§6.4) b5)
 - [x] **Deactivate** — keep history, hide from POS. (`InventoryDetailView.deactivate()` via `DELETE /api/v1/inventory/:id`; sets is_active=0 on server; confirmationDialog warns. feat(§6.4) b5)
@@ -1058,6 +1061,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Summary + reconciliation** — `StocktakeReviewSheet` lists discrepancies; per-shortage write-off reason Picker; offline-pending banner; `POST /inventory/stocktake/:id/finalize`. (feat(ios phase-4 §6))
 - [x] **Receiving** — `ReceivingListView` + `ReceivingDetailView` (scan/enter qty per PO line, over-receipt warning) + `ReceivingReconciliationSheet`; `POST /inventory/receiving/:id/finalize`; offline-queue on network error. (feat(ios phase-4 §6))
 - [x] **Multi-user** — multiple scanners feeding same session via WS events. (`Stocktake/StocktakeMultiUserPresence.swift` — `StocktakePresenceViewModel` actor listens on `stocktake:scan` WS topic; `StocktakePresenceBanner` Liquid Glass banner shows active scanner names + counts + last remote scan badge. feat(§6/§10) b5ae5c51)
+- [x] **Stock-take session UI** — `StocktakeSessionSummaryView` inline progress card in session list; shows scanned vs expected count, `ProgressView` bar, status chip; colour-coded tint (green ≥100% / orange ≥50% / red <50%); derived from `StocktakeSession.counts`; graceful when list endpoint omits counts. (`Stocktake/StocktakeSessionSummaryView.swift` — feat(§6.6): stock-take session summary UI)
 
 ### 6.7 Purchase orders
 - [x] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date. (`PurchaseOrderListView` + `PurchaseOrderListViewModel.Filter` enum; iPhone NavigationStack + iPad NavigationSplitView. feat(§6.7) b7)
@@ -1091,6 +1095,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] Reporting: bundle sell-through vs individual + attach-rate. (deferred to §15 Reports — Agent 6 domain. Discovered.)
 - [x] Use-case: regulated parts (batteries) require lot tracking for recalls (`InventoryLot.swift` — `LotTrackingView` + recall flow. feat(§6.8) b9)
 - [x] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry (`InventoryLot` Decodable model; `isExpired` + `isNearExpiry` computed props. feat(§6.8) b9)
+- [x] **Expiry-date warning row** — `ExpiryDateWarningRow` shown in `LotTrackingView` lot list below each lot row; expired → red triangle + relative date string; near-expiry (<30d) → amber clock badge + days remaining; OK / no expiry → `EmptyView` (hidden). (`Batch/ExpiryDateWarningRow.swift` — feat(§6.8): expiry-date warning row)
 - [x] Sale/use decrements lot FIFO by default (or LIFO per tenant) (`LotDecrementSelector.selectLots(policy:.fifo/.lifo/.fefo)` pure; 12 XCTests pass. feat(§6.8) b9)
 - [x] FEFO alt: expiring-first queue for perishables (paste/adhesive) (`LotDecrementPolicy.fefo` + `LotDecrementSelector` FEFO sort by expiryDate ascending, nil-expiry goes last. feat(§6.8) b9)
 - [x] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach (`LotTrackingView` swipe-to-recall → `LotRepositoryImpl.recall(lotId:)` → `GET /inventory/lots/recall?lot_id=` → `LotRecallResult` with `affectedTickets` list. feat(§6.8) b9)

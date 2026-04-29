@@ -222,7 +222,11 @@ public struct LotTrackingView: View {
         List {
             Section("Lots") {
                 ForEach(vm.lots) { lot in
-                    lotRow(lot)
+                    VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                        lotRow(lot)
+                        // §6.8 — Expiry-date warning row (expired / near-expiry only).
+                        ExpiryDateWarningRow(lot: lot)
+                    }
                 }
             }
         }
