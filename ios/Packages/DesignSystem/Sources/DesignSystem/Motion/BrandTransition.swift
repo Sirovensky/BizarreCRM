@@ -77,4 +77,21 @@ public enum BrandTransition {
             removal:    .opacity.combined(with: .scale(scale: 1.15, anchor: .center))
         )
     }
+
+    // MARK: - Page transition (§30 spring)
+
+    /// Spring-driven page push: enters from trailing, exits to leading.
+    ///
+    /// Paired animation: `BrandMotion.pageTransition` (response 0.36, damping 0.82).
+    /// Use with `.transition(BrandTransition.page(reduceMotion:))` inside a
+    /// `NavigationStack` custom column or a `ZStack`-based paged view.
+    ///
+    /// Reduce Motion fallback: `.opacity`.
+    public static func page(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion:  .move(edge: .trailing).combined(with: .opacity),
+            removal:    .move(edge: .leading).combined(with: .opacity)
+        )
+    }
 }

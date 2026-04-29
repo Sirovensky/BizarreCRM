@@ -40,6 +40,31 @@ public extension BrandMotion {
     /// Specified in §30.6 as the shared interactive-spring baseline.
     /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
     static let brandSpring: Animation = .interactiveSpring(response: 0.30, dampingFraction: 0.75)
+
+    // MARK: §30.6 — Page-transition spring
+
+    /// Spring for full-page push/pop transitions (NavigationStack column or ZStack pager).
+    /// response 0.36 / damping 0.82 — slightly heavier than brandSpring to feel
+    /// anchored when content fills the whole screen.
+    /// Paired transition: `BrandTransition.page(reduceMotion:)`.
+    /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
+    static let pageTransition: Animation = .interactiveSpring(response: 0.36, dampingFraction: 0.82)
+
+    // MARK: §30.7 — Progress-arc animation
+
+    /// Easing used when animating a circular progress arc (e.g., payment ring,
+    /// CoreNFC progress, hold-to-confirm ring).
+    /// 0.55s ease-in-out keeps the arc feel smooth but not sluggish.
+    /// Reduce Motion alt: instant via ReduceMotionFallback.animation.
+    static let progressArc: Animation = .easeInOut(duration: 0.55)
+
+    // MARK: §30.8 — FAB scale-in
+
+    /// Scale-in spring for the floating action button appearance.
+    /// response 0.26 / damping 0.68 — snappier than the base spring so the FAB
+    /// "pops" into place rather than drifting.
+    /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
+    static let fabScaleIn: Animation = .interactiveSpring(response: 0.26, dampingFraction: 0.68)
 }
 
 // MARK: - ReduceMotionFallback §30 convenience
@@ -77,5 +102,20 @@ public extension ReduceMotionFallback {
     /// Pre-resolved token for the canonical brand spring, honouring Reduce Motion.
     static func brandSpring(reduced: Bool) -> Animation? {
         animation(BrandMotion.brandSpring, reduced: reduced)
+    }
+
+    /// Pre-resolved token for page-transition spring, honouring Reduce Motion.
+    static func pageTransition(reduced: Bool) -> Animation? {
+        animation(BrandMotion.pageTransition, reduced: reduced)
+    }
+
+    /// Pre-resolved token for progress-arc animation, honouring Reduce Motion.
+    static func progressArc(reduced: Bool) -> Animation? {
+        animation(BrandMotion.progressArc, reduced: reduced)
+    }
+
+    /// Pre-resolved token for FAB scale-in spring, honouring Reduce Motion.
+    static func fabScaleIn(reduced: Bool) -> Animation? {
+        animation(BrandMotion.fabScaleIn, reduced: reduced)
     }
 }

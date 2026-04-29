@@ -175,7 +175,16 @@ public enum DesignTokens {
         public static let info     = Color("bizarreInfo",     bundle: DesignSystemBundle.bundle)
 
         // Surfaces
+        // Elevation ladder (warm-zinc ramp, §91.16 audit):
+        //  surfaceBase   → page background (SurfaceBase asset)
+        //  cardSurface   → report/dashboard cards one step above page (Surface1 asset)
+        //  surfaceRaised → popovers/chips one step above cards (Surface2 / SurfaceElevated asset)
+        //  surfaceInset  → inset wells inside cards (SurfaceDepth asset)
         public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: DesignSystemBundle.bundle)
+        /// Canonical card background.  All report cards that currently use
+        /// `Color.bizarreSurface1` directly should migrate to this token so a
+        /// palette swap only requires changing the `Surface1` asset entry.
+        public static let cardSurface    = Color("Surface1",               bundle: DesignSystemBundle.bundle)
         public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: DesignSystemBundle.bundle)
         public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: DesignSystemBundle.bundle)
 
@@ -189,6 +198,25 @@ public enum DesignTokens {
         public static let borderSubtle = Color("bizarreDivider",       bundle: DesignSystemBundle.bundle)
         public static let borderStrong = Color("bizarreDividerStrong", bundle: DesignSystemBundle.bundle)
         public static let borderAccent = Color("bizarrePrimary",       bundle: DesignSystemBundle.bundle)
+
+        // MARK: Toast tint colors (§30 — visual / motion / haptics)
+        //
+        // Icon + accent tint for BrandToast chips; map onto existing semantic
+        // palette entries so a palette swap propagates automatically.
+        // Text inside toasts stays `textPrimary` (dark glass surface);
+        // all four tokens are ≥ 4.5:1 on `bizarreSurfaceBase` (§80.4).
+
+        /// Icon/accent tint for a success toast — maps to `bizarreSuccess`.
+        public static let toastSuccess = Color.bizarreSuccess
+
+        /// Icon/accent tint for an error toast — maps to `bizarreError`.
+        public static let toastError   = Color.bizarreError
+
+        /// Icon/accent tint for a warning toast — maps to `bizarreWarning`.
+        public static let toastWarning = Color.bizarreWarning
+
+        /// Icon/accent tint for an info toast — maps to `bizarreInfo`.
+        public static let toastInfo    = Color.bizarreInfo
     }
 
     // MARK: - Skeleton tokens (§30.9 / §29 loading states)

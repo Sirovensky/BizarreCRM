@@ -27,6 +27,11 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case clockIn
     case clockOut
     case signatureCommit
+    /// Fired at the commit threshold when a swipe action is fully revealed and
+    /// released — the moment the destructive / confirm action fires.
+    /// Distinct from `.destructiveConfirm` (that is for modal confirm dialogs);
+    /// this covers `.swipeActions` row gestures that execute without a sheet.
+    case swipeActionCommit
     // §30 — UI-interaction semantic events
     /// Fired on primary button press (replaces raw `.addToCart` light tap at CTA sites).
     case buttonTap
@@ -36,16 +41,6 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case listItemAppear
     /// Fired on card hover-lift (iPad pointer enter, strong enough to be felt on M-series).
     case cardHoverActivate
-    // §30 — Visual / motion / haptics pass
-    /// Fired when a side/bottom drawer finishes its open animation.
-    /// Maps to a medium-heavy thud (UIImpactFeedbackGenerator heavy) per §30
-    /// sound-design spec ("drawer open — thud 250 ms").
-    case drawerOpen
-    /// Fired when a generic success state resolves (form save, sync complete,
-    /// non-POS confirmations). Distinct from `saleComplete` which is POS-only.
-    case successConfirm
-    /// Fired on a hard validation error to accompany the `errorShake` modifier.
-    case errorShake
 }
 
 // MARK: - HapticCatalog
@@ -105,22 +100,19 @@ public enum HapticCatalog: Sendable {
             g.prepare()
             g.notificationOccurred(.success)
 
-        case .scanFail, .validationError, .cardDeclined, .errorShake:
+        case .scanFail, .validationError, .cardDeclined:
             let g = UINotificationFeedbackGenerator()
             g.prepare()
             g.notificationOccurred(.error)
 
-        case .successConfirm:
-            let g = UINotificationFeedbackGenerator()
-            g.prepare()
-            g.notificationOccurred(.success)
-
-        case .destructiveConfirm, .drawerKick, .drawerOpen:
+        case .destructiveConfirm, .drawerKick:
             let g = UIImpactFeedbackGenerator(style: .heavy)
             g.prepare()
             g.impactOccurred()
 
-        case .addToCart, .scanSuccess, .longPressMenu:
+        case .addToCart, .scanSuccess, .longPressMenu, .swipeActionCommit:
+            // .swipeActionCommit uses medium impact — decisive enough to feel the commit
+            // threshold without the heavy thud reserved for destructive modals.
             let g = UIImpactFeedbackGenerator(style: .medium)
             g.prepare()
             g.impactOccurred()
