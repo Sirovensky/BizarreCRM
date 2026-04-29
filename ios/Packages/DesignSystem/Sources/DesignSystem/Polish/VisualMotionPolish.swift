@@ -186,6 +186,9 @@ private struct RefreshShimmerOverlay: View {
                 startPoint: .leading,
                 endPoint: .trailing
             )
+            // §91.13 — Decorative shimmer gradient carries no data; hide from
+            // VoiceOver/Switch Control so assistive technologies skip it.
+            .decorativeGradient()
             .frame(width: w * 2)
             .offset(x: phase * w)
             .onAppear {

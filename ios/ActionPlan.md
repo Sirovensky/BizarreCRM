@@ -8333,8 +8333,12 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Many label texts under 12pt** (period units, axis labels, KPI captions).
 - [ ] **Chart color-only encoding** — VoiceOver / Switch Control can't read which color is which status.
 - [ ] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
-- [ ] **No accessibility labels on charts.** Charts need a textual summary for VoiceOver.
+- [x] **No accessibility labels on charts.** `ChartScreenshotAltText` modifier + `.chartScreenshotAltText()` wired to `ZoomableRevenueChartCard`; `AXChartDescriptor` already present on `RevenueChartCard`.
 - [ ] **Sync chip `Just now` with no `accessibilityLabel`** — VoiceOver reads only "Just now" without context.
+- [x] **Dynamic type clamp on Reports sub-tab pills.** `.dynamicTypeSize(.xSmall ... .accessibility3)` + `.lineLimit(1)` on tab pill labels in `subTabPicker` (`ReportsView.swift`).
+- [x] **VoiceOver bypass for decorative gradients.** `DecorativeGradientModifier` / `.decorativeGradient()` in `DesignSystem/Accessibility/`; applied to `RefreshShimmerOverlay` in `VisualMotionPolish.swift`.
+- [x] **Focus-loop test helper.** `AccessibilityFocusOrder` + `RecordFocusVisitModifier` / `.recordFocusVisit(id:into:)` in `DesignSystem/Accessibility/FocusLoopTestHelper.swift`.
+- [x] **Switch-control timer extension.** `SwitchControlGroupModifier` / `.switchControlGroup(label:hint:)` + `SwitchControlTimingToken` in `DesignSystem/Accessibility/SwitchControlTimerExtension.swift`; applied to `ZoomableRevenueChartCard`.
 
 ### 91.14 SMS engineering follow-up
 

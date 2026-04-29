@@ -321,6 +321,14 @@ public struct ReportsView: View {
                     } label: {
                         Label(tab.displayLabel, systemImage: tab.systemImage)
                             .font(.brandLabelSmall())
+                            // §91.13 — clamp Dynamic Type on tab pills so they stay
+                            // on one line across all accessibility sizes.  The pill row
+                            // is inside a horizontal ScrollView so larger sizes simply
+                            // scroll; clamping at accessibility3 prevents layout
+                            // explosion while remaining readable at the largest
+                            // non-accessibility size (xxxLarge).
+                            .dynamicTypeSize(.xSmall ... .accessibility3)
+                            .lineLimit(1)
                             .padding(.horizontal, BrandSpacing.md)
                             .padding(.vertical, BrandSpacing.sm)
                             .foregroundStyle(vm.selectedSubTab == tab ? .white : .bizarreOnSurface)
@@ -498,6 +506,21 @@ public struct ReportsView: View {
                 comparePeriod: vm.comparePeriod,
                 overallVariancePct: vm.compareVariancePct ?? vm.salesTotals.revenueChangePct,
                 onDrillThrough: { pt in drillContext = .revenue(date: pt.date) }
+            )
+            // §91.13 — alt-text for chart screenshots: label the card as a
+            // static image with a narrative summary so VoiceOver reads it
+            // correctly when the view is exported or shared as an image.
+            .chartScreenshotAltText(
+                "Revenue trend chart for the selected period. "
+                + "Total: \(String(format: "$%.2f", vm.revenueTotalDollars)). "
+                + "Tap a data point to drill through to daily transactions."
+            )
+            // §91.13 — Switch Control timer extension: collapse the chart card
+            // (which has zoom gestures, drill overlay, and compare controls) into
+            // a single scan stop so auto-scanning doesn't thrash across sub-elements.
+            .switchControlGroup(
+                label: "Revenue chart. Total \(String(format: "$%.2f", vm.revenueTotalDollars)) for period.",
+                hint: "Double-tap to interact with chart."
             )
             // §15.2 Revenue by payment method pie
             RevenueByMethodPieCard(points: vm.revenueByMethod)
