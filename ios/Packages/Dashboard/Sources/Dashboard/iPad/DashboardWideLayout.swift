@@ -155,12 +155,21 @@ struct WideAttentionItem: Identifiable {
     let label: String
     let count: Int
     let icon: String
+    /// When true the badge renders in `.bizarreError` (red) instead of
+    /// `.bizarreWarning` (amber). Set for low-stock: out-of-parts blocks repairs.
+    var accentIsError: Bool = false
 }
 
 // MARK: - Attention row
 
 private struct WideAttentionRow: View {
     let item: WideAttentionItem
+
+    /// Badge color: error (red) for low-stock, warning (amber) for everything else.
+    private var badgeColor: Color {
+        guard item.count > 0 else { return .bizarreOnSurfaceMuted }
+        return item.accentIsError ? .bizarreError : .bizarreWarning
+    }
 
     var body: some View {
         HStack {
@@ -176,7 +185,7 @@ private struct WideAttentionRow: View {
             Spacer(minLength: BrandSpacing.xs)
             Text("\(item.count)")
                 .font(.brandTitleSmall())
-                .foregroundStyle(item.count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
+                .foregroundStyle(badgeColor)
                 .monospacedDigit()
                 .textSelection(.enabled)
         }
@@ -198,6 +207,7 @@ func attentionItemsForWide(from attention: NeedsAttention) -> [WideAttentionItem
         .init(label: "Stale tickets",    count: attention.staleTickets.count,    icon: "clock.badge.exclamationmark"),
         .init(label: "Overdue invoices", count: attention.overdueInvoices.count, icon: "doc.badge.exclamationmark"),
         .init(label: "Missing parts",    count: attention.missingPartsCount,     icon: "shippingbox.badge.clock"),
-        .init(label: "Low stock",        count: attention.lowStockCount,         icon: "exclamationmark.triangle"),
+        // §3.1 — low-stock badge is error-red (not warning-amber): parts shortage blocks repairs.
+        .init(label: "Low stock",        count: attention.lowStockCount,         icon: "exclamationmark.triangle", accentIsError: true),
     ]
 }
