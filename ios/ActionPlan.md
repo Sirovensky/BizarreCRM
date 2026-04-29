@@ -3069,10 +3069,13 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Scope chips** — EntityFilter chip bar (All / Tickets / Customers / Inventory / Invoices / Estimates / Appointments) wired into GlobalSearchView + EntitySearchView. (feat(ios post-phase §18))
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
+- [x] **Search-recent dedup helper** — `RecentSearchDeduplicator` pure-logic helper normalises (trim, collapse whitespace, truncate at 120 chars) and case-insensitive deduplicates query lists before persist; `prepending(_:to:)` + `removing(_:from:)` + `normalise(_:)` APIs. (`Search/Recent/RecentSearchDeduplicator.swift`; this commit)
+- [x] **Query-history clear action** — `QueryHistoryClearAction` (`ToolbarContent`) + `QueryHistoryClearButton` (list-footer variant); both present a confirmation dialog before calling `RecentSearchStore.clear()` + caller-provided `onCleared` async callback. (`Search/Recent/QueryHistoryClearAction.swift`; this commit)
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
 - [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.emptyStateWithRecent`; 30ae5799)
 - [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.noResultsView`; 30ae5799)
 - [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
+- [x] **Search-loading skeleton** — shimmer-animated multi-section skeleton cards replace plain `SkeletonRow` list during load; reduces layout shift when results arrive. (`Search/SearchLoadingSkeleton.swift`; `SearchLoadingSkeleton` + `SkeletonResultCard` + `SkeletonShape` shimmer gradient; this commit)
 - [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
@@ -3098,6 +3101,8 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Deep link** — Spotlight tap passes `uniqueIdentifier` → deep link to `/customers/:id` etc. (feat(ios phase-6 §24+§25))
 - [x] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`. (`Search/Spotlight/SpotlightPreviewBuilder.swift`; `SpotlightPreviewBuilder.enrich()` sets `contentURL` deep-link + `thumbnailData` for tickets/customers/invoices/appointments; `SpotlightPrivacyGate` honours opt-out; agent-9 b13 346d6fe0)
 - [x] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts). (`SpotlightPreviewBuilder.enrich(customer:includeContactDetails:)` gates `phoneNumbers`/`emailAddresses` on `SpotlightPrivacyGate.includeContactDetails`; agent-9 b13 346d6fe0)
+- [x] **NSUserActivity Spotlight indexer** — `SpotlightNSUserActivityIndexer` donates `NSUserActivity` on each entity detail view (`isEligibleForSearch`, `isEligibleForPrediction`, `isEligibleForHandoff`); `configure(_:for:)` overloads for `Ticket`, `Customer`, `InventoryItem`; `contentAttributeSet` populated so CoreSpotlight re-ranks items from actual usage. (`Search/Spotlight/SpotlightNSUserActivityIndexer.swift`; this commit)
+- [x] **Deep-link search result handler** — `SearchResultDeepLinkHandler` maps tapped `SearchHit` / `MergedRow` to a typed `Destination` enum (ticket/customer/inventoryItem/invoice/estimate/appointment); bridge to `SpotlightDeepLinkDestination` for shared-router callers; logs unknown domains. (`Search/SearchResultDeepLinkHandler.swift`; this commit)
 
 ### 18.4 Entity-scoped search
 - [x] **`EntitySearchView`** — search scoped to one entity type via chip selector. `EntitySearchViewModel` (@Observable, 200ms debounce). (feat(ios post-phase §18))
