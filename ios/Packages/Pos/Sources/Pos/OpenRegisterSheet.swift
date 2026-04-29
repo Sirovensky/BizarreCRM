@@ -17,6 +17,15 @@ public struct OpenRegisterSheet: View {
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String?
 
+    /// §14 — Quick-fill preset amounts for the opening float.
+    private static let quickFillAmounts: [(label: String, cents: Int)] = [
+        ("$50",  5000),
+        ("$100", 10000),
+        ("$150", 15000),
+        ("$200", 20000),
+        ("$250", 25000),
+    ]
+
     public init(cashierId: Int64, onOpened: @escaping (CashSessionRecord) -> Void, onCancel: @escaping () -> Void) {
         self.cashierId = cashierId
         self.onOpened = onOpened
@@ -30,6 +39,7 @@ public struct OpenRegisterSheet: View {
                 VStack(spacing: BrandSpacing.lg) {
                     header
                     floatField
+                    quickFillChips
                     if let err = errorMessage {
                         Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreError)
                             .multilineTextAlignment(.center)
@@ -101,6 +111,46 @@ public struct OpenRegisterSheet: View {
         }
     }
 
+    // MARK: - §14 Quick-fill chips
+
+    private var quickFillChips: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text("Quick fill")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityAddTraits(.isHeader)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.sm) {
+                    ForEach(Self.quickFillAmounts, id: \.cents) { preset in
+                        Button {
+                            BrandHaptics.selection()
+                            let dollars = Decimal(preset.cents) / 100
+                            floatText = String(format: "%.2f", NSDecimalNumber(decimal: dollars).doubleValue)
+                            errorMessage = nil
+                        } label: {
+                            Text(preset.label)
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreOrange)
+                                .padding(.horizontal, BrandSpacing.md)
+                                .padding(.vertical, BrandSpacing.xs)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.bizarreOrange.opacity(0.12))
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 1)
+                                )
+                        }
+                        .accessibilityLabel("Set opening float to \(preset.label)")
+                        .accessibilityIdentifier("pos.openRegister.quickFill.\(preset.cents)")
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
     private var openButton: some View {
         Button { Task { await commit() } } label: {
             if isSubmitting {
@@ -135,7 +185,10 @@ public struct OpenRegisterSheet: View {
         errorMessage = nil
         do {
             let record = try await CashRegisterStore.shared.openSession(openingFloat: cents, userId: cashierId)
+            // §14 — float-confirmation haptic: double-tap success pattern so
+            // cashier feels a distinct "drawer opened" confirmation.
             BrandHaptics.success()
+            Task { await HapticCatalog.play(.successConfirm) }
             AppLog.pos.info("POS drawer opened: session=\(record.id ?? -1) float=\(cents)")
             onOpened(record)
         } catch CashRegisterError.alreadyOpen {

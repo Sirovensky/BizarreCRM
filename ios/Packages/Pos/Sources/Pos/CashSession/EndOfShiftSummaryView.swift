@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 import Core
 import DesignSystem
 
@@ -82,6 +83,8 @@ public struct EndOfShiftSummaryView: View {
     public var onStartHandoff: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    // §14 — shift-summary copy button state
+    @State private var didCopySummary: Bool = false
 
     public init(
         card: EndOfShiftCard,
@@ -117,9 +120,53 @@ public struct EndOfShiftSummaryView: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .accessibilityIdentifier("endShift.cancel")
                 }
+                // §14 — shift-summary copy button
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        UIPasteboard.general.string = shiftSummaryText
+                        BrandHaptics.success()
+                        didCopySummary = true
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            didCopySummary = false
+                        }
+                    } label: {
+                        Label(
+                            didCopySummary ? "Copied" : "Copy",
+                            systemImage: didCopySummary ? "checkmark" : "doc.on.doc"
+                        )
+                    }
+                    .accessibilityLabel(didCopySummary ? "Summary copied to clipboard" : "Copy shift summary to clipboard")
+                    .accessibilityIdentifier("endShift.copy")
+                }
             }
         }
         .frame(idealWidth: Platform.isCompact ? nil : 540)
+    }
+
+    // MARK: - §14 Copy helper
+
+    /// Plain-text representation of shift metrics for clipboard copy.
+    private var shiftSummaryText: String {
+        var lines: [String] = [
+            "Shift Summary",
+            "─────────────────",
+            "Gross sales:   \(CartMath.formatCents(card.grossCents))",
+            "Sale count:    \(card.saleCount)",
+            "Tips:          \(CartMath.formatCents(card.tipsCents))",
+            "Cash expected: \(CartMath.formatCents(card.cashExpectedCents))",
+            "Items sold:    \(card.itemsSoldCount)",
+            "Voids:         \(CartMath.formatCents(card.voidsCents))",
+        ]
+        if let gross = card.grossTrendPercent {
+            let sign = gross >= 0 ? "+" : ""
+            lines.append("Gross vs prior: \(sign)\(String(format: "%.1f", gross))%")
+        }
+        if let count = card.saleCountTrendPercent {
+            let sign = count >= 0 ? "+" : ""
+            lines.append("Sales vs prior: \(sign)\(String(format: "%.1f", count))%")
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Header
