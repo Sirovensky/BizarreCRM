@@ -75,6 +75,10 @@ public struct SmsThreadView: View {
                     .padding(.horizontal, BrandSpacing.base)
                     .padding(.vertical, BrandSpacing.md)
                 }
+                // §22 §3709 — interactive scroll-dismiss lets the user swipe
+                // the message list upward to hide the keyboard without an extra
+                // tap. The composer bar stays at the bottom via safeAreaInset.
+                .scrollDismissesKeyboard(.interactively)
                 .onChange(of: thread.messages.count) { _, _ in
                     if let lastId = thread.messages.last?.id {
                         withAnimation { proxy.scrollTo(lastId, anchor: .bottom) }
