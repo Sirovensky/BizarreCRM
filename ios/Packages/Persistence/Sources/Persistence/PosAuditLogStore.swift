@@ -83,12 +83,15 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
     /// Human-readable label for the event type badge in the audit log UI.
     public var eventTypeLabel: String {
         switch eventType {
-        case "void_line":           return "Void line"
-        case "no_sale":             return "No sale"
-        case "discount_override":   return "Discount override"
-        case "price_override":      return "Price override"
-        case "delete_line":         return "Delete line"
-        default:                    return eventType
+        case "void_line":             return "Void line"
+        case "no_sale":               return "No sale"
+        case "discount_override":     return "Discount override"
+        case "price_override":        return "Price override"
+        case "delete_line":           return "Delete line"
+        case "manager_approved_refund": return "Manager refund"
+        case "cash_drop":             return "Cash drop"
+        case "drawer_open":           return "Drawer opened"
+        default:                      return eventType
         }
     }
 
@@ -109,6 +112,13 @@ public extension PosAuditEntry {
         public static let managerApprovedRefund  = "manager_approved_refund"
         /// §16.10 — Mid-shift cash removal from the drawer to the safe.
         public static let cashDrop               = "cash_drop"
+        /// §16.8 / §16.11 — Physical cash drawer was opened. Recorded by
+        /// `PosDrawerKickService` every time a kick command is sent, regardless
+        /// of whether the drawer actually opens (hardware confirmation is async).
+        /// `reason` carries the tender method(s) that triggered the kick
+        /// (e.g. "cash" or "cash, check"). Used by loss-prevention reports to
+        /// surface unexpected drawer opens.
+        public static let drawerOpen             = "drawer_open"
     }
 }
 
