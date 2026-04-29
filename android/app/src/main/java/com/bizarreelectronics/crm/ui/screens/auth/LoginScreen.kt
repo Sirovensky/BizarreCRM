@@ -6,8 +6,10 @@ import android.net.Uri
 import android.util.Base64
 import timber.log.Timber
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.Image
@@ -289,6 +291,11 @@ data class LoginUiState(
     val domainSsoDetected: Boolean = false,
     val domainSsoProviderId: String? = null,
     val domainSsoChecking: Boolean = false,
+    // §26.4 — incremented on each wrong-credential (401) error so [CredentialsStep]
+    // can fire a shake animation (or static red border when Reduce Motion is on).
+    // Using a counter rather than a boolean means rapid retries each get a distinct
+    // trigger value and [LaunchedEffect] re-fires reliably on every wrong attempt.
+    val credentialShakes: Int = 0,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -1069,11 +1076,17 @@ class LoginViewModel @Inject constructor(
                     return@launch
                 }
                 val errorMsg = extractErrorMessage(e)
+                // §26.4 — increment credentialShakes on 401 (wrong creds) so
+                // CredentialsStep fires a shake animation (or red border under Reduce Motion).
+                val isWrongCredential = e is retrofit2.HttpException && e.code() == 401
                 _state.value = _state.value.copy(
                     isLoading = false,
                     unreachableHost = false,
                     rateLimited = false,
                     error = errorMsg,
+                    credentialShakes = if (isWrongCredential)
+                        _state.value.credentialShakes + 1
+                    else _state.value.credentialShakes,
                 )
             }
         }
@@ -2934,6 +2947,46 @@ private fun CredentialsStep(
     // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
+    // §26.4 — Wrong-credential shake animation + Reduce Motion static red border.
+    //
+    // When the server returns 401 the VM increments [LoginUiState.credentialShakes].
+    // This LaunchedEffect fires on every new distinct value:
+    //   - reduceMotion OFF  → horizontal shake (Animatable offset) to match §2.12-L364
+    //                         spec "shake animation + REJECT haptic". The shake
+    //                         sequence mirrors PinDots: 4-stop asymmetric wobble.
+    //   - reduceMotion ON   → skip all translation; [showCredentialErrorBorder] is true
+    //                         so the password field gets a 2dp error-colored border,
+    //                         giving a static-but-visible error cue without any motion.
+    //
+    // Haptic: REJECT fires on wrong credential regardless of reduce-motion (non-motion
+    // feedback channel per §26.8 — haptics are always an acceptable confirmation signal).
+    val ctx = LocalContext.current
+    val credReduceMotion = remember(ctx) {
+        Settings.Global.getFloat(
+            ctx.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }
+    val credShakeOffset = remember { Animatable(0f) }
+    // showCredentialErrorBorder is true when reduce-motion is active AND at least one
+    // wrong-credential attempt has happened. Resets to false when the user changes the
+    // password field (error is cleared by updatePassword → state.error = null).
+    val showCredentialErrorBorder = credReduceMotion && state.credentialShakes > 0 && state.error != null
+    val credHaptic = LocalHapticFeedback.current
+
+    LaunchedEffect(state.credentialShakes) {
+        if (state.credentialShakes == 0) return@LaunchedEffect
+        // §26.8 — REJECT haptic fires regardless of reduce-motion (non-motion cue).
+        credHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (credReduceMotion) return@LaunchedEffect  // §26.4: border replaces shake
+        // §2.12-L364 — asymmetric 4-stop shake matching PinDots pattern.
+        val kick = 14f
+        listOf(-kick, kick, -kick * 0.6f, kick * 0.4f, 0f).forEach { target ->
+            credShakeOffset.animateTo(target, tween(durationMillis = 50))
+        }
+    }
+
     // 2026-04-27 user-flagged regression: tapping Connect on Server step
     // landed here without auto-focusing the Username field, AND there was
     // a brief flicker where the IME hid (during the AnimatedContent
@@ -3210,6 +3263,10 @@ private fun CredentialsStep(
     )
     Spacer(Modifier.height(16.dp))
 
+    // §26.4 — The Box below wraps password field + error message and carries
+    // the shake-offset translation. The [graphicsLayer] moves the whole block
+    // horizontally without affecting layout; [showCredentialErrorBorder] adds a
+    // 2dp error-colored rounded border around the block when Reduce Motion is on.
     // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
     // While check is in flight (domainSsoChecking), show a small spinner below the
     // username field instead of the password field, preventing flicker.
@@ -3220,56 +3277,76 @@ private fun CredentialsStep(
     // now runs silently; the password field stays in place during the
     // request and only morphs to the SSO button when SSO is actually
     // detected (rare case). Non-SSO users never see any UI noise.
-    when {
-        state.domainSsoDetected -> {
-            // Replace password field with "Continue with SSO" primary button.
-            BrandPrimaryButton(
-                onClick = viewModel::login,
-                enabled = !state.isLoading,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { translationX = credShakeOffset.value }
+            .then(
+                if (showCredentialErrorBorder) {
+                    // §26.4: static error border replaces shake when Reduce Motion is active.
+                    Modifier
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.error,
+                            shape = MaterialTheme.shapes.small,
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                } else Modifier,
+            ),
+    ) {
+        Column {
+            when {
+                state.domainSsoDetected -> {
+                    // Replace password field with "Continue with SSO" primary button.
+                    BrandPrimaryButton(
+                        onClick = viewModel::login,
+                        enabled = !state.isLoading,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) {
+                        if (state.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
+                            Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Continue with SSO")
+                        }
+                    }
+                }
+                else -> {
+                    OutlinedTextField(
+                        value = state.password,
+                        onValueChange = viewModel::updatePassword,
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().textFieldHover(),
+                        isError = credPasswordError || showCredentialErrorBorder,
+                        leadingIcon = { Icon(Icons.Default.Lock, null) },
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
+                            IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
+                                Icon(
+                                    if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showPassword) "Hide password" else "Show password",
+                                )
+                            }
+                        },
+                        // LOGIN-MOCK-177: inline password validation
+                        supportingText = { if (credPasswordError) Text("Password cannot be empty") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
                     )
-                } else {
-                    // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
-                    Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Continue with SSO")
                 }
             }
-        }
-        else -> {
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::updatePassword,
-                label = { Text("Password") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().textFieldHover(),
-                isError = credPasswordError,
-                leadingIcon = { Icon(Icons.Default.Lock, null) },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
-                    IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
-                        Icon(
-                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showPassword) "Hide password" else "Show password",
-                        )
-                    }
-                },
-                // LOGIN-MOCK-177: inline password validation
-                supportingText = { if (credPasswordError) Text("Password cannot be empty") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
-            )
+
+            ErrorMessage(state.error)
         }
     }
-
-    ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
     // CROSS48: Sign In is the single dominant CTA on this step — route
