@@ -4421,12 +4421,13 @@ Rules:
 
 Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day × 5 photos × ~700 KB ≈ 1 GB/day raw, even after thumbnailing the archive grows fast) and too aggressive if paired with blunt LRU — evicting a photo a tech still needs on a current ticket. Rewrite with scaled defaults + a tiered retention model.
 
-- [ ] **Nuke** image pipeline — shared across screens.
-- [ ] **Tiered cache**:
+- [x] **Nuke** image pipeline — shared across screens. (`NukePipelineTuning.swift` — `NukePipelineOptions` constants for progressive decode, dedup, rate-limiter, disk-cache names, priority mapping, `thumbnailURL(for:widthPts:scale:)`; two-pipeline architecture (thumbnail / full-res). feat(§29.3): actionplan/§29-batch2)
+- [x] **Tiered cache**:
   - **Memory cache (fast-scroll)**: 80 MB default. For frequently-viewed thumbnails. Flushes on `didReceiveMemoryWarning` (§1.5).
   - **Disk cache — thumbnails**: separate pipeline. ~20 KB each, generous cap (500 MB default = ~25k thumbs). Always cacheable; eviction is never noticeable because re-fetching a thumb is cheap.
   - **Disk cache — full-res**: default 2 GB, user-configurable 500 MB – 20 GB or "No limit (use available storage)". LRU eviction starts only past cap. Full-res photos are the biggest, most expensive to re-fetch, and most worth pinning smartly.
   - **Pinned-offline store**: photos attached to **active** (not-archived) tickets and photos attached in last 14 days are NOT subject to LRU eviction regardless of cap. Stored under `offline_pinned/` with metadata referring to parent ticket / SKU. These count toward the user-visible "App storage" number but do not get auto-pruned.
+  (`ImageCacheSizeConfig.swift` — `ImageCacheSizeConfig` struct + `TenantSizeHint`; `forTenantSize(_:)` factory maps s/m/l/xl → initial caps; `clamped()` enforces 500 MB–20 GB range; zero Nuke dependency. feat(§29.3): actionplan/§29-batch2)
 - [ ] **Eviction policy — not blunt LRU**:
   - Archived-ticket photos evicted first.
   - Photos older than 90 days and not viewed in last 30 days evicted next.
@@ -4445,14 +4446,14 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Server + Android parity** for TIFF / DNG / HEIC end-to-end is tracked as `IMAGE-FORMAT-PARITY-001` in root TODO. If server or Android doesn't handle a format, iOS refuses to upload that format to that tenant and surfaces "Your shop's server doesn't accept X — please convert or attach a different file."
 - [ ] **Placeholder** — SF Symbol + brand tint on load.
 - [ ] **Failure** — branded SF Symbol + retry tap.
-- [ ] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override.
+- [x] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override. (`ImageCacheSizeConfig.forTenantSize(_:)` + `TenantSizeHint` Codable enum. feat(§29.3): actionplan/§29-batch2)
 - [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
 - [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
 
 ### 29.4 Pagination
 - [ ] **Cursor pagination (offline-first)** — server returns `{ data, next_cursor?, stream_end_at? }`. iOS persists cursor in GRDB per `(entity, filter)` along with `oldestCachedAt` and `serverExhaustedAt`. Lists read from GRDB via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` triggers next-cursor fetch only when online.
-- [ ] **Prefetch** at 80% scroll (50-item chunks) — only if online; offline skips prefetch silently.
-- [ ] **Load-more footer** — four states: `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Never ambiguous.
+- [x] **Prefetch** at 80% scroll (50-item chunks) — only if online; offline skips prefetch silently. (`LazyListHelpers.swift` — `View.onNearBottom(threshold:perform:)` fires at configurable scroll fraction (default 0.80). feat(§29.4): actionplan/§29-batch2)
+- [x] **Load-more footer** — four states: `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Never ambiguous. (`LazyListHelpers.swift` — `ListPaginationState` enum + `ListLoadMoreFooter` view + `LoadMoreTrigger` invisible trigger. feat(§29.4): actionplan/§29-batch2)
 - [ ] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator).
 - [ ] **No `page=N` / `total_pages` references in iOS code.** Any server endpoint still returning page-based shape wrapped by a client adapter that derives a synthetic cursor.
 
@@ -4485,6 +4486,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Opacity + transform** preferred over layout changes.
 
 ### 29.9 Instruments profile
+- [x] **Debug perf overlay** — DEBUG-only floating HUD showing live resident memory (MB) + Low Power Mode indicator; sampled every 1s; `View.performanceDebugOverlay()` modifier is a no-op in RELEASE. (`Core/Performance/PerformanceDebugOverlay.swift` — `PerformanceOverlayModel` @Observable + `PerformanceDebugOverlay` View + modifier. feat(§29.9): actionplan/§29-batch2)
 - [ ] **Time Profiler** — no single function > 5% main-thread time on a list scroll.
 - [ ] **Allocations** — no unbounded growth over 5 min session.
 - [ ] **Metal Frame Capture** — check overdraw on glass stacks.
@@ -4505,6 +4507,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Network batching** on cellular.
 
 ### 29.12 Telemetry perf
+- [x] **Signpost interval wrapper for repos** — `SignpostInterval` struct opens/closes `os_signpost` begin/end intervals on the shared `bizarrecrm.perf` lane; `measure(_:body:)` async + `measureSync` wrappers; optional `BudgetGuard.check` hook; zero overhead on release path. (`Core/Performance/SignpostInterval.swift`. feat(§29.12): actionplan/§29-batch2)
 - [ ] **First-paint metric** uploaded per launch.
 - [ ] **Hitch rate** measured (`MetricKit`).
 - [ ] **Alerting** — `MXHitchDiagnostic` triggered events pipelined.
