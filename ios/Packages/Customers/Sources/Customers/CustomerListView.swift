@@ -34,6 +34,7 @@ public struct CustomerListView: View {
     @State private var showingDeleteUndo: Bool = false
     @State private var undoCustomers: [CustomerSummary] = []
     @State private var undoTask: Task<Void, Never>?
+    @State private var showingCSVImport: Bool = false
     private let listRepo: CustomerRepository
     private let detailRepo: CustomerDetailRepository
     private let api: APIClient
@@ -61,6 +62,12 @@ public struct CustomerListView: View {
         .sheet(isPresented: $showingTagInput) {
             BulkTagInputSheet { tag in
                 Task { await vm.bulkTag(tag: tag) }
+            }
+        }
+        .sheet(isPresented: $showingCSVImport) {
+            // §5 CSV import upload UI
+            CustomerCSVImportSheet(api: api) {
+                Task { await vm.refresh() }
             }
         }
         .sheet(isPresented: $showingContactPicker) {
@@ -363,12 +370,25 @@ public struct CustomerListView: View {
     /// §5.1 Import from Contacts.
     private var importToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .secondaryAction) {
-            Button {
-                showingContactPicker = true
+            Menu {
+                Button {
+                    showingContactPicker = true
+                } label: {
+                    Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
+                }
+                .accessibilityIdentifier("customers.list.toolbar.importContacts")
+
+                // §5 CSV import upload UI
+                Button {
+                    showingCSVImport = true
+                } label: {
+                    Label("Import from CSV…", systemImage: "tablecells.badge.ellipsis")
+                }
+                .accessibilityIdentifier("customers.list.toolbar.importCSV")
             } label: {
-                Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
+                Label("Import", systemImage: "square.and.arrow.down.on.square")
             }
-            .accessibilityLabel("Import customers from Contacts")
+            .accessibilityLabel("Import customers")
             .accessibilityIdentifier("customers.list.toolbar.import")
         }
     }
@@ -547,6 +567,7 @@ public struct CustomerListView: View {
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .tag(customer.id)
+        .draggableCustomer(customer)
         .contextMenu { customerContextMenu(for: customer, onSelect: onSelect) }
         // §5.1 Preview popover on hover (iPad/Mac)
         .overlay(alignment: .trailing) {
