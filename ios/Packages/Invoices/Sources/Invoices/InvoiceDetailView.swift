@@ -618,13 +618,23 @@ private struct HeaderCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            // §7.2 Invoice # with textSelection
+            // §7.2 Invoice # with textSelection + copy button
             HStack(alignment: .firstTextBaseline) {
                 Text(invoice.orderId ?? "INV-?")
                     .font(.brandMono(size: 17))
                     .foregroundStyle(.bizarreOnSurface)
                     .textSelection(.enabled)
                     .accessibilityLabel("Invoice number \(invoice.orderId ?? "unknown")")
+                Button {
+                    UIPasteboard.general.string = invoice.orderId ?? ""
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copy invoice number \(invoice.orderId ?? "")")
+                .accessibilityHint("Copies the invoice number to the clipboard")
                 Spacer()
                 StatusBadge(status: invoice.status)
             }
@@ -723,19 +733,22 @@ private struct StatusBadge: View {
     let status: String?
 
     var body: some View {
-        let colors = colors(for: (status ?? "").lowercased())
+        let kind = (status ?? "").lowercased()
+        let colors = colors(for: kind)
         return Text(status?.capitalized ?? "—")
             .font(.brandLabelSmall())
             .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
             .foregroundStyle(colors.fg)
             .background(colors.bg, in: Capsule())
+            .accessibilityLabel("Status: \(status?.capitalized ?? "Unknown")")
     }
 
     private func colors(for kind: String) -> (bg: Color, fg: Color) {
         switch kind {
         case "paid":    return (.bizarreSuccess, .black)
         case "partial": return (.bizarreWarning, .black)
-        case "unpaid":  return (.bizarreError, .black)
+        case "unpaid":  return (.bizarreError, .white)
+        case "overdue": return (.bizarreError, .white)
         case "void":    return (.bizarreOnSurfaceMuted, .bizarreSurfaceBase)
         default:        return (.bizarreSurface2, .bizarreOnSurface)
         }
@@ -791,6 +804,8 @@ private struct LineItemsCard: View {
                     }
                 }
                 .padding(.vertical, BrandSpacing.xxs)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(lineItemA11yLabel(item))
             }
         }
         .cardBackground()
@@ -799,6 +814,21 @@ private struct LineItemsCard: View {
     private func formatQty(_ v: Double) -> String {
         if v.rounded() == v { return String(Int(v)) }
         return String(format: "%.2f", v)
+    }
+
+    private func lineItemA11yLabel(_ item: InvoiceDetail.LineItem) -> String {
+        var parts: [String] = [item.displayName]
+        if let qty = item.quantity {
+            parts.append("quantity \(formatQty(qty))")
+        }
+        if let price = item.unitPrice {
+            parts.append("at \(formatMoney(price)) each")
+        }
+        parts.append("total \(formatMoney(item.total ?? 0))")
+        if let tax = item.taxAmount, tax > 0 {
+            parts.append("tax \(formatMoney(tax))")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
