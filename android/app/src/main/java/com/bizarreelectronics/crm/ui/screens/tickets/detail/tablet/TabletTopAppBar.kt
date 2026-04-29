@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +27,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
+import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,10 +77,13 @@ internal fun TabletTopAppBar(
     onBack: () -> Unit,
     ticketTitle: String,
     currentStatusName: String,
-    onStatusPillClick: () -> Unit,
+    currentStatusId: Long?,
+    statuses: List<TicketStatusItem>,
+    onStatusSelected: (Long) -> Unit,
     actions: @Composable RowScope.() -> Unit,
     deviceChipLabel: String? = null,
 ) {
+    var showStatusMenu by remember { mutableStateOf(false) }
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier
@@ -132,11 +141,56 @@ internal fun TabletTopAppBar(
             // Spacer
             Box(modifier = Modifier.weight(1f))
 
-            // Cream Status pill — primary action affordance.
-            StatusPill(
-                statusName = currentStatusName.ifBlank { "Status" },
-                onClick = onStatusPillClick,
-            )
+            // Cream Status pill — primary action affordance with anchored dropdown.
+            Box {
+                StatusPill(
+                    statusName = currentStatusName.ifBlank { "Status" },
+                    onClick = { showStatusMenu = !showStatusMenu },
+                )
+                DropdownMenu(
+                    expanded = showStatusMenu,
+                    onDismissRequest = { showStatusMenu = false },
+                ) {
+                    statuses.forEach { st ->
+                        val isCurrent = st.id == currentStatusId
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Surface(
+                                        color = runCatching {
+                                            androidx.compose.ui.graphics.Color(
+                                                android.graphics.Color.parseColor(st.color ?: "#6b7280")
+                                            )
+                                        }.getOrDefault(MaterialTheme.colorScheme.primary),
+                                        shape = CircleShape,
+                                        modifier = Modifier.size(8.dp),
+                                    ) {}
+                                    Text(
+                                        st.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(end = 8.dp),
+                                    )
+                                    if (isCurrent) {
+                                        Text(
+                                            "current",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = {
+                                showStatusMenu = false
+                                if (!isCurrent) onStatusSelected(st.id)
+                            },
+                        )
+                    }
+                }
+            }
 
             // Right-side action row — Print, Pin, ⋮ slot.
             actions()

@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,20 +58,34 @@ internal fun BenchTimerCard(
     onStart: () -> Unit = {},
     onStop: () -> Unit = {},
 ) {
+    // Accumulated elapsed across pause/resume cycles for THIS composition.
+    // `rememberSaveable` survives recomposition + configuration change but
+    // not process death. The server bench_started_at column is the
+    // authoritative cross-session source — wire that in a follow-up.
+    var accumulatedMs by rememberSaveable { mutableLongStateOf(0L) }
+    var anchorMs by rememberSaveable { mutableLongStateOf(0L) }
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
     LaunchedEffect(isRunning) {
-        while (isRunning) {
-            nowMs = System.currentTimeMillis()
-            delay(1000L)
+        if (isRunning) {
+            // Resume: anchor to (now - already-accumulated) so the visible
+            // clock continues where it stopped.
+            anchorMs = System.currentTimeMillis() - accumulatedMs
+            while (isRunning) {
+                nowMs = System.currentTimeMillis()
+                delay(1000L)
+            }
+        } else if (anchorMs > 0L) {
+            // Pause: freeze accumulated to whatever the clock showed.
+            accumulatedMs = (System.currentTimeMillis() - anchorMs).coerceAtLeast(0L)
         }
     }
-    // Anchor: when the timer is running we record the instant the
-    // composable last saw isRunning flip true. Elapsed = now - anchor.
-    var anchorMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(isRunning) {
-        if (isRunning) anchorMs = System.currentTimeMillis()
+
+    val elapsedMs = if (isRunning) {
+        (nowMs - anchorMs).coerceAtLeast(0L)
+    } else {
+        accumulatedMs
     }
-    val elapsedMs = if (isRunning) (nowMs - anchorMs).coerceAtLeast(0L) else 0L
     val display = remember(elapsedMs) { formatHms(elapsedMs) }
 
     Card(

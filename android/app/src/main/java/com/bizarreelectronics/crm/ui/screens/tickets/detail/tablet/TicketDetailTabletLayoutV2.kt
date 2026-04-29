@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -140,14 +143,18 @@ internal fun TicketDetailTabletLayoutV2(
     leftPaneContent: @Composable () -> Unit,
     rightPaneContent: @Composable () -> Unit,
 ) {
-    var showStatusSheet by remember { mutableStateOf(false) }
-
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars),
+    ) {
         TabletTopAppBar(
             onBack = onBack,
             ticketTitle = ticketTitle,
             currentStatusName = currentStatusName,
-            onStatusPillClick = { showStatusSheet = true },
+            currentStatusId = currentStatusId,
+            statuses = statuses,
+            onStatusSelected = onStatusSelected,
             actions = topBarActions,
             deviceChipLabel = deviceChipLabel,
         )
@@ -178,18 +185,6 @@ internal fun TicketDetailTabletLayoutV2(
                 rightPaneContent()
             }
         }
-    }
-
-    if (showStatusSheet) {
-        StatusPickerSheet(
-            currentStatusId = currentStatusId,
-            statuses = statuses,
-            onStatusSelected = { id ->
-                onStatusSelected(id)
-                showStatusSheet = false
-            },
-            onDismiss = { showStatusSheet = false },
-        )
     }
 }
 
