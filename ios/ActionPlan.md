@@ -480,10 +480,10 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.3 Needs-attention surface
 - [x] Base card — shipped.
 - [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (feat(§3): NeedsAttentionCard + StaleTicketRow + OverdueInvoiceRow + ActionChip; 9cd0b5b8)
-- [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
-- [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
+- [x] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss. (`NeedsAttentionCard.swift` `NeedsAttentionSwipeActions` ViewModifier — DragGesture wrapper, 64pt threshold, leading orange-clock reveal, trailing red-xmark reveal, Reduce-Motion aware, gated on `Platform.isCompact`.)
+- [x] **Context menu** (iPad/Mac) with all row actions + "Copy ID". (`NeedsAttentionCard.swift` StaleTicketRow + OverdueInvoiceRow `.contextMenu` extended: View · SMS customer (deep-link) · Mark resolved · Snooze submenu · Copy ID (UIPasteboard / NSPasteboard) · Dismiss; `NeedsAttentionClipboard` helper.)
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
-- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
+- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`NeedsAttentionCard.swift` `NeedsAttentionEmptyState` — checkmark + sparkles + sparkle SF Symbols, `.variableColor.iterative` symbolEffect (Reduce-Motion gated).)
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). (`MyQueueView.swift` integrated into `DashboardView.LoadedBody`; b04ae99b)
@@ -545,12 +545,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.". (`DashboardView.swift` `StatTileCard` overlay pattern; `isPermissionGated` param; agent-9 b10)
 - [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
 - [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
-- [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48)
+- [x] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48) (`DashboardCardEmptyStates.swift` `TicketsSectionEmptyState` — wrench-and-screwdriver SF Symbol, orange tint, "Create your first ticket" CTA + underlined "Or import from old system" sub-link.)
 - [ ] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates (Phone/Laptop/TV repair) seed ~20 common items
 - [ ] Customers empty: CTA "Add first customer" or "Import from contacts" via `CNContactStore` with explicit explanation
 - [ ] SMS empty: CTA "Connect SMS provider" → Settings § SMS
 - [ ] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default (hardware-not-required mode)
-- [ ] Reports empty: placeholder chart with "Come back after your first sale"
+- [x] Reports empty: placeholder chart with "Come back after your first sale" (`DashboardCardEmptyStates.swift` `ReportsSectionEmptyState` — layered ghost chart-bar SF Symbols + "No data yet" headline + "Reports populate once you record your first sale. Come back after your first transaction." copy.)
 - [ ] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard
 - [x] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear — `SampleDataOptInStepView` (opt-in step 14) + Settings → Tenant Admin → Onboarding → "Remove Sample Data" button (`TenantAdminView.onboardingSection`, `TenantAdminViewModel.removeSampleData`, `DELETE /api/v1/onboarding/sample-data`). agent worktree-agent-af62694d19f10fb9c
 - [ ] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist
