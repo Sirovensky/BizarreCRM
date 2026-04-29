@@ -719,11 +719,6 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Frontend:** Bench tab (or dashboard tile) — queue of my bench tickets with device template shortcut + big timer.
 - [ ] **Live Activity** — Dynamic Island & Lock Screen show active-repair timer.
 - [ ] **Foreground-service equivalent** — persistent Lock-Screen Live Activity while repair is active (iOS parallel to Android `RepairInProgressService`).
-- [x] **Bench-status timer chip** — color-coded phase pill under `BenchTimerView` HUD: Awaiting Parts / In Repair / On Hold / Diagnosing / Ready; tint + icon per phase. `BenchWorkflowView.benchStatusChip(detail:)` + `benchStatusChipContent(_:)`. (feat(§42): bench-status timer chip)
-- [x] **Parts-on-hold a11y** — `partsOrdered` action button gets richer VoiceOver label "Parts Ordered — place ticket on hold awaiting parts" + descriptive hint "Marks this ticket as waiting for parts. The ticket moves to Awaiting Parts status."; disabled-state hint surfaced for all actions. `BenchWorkflowView.actionButton(_:)`. (feat(§42): parts-on-hold a11y)
-- [x] **Photos-needed banner** — amber warning card shown when `detail.photos.isEmpty`; copy "Add before-repair photos so the customer can verify device condition."; combined a11y label. `BenchWorkflowView.photosNeededBanner`. (feat(§42): photos-needed banner)
-- [x] **Escalation flag UI** — flame icon (`flame.fill`, `.bizarreError`) beside order-id in header when `detail.urgency` is "high" / "urgent" / "escalated"; VoiceOver label "Escalated ticket". `BenchWorkflowView.isEscalated(detail:)`. (feat(§42): escalation flag UI)
-- [x] **Completed-at copy** — green completion row with `checkmark.seal.fill` showing formatted `updatedAt` timestamp when status `isClosed` or name contains "completed"; copy-to-clipboard button. `BenchWorkflowView.completedAtRow(text:)`. (feat(§42): completed-at copy)
 
 ### 4.10 Device templates
 - [ ] **Backend:** `GET /device-templates`, `POST /device-templates`.
@@ -1230,11 +1225,6 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). <!-- shipped feat(§7.6) -->
 - [x] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket. <!-- shipped feat(§7.6) -->
 - [x] Row actions: Send reminder / Record payment / Write off. <!-- Remind + Pay shipped; Write-off deferred (no server endpoint) feat(§7.6) -->
-- [x] **Aging-bucket chip color** — `AgingBucketChip` Capsule chip with 4-tier color ramp: 0–30 green / 31–60 amber / 61–90 orange / 90+ red; used in iPhone section headers and iPad table "Bucket" column. `InvoiceAgingView.swift`. (feat(§7.6): aging-bucket chip color)
-- [x] **Statement download button** — toolbar "Download Statement" button (↓doc icon) generates a CSV of all aging rows (invoice #, customer, amount, days overdue, bucket) and shares via `UIActivityViewController`; shows `ProgressView` while generating. `InvoiceAgingViewModel.downloadStatement` + `ShareSheet`. (feat(§7.6): statement download button)
-- [x] **Send-reminder copy** — reminder toast now reads "Reminder sent to {customer} for {invoice}" instead of bare "Reminder sent"; failure copy leads with "Couldn't send reminder — …". `InvoiceAgingViewModel.sendReminder(invoiceId:customerName:displayId:)`. (feat(§7.6): send-reminder copy)
-- [x] **Late-fee preview row** — `LateFeePreviewRow` appears beneath any aging row with daysOverdue > 30; shows projected 2% fee (policy preview, not applied); amber background + a11y label "Estimated late fee: …". (feat(§7.6): late-fee preview row)
-- [x] **Customer-payable row a11y** — `customerPayableA11yLabel` combines invoice #, customer name, amount, days overdue, bucket label, and due date into a single VoiceOver utterance; hint updated for swipe actions. (feat(§7.6): customer-payable row a11y)
 
 - [x] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory). (customer path: [actionplan agent-6 b9] 482309e6; vendor path: Discovered — Agent-2 cross-slice §17.4 shipping label)
 - [x] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides. (non-BlockChyp path: `InvoiceReturnSheet` + `InvoiceReturnViewModel` + `InvoiceReturnModels`; `InvoiceDetailView` "Return Items…" menu gated on canRefund; 35 tests. [actionplan agent-6 b9] 482309e6)
@@ -4446,7 +4436,6 @@ Rules:
 - [ ] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless.
 - [ ] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks.
 - [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
-- [x] **Lazy view modifier guards** — `lazyGuard(isVisible:)` suppresses body re-eval when view is not visible; `visibilityGuard()` auto-tracks `onAppear`/`onDisappear`; `conditionalBody(condition:placeholder:)` preserves view identity across show/hide toggles. (`Core/Performance/LazyViewGuard.swift`. feat(§29.2): actionplan §29-batch3)
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 
 ### 29.3 Image loading
@@ -4468,7 +4457,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
 - [x] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action). (`StorageBreakdown` + `StorageMonitor` + `ImageCachePolicy` in `Core/Performance/StorageBreakdown.swift`; `StorageCategory.isEvictable` gates clear buttons. feat(§29.3): b12)
 - [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
-- [x] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`). (`ListPrefetchScheduler` — `rowAppeared(index:)` / `rowDisappeared(index:)` with look-ahead window (default 5), debounce 0.3s, LPM guard, cancellable `Task`. feat(§29.3/§29.4): actionplan §29-batch3)
+- [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
 - [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
 - [ ] **Progressive JPEG** decode.
 - [ ] **Formats accepted on decode (iOS side)**: JPEG, PNG, **HEIC** (iOS default since iOS 11), **HEIF**, **TIFF** (multi-page supported; show first page as thumbnail, page-picker on detail), **DNG** (raw — use embedded JPEG preview for thumb, full decode on detail). Nuke relies on iOS Image I/O which handles all of the above; no custom decoder code needed for iOS.
@@ -4479,7 +4468,6 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Placeholder** — SF Symbol + brand tint on load.
 - [ ] **Failure** — branded SF Symbol + retry tap.
 - [x] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override. (`ImageCacheSizeConfig.forTenantSize(_:)` + `TenantSizeHint` Codable enum. feat(§29.3): actionplan/§29-batch2)
-- [x] **Image content-hash deduplication** — second dedup layer keyed on SHA-256 of image bytes; catches same content served from multiple CDN URLs or re-encoded uploads that changed URL but not pixels. `register(url:data:)` after download; `canonicalURL(for:)` returns existing cache key; `invalidateAll()` on memory warning / session change. (`Core/Performance/ImageHashDeduplicator.swift`. feat(§29.3): actionplan §29-batch3)
 - [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
 - [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
 
@@ -4509,7 +4497,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 - [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
-- [x] **Request coalescing** — dedupe concurrent same-URL requests. (`SyncCoalescer<Resource>` — `execute(key:work:)` coalesces concurrent tasks under a shared `Task`; `cancel(key:)` / `cancelAll()`; thread-safe via `NSLock`. feat(§29.7): actionplan §29-batch3)
+- [ ] **Request coalescing** — dedupe concurrent same-URL requests.
 - [ ] **Timeout** — 15s default; 30s for large uploads.
 - [x] **Compression** — Accept-Encoding: gzip, br. (Added to `httpAdditionalHeaders` in `APIClient.swift`. feat(§29.7): 7ae3cd0c)
 
@@ -4523,7 +4511,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Time Profiler** — no single function > 5% main-thread time on a list scroll.
 - [ ] **Allocations** — no unbounded growth over 5 min session.
 - [ ] **Metal Frame Capture** — check overdraw on glass stacks.
-- [x] **SwiftUI Profiler** — no view body > 16ms. (`ViewUpdateBudget` — `track(_:budgetMs:)` records inter-call ms, 60-sample rolling window, p95/mean/max stats, OSLog signpost event per update, `BudgetGuard` violation on re-renders faster than budget. feat(§29.9): actionplan §29-batch3)
+- [ ] **SwiftUI Profiler** — no view body > 16ms.
 - [ ] **Network** — audit request waterfall on first-launch.
 
 ### 29.10 App size
@@ -4816,14 +4804,12 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `Repositories` — CRUD vs cache vs queue, optimistic + rollback.
   - `SyncService` — queue drain, backoff, dead-letter, conflict resolution.
   - [x] `Formatters` — date/currency/phone locale edge cases. (`Core/Tests/CoreTests/CurrencyFormatterTests.swift` — Currency.formatCents USD/EUR/JPY edge cases + ISO8601Factory round-trip. feat(§31.1): actionplan/§31-batch-4f2a9c)
-  - [x] `Validators` — email, phone, SKU, IMEI. (`Core/Sources/Core/Validation/Validators.swift` — EmailValidator, PhoneValidator (E.164+NANP), SKUValidator, IMEIValidator (Luhn); `Core/Tests/CoreTests/ValidatorsTests.swift` — 30+ parameterised cases. feat(§31.1): implement validators)
+  - `Validators` — email, phone, SKU, IMEI.
   - `URL construction` — host/path safety, query encoding, no force-unwraps.
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
-- [x] **Network mock builder** — fluent `NetworkMockBuilder` wraps `MockURLProtocol` with method/path stub matching, `stubEnvelope()` convenience, `onUnmatchedRequest()` fallback policy, `buildSession()` factory. (`Networking/Tests/NetworkingTests/NetworkMockBuilder.swift` — includes self-tests. feat(§31.1): network mock builder)
 - [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
 
 ### 31.2 Snapshot tests (swift-snapshot-testing)
-- [x] **Snapshot scaffolding** — `SnapshotVariant` matrix + `SnapshotDriver` render/compare stub; `assertSnapshot(of:variant:)` + `assertSnapshotMatrix(of:)` XCTestCase helpers; PNG reference write/compare; `RECORD_SNAPSHOTS=1` mode. (`DesignSystem/Tests/DesignSystemTests/SnapshotTestHelper.swift`. feat(§31.2): snapshot scaffolding helper)
 - [ ] **Per-component** — every reusable brand component (BrandButton, BrandCard, BrandChip, BrandTextField, BrandBanner, BrandToast) rendered in:
   - Light / dark.
   - Compact / regular width.
@@ -4832,7 +4818,6 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Screen snapshots** — Dashboard, Tickets list, Ticket detail, POS cart, Settings in their golden states.
 
 ### 31.3 Integration tests
-- [x] **GRDB in-memory test util** — `GRDBTestSupport.makeQueue()` creates a fully migrated in-memory `DatabaseQueue`; `makeEmptyQueue()`, `seed()`, `assertRowCount()`, `assertEmpty()` helpers; `setUpGRDB(into:)` XCTestCase extension. (`Persistence/Tests/PersistenceTests/GRDBTestSupport.swift`. feat(§31.3): GRDB in-memory test util)
 - [ ] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule).
 - [ ] **End-to-end API** — start local server (Docker Compose) against real endpoints; assert envelopes.
 - [ ] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency.
@@ -4855,7 +4840,6 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **CPU** — per-flow CPU time budget.
 
 ### 31.6 Accessibility audit
-- [x] **Accessibility audit harness** — `AccessibilityAuditHarness.audit()` renders SwiftUI views via UIHostingController and applies composable `AccessibilityAuditRule` suite: `MissingLabelRule`, `TapTargetRule` (44 pt minimum), `DuplicateIdentifierRule`, `TraitConsistencyRule`; `assertAccessible()` XCTestCase extension. (`DesignSystem/Tests/DesignSystemTests/AccessibilityAuditHarness.swift`. feat(§31.6): accessibility audit harness)
 - [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
 - [x] **Contrast** asserted on brand palette. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — WCAG AA 4.5:1 / 3:1 pairs for dark + light mode BrandPalette tokens. feat(§31.6): actionplan/§31-batch-4f2a9c)
 - [x] **Tap target sizing** asserted on primary actions. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — TappableFrameModifier defaults + Icon size floor sweep. feat(§31.6): actionplan/§31-batch-4f2a9c)
@@ -6063,6 +6047,11 @@ Number preserved as stub so cross-refs don't break.
 
 ### 59.1 KPI tiles
 - [x] **Revenue / profit / expenses / AR / AP / cash-on-hand** with trends. (`FinancialDashboardView` P&L hero tile + aged receivables tile)
+- [x] **KPI tile color states** — semantic threshold coloring on every KPI card: revenue (positive=success), profit (≥15% margin=success, 5-15%=warning, <5%=error), expenses (ratio vs revenue), AR (overdue=error), tax (outstanding=caution). Tinted background + border reflect state. `KPIColorState` enum in `OwnerPLView.swift`.
+- [x] **P&L margin badge** — pill-shaped `MarginBadge` capsule under Gross Profit and Net Profit KPI tiles; green/amber/red threshold coloring; shown in `plKpiCard`. `OwnerPLView.swift`.
+- [x] **Gross-vs-net revenue toggle** — segmented Gross/Net picker in controls bar; `showNetRevenue: Bool` on `OwnerPLViewModel`; drives KPI tile label+value and chart y-axis label. `OwnerPLView.swift` + `OwnerPLViewModel.swift`.
+- [x] **Year-over-year delta chip** — `YoYDeltaChip` capsule with directional arrow shown on Revenue and Net Profit KPI tiles and chart header; decoded from optional `yoy_revenue_delta_cents`/`yoy_net_profit_delta_cents` server fields. `OwnerPLModels.swift` + `OwnerPLView.swift`.
+- [x] **Export-to-CSV copy** — `ShareLink` toolbar button produces RFC-4180 CSV via `OwnerPLCSVExporter`: revenue, profit, expenses by category, time-series (with YoY delta where available), top customers, top services; toggle-aware (gross vs net). `OwnerPLCSVExporter.swift`.
 
 ### 59.2 Profitability
 - [x] **Per-service gross margin**. (`PnLCalculator.grossMarginPct` + `PnLSnapshot`)
@@ -8396,10 +8385,5 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Empty-state hierarchy review.** Audit every empty state: skeleton (loading) vs zero-data vs error vs offline; pick one of four and label it.
 - [ ] **Card-grid alignment.** Use a single shared `ReportsGrid` with consistent row heights and column counts on landscape vs portrait.
 - [ ] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
-- [x] **Hero-tile compact layout.** `pnlHeroTile` in `FinancialDashboardView` switches to a 2×2 `LazyVGrid` on `Platform.isCompact` so four metrics never overflow on 375 pt iPhone screens; iPad keeps single-row HStack. Margin texts gain `minimumScaleFactor(0.75)`. Raw `cornerRadius: 16` literal replaced with `DesignTokens.Radius.lg`. (feat(§91.16): hero-tile compact layout)
-- [x] **KPI tile placeholder skeleton.** `SkeletonKPITile` (icon circle + label line + large value line + optional delta chip) and `SkeletonKPISummaryCard` (2×2 iPhone / 4-up iPad) added to `DesignSystem/Skeletons/SkeletonKPITile.swift`. Shape-matched to `SalesKPISummaryCard` cell geometry. (feat(§91.16): KPI tile placeholder skeleton)
-- [x] **Settings-row chevron polish.** `SettingsNavRow` added to `Settings/SettingsView.swift`: icon + label + optional badge count + `chevron.right` at `.footnote.weight(.semibold)` tinted `.bizarreOnSurfaceMuted×0.55`; 44 pt min tap target enforced via `DesignTokens.Touch.minTargetSide`. (feat(§91.16): settings-row chevron polish)
-- [x] **List-section divider tokens.** `DesignTokens.SectionDividerWeight` enum (`.hairline` 0.40 / `.subtle` 0.60 / `.strong` 0.90 opacity) added to `Tokens.swift`; `SectionDivider` view + `.sectionDivider()` modifier added to `DesignSystem/Layout/SectionDivider.swift`. (feat(§91.16): list-section divider tokens)
-- [x] **Scroll-edge gradient.** `ScrollEdgeGradientModifier` + `.scrollEdgeGradient(height:edge:color:)` added to `DesignSystem/Layout/ScrollEdgeGradient.swift`; `.top`/`.bottom`/`.both` edges; Reduce Transparency shrinks fade to 8 pt. (feat(§91.16): scroll-edge gradient)
 
 

@@ -12,7 +12,7 @@ import Core
 
 public struct OwnerPLView: View {
     @State private var vm: OwnerPLViewModel
-
+    /// Whether the export-to-CSV copy share sheet is presented.
     public init(repository: OwnerPLRepository) {
         _vm = State(wrappedValue: OwnerPLViewModel(repository: repository))
     }
@@ -135,6 +135,14 @@ public struct OwnerPLView: View {
             .pickerStyle(.segmented)
             .onChange(of: vm.rollup) { _, _ in Task { await vm.load() } }
             .accessibilityLabel("Select time bucket granularity")
+
+            // §59 Gross-vs-net revenue toggle
+            Picker("Revenue", selection: $vm.showNetRevenue) {
+                Text("Gross").tag(false)
+                Text("Net").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Show gross or net revenue")
         }
     }
 
@@ -148,6 +156,25 @@ public struct OwnerPLView: View {
                     .controlSize(.small)
             }
         }
+        // §59 Export-to-CSV copy: ShareLink presents native share sheet with RFC-4180 CSV
+        ToolbarItem(placement: .navigationBarTrailing) {
+            if let s = vm.summary {
+                let csv = OwnerPLCSVExporter.export(summary: s, showNetRevenue: vm.showNetRevenue)
+                ShareLink(
+                    item: csv,
+                    subject: Text("Owner P&L Export"),
+                    message: Text("BizarreCRM Owner P&L — \(s.period.from) to \(s.period.to)")
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                        .accessibilityLabel("Export P&L as CSV")
+                }
+            } else {
+                Image(systemName: "square.and.arrow.up")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityLabel("Export P&L as CSV (loading)")
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     // MARK: - Time-series chart (Revenue vs Expenses, Swift Charts BarMark)
@@ -158,9 +185,15 @@ public struct OwnerPLView: View {
                 Image(systemName: "chart.bar.fill")
                     .foregroundStyle(.bizarreOrange)
                     .accessibilityHidden(true)
-                Text("Revenue vs Expenses")
+                // §59 Gross-vs-net toggle reflected in chart title
+                Text(vm.showNetRevenue ? "Net Revenue vs Expenses" : "Revenue vs Expenses")
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                // §59 YoY delta chip for total revenue across period
+                if let pct = s.yoyRevenuePct {
+                    YoYDeltaChip(pct: pct)
+                }
             }
 
             if s.timeSeries.isEmpty {
@@ -171,14 +204,18 @@ public struct OwnerPLView: View {
                 )
                 .frame(height: 200)
             } else {
+                // §59 Gross-vs-net: show net cents when toggle is active
                 Chart(s.timeSeries) { bucket in
+                    let revenueValue = vm.showNetRevenue
+                        ? (bucket.revenueDollars - Double(bucket.expenseCents) / 100.0) / 1000.0
+                        : bucket.revenueDollars / 1000.0
                     BarMark(
                         x: .value("Period", bucket.bucket),
-                        y: .value("Revenue ($K)", bucket.revenueDollars / 1000.0),
+                        y: .value(vm.showNetRevenue ? "Net Revenue ($K)" : "Revenue ($K)", revenueValue),
                         width: .ratio(0.4)
                     )
                     .foregroundStyle(Color.bizarreOrange.opacity(0.8))
-                    .position(by: .value("Series", "Revenue"))
+                    .position(by: .value("Series", vm.showNetRevenue ? "Net Revenue" : "Revenue"))
                     .cornerRadius(DesignTokens.Radius.xs)
 
                     BarMark(
@@ -191,13 +228,13 @@ public struct OwnerPLView: View {
                     .cornerRadius(DesignTokens.Radius.xs)
                 }
                 .chartForegroundStyleScale([
-                    "Revenue": Color.bizarreOrange,
+                    vm.showNetRevenue ? "Net Revenue" : "Revenue": Color.bizarreOrange,
                     "Expenses": Color.bizarreError
                 ])
                 .chartXAxisLabel("Period", alignment: .center)
                 .chartYAxisLabel("$K", position: .leading)
                 .frame(height: 220)
-                .accessibilityLabel("Revenue vs expenses bar chart by period")
+                .accessibilityLabel("\(vm.showNetRevenue ? "Net revenue" : "Revenue") vs expenses bar chart by period")
                 .accessibilityChartDescriptor(OwnerPLChartDescriptor(buckets: s.timeSeries))
             }
         }
@@ -210,37 +247,45 @@ public struct OwnerPLView: View {
 
     @ViewBuilder
     private func kpiCards(_ s: OwnerPLSummary) -> some View {
+        // §59 Gross-vs-net toggle: show net or gross revenue tile
         plKpiCard(
-            title: "Gross Revenue",
-            value: s.revenue.grossDollars,
+            title: vm.showNetRevenue ? "Net Revenue" : "Gross Revenue",
+            value: vm.showNetRevenue ? s.revenue.netDollars : s.revenue.grossDollars,
             icon: "dollarsign.circle.fill",
-            color: .bizarreOrange
+            color: KPIColorState.revenue(
+                cents: vm.showNetRevenue ? s.revenue.netCents : s.revenue.grossCents
+            ).color,
+            yoyPct: s.yoyRevenuePct
         )
         plKpiCard(
             title: "Net Profit",
             value: s.netProfit.dollars,
             icon: "chart.line.uptrend.xyaxis",
-            color: s.netProfit.cents >= 0 ? .bizarreSuccess : .bizarreError,
-            badge: String(format: "%.1f%% margin", s.netProfit.marginPct)
+            color: KPIColorState.profit(cents: s.netProfit.cents, marginPct: s.netProfit.marginPct).color,
+            marginPct: s.netProfit.marginPct,
+            yoyPct: s.yoyNetProfitPct
         )
         plKpiCard(
             title: "Gross Profit",
             value: s.grossProfit.dollars,
             icon: "checkmark.seal.fill",
-            color: s.grossProfit.cents >= 0 ? .bizarreTeal : .bizarreError,
-            badge: String(format: "%.1f%% margin", s.grossProfit.marginPct)
+            color: KPIColorState.profit(cents: s.grossProfit.cents, marginPct: s.grossProfit.marginPct).color,
+            marginPct: s.grossProfit.marginPct
         )
         plKpiCard(
             title: "Total Expenses",
             value: s.expenses.totalDollars,
             icon: "minus.circle.fill",
-            color: .bizarreWarning
+            color: KPIColorState.expenses(
+                cents: s.expenses.totalCents,
+                revenueRef: vm.showNetRevenue ? s.revenue.netCents : s.revenue.grossCents
+            ).color
         )
         plKpiCard(
             title: "AR Outstanding",
             value: s.ar.outstandingDollars,
             icon: "clock.badge.exclamationmark",
-            color: s.ar.overdueCents > 0 ? .bizarreError : .bizarreOnSurfaceMuted,
+            color: KPIColorState.ar(overdueCents: s.ar.overdueCents).color,
             badge: s.ar.overdueDollars > 0
                 ? String(format: "$%.0f overdue", s.ar.overdueDollars) : nil
         )
@@ -248,7 +293,7 @@ public struct OwnerPLView: View {
             title: "Tax Outstanding",
             value: s.taxLiability.outstandingDollars,
             icon: "building.columns.fill",
-            color: s.taxLiability.outstandingCents > 0 ? .bizarreWarning : .bizarreSuccess
+            color: KPIColorState.tax(outstandingCents: s.taxLiability.outstandingCents).color
         )
     }
 
@@ -257,7 +302,9 @@ public struct OwnerPLView: View {
         value: Double,
         icon: String,
         color: Color,
-        badge: String? = nil
+        marginPct: Double? = nil,
+        badge: String? = nil,
+        yoyPct: Double? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             HStack(spacing: BrandSpacing.xs) {
@@ -267,24 +314,47 @@ public struct OwnerPLView: View {
                 Text(title)
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                Spacer()
+                // §59 YoY delta chip
+                if let yoyPct {
+                    YoYDeltaChip(pct: yoyPct)
+                }
             }
             Text(value, format: .currency(code: "USD"))
                 .font(.brandTitleMedium())
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            if let badge {
-                Text(badge)
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.xs) {
+                // §59 P&L margin badge
+                if let marginPct {
+                    MarginBadge(marginPct: marginPct)
+                }
+                if let badge {
+                    Text(badge)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(BrandSpacing.base)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-        .overlay(strokeBorder)
+        // §59 KPI tile tinted background reflects color state
+        .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(color.opacity(0.25), lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(String(format: "$%.2f", value))\(badge.map { ", \($0)" } ?? "")")
+        .accessibilityLabel(
+            "\(title): \(String(format: "$%.2f", value))"
+            + (marginPct.map { String(format: ", %.1f%% margin", $0 * 100) } ?? "")
+            + (badge.map { ", \($0)" } ?? "")
+            + (yoyPct.map { pct in
+                let sign = pct >= 0 ? "up" : "down"
+                return String(format: ", %@ %.1f%% year over year", sign, abs(pct * 100))
+            } ?? "")
+        )
     }
 
     // MARK: - Expenses breakdown card (pie-like BarChart)
@@ -441,6 +511,104 @@ public struct OwnerPLView: View {
     private var strokeBorder: some View {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
             .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+    }
+}
+
+// MARK: - KPI color state (§59 KPI tile color states)
+
+/// Semantic color token selection for each KPI tile type.
+/// Thresholds are intentionally conservative — amber at borderline, red only at clear negative.
+private enum KPIColorState {
+    case good, caution, bad
+
+    var color: Color {
+        switch self {
+        case .good:    return .bizarreSuccess
+        case .caution: return .bizarreWarning
+        case .bad:     return .bizarreError
+        }
+    }
+
+    /// Revenue tile: orange when positive (neutral brand tone), error when zero/negative.
+    static func revenue(cents: Int) -> KPIColorState {
+        cents > 0 ? .good : .bad
+    }
+
+    /// Profit tile: green above 15% margin, amber 5-15%, red below 5% or loss.
+    static func profit(cents: Int, marginPct: Double) -> KPIColorState {
+        guard cents >= 0 else { return .bad }
+        if marginPct >= 0.15 { return .good }
+        if marginPct >= 0.05 { return .caution }
+        return .bad
+    }
+
+    /// Expenses tile: green if below 60% of revenue, amber 60-80%, red above 80%.
+    static func expenses(cents: Int, revenueRef: Int) -> KPIColorState {
+        guard revenueRef > 0 else { return .caution }
+        let ratio = Double(cents) / Double(revenueRef)
+        if ratio < 0.60 { return .good }
+        if ratio < 0.80 { return .caution }
+        return .bad
+    }
+
+    /// AR tile: green if no overdue, amber if overdue < 20% outstanding, red otherwise.
+    static func ar(overdueCents: Int) -> KPIColorState {
+        overdueCents == 0 ? .good : .bad
+    }
+
+    /// Tax tile: green if fully remitted, amber if outstanding.
+    static func tax(outstandingCents: Int) -> KPIColorState {
+        outstandingCents == 0 ? .good : .caution
+    }
+}
+
+// MARK: - MarginBadge (§59 P&L margin badge)
+
+/// Pill-shaped badge showing margin percentage with semantic colour.
+private struct MarginBadge: View {
+    let marginPct: Double
+
+    var body: some View {
+        let pct = marginPct * 100
+        let color: Color = {
+            if pct >= 15 { return .bizarreSuccess }
+            if pct >= 5  { return .bizarreWarning }
+            return .bizarreError
+        }()
+        Text(String(format: "%.1f%% margin", pct))
+            .font(.brandLabelSmall())
+            .foregroundStyle(color)
+            .padding(.horizontal, BrandSpacing.xs)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(color.opacity(0.3), lineWidth: 0.5))
+            .accessibilityLabel(String(format: "%.1f percent margin", pct))
+    }
+}
+
+// MARK: - YoYDeltaChip (§59 year-over-year delta chip)
+
+/// Compact chip showing YoY percentage change with directional arrow.
+private struct YoYDeltaChip: View {
+    let pct: Double   // e.g. 0.12 = +12%
+
+    private var isPositive: Bool { pct >= 0 }
+    private var color: Color { isPositive ? .bizarreSuccess : .bizarreError }
+    private var arrowIcon: String { isPositive ? "arrow.up.right" : "arrow.down.right" }
+    private var label: String { String(format: "%@%.1f%% YoY", isPositive ? "+" : "", pct * 100) }
+
+    var body: some View {
+        Label(label, systemImage: arrowIcon)
+            .font(.brandLabelSmall())
+            .foregroundStyle(color)
+            .padding(.horizontal, BrandSpacing.xs)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.10), in: Capsule())
+            .overlay(Capsule().strokeBorder(color.opacity(0.25), lineWidth: 0.5))
+            .accessibilityLabel(
+                String(format: "%.1f percent %@ year over year",
+                       abs(pct * 100), isPositive ? "increase" : "decrease")
+            )
     }
 }
 

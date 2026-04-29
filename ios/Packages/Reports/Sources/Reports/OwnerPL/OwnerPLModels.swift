@@ -21,36 +21,60 @@ public struct OwnerPLSummary: Decodable, Sendable {
     public let timeSeries: [PLTimeBucket]
     public let topCustomers: [PLTopCustomer]
     public let topServices: [PLTopService]
+    /// YoY delta in revenue cents vs same period prior year (nil if unavailable).
+    public let yoyRevenueDeltaCents: Int?
+    /// YoY delta in net-profit cents vs same period prior year (nil if unavailable).
+    public let yoyNetProfitDeltaCents: Int?
+
+    /// Percentage revenue change vs prior year period; nil when prior is unknown.
+    public var yoyRevenuePct: Double? {
+        guard let delta = yoyRevenueDeltaCents else { return nil }
+        let prior = revenue.grossCents - delta
+        guard prior != 0 else { return nil }
+        return Double(delta) / Double(prior)
+    }
+
+    /// Percentage net-profit change vs prior year period; nil when prior is unknown.
+    public var yoyNetProfitPct: Double? {
+        guard let delta = yoyNetProfitDeltaCents else { return nil }
+        let prior = netProfit.cents - delta
+        guard prior != 0 else { return nil }
+        return Double(delta) / Double(prior)
+    }
 
     enum CodingKeys: String, CodingKey {
         case period
         case revenue
         case cogs
-        case grossProfit    = "gross_profit"
+        case grossProfit              = "gross_profit"
         case expenses
-        case netProfit      = "net_profit"
-        case taxLiability   = "tax_liability"
+        case netProfit                = "net_profit"
+        case taxLiability             = "tax_liability"
         case ar
-        case inventoryValue = "inventory_value"
-        case timeSeries     = "time_series"
-        case topCustomers   = "top_customers"
-        case topServices    = "top_services"
+        case inventoryValue           = "inventory_value"
+        case timeSeries               = "time_series"
+        case topCustomers             = "top_customers"
+        case topServices              = "top_services"
+        case yoyRevenueDeltaCents     = "yoy_revenue_delta_cents"
+        case yoyNetProfitDeltaCents   = "yoy_net_profit_delta_cents"
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        period         = (try? c.decode(PLPeriod.self,           forKey: .period))         ?? PLPeriod()
-        revenue        = (try? c.decode(PLRevenue.self,          forKey: .revenue))        ?? PLRevenue()
-        cogs           = (try? c.decode(PLCogs.self,             forKey: .cogs))           ?? PLCogs()
-        grossProfit    = (try? c.decode(PLProfit.self,           forKey: .grossProfit))    ?? PLProfit()
-        expenses       = (try? c.decode(PLExpenses.self,         forKey: .expenses))       ?? PLExpenses()
-        netProfit      = (try? c.decode(PLProfit.self,           forKey: .netProfit))      ?? PLProfit()
-        taxLiability   = (try? c.decode(PLTax.self,              forKey: .taxLiability))   ?? PLTax()
-        ar             = (try? c.decode(PLAr.self,               forKey: .ar))             ?? PLAr()
-        inventoryValue = (try? c.decode(PLInventoryValue.self,   forKey: .inventoryValue)) ?? PLInventoryValue()
-        timeSeries     = (try? c.decode([PLTimeBucket].self,     forKey: .timeSeries))     ?? []
-        topCustomers   = (try? c.decode([PLTopCustomer].self,    forKey: .topCustomers))   ?? []
-        topServices    = (try? c.decode([PLTopService].self,     forKey: .topServices))    ?? []
+        period                  = (try? c.decode(PLPeriod.self,           forKey: .period))         ?? PLPeriod()
+        revenue                 = (try? c.decode(PLRevenue.self,          forKey: .revenue))        ?? PLRevenue()
+        cogs                    = (try? c.decode(PLCogs.self,             forKey: .cogs))           ?? PLCogs()
+        grossProfit             = (try? c.decode(PLProfit.self,           forKey: .grossProfit))    ?? PLProfit()
+        expenses                = (try? c.decode(PLExpenses.self,         forKey: .expenses))       ?? PLExpenses()
+        netProfit               = (try? c.decode(PLProfit.self,           forKey: .netProfit))      ?? PLProfit()
+        taxLiability            = (try? c.decode(PLTax.self,              forKey: .taxLiability))   ?? PLTax()
+        ar                      = (try? c.decode(PLAr.self,               forKey: .ar))             ?? PLAr()
+        inventoryValue          = (try? c.decode(PLInventoryValue.self,   forKey: .inventoryValue)) ?? PLInventoryValue()
+        timeSeries              = (try? c.decode([PLTimeBucket].self,     forKey: .timeSeries))     ?? []
+        topCustomers            = (try? c.decode([PLTopCustomer].self,    forKey: .topCustomers))   ?? []
+        topServices             = (try? c.decode([PLTopService].self,     forKey: .topServices))    ?? []
+        yoyRevenueDeltaCents    = try? c.decode(Int.self, forKey: .yoyRevenueDeltaCents)
+        yoyNetProfitDeltaCents  = try? c.decode(Int.self, forKey: .yoyNetProfitDeltaCents)
     }
 }
 
@@ -297,27 +321,41 @@ public struct PLTimeBucket: Decodable, Sendable, Identifiable {
     public let revenueCents: Int
     public let expenseCents: Int
     public let netCents: Int
+    /// Year-over-year revenue delta in cents vs same bucket in prior year.
+    /// Nil when the server omits prior-year data (e.g. first operating year).
+    public let yoyRevenueDeltaCents: Int?
     public var id: String { bucket }
     public var revenueDollars: Double { Double(revenueCents) / 100.0 }
     public var expenseDollars: Double { Double(expenseCents) / 100.0 }
     public var netDollars: Double     { Double(netCents) / 100.0 }
+    /// Percentage change vs prior year, nil if no prior data.
+    public var yoyRevenuePct: Double? {
+        guard let delta = yoyRevenueDeltaCents else { return nil }
+        let prior = revenueCents - delta
+        guard prior != 0 else { return nil }
+        return Double(delta) / Double(prior)
+    }
 
     enum CodingKeys: String, CodingKey {
         case bucket
-        case revenueCents = "revenue_cents"
-        case expenseCents = "expense_cents"
-        case netCents     = "net_cents"
+        case revenueCents       = "revenue_cents"
+        case expenseCents       = "expense_cents"
+        case netCents           = "net_cents"
+        case yoyRevenueDeltaCents = "yoy_revenue_delta_cents"
     }
-    public init(bucket: String, revenueCents: Int, expenseCents: Int, netCents: Int) {
+    public init(bucket: String, revenueCents: Int, expenseCents: Int, netCents: Int,
+                yoyRevenueDeltaCents: Int? = nil) {
         self.bucket = bucket; self.revenueCents = revenueCents
         self.expenseCents = expenseCents; self.netCents = netCents
+        self.yoyRevenueDeltaCents = yoyRevenueDeltaCents
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        bucket        = (try? c.decode(String.self, forKey: .bucket))        ?? ""
-        revenueCents  = (try? c.decode(Int.self,    forKey: .revenueCents))  ?? 0
-        expenseCents  = (try? c.decode(Int.self,    forKey: .expenseCents))  ?? 0
-        netCents      = (try? c.decode(Int.self,    forKey: .netCents))      ?? 0
+        bucket                = (try? c.decode(String.self, forKey: .bucket))                ?? ""
+        revenueCents          = (try? c.decode(Int.self,    forKey: .revenueCents))          ?? 0
+        expenseCents          = (try? c.decode(Int.self,    forKey: .expenseCents))          ?? 0
+        netCents              = (try? c.decode(Int.self,    forKey: .netCents))              ?? 0
+        yoyRevenueDeltaCents  = try? c.decode(Int.self,    forKey: .yoyRevenueDeltaCents)
     }
 }
 
