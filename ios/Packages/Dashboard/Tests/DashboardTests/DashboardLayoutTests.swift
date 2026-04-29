@@ -97,45 +97,91 @@ final class DashboardLayoutTests: XCTestCase {
         XCTAssertEqual(labels, ["Stale tickets", "Overdue invoices", "Missing parts", "Low stock"])
     }
 
-    // MARK: - dashboardGreeting(for:)
+    // MARK: - dashboardGreeting(for:) — §3.9 extended variants
+    //
+    // Tests pin to a known weekday (Monday 2026-04-27) and a known weekend day
+    // (Saturday 2026-04-25) so results are deterministic regardless of when
+    // the CI job runs.
 
-    func test_greeting_morning() {
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 9)), "Good morning")
+    func test_greeting_morning_weekday() {
+        // Hour 9 on a weekday → "Good morning"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 9)), "Good morning")
     }
 
-    func test_greeting_afternoon() {
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 13)), "Good afternoon")
+    func test_greeting_morning_weekend_earlyDawn() {
+        // Hour 6 on a Saturday → "Enjoy your morning off"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekend(hour: 6)), "Enjoy your morning off")
     }
 
-    func test_greeting_evening() {
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 18)), "Good evening")
+    func test_greeting_morning_midMorning_weekend() {
+        // Hour 10 on Saturday → "Good morning" (10 >= 9, dawn variant is 5-8)
+        XCTAssertEqual(dashboardGreeting(for: Self.weekend(hour: 10)), "Good morning")
+    }
+
+    func test_greeting_afternoon_weekday() {
+        // Hour 14 on weekday → "Good afternoon"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 14)), "Good afternoon")
+    }
+
+    func test_greeting_afternoon_weekend() {
+        // Hour 14 on Saturday → "Happy weekend"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekend(hour: 14)), "Happy weekend")
+    }
+
+    func test_greeting_evening_weekday() {
+        // Hour 18 on weekday → "Good evening"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 18)), "Good evening")
+    }
+
+    func test_greeting_evening_weekend() {
+        // Hour 19 on Saturday → "Enjoy your evening"
+        XCTAssertEqual(dashboardGreeting(for: Self.weekend(hour: 19)), "Enjoy your evening")
     }
 
     func test_greeting_lateNight() {
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 23)), "Working late")
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 23)), "Working late")
     }
 
     func test_greeting_earlyMorning_beforeDawn() {
         // Hour 2 is before 5 — falls through to "Working late"
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 2)), "Working late")
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 2)), "Working late")
     }
 
     func test_greeting_noonBoundary() {
         // 12:00 is "Good afternoon", not "Good morning"
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 12)), "Good afternoon")
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 12)), "Good afternoon")
     }
 
-    func test_greeting_dawnBoundary() {
-        // 5:00 is the first minute of "Good morning"
-        XCTAssertEqual(dashboardGreeting(for: Self.date(hour: 5)), "Good morning")
+    func test_greeting_dawnBoundary_weekday() {
+        // 5:00 weekday is first minute of "Good morning" (dawn bucket 5-8)
+        XCTAssertEqual(dashboardGreeting(for: Self.weekday(hour: 5)), "Good morning")
+    }
+
+    func test_greeting_dawnBoundary_weekend() {
+        // 5:00 Saturday is first minute of "Enjoy your morning off" (dawn + weekend)
+        XCTAssertEqual(dashboardGreeting(for: Self.weekend(hour: 5)), "Enjoy your morning off")
     }
 
     // MARK: - Helpers
 
-    private static func date(hour: Int) -> Date {
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        comps.hour = hour
-        comps.minute = 0
+    /// Returns a Date for a known Monday (2026-04-27) at `hour`.
+    private static func weekday(hour: Int) -> Date {
+        date(year: 2026, month: 4, day: 27, hour: hour) // Monday
+    }
+
+    /// Returns a Date for a known Saturday (2026-04-25) at `hour`.
+    private static func weekend(hour: Int) -> Date {
+        date(year: 2026, month: 4, day: 25, hour: hour) // Saturday
+    }
+
+    private static func date(year: Int, month: Int, day: Int, hour: Int) -> Date {
+        var comps        = DateComponents()
+        comps.year       = year
+        comps.month      = month
+        comps.day        = day
+        comps.hour       = hour
+        comps.minute     = 0
+        comps.second     = 0
         return Calendar.current.date(from: comps) ?? Date()
     }
 }
