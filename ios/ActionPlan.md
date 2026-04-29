@@ -590,6 +590,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Filter chips** — db339de3 — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
 - [x] **Urgency chips** — db339de3 — Critical / High / Medium / Normal / Low (color-coded dots).
 - [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
+- [x] **Search help text** — `.searchable` prompt updated to "ID, customer, phone, device, IMEI…" so users know what fields are searched. `TicketListView` compact + regular layouts. This commit.
 - [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
 - [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
 - [x] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete. `TicketRowSwipeActions` modifier added state-dependent forward button (§4.13 spec) + `role: .destructive` + `allowsFullSwipe: true` on Archive. Commit `feat(ios §4-batch-d7f2a91c)`.
@@ -607,6 +608,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `SLABadge` (icon + color from `slaStatus`: breached=red/xmark, warning=amber/exclaim, ok=gray) + `DueDateBadge` (days countdown: red overdue, amber &lt;24h, yellow &lt;3d, gray safe). Both shown inline on `TicketRow`. Commit `feat(ios §4-batch-d7f2a91c)`.
+- [x] **Attachment-count badge on ticket row** — `AttachmentCountBadge` (paperclip icon + count) rendered in `TicketRow` trailing column when `ticket.attachmentCount > 0`. `attachmentCount: Int?` added to `TicketSummary` DTO (server field `attachment_count`). This commit.
 - [x] **Empty state** — db339de3 — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
@@ -618,8 +620,10 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
 - [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `.textSelection(.enabled)` on each; copyable grand total.
 - [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
+- [x] **Device make/model copy chips** — `DeviceMakeModelChips` + `CopyChip` in `TicketDetailView`: tappable capsule chips for manufacturer name and model name; tap copies value to pasteboard with 1.5 s "Copied" feedback; shown in both read-only `DeviceCard` and editable `DeviceCardWithActions`. This commit.
 - [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement).
 - [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
+- [x] **Parts-cost preview** — `DeviceCardWithActions` renders a "Parts subtotal" summary row (bold amount) above the per-part list whenever parts have non-zero totals. Client-side sum of `part.total`. This commit.
 - [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
 - [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
@@ -630,6 +634,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
+- [x] **Time-spent counter** — `BenchTimerToggleCard` collapsed header now shows a live `timer.displayTime` monospaced label (orange when running, muted when paused/idle); `BenchTimerView` accepts an injected `BenchTimerState` so the card header and expanded body share the same timer instance. This commit.
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
 - [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
@@ -973,6 +978,11 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] VoiceOver accessibility: read full currency phrasing.
 - [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity).
 - [ ] See §28 for the full list.
+- [x] **Birthday gift reminder chip** — shown in customer detail Info tab when birthday is ≤ 14 days away; taps open `CustomerBirthdayAutomationSheet`; reads `birthday` field via `CustomerDetail.birthday` keyed UserDefaults cache. `BirthdayGiftReminderChip`. (CustomerExtra5Items.swift)
+- [x] **Lifetime-spend card** — formatted LTV (`ltvCents` / `analytics.lifetimeValue`) + percentile tier badge (Top 1% / Top 10% / Top 25% / Standard) with avg-ticket subtitle. `CustomerLifetimeSpendCard`. (CustomerExtra5Items.swift)
+- [x] **Anniversary chip** — "Xth anniversary in Nd" Capsule chip shown ≤ 7 days before customer's annual `createdAt` milestone; ordinal suffix helper. `CustomerAnniversaryChip`. (CustomerExtra5Items.swift)
+- [x] **Marketing-channel preference row** — read-only surface of `CustomerPreferredChannel` + marketing opt-in status loaded from `GET /customers/:id/comm-prefs`; opt-out badge; taps open `CustomerCommPrefsSheet`. `MarketingChannelPreferenceRow`. (CustomerExtra5Items.swift)
+- [x] **Customer-portal magic-link copy** — one-tap Capsule chip that calls `GET /api/v1/customers/:id/portal-link`, copies URL to clipboard, shows "Copied!" confirmation for 2 s. `CustomerPortalMagicLinkCopy` + `CustomerPortalLinkResponse` DTO + `customerPortalLink(customerId:)` endpoint. (CustomerExtra5Items.swift)
 
 ---
 ## §6. Inventory
@@ -3898,22 +3908,18 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 - [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
-- [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory), MyQueueWidget (M). (feat(ios phase-6 §24))
-- [x] **My Queue medium widget** — `MyQueueWidget` (medium) shows up to 3 tickets assigned to the signed-in technician; reads `WidgetSnapshot.myQueueTickets`; each row deep-links `bizarrecrm://tickets/:id`; whole-widget `.widgetURL` → `bizarrecrm://tickets?filter=mine`; same 5/15/30 min refresh schedule. (`BizarreCRMWidgets/MyQueueWidget.swift`; `WidgetSnapshot.myQueueTickets` added to Core; `MyQueueWidget` registered in bundle.)
+- [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory). (feat(ios phase-6 §24))
 - [x] Data source: App Group UserDefaults group.com.bizarrecrm; WidgetSnapshot written by WidgetDataStore. (feat(ios phase-6 §24))
 - [x] Timeline entries: configurable 5/15/30 min interval via WidgetSettingsView; policy .after(refreshDate). (feat(ios phase-6 §24))
-- [x] **Widget refresh schedule** — `WidgetDataStore.scheduleNextRefresh()` persists next-refresh date and calls `reloadAllTimelines()`; `handleBackgroundRefreshPush(_:)` handles `content-available:1` silent push with `aps.category = WIDGET_REFRESH`; `reload(kinds:)` for targeted per-widget-kind reloads. (`Packages/Core/Sources/Core/Widgets/WidgetDataStore.swift`)
 - [x] Taps: deep-links via bizarrecrm://tickets/:id, bizarrecrm://appointments/:id, bizarrecrm://pos. (feat(ios phase-6 §24))
-- [x] **Deep-link from widget (small widgets)** — `TodaysRevenueSmallView` gains `.widgetURL("bizarrecrm://dashboard/revenue")`; `OpenTicketsSmallView` gains `.widgetURL("bizarrecrm://tickets")`; `AccessoryCircularView` and `AccessoryRectangularView` gain `.widgetURL("bizarrecrm://tickets")` so tapping any lock-screen complication opens the ticket list. (`BizarreCRMWidgets/TodaysRevenueWidget.swift`, `OpenTicketsWidget.swift`, `LockScreenComplicationsWidget.swift`)
 - [x] StandBy: AppointmentsNextWidget large + TodaysRevenueWidget medium in StandBy mode. (feat(ios phase-6 §24))
 - [x] Lock Screen variants: circular = ticket count; rectangular = X tickets open; inline = X open tickets. (feat(ios phase-6 §24))
-- [x] **Lock-screen ticket count deep-link** — `AccessoryCircularView` and `AccessoryRectangularView` in `LockScreenComplicationsWidget` each carry `.widgetURL("bizarrecrm://tickets")` so tapping the lock-screen complication routes directly to the tickets list on unlock. (`BizarreCRMWidgets/LockScreenComplicationsWidget.swift`)
 - [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
 - [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
-- [x] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution. (`.widgetURL()` on small/accessory widgets routes directly to the correct feature; row `Link(destination:)` on medium/large widgets carry per-record deep-links; `MyQueueWidget` filter URL `bizarrecrm://tickets?filter=mine` pre-applies the assignee filter.)
+- [ ] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution.
 - [ ] Siri learns to invoke by donated phrases.
 - [ ] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it.
 
@@ -6024,17 +6030,10 @@ Number preserved as stub so cross-refs don't break.
 ### 57.1 Map view
 - [x] **MapKit** — appointments pinned on map. (`FieldServiceMapView.swift` — UIViewRepresentable + ETAAnnotationView + a11y labels)
 - [x] **Route** to next job via Apple Maps. (`FieldServiceRouteService.swift` — MKDirections.calculate + MKMapItem.openInMaps; `NextJobCardView.swift` — Liquid Glass overlay + Navigate button)
-- [x] **Route map cluster annotation** — nearby pins auto-cluster into `RouteMapClusterAnnotationView`: orange circle badge with job count; scales to 44pt for 10+ jobs; a11y label "N appointments in this area". `FieldServiceMapView.registerClusterView(on:)` registers the view class. (`RouteMapClusterAnnotation.swift`)
-- [x] **ETA-changed banner** — top-edge slide-in overlay shown when the server pushes a revised ETA; auto-dismisses after 5 s; delta direction colour-coded (later=orange, sooner=green); VoiceOver announcement on appear; Reduce Motion uses opacity fade. (`ETAChangedBanner.swift`)
 
 ### 57.2 Check-in / check-out
 - [x] **GPS verified** — arrival → start-work auto. (`FieldCheckInService.swift` — actor + LocationCapture protocol; `FieldCheckInPromptView.swift` + `FieldCheckInPromptViewModel.swift` — geofence-triggered prompt)
 - [x] **Signature on completion**. (`FieldSignatureView.swift` — PKCanvasView, PNG export, a11y "Customer signed" announcement)
-- [x] **Completion-photo grid** — before/after photo capture via `PhotosPicker`; 3-column adaptive `LazyVGrid`; in-memory JPEG `Data` binding; per-thumbnail remove button; max-10 guard; a11y combined label "N photos". (`CompletionPhotoGrid.swift`)
-- [x] **Customer-on-route-arrival haptic** — `.heavy` impact on `onSite` status arrival; Reduce Motion swaps to `.soft` (cue preserved); optional double-pulse confirmation variant; `.onCustomerArrival(isOnSite:)` SwiftUI modifier for ergonomic call-site. (`CustomerArrivalHaptic.swift`)
-
-### 57.4 Dispatcher
-- [x] **Technician name chip** — `TechnicianNameChip` pill badge showing assigned tech; `.standard` (icon + name) and `.compact` (initials avatar) variants; deterministic hue per tech name so colours are stable across the app. (`TechnicianNameChip.swift`)
 
 ### 57.3 On-site invoice
 - [x] **POS in the field** — BlockChyp mobile terminal. (`FieldOnSiteInvoiceFlow.swift` — ChargeCoordinator via injected chargeHandler; pre-filled service lines from appointment context)
