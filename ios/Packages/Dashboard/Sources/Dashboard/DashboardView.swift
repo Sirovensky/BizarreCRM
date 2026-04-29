@@ -270,19 +270,9 @@ private struct LoadedBody: View {
     // §3.3 Dismiss attention item (server-backed)
     var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
 
-    /// §3.1: 3-column at regular width; 4-column when iPad ≥1100pt or Mac.
-    @Environment(\.horizontalSizeClass) private var hSizeClass
-    private var fourColumnIfWide: [GridItem] {
-        // On Mac (Designed for iPad) the full window is often >1100pt.
-        // We use GeometryReader in the parent ScrollView for finer control,
-        // but here we default to 4 if on a Mac, 3 otherwise.
-        // Live column adaptation via GeometryReader is done in DashboardKpiTileGrid (iPad target).
-        #if targetEnvironment(macCatalyst)
-        return Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 4)
-        #else
-        return Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 3)
-        #endif
-    }
+    // §22.1 — `fourColumnIfWide` replaced by `dashboardStatGridColumnCount`
+    // (GeometryReader-driven) so the grid responds to split-view / Stage Manager
+    // width changes without a trait-collection change.
 
     var body: some View {
         ScrollView {
@@ -326,6 +316,10 @@ private struct LoadedBody: View {
             .frame(maxWidth: 1200, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // §22 §3709 — interactive scroll-dismiss so swiping down on the
+        // dashboard collapses the software keyboard if a search/filter
+        // field above had focus.
+        .scrollDismissesKeyboard(.interactively)
     }
 
     /// §3.9 — dynamic greeting by hour. Reads the current locale's first
@@ -373,8 +367,10 @@ private struct LoadedBody: View {
     }
 
     // Compact stat tiles — muted hierarchy.
-    // iPhone: 2-column grid (adaptive minimum 140 pt).
-    // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §22.1 — responsive column count driven by GeometryReader:
+    //   iPhone / Slide Over (< 600 pt): 2 columns
+    //   11" full-screen / 13" split (600–899 pt): 3 columns
+    //   13" full-screen landscape (≥ 900 pt): 4 columns
     // §3.1: each tile deep-links to the filtered list via bizarrecrm:// scheme.
     private var secondaryGrid: some View {
         let s = snapshot.summary
@@ -389,27 +385,30 @@ private struct LoadedBody: View {
                   deepLink: "bizarrecrm://inventory"),
         ]
 
-        // §3.1 column spec:
-        //   iPhone: 2-column adaptive (minimum 140 pt)
-        //   iPad ≥768 pt: 3 columns; iPad/Mac ≥1100 pt: 4 columns, max 1200 pt content width
-        let columns: [GridItem] = Platform.isCompact
-            ? [
-                GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
-                GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
-              ]
-            : fourColumnIfWide
-
-        return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
-            ForEach(tiles) { tile in
-                StatTileCard(
-                    tile: tile,
-                    onTap: tile.destination.flatMap { dest -> (@MainActor () -> Void)? in
-                        guard let handler = onTileTap else { return nil }
-                        return { @MainActor in handler(dest) }
-                    }
-                )
+        return GeometryReader { geo in
+            let cols = dashboardStatGridColumnCount(
+                isCompact: Platform.isCompact,
+                containerWidth: geo.size.width
+            )
+            let columns = Array(
+                repeating: GridItem(.flexible(), spacing: BrandSpacing.md),
+                count: cols
+            )
+            LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
+                ForEach(tiles) { tile in
+                    StatTileCard(
+                        tile: tile,
+                        onTap: tile.destination.flatMap { dest -> (@MainActor () -> Void)? in
+                            guard let handler = onTileTap else { return nil }
+                            return { @MainActor in handler(dest) }
+                        }
+                    )
+                }
             }
         }
+        // Intrinsic height: 2 rows × 92 pt tile height + spacing. GeometryReader
+        // collapses to zero height without an explicit frame.
+        .frame(height: 2 * 92 + BrandSpacing.md)
     }
 
     @ViewBuilder
@@ -487,6 +486,25 @@ private struct HeroMetricCard: View {
         #if canImport(UIKit)
         .hoverEffect(.highlight)
         #endif
+        // §22.6 — right-click / trackpad secondary-click context menu.
+        .contextMenu {
+            Button {
+                #if canImport(UIKit)
+                UIPasteboard.general.string = "\(label): \(value)"
+                #endif
+            } label: {
+                Label("Copy \(label)", systemImage: "doc.on.doc")
+            }
+
+            if let link = deepLink, let url = URL(string: link) {
+                Divider()
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Open \(label)", systemImage: "arrow.forward.circle")
+                }
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue("\(value). \(supporting).")
@@ -558,6 +576,25 @@ private struct StatTileCard: View {
         #if canImport(UIKit)
         .hoverEffect(.highlight)
         #endif
+        // §22.6 — right-click / trackpad secondary-click context menu.
+        .contextMenu {
+            Button {
+                #if canImport(UIKit)
+                UIPasteboard.general.string = "\(tile.label): \(tile.value)"
+                #endif
+            } label: {
+                Label("Copy \(tile.label)", systemImage: "doc.on.doc")
+            }
+
+            if let url = tile.deepLinkURL {
+                Divider()
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Open \(tile.label)", systemImage: "arrow.forward.circle")
+                }
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tile.label)
         .accessibilityValue(tile.value)
@@ -905,6 +942,24 @@ private struct AttentionAllClearView: View {
 func kpiGridColumnCount(isCompact: Bool, isMac: Bool = false) -> Int {
     if isCompact { return 2 }
     return isMac ? 4 : 3
+}
+
+/// §22.1 — Responsive stat-tile column count for the dashboard secondary grid.
+///
+/// Thresholds align with common iPad widths:
+/// - iPhone / Slide Over (< 600 pt) → 2 columns
+/// - 11" full-screen / 13" split-half (600–899 pt) → 3 columns
+/// - 13" full-screen landscape (≥ 900 pt) → 4 columns
+///
+/// `isCompact` is checked first so the function works on iPhone without
+/// a geometry proxy.
+func dashboardStatGridColumnCount(isCompact: Bool, containerWidth: CGFloat) -> Int {
+    guard !isCompact else { return 2 }
+    switch containerWidth {
+    case ..<600:    return 2
+    case 600..<900: return 3
+    default:        return 4
+    }
 }
 
 /// Returns the attention items from a `NeedsAttention` snapshot,
