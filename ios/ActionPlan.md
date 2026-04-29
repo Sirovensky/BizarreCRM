@@ -334,7 +334,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (ecb07902 — AuthPrivacyModifiers.swift BackgroundRedactionModifier)
 - [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (ecb07902 — AuthPrivacyModifiers.swift ScreenCaptureBlurModifier)
 - [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (ecb07902 — AuthPrivacyModifiers.swift OTPPasteboardCleaner)
-- [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
+- [x] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`. (`AuthLogPrivacy.swift` — `bannedFields`, `presence()`, `redacted()` helpers; CI enforced by `scripts/auth-log-ban.sh`; §2-batch-c7f1a9)
 - [x] Challenge token expires silently after 10min → prompt restart login. (ecb07902 — AuthPrivacyModifiers.swift ChallengeTokenExpiryModifier)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.

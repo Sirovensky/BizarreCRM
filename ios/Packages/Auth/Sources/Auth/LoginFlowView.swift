@@ -164,7 +164,8 @@ public struct LoginFlowView: View {
         case .setPassword:      return "Your admin requested a reset. Choose a new password to continue."
         case .twoFactorSetup:   return "Scan the QR with Google Authenticator, 1Password, or Authy."
         case .twoFactorVerify:  return "Enter your 6-digit code."
-        case .forgotPassword:   return "We'll email you a reset link."
+        // §2 copy — more specific: clarifies what to enter and what happens next.
+        case .forgotPassword:   return "Enter your email and we'll send a reset link."
         case .pinSetup:         return "Create a 4–6 digit PIN for quick unlock."
         case .pinVerify:        return "Enter your PIN."
         case .biometricOffer:   return "Unlock faster next time?"
@@ -202,7 +203,10 @@ public struct LoginFlowView: View {
                     placeholder: "https://192.168.0.240:443",
                     systemImage: "server.rack",
                     contentType: .URL,
-                    keyboard: .URL
+                    keyboard: .URL,
+                    // §2 a11y — clarify expected format for VoiceOver users
+                    // who may not see the placeholder when the field is empty.
+                    accessibilityHint: "Enter the full address of your self-hosted server, for example https://192.168.0.240"
                 )
                 .focused($focus, equals: .serverUrl)
             } else {
@@ -215,7 +219,9 @@ public struct LoginFlowView: View {
                         contentType: nil,
                         keyboard: .asciiCapable,
                         autocapitalize: .never,
-                        autocorrect: false
+                        autocorrect: false,
+                        // §2 a11y — hint explains the subdomain-only input pattern.
+                        accessibilityHint: "Enter your shop subdomain, for example yourshop"
                     )
                     .focused($focus, equals: .slug)
                     .onChange(of: flow.shopSlug) { _, new in
@@ -301,13 +307,21 @@ public struct LoginFlowView: View {
                            placeholder: "name@example.com",
                            systemImage: "person",
                            contentType: .username, keyboard: .emailAddress,
-                           autocapitalize: .never, autocorrect: false)
+                           autocapitalize: .never, autocorrect: false,
+                           // §2 a11y — clarify that both username and email are accepted.
+                           accessibilityHint: "Enter your username or email address")
                 .focused($focus, equals: .username)
                 .submitLabel(.next)
                 .onSubmit { focus = .password }
 
+            // §2 autofill — explicit `.password` contentType triggers iOS
+            // Password AutoFill QuickType bar with saved credentials for
+            // this domain. Combined with `.username` above, the system can
+            // offer a full username+password pair from iCloud Keychain.
             BrandSecureField(label: "Password", text: $flow.password,
-                             placeholder: "Your password", systemImage: "lock")
+                             placeholder: "Your password", systemImage: "lock",
+                             contentType: .password,
+                             accessibilityHint: "Enter your account password")
                 .focused($focus, equals: .password)
                 .submitLabel(.go)
                 .onSubmit { Task { await flow.submitCredentials() } }
@@ -325,9 +339,12 @@ public struct LoginFlowView: View {
                 .disabled(flow.username.isEmpty || flow.password.isEmpty)
 
             HStack {
-                Button("Forgot password?") { flow.beginForgotPassword() }
+                // §2 copy — "Forgot your password?" is friendlier and matches
+                // web phrasing. accessibilityLabel keeps it brief for VoiceOver.
+                Button("Forgot your password?") { flow.beginForgotPassword() }
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreTeal)
+                    .accessibilityLabel("Forgot password")
                 Spacer()
                 Button("Change server") { flow.back() }
                     .font(.brandLabelLarge())
@@ -355,9 +372,13 @@ public struct LoginFlowView: View {
         // §2.13 — blur password fields during screen capture; applied as
         // a container modifier so the strength meter is also hidden.
         return VStack(alignment: .leading, spacing: BrandSpacing.md) {
+            // §2 autofill — `.newPassword` lets iOS offer a strong generated
+            // password and saves it to iCloud Keychain on success.
             BrandSecureField(label: "New password", text: $flow.newPassword,
                              placeholder: "At least 8 characters",
-                             systemImage: "lock.rotation")
+                             systemImage: "lock.rotation",
+                             contentType: .newPassword,
+                             accessibilityHint: "Must be at least 8 characters with mixed case, a number, and a symbol")
                 .accessibilityIdentifier("setPassword.new")
 
             if !flow.newPassword.isEmpty {
@@ -368,7 +389,9 @@ public struct LoginFlowView: View {
 
             BrandSecureField(label: "Confirm password", text: $flow.confirmPassword,
                              placeholder: "Type it again",
-                             systemImage: "lock.rotation")
+                             systemImage: "lock.rotation",
+                             contentType: .newPassword,
+                             accessibilityHint: "Re-enter the same password to confirm")
                 .accessibilityIdentifier("setPassword.confirm")
 
             if mismatch {
@@ -465,16 +488,31 @@ public struct LoginFlowView: View {
 
     private var forgotPasswordPanel: some View {
         VStack(spacing: BrandSpacing.md) {
-            BrandTextField(label: "Email", text: $flow.forgotEmail,
+            BrandTextField(label: "Email address", text: $flow.forgotEmail,
                            placeholder: "you@example.com",
                            systemImage: "envelope",
                            contentType: .emailAddress, keyboard: .emailAddress,
-                           autocapitalize: .never, autocorrect: false)
+                           autocapitalize: .never, autocorrect: false,
+                           // §2 copy/a11y — clarify this is the address the reset
+                           // link will be sent to, not just any email.
+                           accessibilityHint: "Enter the email address linked to your account")
             if let ok = flow.forgotMessage {
-                Text(ok)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreSuccess)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // §2 copy — combine server message with a clear next-step prompt.
+                HStack(alignment: .top, spacing: BrandSpacing.xs) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.bizarreSuccess)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ok)
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreSuccess)
+                        Text("Check your inbox and follow the link to reset your password.")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
             }
             errorRow
             primaryButton("Send reset link") { await flow.submitForgotPassword() }
@@ -796,6 +834,9 @@ private struct StepIndicator: View {
 
 // MARK: - Form field helpers
 
+/// §2 a11y — Generic text field with label, leading icon, and optional
+/// autofill content type. Callers can pass `accessibilityHint` when the
+/// label alone is insufficient for VoiceOver users.
 private struct BrandTextField: View {
     let label: String
     @Binding var text: String
@@ -805,6 +846,8 @@ private struct BrandTextField: View {
     var keyboard: UIKeyboardType = .default
     var autocapitalize: TextInputAutocapitalization = .sentences
     var autocorrect: Bool = true
+    /// VoiceOver hint read after the label. Omit when the label is self-explanatory.
+    var accessibilityHint: String? = nil
 
     @FocusState private var focused: Bool
 
@@ -812,7 +855,9 @@ private struct BrandTextField: View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
             Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
             HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: systemImage).foregroundStyle(.bizarreOnSurfaceMuted)
+                Image(systemName: systemImage)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 TextField(placeholder, text: $text)
                     .textContentType(contentType)
                     .keyboardType(keyboard)
@@ -820,6 +865,10 @@ private struct BrandTextField: View {
                     .autocorrectionDisabled(!autocorrect)
                     .focused($focused)
                     .frame(maxWidth: .infinity, minHeight: 28)
+                    // Use the visible label so VoiceOver reads a meaningful name
+                    // even when the field is focused without surrounding context.
+                    .accessibilityLabel(label)
+                    .accessibilityHint(accessibilityHint ?? "")
             }
             .padding(.horizontal, BrandSpacing.md)
             .padding(.vertical, BrandSpacing.base)
@@ -832,12 +881,19 @@ private struct BrandTextField: View {
     }
 }
 
+/// §2 a11y + autofill — Secure field with show/hide toggle. Accepts an
+/// explicit `contentType` (defaulting to `.password`) so iOS Password
+/// AutoFill can offer saved credentials via QuickType on the credentials
+/// panel, and `.newPassword` on set-password / change-password panels.
 struct BrandSecureField: View {
     let label: String
     @Binding var text: String
     let placeholder: String
     let systemImage: String
+    var contentType: UITextContentType = .password
     var keyboard: UIKeyboardType = .default
+    /// VoiceOver hint read after the label. Omit when the label is self-explanatory.
+    var accessibilityHint: String? = nil
     @State private var reveal: Bool = false
     @FocusState private var focused: Bool
 
@@ -845,20 +901,28 @@ struct BrandSecureField: View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
             Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
             HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: systemImage).foregroundStyle(.bizarreOnSurfaceMuted)
+                Image(systemName: systemImage)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
                 Group {
                     if reveal {
                         TextField(placeholder, text: $text)
                             .keyboardType(keyboard)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            // Keep the same content type while revealed so
+                            // Password AutoFill suggestion doesn't disappear.
+                            .textContentType(contentType)
                     } else {
                         SecureField(placeholder, text: $text)
                             .keyboardType(keyboard)
+                            .textContentType(contentType)
                     }
                 }
                 .focused($focused)
                 .frame(maxWidth: .infinity, minHeight: 28)
+                .accessibilityLabel(label)
+                .accessibilityHint(accessibilityHint ?? "")
 
                 Button { reveal.toggle() } label: {
                     Image(systemName: reveal ? "eye.slash" : "eye")
@@ -867,6 +931,8 @@ struct BrandSecureField: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // §2 a11y — explicit label so VoiceOver announces action clearly.
+                .accessibilityLabel(reveal ? "Hide password" : "Show password")
             }
             .padding(.horizontal, BrandSpacing.md)
             .padding(.vertical, BrandSpacing.base)
