@@ -376,6 +376,55 @@ public extension BrandIcon {
         Image(systemName: systemName)
     }
 
+    // MARK: — §27 RTL flip support
+
+    /// Whether this icon is directional and should mirror in RTL layouts.
+    ///
+    /// Directional icons are those whose meaning changes when flipped (arrows,
+    /// chevrons pointing left/right, backspace, back-arrow).  Non-directional
+    /// icons (clock, info, lock, camera …) must never flip.
+    ///
+    /// SF Symbols 4+ ships built-in directionality metadata, but we also maintain
+    /// this explicit list so that custom brand icons and future additions default
+    /// to the safe choice (non-directional) until explicitly opted in.
+    public var isDirectional: Bool {
+        switch self {
+        case .chevronRight, .chevronLeft,
+             .arrowRight, .arrowUpRight, .arrowDownRight,
+             .shippingBoxReturn,
+             .deleteLeft,
+             .squarePencil,
+             .paperPlane,
+             .refresh, .refreshCounterclockwise, .sync:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Returns a SwiftUI `Image` that automatically mirrors this icon when the
+    /// active layout direction is RTL, iff `isDirectional` is `true`.
+    ///
+    /// Use this instead of `image` whenever an icon is placed in a directional
+    /// context (e.g. a back-button, a "next" arrow, a send icon).
+    ///
+    /// ```swift
+    /// BrandIcon.arrowRight.directionalImage()
+    ///     .accessibilityLabel(BrandIcon.arrowRight.accessibilityLabel)
+    /// ```
+    public func directionalImage() -> some View {
+        Image(systemName: systemName)
+            .flipsForRightToLeftLayoutDirection(isDirectional)
+    }
+
+    /// Returns a role-sensitive directional image.
+    ///
+    /// Combines the fill/outline role resolution with RTL flipping in one call.
+    public func directionalImage(for role: BrandIconRole) -> some View {
+        Image(systemName: resolvedSymbolName(for: role))
+            .flipsForRightToLeftLayoutDirection(isDirectional)
+    }
+
     // MARK: — §30.8 Role-sensitive symbol name
 
     /// Returns the correct SF Symbol variant for `role`:

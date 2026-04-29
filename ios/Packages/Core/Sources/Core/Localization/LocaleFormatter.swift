@@ -86,6 +86,55 @@ public struct LocaleFormatter: Sendable {
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
+    /// Format a value as a percentage with fraction-digit precision derived from
+    /// the minor unit of `currencyCode`.
+    ///
+    /// Currencies with zero minor units (JPY, KWD whole-number tier, etc.) produce
+    /// integer percentages; currencies with 2 minor units produce one decimal place
+    /// (the standard); 3-minor-unit currencies (JOD, KWD sub-unit) get two
+    /// decimal places.
+    ///
+    /// This ensures discount/tax-rate displays are consistent with the surrounding
+    /// monetary values — e.g. a ¥ cart never shows "10.0 %" while prices show "¥10".
+    ///
+    /// - Parameters:
+    ///   - value:        Fraction in 0.0 – 1.0 range (e.g. `0.075` → "7.5 %").
+    ///   - currencyCode: ISO 4217 currency code (e.g. `"JPY"`, `"USD"`, `"JOD"`).
+    public func formatPercent(_ value: Double, currencyCode: String) -> String {
+        let fractionDigits = Self.percentFractionDigits(for: currencyCode)
+        let formatter = FormatterCache.shared.numberFormatter(
+            locale: locale,
+            style: .percent,
+            fractionDigits: fractionDigits
+        )
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    // MARK: - Currency minor-unit helpers (internal)
+
+    /// Returns the appropriate number of fraction digits for a percentage that
+    /// accompanies `currencyCode` amounts.
+    ///
+    /// Mapping rules:
+    /// - 0 minor units → 0 fraction digits (whole-number percent)
+    /// - 2 minor units → 1 fraction digit  (standard)
+    /// - 3 minor units → 2 fraction digits (high-precision)
+    internal static func percentFractionDigits(for currencyCode: String) -> Int {
+        switch currencyCode.uppercased() {
+        // Zero-decimal currencies (ISO 4217 exponent = 0)
+        case "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
+             "MGA", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF",
+             "XOF", "XPF":
+            return 0
+        // Three-decimal currencies (ISO 4217 exponent = 3)
+        case "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND":
+            return 2
+        // Standard two-decimal currencies
+        default:
+            return 1
+        }
+    }
+
     // MARK: - Currency formatting
 
     /// Format a `Double` amount with an explicit currency code.

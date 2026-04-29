@@ -273,4 +273,58 @@ public enum L10n: Sendable {
         public static let unsavedChangesMessage = NSLocalizedString("alert.unsavedChanges.message",comment: "Unsaved changes alert body")
         public static let discard               = NSLocalizedString("alert.discard",               comment: "Discard unsaved changes button")
     }
+
+    // MARK: - Language Picker
+
+    /// All copy used in the in-app language picker sheet (Settings → Language).
+    ///
+    /// The language picker lets staff override the device locale for the app UI.
+    /// These strings must be translated into every supported locale so that a
+    /// user who has already switched to a language can read the UI in that language.
+    ///
+    /// Keys follow the `languagePicker.*` namespace convention.
+    public enum LanguagePicker: Sendable {
+        /// Navigation / sheet title.
+        public static let title             = NSLocalizedString("languagePicker.title",
+                                                                comment: "Language picker sheet title")
+        /// Sub-heading shown beneath the title.
+        public static let subtitle          = NSLocalizedString("languagePicker.subtitle",
+                                                                comment: "Language picker subtitle explaining the setting applies to the app UI only")
+        /// Section header for the recommended / device-default row.
+        public static let sectionDefault    = NSLocalizedString("languagePicker.section.default",
+                                                                comment: "Section header: device / system default language")
+        /// Section header for the full list of available app languages.
+        public static let sectionAvailable  = NSLocalizedString("languagePicker.section.available",
+                                                                comment: "Section header: all available languages")
+        /// Label for the 'Use Device Language' row — restores automatic behaviour.
+        public static let useDeviceLanguage = NSLocalizedString("languagePicker.useDeviceLanguage",
+                                                                comment: "Row label: follow the device locale (default)")
+        /// Accessibility hint for the 'Use Device Language' row.
+        public static let useDeviceLanguageHint = NSLocalizedString("languagePicker.useDeviceLanguage.hint",
+                                                                comment: "Accessibility hint for the 'use device language' row")
+        /// Checkmark accessibility label shown next to the currently active language.
+        public static let selectedLanguage  = NSLocalizedString("languagePicker.selectedLanguage",
+                                                                comment: "Accessibility: announces which language is currently selected")
+        /// Footer note explaining that a restart may be required for full effect.
+        public static let restartNote       = NSLocalizedString("languagePicker.restartNote",
+                                                                comment: "Footer: app may need to restart for the language to take full effect")
+        /// Search field placeholder inside the picker.
+        public static let searchPlaceholder = NSLocalizedString("languagePicker.search.placeholder",
+                                                                comment: "Placeholder for the language search field")
+        /// Shown when the search query returns no matching languages.
+        public static let noResults         = NSLocalizedString("languagePicker.noResults",
+                                                                comment: "Empty state when search finds no matching languages")
+        /// Confirmation button that applies the selected language and dismisses.
+        public static let apply             = NSLocalizedString("languagePicker.apply",
+                                                                comment: "Apply / Save button in the language picker")
+        /// Alert title when the user picks a language that differs from the current one.
+        public static let changeAlertTitle  = NSLocalizedString("languagePicker.changeAlert.title",
+                                                                comment: "Alert title when confirming a language switch")
+        /// Alert body explaining that some screens may need a restart.
+        public static let changeAlertBody   = NSLocalizedString("languagePicker.changeAlert.body",
+                                                                comment: "Alert body for language switch confirmation")
+        /// 'Change Now' button in the confirmation alert.
+        public static let changeNow         = NSLocalizedString("languagePicker.changeNow",
+                                                                comment: "Confirm button in language-change alert")
+    }
 }

@@ -82,6 +82,53 @@ public enum PseudoLocaleGenerator {
 #endif
     }
 
+    // MARK: - Runtime toggle
+
+    /// Global runtime switch.  Allows UI tests / QA flows to enable pseudo-locale
+    /// outside a full DEBUG build (e.g. an internal TestFlight build where the
+    /// preprocessor constant is Release but a hidden debug menu is available).
+    ///
+    /// Defaults to `false` in production; automatically `true` in DEBUG.
+    public static var isEnabled: Bool = {
+#if DEBUG
+        return true
+#else
+        return false
+#endif
+    }()
+
+    /// Wraps `string` only when `isEnabled` is `true`.
+    ///
+    /// Use this at call sites that should respect the runtime toggle in addition
+    /// to the compile-time `DEBUG` gate.  The compile-time guard in `wrap(_:)`
+    /// remains as a hard safety net; this method adds a soft runtime layer on top.
+    public static func wrapIfEnabled(_ string: String) -> String {
+        guard isEnabled else { return string }
+        return wrap(string)
+    }
+
+    // MARK: - Layout-budget check
+
+    /// Returns `true` when the wrapped version of `string` would exceed `budget`
+    /// characters — meaning the UI is likely to truncate translated content.
+    ///
+    /// Pseudo-locale expansion (prefix + suffix + diacritics) approximates the
+    /// worst-case expansion factor for European languages (~40 %).  Call this in
+    /// unit tests or a preview helper to catch truncation early.
+    ///
+    /// In Release builds always returns `false` (no expansion occurs).
+    ///
+    /// - Parameters:
+    ///   - string: The original English source string.
+    ///   - budget: Maximum character count the UI layout can accommodate.
+    public static func expansionBudgetExceeded(for string: String, budget: Int) -> Bool {
+#if DEBUG
+        return wrap(string).count > budget
+#else
+        return false
+#endif
+    }
+
     // MARK: - Character mapping (DEBUG only)
 
 #if DEBUG

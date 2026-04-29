@@ -71,6 +71,80 @@ public enum PluralFormat {
         return String.localizedStringWithFormat(format, values)
     }
 
+    /// Returns a plural-resolved, locale-aware string for `key`.
+    ///
+    /// `String.localizedStringWithFormat` normally uses the process locale to
+    /// select the CLDR plural category (one / few / many / other / zero / two).
+    /// For CJK languages (no grammatical plural) and Arabic (six forms) the
+    /// correct category cannot be inferred from the device locale when the app
+    /// renders content for a *different* locale — e.g. a staff member with an
+    /// English device viewing a customer record in Arabic.
+    ///
+    /// This overload temporarily overrides `Locale.current` for the duration of
+    /// the format call by using the bundle associated with `locale`, which causes
+    /// `NSLocalizedString` to pick the right `.stringsdict` variant.
+    ///
+    /// Limitations: `String.localizedStringWithFormat` reads `Locale.current`
+    /// (a global) at call time.  This helper therefore must NOT be called from
+    /// concurrent contexts without external synchronisation.  Prefer the
+    /// single-locale variant for the vast majority of call sites; use this only
+    /// when explicitly rendering content for a non-device locale.
+    ///
+    /// - Parameters:
+    ///   - key:    The key defined in a `.stringsdict` file.
+    ///   - count:  The integer value used to select the CLDR plural category.
+    ///   - locale: The `Locale` whose plural rules should govern the selection.
+    ///   - bundle: The bundle to search.  Defaults to `.main`.
+    public static func string(
+        key: String,
+        count: Int,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        // Look up the format string from the bundle.  The bundle's lproj is
+        // determined by `locale`, so we find the right .stringsdict variant.
+        let localeIdentifier = locale.identifier
+        let lprojBundle: Bundle
+        if let path = bundle.path(forResource: localeIdentifier, ofType: "lproj"),
+           let b = Bundle(path: path) {
+            lprojBundle = b
+        } else if let languageCode = locale.languageCode,
+                  let path = bundle.path(forResource: languageCode, ofType: "lproj"),
+                  let b = Bundle(path: path) {
+            // Fall back to the language-only lproj (e.g. "ar" for "ar_SA").
+            lprojBundle = b
+        } else {
+            lprojBundle = bundle
+        }
+        let format = NSLocalizedString(key, bundle: lprojBundle, comment: "")
+        return String.localizedStringWithFormat(format, count)
+    }
+
+    // MARK: - Zero-sensitive convenience
+
+    /// Returns a plural-resolved string, treating zero as a special case.
+    ///
+    /// Many languages (and English UX conventions) display a distinct string for
+    /// zero — e.g. "No tickets" rather than "0 tickets".  Pass `zeroKey` to
+    /// override when `count == 0`.
+    ///
+    /// - Parameters:
+    ///   - key:     The `.stringsdict` key for the normal plural form.
+    ///   - count:   The integer count.
+    ///   - zeroKey: Optional `.strings` key used when `count == 0`.
+    ///   - bundle:  The bundle to search.  Defaults to `.main`.
+    public static func string(
+        key: String,
+        count: Int,
+        zeroKey: String?,
+        bundle: Bundle = .main
+    ) -> String {
+        if count == 0, let zeroKey {
+            return NSLocalizedString(zeroKey, bundle: bundle, comment: "")
+        }
+        return string(key: key, count: count, bundle: bundle)
+    }
+
     // MARK: - Common domain helpers
 
     /// `"N item(s)"` — convenience wrapper for item count strings.
