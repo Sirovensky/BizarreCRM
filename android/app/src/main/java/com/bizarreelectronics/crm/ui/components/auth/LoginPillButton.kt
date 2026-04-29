@@ -1,6 +1,8 @@
 package com.bizarreelectronics.crm.ui.components.auth
 
+import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,8 +15,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -47,6 +51,35 @@ fun LoginPillButton(
     label: String,
     modifier: Modifier = Modifier,
 ) {
+    // LOGIN-MOCK-088: animate enabled→disabled color transitions over 150ms so the
+    // cream→grey flip is a smooth fade rather than an instant cut.
+    // Reduce Motion: read ANIMATOR_DURATION_SCALE; collapse to 0ms when disabled.
+    val ctx = LocalContext.current
+    val colorAnimDuration = remember(ctx) {
+        if (Settings.Global.getFloat(
+                ctx.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) == 0f
+        ) 0 else 150
+    }
+
+    val targetContainerColor = if (enabled) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f)
+    val targetContentColor  = if (enabled) MaterialTheme.colorScheme.onPrimary
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
+
+    val animatedContainerColor by animateColorAsState(
+        targetValue = targetContainerColor,
+        animationSpec = tween(durationMillis = colorAnimDuration),
+        label = "pill_container_color",
+    )
+    val animatedContentColor by animateColorAsState(
+        targetValue = targetContentColor,
+        animationSpec = tween(durationMillis = colorAnimDuration),
+        label = "pill_content_color",
+    )
+
     // LOGIN-MOCK-145: override ripple color to onPrimary @ 0.24f so the press is
     // clearly visible on the cream primary container.
     val interactionSource = remember { MutableInteractionSource() }
@@ -65,8 +98,11 @@ fun LoginPillButton(
                 .height(56.dp),
             shape = RoundedCornerShape(28.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                containerColor = animatedContainerColor,
+                contentColor = animatedContentColor,
+                // disabledContainer/Content are overridden by animated values above;
+                // keep matching fallbacks here in case the Button ignores enabled=false
+                // and falls back to the disabled slot directly.
                 disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
                 disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
             ),

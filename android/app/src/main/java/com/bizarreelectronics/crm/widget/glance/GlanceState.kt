@@ -18,6 +18,8 @@ package com.bizarreelectronics.crm.widget.glance
  * [KEY_UNREAD_COUNT]    — Int count of unread SMS conversations.
  * [KEY_IS_CLOCKED_IN]  — Boolean current clock-in state.
  * [KEY_LOW_STOCK_COUNT] — Int number of items below reorder level.
+ * [KEY_REVENUE_TODAY]  — Float today's revenue (see [TodayRevenueWidgetKeys]).
+ * [KEY_OPEN_TICKETS]   — Int open ticket count (see [TodayRevenueWidgetKeys]).
  *
  * Absent (null) means "never populated yet" and widgets display "—" or a
  * safe default until the first push arrives.
@@ -39,4 +41,20 @@ object GlanceWidgetKeys {
      * Absent (null) rendered as "—" until first inventory sync.
      */
     const val KEY_LOW_STOCK_COUNT = "low_stock_count"
+
+    /**
+     * Float preference key for today's revenue in USD.
+     * Written by [publishTodayRevenue]; read by [TodayRevenueGlanceWidget].
+     * Absent (null) rendered as "—" until the first dashboard sync.
+     * Mirrors [TodayRevenueWidgetKeys.KEY_REVENUE_TODAY].
+     */
+    const val KEY_REVENUE_TODAY = TodayRevenueWidgetKeys.KEY_REVENUE_TODAY
+
+    /**
+     * Int preference key for the current open ticket count.
+     * Written by [publishTodayRevenue]; read by [TodayRevenueGlanceWidget].
+     * Absent (null) rendered as "—" until the first dashboard sync.
+     * Mirrors [TodayRevenueWidgetKeys.KEY_OPEN_TICKETS].
+     */
+    const val KEY_OPEN_TICKETS = TodayRevenueWidgetKeys.KEY_OPEN_TICKETS
 }

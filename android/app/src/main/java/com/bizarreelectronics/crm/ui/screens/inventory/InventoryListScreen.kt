@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -50,6 +51,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySortDropdown
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryStockBadge
 import com.bizarreelectronics.crm.ui.screens.inventory.components.QuickStockAdjust
+import com.bizarreelectronics.crm.ui.screens.inventory.components.RunAutoReorderDialog
 import com.bizarreelectronics.crm.ui.screens.inventory.components.loadInventoryColumns
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
@@ -72,6 +74,11 @@ fun InventoryListScreen(
     onItemClick: (Long) -> Unit,
     onScanClick: () -> Unit,
     onAddClick: () -> Unit = {},
+    onImportCatalog: () -> Unit = {},
+    /** §6.6 — navigate to the stocktake sessions list. */
+    onStocktakeListClick: () -> Unit = {},
+    /** §6.8 — navigate to the ABC analysis screen. */
+    onAbcClick: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -91,6 +98,18 @@ fun InventoryListScreen(
         mutableStateOf(loadInventoryColumns(context))
     }
     var showColumnsPicker by remember { mutableStateOf(false) }
+
+    // §6.8: auto-reorder dialog
+    var showAutoReorderDialog by remember { mutableStateOf(false) }
+    // Admin overflow menu
+    var showAdminOverflow by remember { mutableStateOf(false) }
+
+    // Show auto-reorder error in snackbar
+    LaunchedEffect(state.autoReorderError) {
+        val err = state.autoReorderError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(err)
+        viewModel.clearAutoReorderResult()
+    }
 
     // §6.5: HID-scanner support — hidden focused BasicTextField captures rapid
     // keystrokes from an external Bluetooth scanner operating in HID keyboard
@@ -153,6 +172,22 @@ fun InventoryListScreen(
         )
     }
 
+    // §6.8: Run auto-reorder dialog (admin-only)
+    if (showAutoReorderDialog || state.isRunningAutoReorder || state.autoReorderResult != null) {
+        RunAutoReorderDialog(
+            isRunning = state.isRunningAutoReorder,
+            result = state.autoReorderResult,
+            errorMessage = state.autoReorderError,
+            onConfirm = {
+                viewModel.runAutoReorder()
+            },
+            onDismiss = {
+                showAutoReorderDialog = false
+                viewModel.clearAutoReorderResult()
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -204,6 +239,54 @@ fun InventoryListScreen(
                     }
                     IconButton(onClick = { viewModel.loadItems() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh inventory")
+                    }
+                    // §6.8: admin-only overflow with auto-reorder action
+                    if (isAdmin) {
+                        Box {
+                            IconButton(onClick = { showAdminOverflow = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Admin actions",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showAdminOverflow,
+                                onDismissRequest = { showAdminOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Run auto-reorder") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Autorenew, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        showAutoReorderDialog = true
+                                    },
+                                )
+                                // §6.6 — Stocktake sessions list
+                                DropdownMenuItem(
+                                    text = { Text("Stocktake sessions") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Assignment, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onStocktakeListClick()
+                                    },
+                                )
+                                // §6.8 — ABC analysis screen
+                                DropdownMenuItem(
+                                    text = { Text("ABC analysis") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.BarChart, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onAbcClick()
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -263,7 +346,7 @@ fun InventoryListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search inventory...",
+                placeholder = "Name, SKU, UPC, category…",
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = "Search inventory" },
@@ -324,7 +407,8 @@ fun InventoryListScreen(
                 }
 
                 state.items.isEmpty() -> {
-                    // §6.1 L1067 — filter-aware empty state
+                    // §3.14 L587 — filter-aware empty state: rich illustration for
+                    // zero-data tenant, simple state for active search/filter empty.
                     val hasActiveFilter = state.currentFilter != InventoryFilter.Empty ||
                         state.searchQuery.isNotEmpty()
                     Box(
@@ -346,17 +430,21 @@ fun InventoryListScreen(
                                                 viewModel.onSearchChanged("")
                                             },
                                         ) { Text("Clear filters") }
-                                        Button(onClick = { /* TODO: import CSV stub */ }) {
+                                        Button(onClick = onImportCatalog) {
                                             Text("Import CSV")
                                         }
                                     }
                                 },
                             )
                         } else {
-                            EmptyState(
-                                icon = Icons.Default.Inventory2,
-                                title = "No items found",
-                                subtitle = "Add inventory items to get started",
+                            EmptyStateIllustration(
+                                emoji = "📦",
+                                title = "No inventory yet",
+                                subtitle = "Add your first product to get started",
+                                primaryCta = "Add your first product",
+                                onPrimaryCta = onAddClick,
+                                secondaryCta = "Import catalog (CSV)",
+                                onSecondaryCta = onImportCatalog,
                             )
                         }
                     }

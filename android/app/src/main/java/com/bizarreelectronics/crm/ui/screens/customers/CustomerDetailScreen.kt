@@ -7,7 +7,6 @@ import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -56,8 +55,9 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
-import com.bizarreelectronics.crm.ui.components.PredictiveBackScaffold
+import com.bizarreelectronics.crm.data.repository.MembershipRepository
 import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.hashTagToColor
 import retrofit2.HttpException
@@ -70,6 +70,7 @@ import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerDetailTabs
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.UndoStack
 import com.bizarreelectronics.crm.util.VCardBuilder
@@ -192,6 +193,14 @@ data class CustomerDetailUiState(
     /** Checkbox: user acknowledged the irreversibility warning. */
     val mergeAcknowledged: Boolean = false,
 
+    // ─── §38.3 Membership / loyalty summary ──────────────────────────────
+    /**
+     * Active membership for this customer loaded from
+     * `GET /memberships/customer/:id`. Null = not loaded or 404 (no membership).
+     * Displayed as a compact summary card in the Info tab.
+     */
+    val membership: Membership? = null,
+
     // ─── 5.7 Asset tracking ───────────────────────────────────────────────
     /** True when the "Add asset" bottom sheet is open. */
     val showAddAssetSheet: Boolean = false,
@@ -210,6 +219,7 @@ class CustomerDetailViewModel @Inject constructor(
     private val customerApi: CustomerApi,
     private val settingsApi: SettingsApi,
     private val ticketApi: TicketApi,
+    private val membershipRepository: MembershipRepository,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -305,6 +315,7 @@ class CustomerDetailViewModel @Inject constructor(
         loadLtvTier()
         loadInvoices()
         loadAssets()
+        loadMembership()
     }
 
     /**
@@ -422,6 +433,20 @@ class CustomerDetailViewModel @Inject constructor(
                     _state.value = _state.value.copy(assets = detailResponse.data?.assets ?: emptyList())
                 } catch (_: Exception) { /* silent */ }
             }
+        }
+    }
+
+    // §38.3 — membership summary for Info tab
+    private var membershipJob: Job? = null
+    private fun loadMembership() {
+        membershipJob?.cancel()
+        membershipJob = viewModelScope.launch {
+            membershipRepository.getCustomerMembership(customerId).fold(
+                onSuccess = { membership ->
+                    _state.value = _state.value.copy(membership = membership)
+                },
+                onFailure = { /* 404 / NotAvailable = no membership; silent degrade */ },
+            )
         }
     }
 
@@ -939,17 +964,7 @@ fun CustomerDetailScreen(
         onDispose { viewModel.undoStack.clear() }
     }
 
-    // §1.5 — PredictiveBackHandler: wraps the Scaffold so the back-swipe
-    // preview tracks the drag live (progress 0→1). The subtle scale mirrors
-    // the M3 recommended 90%-shrink on the exiting screen.
-    PredictiveBackScaffold(onBack = onBack) { backProgress ->
     Scaffold(
-        modifier = Modifier.graphicsLayer {
-            val scale = 1f - backProgress * 0.08f
-            scaleX = scale
-            scaleY = scale
-            alpha = 1f - backProgress * 0.3f
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             val heroName = when {
@@ -1033,6 +1048,28 @@ fun CustomerDetailScreen(
                                         viewModel.openMergeSheet()
                                     },
                                 )
+                                // §25.3 — Copy customer email to clipboard (PII → sensitive copy)
+                                val email = customer?.email
+                                if (!email.isNullOrBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy email") },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            showOverflow = false
+                                            // Email is PII — sensitive copy suppresses Android 13+
+                                            // clipboard preview toast and auto-clears after 30 s.
+                                            ClipboardUtil.copySensitive(context, "Email", email)
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Email copied")
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1211,6 +1248,8 @@ fun CustomerDetailScreen(
                             // 5.8.1/5.8.2: tag chip click → navigate to tag-filtered list
                             onTagClick = onNavigateToTagFilter,
                             tagPalette = state.tagPalette,
+                            // §38.3: membership summary in Info tab
+                            membership = state.membership,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -1248,7 +1287,6 @@ fun CustomerDetailScreen(
             }
         }
     }
-    } // end PredictiveBackScaffold
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

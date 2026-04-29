@@ -11,6 +11,74 @@ import retrofit2.http.Query
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
 /**
+ * Single row from GET /tickets/warranty-lookup.
+ *
+ * The server computes [warrantyActive] by comparing [warrantyExpires] with today.
+ * [warrantyExpires] is ISO-8601 date string (YYYY-MM-DD).
+ */
+data class WarrantyLookupRowDto(
+    @SerializedName("ticket_id")
+    val ticketId: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("device_name")
+    val deviceName: String?,
+    val imei: String?,
+    val serial: String?,
+    @SerializedName("warranty_days")
+    val warrantyDays: Int,
+    @SerializedName("warranty_expires")
+    val warrantyExpires: String?,
+    @SerializedName("warranty_active")
+    val warrantyActive: Boolean,
+    @SerializedName("status_name")
+    val statusName: String?,
+    @SerializedName("customer_first")
+    val customerFirst: String?,
+    @SerializedName("customer_last")
+    val customerLast: String?,
+    @SerializedName("ticket_created")
+    val ticketCreated: String?,
+    @SerializedName("diagnostic_notes")
+    val diagnosticNotes: List<DiagnosticNoteDto>? = null,
+)
+
+data class DiagnosticNoteDto(
+    val content: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+)
+
+/**
+ * Single row from GET /tickets/device-history.
+ */
+data class DeviceHistoryRowDto(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    @SerializedName("device_name")
+    val deviceName: String?,
+    val imei: String?,
+    val serial: String?,
+    @SerializedName("device_type")
+    val deviceType: String?,
+    @SerializedName("status_name")
+    val statusName: String?,
+    @SerializedName("status_color")
+    val statusColor: String?,
+    @SerializedName("status_is_closed")
+    val statusIsClosed: Int?,
+    @SerializedName("customer_first")
+    val customerFirst: String?,
+    @SerializedName("customer_last")
+    val customerLast: String?,
+)
+
+/**
  * Full warranty record returned by POST /warranties and GET /warranties/search.
  *
  * [eligible] is computed server-side from [installDate], [duration], and [conditions].
@@ -140,4 +208,35 @@ interface WarrantyApi {
      */
     @GET("warranties/claim-rate-dashboard")
     suspend fun getClaimRateDashboard(): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    // ─── §46 Ticket-level warranty & device-history lookup ────────────────────
+
+    /**
+     * Check if a device is under warranty.
+     *
+     * GET /tickets/warranty-lookup?imei=|serial=|phone=
+     *
+     * Returns up to 20 records with [WarrantyLookupRowDto.warrantyActive] computed
+     * server-side. At least one of [imei], [serial], or [phone] must be non-null.
+     */
+    @GET("tickets/warranty-lookup")
+    suspend fun warrantyLookup(
+        @Query("imei") imei: String? = null,
+        @Query("serial") serial: String? = null,
+        @Query("phone") phone: String? = null,
+    ): ApiResponse<List<WarrantyLookupRowDto>>
+
+    /**
+     * List all past tickets for a given IMEI or serial number.
+     *
+     * GET /tickets/device-history?imei=|serial=
+     *
+     * Returns up to 50 records ordered by [DeviceHistoryRowDto.createdAt] desc.
+     * At least one of [imei] or [serial] must be non-null.
+     */
+    @GET("tickets/device-history")
+    suspend fun deviceHistory(
+        @Query("imei") imei: String? = null,
+        @Query("serial") serial: String? = null,
+    ): ApiResponse<List<DeviceHistoryRowDto>>
 }

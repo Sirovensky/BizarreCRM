@@ -140,8 +140,14 @@ object MigrationRegistry {
         Entry(
             fromVersion = 11,
             toVersion = 12,
-            name = "expenses-approval-status: approval_status column + index [§11 filters]",
+            name = "fts4-tables: customers_fts + tickets_fts + inventory_fts + sync triggers [§18.1]",
             migration = Migrations.MIGRATION_11_12,
+        ),
+        Entry(
+            fromVersion = 12,
+            toVersion = 13,
+            name = "expenses-status: ADD COLUMN status + index for approval-status filter [§11.1]",
+            migration = Migrations.MIGRATION_12_13,
         ),
     )
 

@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 
+// §74.3 — telemetry opt-out toggle imported via AppPreferences.telemetryEnabledFlow.
+
 /**
  * L2526 — ViewModel backing [DataPrivacyScreen].
  *
@@ -45,8 +47,27 @@ class DataPrivacyViewModel @Inject constructor(
     private val _consentStatus = MutableStateFlow<ConsentStatusResponse?>(null)
     val consentStatus: StateFlow<ConsentStatusResponse?> = _consentStatus.asStateFlow()
 
+    /**
+     * §74.3 — Live telemetry-enabled preference, observed by [DataPrivacyScreen]
+     * to render the opt-out toggle.  Default: true.
+     */
+    val telemetryEnabled: StateFlow<Boolean> = appPreferences.telemetryEnabledFlow
+
     init {
         loadConsentStatus()
+    }
+
+    // ─── §74.3 Telemetry opt-out ──────────────────────────────────────────────
+
+    /**
+     * Toggles the telemetry opt-in preference.
+     *
+     * When [enabled] is `false`, [TelemetryClient] drops all subsequent events
+     * without writing to breadcrumbs or buffering for upload.  The local crash
+     * log (CrashReporter / ReleaseTree) is unaffected by this flag.
+     */
+    fun setTelemetryEnabled(enabled: Boolean) {
+        appPreferences.telemetryEnabled = enabled
     }
 
     // ─── Public actions ───────────────────────────────────────────────────────

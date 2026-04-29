@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -10,7 +11,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
- * DeviceTemplateApi — §4.9 L762
+ * DeviceTemplateApi — §44.1
  *
  * Retrofit interface for device-template CRUD. Templates are pre-configured
  * device + common-repair bundles that pre-fill the TicketCreate Device step
@@ -18,31 +19,36 @@ import retrofit2.http.Query
  *
  * iOS parallel: same endpoints consumed by the iOS Swift client.
  *
- * Server endpoints (packages/server/src/routes/device-templates.ts):
+ * Server endpoints (packages/server/src/routes/deviceTemplates.routes.ts):
  *   GET    /api/v1/device-templates
  *   POST   /api/v1/device-templates
  *   PUT    /api/v1/device-templates/:id
+ *   DELETE /api/v1/device-templates/:id
  */
 interface DeviceTemplateApi {
 
     /**
      * List all device templates for this tenant.
      *
+     * @param category  Optional filter by device category slug.
+     * @param model     Optional filter by device model name.
      * @return list of [DeviceTemplateDto]; 404-tolerant — callers fall back to
      *         an empty list when the endpoint does not exist yet on the server.
      */
     @GET("device-templates")
-    suspend fun getTemplates(): ApiResponse<List<DeviceTemplateDto>>
+    suspend fun getTemplates(
+        @Query("category") category: String? = null,
+        @Query("model") model: String? = null,
+    ): ApiResponse<List<DeviceTemplateDto>>
 
     /**
      * Create a new device template.
      *
-     * @param body [CreateDeviceTemplateRequest] with name, deviceModelId, and
-     *             optional list of common repair names.
+     * @param body [UpsertDeviceTemplateRequest] with all template fields.
      * @return the newly created [DeviceTemplateDto].
      */
     @POST("device-templates")
-    suspend fun createTemplate(@Body body: CreateDeviceTemplateRequest): ApiResponse<DeviceTemplateDto>
+    suspend fun createTemplate(@Body body: UpsertDeviceTemplateRequest): ApiResponse<DeviceTemplateDto>
 
     /**
      * Update an existing device template.
@@ -54,98 +60,114 @@ interface DeviceTemplateApi {
     @PUT("device-templates/{id}")
     suspend fun updateTemplate(
         @Path("id") id: Long,
-        @Body body: CreateDeviceTemplateRequest,
+        @Body body: UpsertDeviceTemplateRequest,
     ): ApiResponse<DeviceTemplateDto>
 
     /**
-     * Search templates by category or device model hint.
+     * Delete a device template (admin only).
      *
-     * @param category    Optional category slug (phone/tablet/etc.).
-     * @param model       Optional free-text model name filter.
-     * @return filtered list of [DeviceTemplateDto].
+     * @param id Numeric template ID.
      */
-    @GET("device-templates")
-    suspend fun searchTemplates(
-        @Query("category") category: String? = null,
-        @Query("model") model: String? = null,
-    ): ApiResponse<List<DeviceTemplateDto>>
-
-    /**
-     * Apply a template to an existing ticket.
-     * Server inserts common_repairs as ticket lines + copies parts_json.
-     *
-     * @param id            Template ID.
-     * @param ticketId      Target ticket ID.
-     * @param body          Optional ticket_device_id binding.
-     * @return [ApplyTemplateResult] with inserted line count.
-     */
-    @POST("device-templates/{id}/apply-to-ticket/{ticketId}")
-    suspend fun applyTemplate(
-        @Path("id") id: Long,
-        @Path("ticketId") ticketId: Long,
-        @Body body: ApplyTemplateBody = ApplyTemplateBody(),
-    ): ApiResponse<ApplyTemplateResult>
+    @DELETE("device-templates/{id}")
+    suspend fun deleteTemplate(@Path("id") id: Long): ApiResponse<Unit>
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
+/**
+ * Full device-template shape returned by the server.
+ *
+ * Money fields ([estLaborCostCents], [suggestedPriceCents]) are stored on the
+ * server as integer cents. Format for display with
+ * [java.text.NumberFormat.getCurrencyInstance].
+ *
+ * @param diagnosticChecklist  Pre-conditions / diagnostic steps for this device class.
+ * @param parts                Enriched parts list with inventory status badges.
+ */
 data class DeviceTemplateDto(
     val id: Long,
     val name: String,
-    @SerializedName("device_model_id")
-    val deviceModelId: Long?,
-    @SerializedName("device_model_name")
-    val deviceModelName: String?,
-    @SerializedName("common_repairs")
-    val commonRepairs: List<String> = emptyList(),
-    @SerializedName("created_at")
-    val createdAt: String?,
-    // Extended fields returned by server apply-to-ticket endpoint
     @SerializedName("device_category")
-    val deviceCategory: String? = null,
+    val deviceCategory: String?,
     @SerializedName("device_model")
-    val deviceModel: String? = null,
-    val fault: String? = null,
+    val deviceModel: String?,
+    val fault: String?,
+    /** Estimated labor time in minutes. */
     @SerializedName("est_labor_minutes")
     val estLaborMinutes: Int = 0,
+    /** Estimated labor cost in cents (store as Long, display via NumberFormat). */
+    @SerializedName("est_labor_cost")
+    val estLaborCostCents: Long = 0L,
+    /** Suggested ticket price in cents. */
     @SerializedName("suggested_price")
-    val suggestedPrice: Int = 0,
+    val suggestedPriceCents: Long = 0L,
     @SerializedName("diagnostic_checklist")
     val diagnosticChecklist: List<String> = emptyList(),
+    /** Enriched parts list including inventory stock badge. */
+    val parts: List<TemplatePartDto> = emptyList(),
+    @SerializedName("warranty_days")
+    val warrantyDays: Int = 30,
     @SerializedName("is_active")
     val isActive: Int = 1,
-) {
-    /** Display subtitle: "ModelName — Fault" or just model or fault, whichever is available. */
-    val displaySubtitle: String?
-        get() {
-            val parts = listOfNotNull(deviceModelName ?: deviceModel, fault)
-            return parts.joinToString(" — ").takeIf { it.isNotBlank() }
-        }
-
-    /** Repairs to display; falls back to diagnostic checklist when common_repairs is empty. */
-    val displayRepairs: List<String>
-        get() = commonRepairs.ifEmpty { diagnosticChecklist }
-}
-
-data class CreateDeviceTemplateRequest(
-    val name: String,
+    @SerializedName("sort_order")
+    val sortOrder: Int = 0,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    // Legacy fields kept for backward compat with older server versions
     @SerializedName("device_model_id")
-    val deviceModelId: Long?,
+    val deviceModelId: Long? = null,
+    @SerializedName("device_model_name")
+    val deviceModelName: String? = null,
+    /** Legacy flat list of common repair names (pre-§44.1 server). */
     @SerializedName("common_repairs")
-    val commonRepairs: List<String>,
+    val commonRepairs: List<String> = emptyList(),
 )
 
-/** Body for POST device-templates/:id/apply-to-ticket/:ticketId */
-data class ApplyTemplateBody(
-    @SerializedName("ticket_device_id")
-    val ticketDeviceId: Long? = null,
+/** One part entry within a device template, enriched with inventory status. */
+data class TemplatePartDto(
+    @SerializedName("inventory_item_id")
+    val inventoryItemId: Long,
+    val qty: Int = 1,
+    val name: String = "",
+    val sku: String? = null,
+    /** Cost price in cents. */
+    @SerializedName("cost_price")
+    val costPriceCents: Long = 0L,
+    /** Retail price in cents. */
+    @SerializedName("retail_price")
+    val retailPriceCents: Long = 0L,
+    @SerializedName("in_stock")
+    val inStock: Int = 0,
+    /** "green" | "yellow" | "red" */
+    @SerializedName("stock_badge")
+    val stockBadge: String = "red",
 )
 
-/** Result returned by apply-to-ticket endpoint. */
-data class ApplyTemplateResult(
-    @SerializedName("lines_inserted")
-    val linesInserted: Int = 0,
-    @SerializedName("parts_inserted")
-    val partsInserted: Int = 0,
-    val message: String? = null,
+data class UpsertDeviceTemplateRequest(
+    val name: String,
+    @SerializedName("device_category")
+    val deviceCategory: String?,
+    @SerializedName("device_model")
+    val deviceModel: String?,
+    val fault: String?,
+    @SerializedName("est_labor_minutes")
+    val estLaborMinutes: Int,
+    /** Labor cost in cents. */
+    @SerializedName("est_labor_cost")
+    val estLaborCost: Long,
+    /** Suggested price in cents. */
+    @SerializedName("suggested_price")
+    val suggestedPrice: Long,
+    @SerializedName("diagnostic_checklist")
+    val diagnosticChecklist: List<String>,
+    @SerializedName("warranty_days")
+    val warrantyDays: Int,
+    @SerializedName("is_active")
+    val isActive: Int = 1,
 )
+
+// Keep backward-compat alias so any remaining callers of CreateDeviceTemplateRequest compile.
+@Deprecated("Use UpsertDeviceTemplateRequest", ReplaceWith("UpsertDeviceTemplateRequest"))
+typealias CreateDeviceTemplateRequest = UpsertDeviceTemplateRequest

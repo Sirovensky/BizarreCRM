@@ -15,10 +15,22 @@
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+      §24.3 — Each shortcut has a distinct icon (not the generic app launcher
+      icon).  Icons use brand dark background (#121017) with cream (#FDEED0)
+      foreground paths so they read clearly on both light and dark launcher
+      wallpapers (theme-aware variant).
+
+      Android 13+ (API 33) additionally supports a monochromatic adaptive-icon
+      layer via android:icon on the <adaptive-icon> element; that upgrade path
+      is deferred until the app targets API 33+ by default and the design team
+      supplies monochromatic SVG sources.
+    -->
+
     <shortcut
         android:shortcutId="new_ticket"
         android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_shortcut_new_ticket"
         android:shortcutShortLabel="@string/shortcut_new_ticket_short"
         android:shortcutLongLabel="@string/shortcut_new_ticket_long">
         <intent
@@ -36,7 +48,7 @@
     <shortcut
         android:shortcutId="new_customer"
         android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_shortcut_new_customer"
         android:shortcutShortLabel="@string/shortcut_new_customer_short"
         android:shortcutLongLabel="@string/shortcut_new_customer_long">
         <intent
@@ -49,7 +61,7 @@
     <shortcut
         android:shortcutId="scan_barcode"
         android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_shortcut_scan_barcode"
         android:shortcutShortLabel="@string/shortcut_scan_short"
         android:shortcutLongLabel="@string/shortcut_scan_long">
         <intent
@@ -59,16 +71,10 @@
             android:data="bizarrecrm://scan" />
     </shortcut>
 
-    <!--
-      §24.3 / §24.1 — Clock-in static launcher shortcut.
-      Deep-link: bizarrecrm://clockin → ClockInOutScreen.
-      Placed after scan_barcode so the top 4 visible slots cover
-      the primary repair-shop quick actions.
-    -->
     <shortcut
         android:shortcutId="clock_in"
         android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_shortcut_clock_in"
         android:shortcutShortLabel="@string/shortcut_clock_in_short"
         android:shortcutLongLabel="@string/shortcut_clock_in_long">
         <intent
@@ -78,16 +84,12 @@
             android:data="bizarrecrm://clockin" />
     </shortcut>
 
-    <!--
-      §24.5 / §24.3 — SMS inbox static shortcut.
-      Maps to "New SMS" from the original §24 shortcut plan.
-    -->
     <shortcut
         android:shortcutId="new_sms"
         android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/nav_messages"
-        android:shortcutLongLabel="@string/nav_messages">
+        android:icon="@drawable/ic_shortcut_new_sms"
+        android:shortcutShortLabel="@string/shortcut_new_sms_short"
+        android:shortcutLongLabel="@string/shortcut_new_sms_long">
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="com.bizarreelectronics.crm"
@@ -95,24 +97,21 @@
             android:data="bizarrecrm://messages" />
     </shortcut>
 
+
     <!--
-      §25.2 — Share target declaration.
-      <share-target> tells the OS chooser that BizarreCRM accepts shares from
-      other apps for the declared MIME types. Dynamic sharing shortcuts pushed
-      via ShortcutManagerCompat.pushDynamicShortcut (see ShareSheet.kt) must
-      carry the CATEGORY_SHARE_TARGET category declared below in <category>.
-
-      On Android 10+ (API 29+) shortcuts with this category appear in the
-      system chooser "direct share" row (the face icons above the app list).
-
-      mimeType list mirrors the inbound intent-filter MIME types declared in
-      AndroidManifest.xml so the two stay in sync.
+      §25.2 Direct-share targets — customers appear as "Share to…" rows in
+      the system chooser when the user shares a PDF, text, or vCard from another
+      app into BizarreCRM.
+      The category string must match ShareHelper.CATEGORY_SHARE_TARGET exactly.
+      ShortcutManagerCompat.addDynamicShortcuts() populates the icons + labels
+      at runtime with the most-recent customers (see util/ShareHelper.kt).
     -->
     <share-target android:targetClass="com.bizarreelectronics.crm.MainActivity">
-        <data android:mimeType="text/plain" />
-        <data android:mimeType="image/*" />
         <data android:mimeType="application/pdf" />
-        <category android:name="com.bizarreelectronics.crm.CATEGORY_SHARE_TARGET" />
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="text/x-vcard" />
+        <data android:mimeType="image/*" />
+        <category android:name="com.bizarreelectronics.crm.SHARE_TARGET" />
     </share-target>
 
 </shortcuts>

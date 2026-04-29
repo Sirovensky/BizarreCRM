@@ -1,10 +1,16 @@
 package com.bizarreelectronics.crm.data.repository
 
 import android.util.Log
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.bizarreelectronics.crm.data.local.db.dao.InvoiceDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncStateDao
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem
+import com.bizarreelectronics.crm.data.sync.InvoiceRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.bizarreelectronics.crm.util.toDollars
@@ -20,9 +26,51 @@ import javax.inject.Singleton
 @Singleton
 class InvoiceRepository @Inject constructor(
     private val invoiceDao: InvoiceDao,
+    private val syncStateDao: SyncStateDao,
     private val invoiceApi: InvoiceApi,
     private val serverMonitor: ServerReachabilityMonitor,
 ) {
+
+    // ── Paging3 (§7.1) ──────────────────────────────────────────────────────
+
+    /**
+     * Returns a [Flow] of [PagingData] for the invoices list backed by
+     * [InvoiceRemoteMediator] and Room. The Pager survives configuration
+     * changes when cached in a ViewModel via [cachedIn(viewModelScope)].
+     *
+     * [filterKey] encodes the active filter as `"status:<value>"` or blank for
+     * all invoices. Each distinct key gets its own [SyncStateEntity] row so
+     * switching tabs doesn't corrupt the shared cursor.
+     */
+    @OptIn(ExperimentalPagingApi::class)
+    fun invoicesPaged(filterKey: String = ""): Flow<PagingData<InvoiceEntity>> {
+        val mediator = InvoiceRemoteMediator(
+            invoiceDao = invoiceDao,
+            syncStateDao = syncStateDao,
+            invoiceApi = invoiceApi,
+            filterKey = filterKey,
+            pageSize = InvoiceRemoteMediator.PAGE_SIZE,
+        )
+        val statusValue = if (filterKey.startsWith("status:")) {
+            filterKey.removePrefix("status:")
+        } else {
+            null
+        }
+        return Pager(
+            config = PagingConfig(
+                pageSize = InvoiceRemoteMediator.PAGE_SIZE,
+                enablePlaceholders = false,
+            ),
+            remoteMediator = mediator,
+            pagingSourceFactory = {
+                if (statusValue != null) {
+                    invoiceDao.pagingSourceByStatus(statusValue)
+                } else {
+                    invoiceDao.pagingSource()
+                }
+            },
+        ).flow
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun getInvoices(): Flow<List<InvoiceEntity>> {

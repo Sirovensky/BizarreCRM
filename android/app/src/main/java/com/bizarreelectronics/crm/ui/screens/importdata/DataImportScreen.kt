@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,7 +31,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -42,16 +40,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
+import com.bizarreelectronics.crm.R
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.screens.importdata.components.ColumnMapTable
 import com.bizarreelectronics.crm.ui.screens.importdata.components.ImportPreviewTable
 import com.bizarreelectronics.crm.ui.screens.importdata.components.SourcePickerCard
@@ -59,14 +60,11 @@ import com.bizarreelectronics.crm.ui.screens.importdata.components.SourcePickerC
 /**
  * §50 — Data Import Screen
  *
- * Multi-step wizard: SOURCE → CREDENTIALS (API-key sources) / FILE (CSV) → SCOPE
- *   → COLUMN_MAP (CSV only) → PREVIEW (CSV only) → PROGRESS → DONE/ERROR
+ * Multi-step wizard: SOURCE → FILE → SCOPE → COLUMN_MAP → PREVIEW → PROGRESS → DONE
  *
  * Role gate: admin only. Manager/staff see an "access denied" empty state.
  * 404-tolerant: if the server returns 404 on any import endpoint, shows
  * "Import not available on this server".
- *
- * SAF file picker: uses ACTION_OPEN_DOCUMENT with text/csv MIME filter.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,15 +76,16 @@ fun DataImportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    // SAF file picker — ACTION_OPEN_DOCUMENT persists a read URI permission.
+    // Confirm-dialog visibility: "cancel import" (during PROGRESS) and
+    // "discard mapping" (during COLUMN_MAP).
+    var showCancelImportDialog by rememberSaveable { mutableStateOf(false) }
+    var showDiscardMappingDialog by rememberSaveable { mutableStateOf(false) }
+
+    // SAF file picker — GetContent with CSV MIME types per §50 constraints.
     val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
+        ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        context.contentResolver.takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-        )
         val displayName = context.contentResolver.query(uri, null, null, null, null)
             ?.use { cursor ->
                 val col = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -104,6 +103,36 @@ fun DataImportScreen(
         }
     }
 
+    // Confirm dialogs — shown on top of the scaffold content.
+    if (showCancelImportDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.import_cancel_dialog_title),
+            message = stringResource(R.string.import_cancel_dialog_msg),
+            confirmLabel = stringResource(R.string.import_cancel_dialog_confirm),
+            onConfirm = {
+                showCancelImportDialog = false
+                viewModel.reset()
+                onNavigateBack()
+            },
+            onDismiss = { showCancelImportDialog = false },
+            isDestructive = true,
+        )
+    }
+
+    if (showDiscardMappingDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.import_discard_mapping_dialog_title),
+            message = stringResource(R.string.import_discard_mapping_dialog_msg),
+            confirmLabel = stringResource(R.string.import_discard_mapping_dialog_confirm),
+            onConfirm = {
+                showDiscardMappingDialog = false
+                viewModel.goBack()
+            },
+            onDismiss = { showDiscardMappingDialog = false },
+            isDestructive = true,
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -111,10 +140,17 @@ fun DataImportScreen(
                 title = { Text(importStepTitle(state.step)) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (state.step == ImportStep.SOURCE) onNavigateBack()
-                        else viewModel.goBack()
+                        when (state.step) {
+                            ImportStep.SOURCE -> onNavigateBack()
+                            ImportStep.PROGRESS -> showCancelImportDialog = true
+                            ImportStep.COLUMN_MAP -> showDiscardMappingDialog = true
+                            else -> viewModel.goBack()
+                        }
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back),
+                        )
                     }
                 },
             )
@@ -131,20 +167,23 @@ fun DataImportScreen(
                 else -> ImportWizardContent(
                     state = state,
                     onSourceSelected = viewModel::selectSource,
-                    onContinueFromSource = viewModel::continueFromSource,
-                    onApiKeyChanged = viewModel::onApiKeyChanged,
-                    onSubdomainChanged = viewModel::onSubdomainChanged,
-                    onContinueFromCredentials = viewModel::continueFromCredentials,
                     onPickFile = {
-                        filePicker.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
+                        // Launch with a combined MIME type so the system picker shows
+                        // both text/csv and text/comma-separated-values files.
+                        filePicker.launch("text/csv")
                     },
                     onToggleScope = viewModel::toggleScope,
                     onMappingChanged = viewModel::updateMapping,
-                    onDetectColumns = viewModel::loadCsvPreview,
                     onPreviewConfirm = { viewModel.goToStep(ImportStep.PREVIEW) },
+                    onDryRun = viewModel::startDryRun,
                     onCommit = viewModel::commitImport,
-                    onStartDryRun = viewModel::startDryRun,
                     onReset = viewModel::reset,
+                    onContinueToFile = { viewModel.goToStep(ImportStep.FILE) },
+                    onContinueToScope = {
+                        // loadPreview() not yet on VM — fall through to SCOPE step
+                        // and let the user trigger preview via startDryRun.
+                        viewModel.goToStep(ImportStep.SCOPE)
+                    },
                 )
             }
         }
@@ -158,18 +197,15 @@ fun DataImportScreen(
 private fun ImportWizardContent(
     state: DataImportUiState,
     onSourceSelected: (ImportSource) -> Unit,
-    onContinueFromSource: () -> Unit,
-    onApiKeyChanged: (String) -> Unit,
-    onSubdomainChanged: (String) -> Unit,
-    onContinueFromCredentials: () -> Unit,
     onPickFile: () -> Unit,
     onToggleScope: (ImportScope) -> Unit,
     onMappingChanged: (Int, String) -> Unit,
-    onDetectColumns: () -> Unit,
     onPreviewConfirm: () -> Unit,
+    onDryRun: () -> Unit,
     onCommit: () -> Unit,
-    onStartDryRun: () -> Unit,
     onReset: () -> Unit,
+    onContinueToFile: () -> Unit,
+    onContinueToScope: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -181,56 +217,19 @@ private fun ImportWizardContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         when (state.step) {
-
-            // ── Step 1: Source ────────────────────────────────────────────────
             ImportStep.SOURCE -> {
                 SourcePickerCard(
                     selected = state.selectedSource,
                     onSelect = onSourceSelected,
                 )
                 Button(
-                    onClick = onContinueFromSource,
+                    onClick = onContinueToFile,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Continue")
                 }
             }
 
-            // ── Step 2: Credentials (API-key sources only) ────────────────────
-            ImportStep.CREDENTIALS -> {
-                Text(
-                    "Enter your ${state.selectedSource.label} credentials.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                OutlinedTextField(
-                    value = state.apiKey,
-                    onValueChange = onApiKeyChanged,
-                    label = { Text("API Key") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (state.selectedSource == ImportSource.SHOPR) {
-                    OutlinedTextField(
-                        value = state.subdomain,
-                        onValueChange = onSubdomainChanged,
-                        label = { Text("Subdomain (e.g. acme)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                state.error?.let { ErrorText(it) }
-                Button(
-                    onClick = onContinueFromCredentials,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isLoading,
-                ) {
-                    Text("Continue")
-                }
-            }
-
-            // ── Step 3: File (CSV only) ───────────────────────────────────────
             ImportStep.FILE -> {
                 Text(
                     "Choose a CSV file from your device.",
@@ -240,7 +239,10 @@ private fun ImportWizardContent(
                     ListItem(
                         headlineContent = { Text(state.fileName) },
                         leadingContent = {
-                            Icon(Icons.Default.Upload, contentDescription = null)
+                            Icon(
+                                Icons.Default.Upload,
+                                contentDescription = stringResource(R.string.import_cd_upload_icon),
+                            )
                         },
                     )
                 }
@@ -253,19 +255,13 @@ private fun ImportWizardContent(
                 state.error?.let { ErrorText(it) }
             }
 
-            // ── Step 4: Scope ─────────────────────────────────────────────────
             ImportStep.SCOPE -> {
                 Text(
                     "What would you like to import?",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                val availableScopes = if (state.selectedSource == ImportSource.GENERIC_CSV) {
-                    listOf(ImportScope.CUSTOMERS, ImportScope.INVENTORY)
-                } else {
-                    ImportScope.entries.filter { it != ImportScope.EMPLOYEES || state.selectedSource == ImportSource.REPAIR_DESK }
-                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    availableScopes.forEach { scope ->
+                    ImportScope.entries.forEach { scope ->
                         FilterChip(
                             selected = scope in state.selectedScopes,
                             onClick = { onToggleScope(scope) },
@@ -273,37 +269,18 @@ private fun ImportWizardContent(
                         )
                     }
                 }
-
-                if (state.selectedSource == ImportSource.GENERIC_CSV) {
-                    // CSV path: need to detect columns from the file
-                    Button(
-                        onClick = {
-                            if (state.fileUri != null) onDetectColumns()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = state.fileUri != null && !state.isLoading,
-                    ) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                        }
-                        Text("Detect Columns")
+                Button(
+                    onClick = { if (state.fileUri != null) onContinueToScope() },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = state.fileUri != null && !state.isLoading,
+                ) {
+                    if (state.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
                     }
-                } else {
-                    // API-key path: go straight to PROGRESS
-                    Button(
-                        onClick = onCommit,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = state.selectedScopes.isNotEmpty() && !state.isLoading,
-                    ) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                        }
-                        Text("Start Import")
-                    }
+                    Text("Detect Columns")
                 }
             }
 
-            // ── Step 5: Column mapping (CSV only) ─────────────────────────────
             ImportStep.COLUMN_MAP -> {
                 Text(
                     "Map columns from your file to CRM fields.",
@@ -321,7 +298,6 @@ private fun ImportWizardContent(
                 }
             }
 
-            // ── Step 6: Preview (CSV only) ────────────────────────────────────
             ImportStep.PREVIEW -> {
                 Text(
                     "Preview — first ${state.preview.rows.size} rows",
@@ -330,7 +306,7 @@ private fun ImportWizardContent(
                 ImportPreviewTable(preview = state.preview)
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = onStartDryRun,
+                    onClick = onDryRun,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Dry Run (validate only)")
@@ -343,28 +319,47 @@ private fun ImportWizardContent(
                 }
             }
 
-            // ── Progress ──────────────────────────────────────────────────────
             ImportStep.PROGRESS -> {
                 ImportProgressContent(state = state)
             }
 
-            // ── Done ──────────────────────────────────────────────────────────
             ImportStep.DONE -> {
                 DoneState(
+                    isDryRun = state.isDryRun,
                     progress = state.progress,
+                    onCommit = onCommit,
                     onReset = onReset,
                 )
             }
 
-            // ── Error ─────────────────────────────────────────────────────────
             ImportStep.ERROR -> {
-                EmptyStateIllustration(
-                    emoji = "⚠️",
-                    title = "Import failed",
-                    subtitle = state.error ?: "An unexpected error occurred.",
-                    primaryCta = "Start Over",
-                    onPrimaryCta = onReset,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        state.error ?: "Import failed.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                    Button(onClick = onReset) { Text("Start Over") }
+                }
+            }
+
+            ImportStep.CREDENTIALS -> {
+                Text(
+                    "Credentials step not yet implemented for this source.",
+                    style = MaterialTheme.typography.bodyMedium,
                 )
+                OutlinedButton(onClick = onContinueToFile, modifier = Modifier.fillMaxWidth()) {
+                    Text("Skip to file picker")
+                }
             }
         }
     }
@@ -381,36 +376,29 @@ private fun ImportProgressContent(state: DataImportUiState) {
             text = if (state.isDryRun) "Validating…" else "Importing…",
             style = MaterialTheme.typography.titleMedium,
         )
-        if (progress.total > 0) {
-            LinearProgressIndicator(
-                progress = { fraction },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            // Indeterminate while waiting for first status poll
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Text("${progress.imported} imported · ${progress.skipped} skipped · ${progress.errors} errors")
         if (progress.currentStep.isNotBlank()) {
             Text(
-                text = "Currently importing: ${progress.currentStep}",
+                text = progress.currentStep,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text(
-            text = "You can leave this screen — a notification will appear when the import completes.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
 @Composable
 private fun DoneState(
+    isDryRun: Boolean,
     progress: ImportProgress,
+    onCommit: () -> Unit,
     onReset: () -> Unit,
 ) {
+    val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -420,11 +408,28 @@ private fun DoneState(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
         )
-        Text("Import complete", style = MaterialTheme.typography.titleMedium)
+        val label = if (isDryRun) "Dry run complete" else "Import complete"
+        Text(label, style = MaterialTheme.typography.titleMedium)
         Text(
             "${progress.imported} imported · ${progress.skipped} skipped · ${progress.errors} errors",
             style = MaterialTheme.typography.bodyMedium,
         )
+        if (isDryRun && progress.errors == 0) {
+            Button(onClick = onCommit, modifier = Modifier.fillMaxWidth()) {
+                Text("Commit Import")
+            }
+        }
+        if (progress.errorCsvUrl != null) {
+            val errorUrl = progress.errorCsvUrl
+            OutlinedButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(errorUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }) {
+                Text(stringResource(R.string.import_download_error_report))
+            }
+        }
         OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
             Text("Start New Import")
         }
@@ -434,25 +439,26 @@ private fun DoneState(
 @Composable
 private fun AccessDeniedState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        EmptyStateIllustration(
-            emoji = "🔒",
-            title = "Admin access required",
-            subtitle = "Only administrators can import data.",
-            primaryCta = "Go Back",
-            onPrimaryCta = {},
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Admin access required to import data.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
 @Composable
 private fun ServerUnsupportedState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        EmptyStateIllustration(
-            emoji = "🔌",
-            title = "Import not available",
-            subtitle = "This server does not have import endpoints configured.",
-            primaryCta = "Go Back",
-            onPrimaryCta = {},
+        Text(
+            "Import is not configured on this server.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

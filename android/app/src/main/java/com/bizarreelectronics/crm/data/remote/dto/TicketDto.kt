@@ -148,8 +148,10 @@ data class TicketDetail(
     val history: List<TicketHistory>?,
     val photos: List<TicketPhoto>?,
     val payments: List<PaymentSummary>?,
-    /** Staff-only tracking token — present only when fetched via authenticated GET /tickets/:id.
-     *  Null on list endpoints. Used to build the public tracking URL shared with customers. */
+    // §55.1 — tracking token for building the customer-facing share URL.
+    // Returned by GET /api/v1/tickets/:id (tickets.routes.ts line 329).
+    // Null when the server predates tracking-token generation or the ticket
+    // was created before the column was added.
     @SerializedName("tracking_token")
     val trackingToken: String? = null,
 ) {
@@ -157,6 +159,16 @@ data class TicketDetail(
     val statusName: String? get() = status?.name
     val statusColor: String? get() = status?.color
     val assignedName: String? get() = assignedUser?.fullName
+
+    /**
+     * §55.1 — Build the customer-facing tracking URL from orderId + trackingToken.
+     * Returns null when the tracking token is absent (token-less tickets created
+     * before the tracking feature was deployed).
+     */
+    fun trackingUrl(): String? {
+        val token = trackingToken ?: return null
+        return "https://app.bizarrecrm.com/t/${orderId}?token=$token"
+    }
 }
 
 data class TicketDevice(

@@ -44,6 +44,11 @@ data class AppointmentItem(
     val rrule: String?,
     @SerializedName("recurrence_parent_id")
     val recurrenceParentId: Long?,
+    // §10.6 check-in / check-out timestamps
+    @SerializedName("checked_in_at")
+    val checkedInAt: String?,
+    @SerializedName("checked_out_at")
+    val checkedOutAt: String?,
     @SerializedName("created_at")
     val createdAt: String?,
     @SerializedName("updated_at")

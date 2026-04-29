@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidgetProvider metadata for LowStockGlanceWidget / LowStockGlanceReceiver.
+
+  - minWidth  110dp  ≈ 2 grid cells.
+  - minHeight  40dp  ≈ 1 grid row.
+  - resizeMode horizontal|vertical.
+  - updatePeriodMillis 1800000 = 30 min fallback; live push via publishLowStockCount().
+  - configure: WidgetConfigActivity for tenant / filter config on first add.
+  - description: widget_low_stock_description (existing string, do not remove).
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:description="@string/widget_low_stock_description"
-    android:initialLayout="@layout/glance_default_loading_layout"
-    android:minHeight="40dp"
     android:minWidth="110dp"
-    android:resizeMode="horizontal|vertical"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
     android:updatePeriodMillis="1800000"
-    android:widgetCategory="home_screen" />
+    android:initialLayout="@layout/widget_dashboard"
+    android:previewImage="@drawable/glance_preview_low_stock"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:configure="com.bizarreelectronics.crm.widget.WidgetConfigActivity"
+    android:description="@string/widget_low_stock_description" />

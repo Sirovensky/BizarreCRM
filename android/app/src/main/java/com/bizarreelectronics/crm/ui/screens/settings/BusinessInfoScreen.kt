@@ -1,21 +1,50 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
-import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,38 +52,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * §19.19 — Business Info settings screen.
- *
- * Wired to GET /settings/store and PUT /settings/store.
- * Allowed keys per server allowlist:
- *   store_name, address, phone, email, timezone, currency, tax_rate,
- *   receipt_header, receipt_footer, logo_url, sms_provider
- *
- * NOTE (2026-04-26): Tax ID / EIN — server store_config has no dedicated tax_id/ein key
- * in the PUT allowlist. Deferred.
- *
- * NOTE (2026-04-26): Social links — no social_* keys in PUT allowlist. Deferred.
- *
- * NOTE (2026-04-26): "Display on public tracking page / receipts / invoices" — server-side
- * rendering for public tracking (§55) and invoices already uses store_name / address / logo_url.
- * No per-field toggle exists on the server. Consumer IS wired (server reads store_config in
- * invoice/receipt templates). Saving store_name+address here therefore affects all those surfaces.
- */
-
-data class BusinessInfoUiState(
-    val isLoading: Boolean = true,
-    val isSaving: Boolean = false,
-    val error: String? = null,
-    val saveSuccess: Boolean = false,
-    // Editable fields
+data class BusinessInfoState(
     val storeName: String = "",
     val address: String = "",
     val phone: String = "",
     val email: String = "",
-    val logoUrl: String = "",
-    val receiptHeader: String = "",
-    val receiptFooter: String = "",
+    val taxId: String = "",
+    val socialFacebook: String = "",
+    val socialInstagram: String = "",
+    val socialWebsite: String = "",
+    val isLoading: Boolean = false,
+    val isSaving: Boolean = false,
+    val errorMessage: String? = null,
+    val savedOk: Boolean = false,
 )
 
 @HiltViewModel
@@ -62,69 +72,75 @@ class BusinessInfoViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(BusinessInfoUiState())
-    val uiState: StateFlow<BusinessInfoUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(BusinessInfoState(isLoading = true))
+    val uiState: StateFlow<BusinessInfoState> = _uiState.asStateFlow()
 
     init {
         load()
     }
 
-    fun load() {
+    private fun load() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null, saveSuccess = false)
-            try {
-                val resp = settingsApi.getStoreConfig()
-                val cfg = resp.data ?: emptyMap()
-                _uiState.value = BusinessInfoUiState(
-                    isLoading = false,
-                    storeName = cfg["store_name"] ?: "",
-                    address = cfg["address"] ?: "",
-                    phone = cfg["phone"] ?: "",
-                    email = cfg["email"] ?: "",
-                    logoUrl = cfg["logo_url"] ?: "",
-                    receiptHeader = cfg["receipt_header"] ?: "",
-                    receiptFooter = cfg["receipt_footer"] ?: "",
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load business info")
-            }
+            runCatching { settingsApi.getStoreConfig() }
+                .onSuccess { response ->
+                    val cfg = response.data ?: emptyMap()
+                    _uiState.value = BusinessInfoState(
+                        storeName = cfg["store_name"] ?: "",
+                        address = cfg["address"] ?: "",
+                        phone = cfg["phone"] ?: "",
+                        email = cfg["email"] ?: "",
+                        taxId = cfg["tax_id"] ?: "",
+                        socialFacebook = cfg["social_facebook"] ?: "",
+                        socialInstagram = cfg["social_instagram"] ?: "",
+                        socialWebsite = cfg["website"] ?: "",
+                        isLoading = false,
+                    )
+                }
+                .onFailure {
+                    _uiState.value = BusinessInfoState(
+                        isLoading = false,
+                        errorMessage = "Failed to load business info: ${it.message}",
+                    )
+                }
         }
     }
 
-    fun updateField(field: String, value: String) {
-        _uiState.value = when (field) {
-            "store_name"     -> _uiState.value.copy(storeName = value)
-            "address"        -> _uiState.value.copy(address = value)
-            "phone"          -> _uiState.value.copy(phone = value)
-            "email"          -> _uiState.value.copy(email = value)
-            "logo_url"       -> _uiState.value.copy(logoUrl = value)
-            "receipt_header" -> _uiState.value.copy(receiptHeader = value)
-            "receipt_footer" -> _uiState.value.copy(receiptFooter = value)
-            else             -> _uiState.value
-        }
+    fun update(block: BusinessInfoState.() -> BusinessInfoState) {
+        _uiState.value = _uiState.value.block()
     }
 
     fun save() {
         val s = _uiState.value
-        _uiState.value = s.copy(isSaving = true, error = null, saveSuccess = false)
+        _uiState.value = s.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            try {
+            runCatching {
                 settingsApi.putStoreConfig(
                     mapOf(
-                        "store_name"     to s.storeName,
-                        "address"        to s.address,
-                        "phone"          to s.phone,
-                        "email"          to s.email,
-                        "logo_url"       to s.logoUrl,
-                        "receipt_header" to s.receiptHeader,
-                        "receipt_footer" to s.receiptFooter,
+                        "store_name" to s.storeName,
+                        "address" to s.address,
+                        "phone" to s.phone,
+                        "email" to s.email,
+                        "tax_id" to s.taxId,
+                        "social_facebook" to s.socialFacebook,
+                        "social_instagram" to s.socialInstagram,
+                        "website" to s.socialWebsite,
                     )
                 )
-                _uiState.value = _uiState.value.copy(isSaving = false, saveSuccess = true)
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isSaving = false, error = e.message ?: "Save failed")
             }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        errorMessage = "Save failed: ${it.message}",
+                    )
+                }
         }
+    }
+
+    fun clearSavedOk() {
+        _uiState.value = _uiState.value.copy(savedOk = false)
     }
 }
 
@@ -132,174 +148,208 @@ class BusinessInfoViewModel @Inject constructor(
 @Composable
 fun BusinessInfoScreen(
     onBack: () -> Unit,
+    onBusinessHours: (() -> Unit)? = null,
     viewModel: BusinessInfoViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(uiState.saveSuccess) {
-        if (uiState.saveSuccess) snackbarHostState.showSnackbar("Business info saved")
+    LaunchedEffect(state.savedOk) {
+        if (state.savedOk) {
+            snackbarHostState.showSnackbar("Business info saved")
+            viewModel.clearSavedOk()
+        }
     }
-    LaunchedEffect(uiState.error) {
-        val err = uiState.error
-        if (err != null && !uiState.isLoading) snackbarHostState.showSnackbar(err)
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { snackbarHostState.showSnackbar(it) }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Business Info") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    if (!uiState.isLoading) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(end = 16.dp), strokeWidth = 2.dp)
-                        } else {
-                            TextButton(onClick = { viewModel.save() }) { Text("Save") }
-                        }
-                    }
-                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        when {
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+        if (state.isLoading) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
             }
-            uiState.error != null && !uiState.isSaving -> {
-                Box(Modifier.fillMaxSize().padding(padding)) {
-                    ErrorState(message = uiState.error!!, onRetry = { viewModel.load() })
-                }
-            }
-            else -> {
+            return@Scaffold
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Basic info
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Shop details", style = MaterialTheme.typography.titleSmall)
-                            BizInfoField(
-                                label = "Shop name",
-                                value = uiState.storeName,
-                                onValueChange = { viewModel.updateField("store_name", it) },
-                                icon = Icons.Default.Store,
-                            )
-                            BizInfoField(
-                                label = "Address",
-                                value = uiState.address,
-                                onValueChange = { viewModel.updateField("address", it) },
-                                icon = Icons.Default.LocationOn,
-                                singleLine = false,
-                                minLines = 2,
-                            )
-                            BizInfoField(
-                                label = "Phone",
-                                value = uiState.phone,
-                                onValueChange = { viewModel.updateField("phone", it) },
-                                icon = Icons.Default.Phone,
-                            )
-                            BizInfoField(
-                                label = "Email",
-                                value = uiState.email,
-                                onValueChange = { viewModel.updateField("email", it) },
-                                icon = Icons.Default.Email,
-                            )
-                        }
-                    }
+                    Text("Store details", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.storeName,
+                        onValueChange = { viewModel.update { copy(storeName = it) } },
+                        label = { Text("Shop name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.address,
+                        onValueChange = { viewModel.update { copy(address = it) } },
+                        label = { Text("Address") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        minLines = 2,
+                        maxLines = 3,
+                    )
+                    OutlinedTextField(
+                        value = state.phone,
+                        onValueChange = { viewModel.update { copy(phone = it) } },
+                        label = { Text("Phone") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Phone,
+                            imeAction = ImeAction.Next,
+                        ),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.email,
+                        onValueChange = { viewModel.update { copy(email = it) } },
+                        label = { Text("Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next,
+                        ),
+                        singleLine = true,
+                    )
+                }
+            }
 
-                    // Logo
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Logo", style = MaterialTheme.typography.titleSmall)
-                            BizInfoField(
-                                label = "Logo URL",
-                                value = uiState.logoUrl,
-                                onValueChange = { viewModel.updateField("logo_url", it) },
-                                icon = Icons.Default.Image,
-                            )
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Tax & legal", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.taxId,
+                        onValueChange = { viewModel.update { copy(taxId = it) } },
+                        label = { Text("Tax ID / EIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        singleLine = true,
+                    )
+                }
+            }
+
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Social & web", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.socialWebsite,
+                        onValueChange = { viewModel.update { copy(socialWebsite = it) } },
+                        label = { Text("Website URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next,
+                        ),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.socialFacebook,
+                        onValueChange = { viewModel.update { copy(socialFacebook = it) } },
+                        label = { Text("Facebook page URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next,
+                        ),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.socialInstagram,
+                        onValueChange = { viewModel.update { copy(socialInstagram = it) } },
+                        label = { Text("Instagram handle") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        singleLine = true,
+                    )
+                }
+            }
+
+            // §19.19 — Business hours (dedicated editor screen)
+            if (onBusinessHours != null) {
+                OutlinedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Edit business hours",
+                            onClick = onBusinessHours,
+                        ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column {
+                            Text("Business hours", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Appears on receipts, invoices, and the public tracking page. Upload via the web admin panel for managed hosting.",
+                                "Opening and closing times per day",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                    }
-
-                    // Receipt header/footer
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Receipt text", style = MaterialTheme.typography.titleSmall)
-                            BizInfoField(
-                                label = "Receipt header",
-                                value = uiState.receiptHeader,
-                                onValueChange = { viewModel.updateField("receipt_header", it) },
-                                icon = Icons.Default.Receipt,
-                                singleLine = false,
-                                minLines = 2,
-                            )
-                            BizInfoField(
-                                label = "Receipt footer",
-                                value = uiState.receiptFooter,
-                                onValueChange = { viewModel.updateField("receipt_footer", it) },
-                                icon = Icons.Default.Receipt,
-                                singleLine = false,
-                                minLines = 2,
-                            )
-                        }
-                    }
-
-                    // Deferred items
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Not available on mobile", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Tax ID / EIN — not in PUT /settings/store allowlist. Deferred.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "Social links — no social_* keys in server allowlist. Deferred.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            FilledTonalButton(
+                onClick = { viewModel.save() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.isSaving,
+            ) {
+                if (state.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = 8.dp).height(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Text("Save changes")
             }
         }
     }
-}
-
-@Composable
-private fun BizInfoField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    singleLine: Boolean = true,
-    minLines: Int = 1,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = singleLine,
-        minLines = minLines,
-    )
 }

@@ -33,13 +33,17 @@ import com.bizarreelectronics.crm.data.sync.DeltaSyncer
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import leakcanary.AppWatcher
+import leakcanary.LeakCanary
 import javax.inject.Inject
 
 /**
@@ -64,9 +68,12 @@ import javax.inject.Inject
  * can read entity-level details from the DiagnosticsScreen; this drawer is for
  * quick triage without leaving the current screen.
  *
- * NOTE (§20.12): LeakCanary integration requires a `debugImplementation` dep in
- * `app/build.gradle.kts` which is shared infra — deferred per hard rules. Wire
- * the dependency first, then `AppWatcher.objectWatcher` can be exposed here.
+ * ## LeakCanary panel (§20.12)
+ *
+ * Reads [AppWatcher.objectWatcher.retainedObjectCount] on a 2-second poll and
+ * exposes it as [retainedObjectCount]. A non-zero count lights up in
+ * [MaterialTheme.colorScheme.error] and an "Analyse Leaks" button triggers
+ * [LeakCanary.dumpHeap] to force a heap dump / notification.
  */
 @HiltViewModel
 class DebugDrawerViewModel @Inject constructor(
@@ -87,6 +94,18 @@ class DebugDrawerViewModel @Inject constructor(
         syncQueueDao.getDeadLetterCount(),   // dead-letter
     ) { pending, dead -> QueueStats(pending = pending, deadLetter = dead) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), QueueStats())
+
+    /**
+     * §20.12 — Polls [AppWatcher.objectWatcher.retainedObjectCount] every 2 s.
+     * Non-zero means LeakCanary has already detected suspect retained objects;
+     * tap "Analyse Leaks" to trigger a heap dump for full analysis.
+     */
+    val retainedObjectCount: StateFlow<Int> = flow {
+        while (true) {
+            emit(AppWatcher.objectWatcher.retainedObjectCount)
+            delay(2_000)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
@@ -130,6 +149,23 @@ class DebugDrawerViewModel @Inject constructor(
         _statusMessage.value = null
     }
 
+    /**
+     * §20.12 — Trigger a LeakCanary heap dump so it can analyse retained objects
+     * and post a notification with the leak trace. Only meaningful when
+     * [retainedObjectCount] > 0; safe to call at any time (no-op if nothing retained).
+     */
+    fun analyseLeaks() {
+        val retained = AppWatcher.objectWatcher.retainedObjectCount
+        if (retained > 0) {
+            LeakCanary.dumpHeap()
+            _statusMessage.value = "Heap dump triggered ($retained retained)"
+            Log.d(TAG, "debug: analyseLeaks — $retained retained objects, heap dump triggered")
+        } else {
+            _statusMessage.value = "No retained objects — nothing to analyse"
+            Log.d(TAG, "debug: analyseLeaks — 0 retained, skipped heap dump")
+        }
+    }
+
     companion object {
         private const val TAG = "DebugDrawer"
     }
@@ -155,6 +191,7 @@ fun DebugDrawer(
     val context = LocalContext.current
     val stats by viewModel.queueStats.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val retainedCount by viewModel.retainedObjectCount.collectAsState()
 
     Surface(
         modifier = modifier,
@@ -232,12 +269,23 @@ fun DebugDrawer(
                 }
             }
 
-            // NOTE: LeakCanary integration deferred — requires a
-            // `debugImplementation("com.squareup.leakcanary:leakcanary-android:..."`
-            // dep in app/build.gradle.kts (shared infra, outside this agent's touch
-            // boundary). Once the dep is added, AppWatcher.objectWatcher.retainedObjectCount
-            // can be displayed here and an "Analyse Leaks" button wired to
-            // LeakCanary.dumpHeap().
+            // §20.12 — LeakCanary retained-object panel
+            HorizontalDivider()
+            Text("Memory (LeakCanary)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = if (retainedCount == 0) "Retained objects: 0  ✓" else "Retained objects: $retainedCount  ⚠",
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                color = if (retainedCount > 0) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = { viewModel.analyseLeaks() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = retainedCount > 0,
+            ) {
+                Text(if (retainedCount > 0) "Analyse Leaks ($retainedCount)" else "Analyse Leaks")
+            }
 
             // Status message
             statusMessage?.let { msg ->

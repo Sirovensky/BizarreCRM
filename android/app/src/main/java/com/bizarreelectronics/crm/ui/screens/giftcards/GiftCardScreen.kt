@@ -20,6 +20,8 @@ import com.bizarreelectronics.crm.data.remote.api.GiftCardRedeemData
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.formatAsMoney
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -403,11 +405,49 @@ fun GiftCardResultCard(card: GiftCard, modifier: Modifier = Modifier) {
                 )
             }
             if (card.expiresAt != null) {
-                Text(
-                    "Expires ${card.expiresAt}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // §40.1 — Warn 30 days before expiration. Parse ISO-8601 date from server;
+                // if the date is unparseable fall back to plain display without a warning.
+                val daysUntilExpiry = runCatching {
+                    val expiryInstant = Instant.parse(
+                        if (card.expiresAt.length == 10) "${card.expiresAt}T00:00:00Z"
+                        else card.expiresAt.replace(' ', 'T').let {
+                            if (it.endsWith('Z') || it.contains('+')) it else "${it}Z"
+                        }
+                    )
+                    ChronoUnit.DAYS.between(Instant.now(), expiryInstant)
+                }.getOrNull()
+
+                val expiryColor = when {
+                    daysUntilExpiry != null && daysUntilExpiry < 0L -> MaterialTheme.colorScheme.error
+                    daysUntilExpiry != null && daysUntilExpiry <= 30L -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val nearExpiry = daysUntilExpiry != null && daysUntilExpiry in 0L..30L
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (nearExpiry) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = "Expires soon",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    Text(
+                        buildString {
+                            append("Expires ${card.expiresAt}")
+                            if (nearExpiry && daysUntilExpiry != null) {
+                                append(" ($daysUntilExpiry day${if (daysUntilExpiry == 1L) "" else "s"} left)")
+                            } else if (daysUntilExpiry != null && daysUntilExpiry < 0L) {
+                                append(" (expired)")
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = expiryColor,
+                    )
+                }
             }
         }
     }

@@ -4,8 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Color
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -28,9 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.PaymentLinkData
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
+import com.bizarreelectronics.crm.util.QrCodeGenerator
 
 /**
  * §41.1 — Create a new payment link.
@@ -175,7 +171,10 @@ private fun PaymentLinkSuccessSheet(
     onCopy: (String) -> Unit,
 ) {
     val url = link.short_url.ifBlank { link.url }
-    val qrBitmap = remember(url) { generateQrBitmap(url, 512) }
+    // Use shared QrCodeGenerator (util/) — no inline ZXing call here
+    val qrBitmap = remember(url) {
+        runCatching { QrCodeGenerator.generateQrBitmap(url, 512) }.getOrNull()
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -187,13 +186,24 @@ private fun PaymentLinkSuccessSheet(
         ) {
             Text("Payment Link Created", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
-            // QR code
-            if (qrBitmap != null) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "QR code for payment link",
-                    modifier = Modifier.size(200.dp),
-                )
+            // QR code in an OutlinedCard for visual containment
+            OutlinedCard(modifier = Modifier.size(216.dp)) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "QR code for payment link",
+                            modifier = Modifier.size(200.dp),
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.QrCode,
+                            contentDescription = "QR code unavailable",
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             // URL
@@ -209,11 +219,11 @@ private fun PaymentLinkSuccessSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = { onCopy(url) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy link", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Copy")
                 }
@@ -221,7 +231,7 @@ private fun PaymentLinkSuccessSheet(
                     onClick = { onShare(url) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Share, contentDescription = "Share link", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Share")
                 }
@@ -288,16 +298,6 @@ private fun NotConfiguredState(modifier: Modifier = Modifier) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-private fun generateQrBitmap(content: String, sizePx: Int): Bitmap? = runCatching {
-    val hints = mapOf(EncodeHintType.MARGIN to 1)
-    val bits = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
-    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
-    for (x in 0 until sizePx) for (y in 0 until sizePx) {
-        bmp.setPixel(x, y, if (bits[x, y]) Color.BLACK else Color.WHITE)
-    }
-    bmp
-}.getOrNull()
 
 private fun copyToClipboard(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

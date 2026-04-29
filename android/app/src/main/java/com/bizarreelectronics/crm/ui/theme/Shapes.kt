@@ -35,12 +35,33 @@ val BizarreShapes = Shapes(
 )
 
 /**
- * Emphasis FAB shape — diagonal cut corner for visual differentiation.
- * Use on the primary action FAB where extra attention-grabbing is desired.
+ * Expressive FAB shape — diagonal cut corner (Material 3 Expressive style).
+ *
+ * §30.2: FAB and emphasis buttons use a cut-corner or fully-rounded shape to
+ * visually differentiate the primary action from body content. [ConcaveFabShape]
+ * is the brand-opinionated choice — the 16 dp cut reads as assertive and
+ * unusual, reinforcing Bizarre Electronics' brand character.
+ *
+ * Use this on [FloatingActionButton] and primary emphasis CTAs:
+ * ```kotlin
+ * FloatingActionButton(shape = ConcaveFabShape) { ... }
+ * BrandPrimaryButton(shape = ConcaveFabShape) { ... }  // high-emphasis CTA
+ * ```
+ *
+ * See also [FullRoundShape] for the softer 50% alternative.
+ */
+val ConcaveFabShape = CutCornerShape(16.dp)
+
+/**
+ * Full-round FAB shape — 50% corner radius (pill / circle for square FABs).
+ *
+ * §30.2 alternative: use when the brand expression calls for a softer, more
+ * approachable feel (e.g. the on-boarding floating button). For the primary
+ * ticket-list FAB, prefer [ConcaveFabShape].
  *
  * Example:
  * ```kotlin
- * FloatingActionButton(shape = ConcaveFabShape) { ... }
+ * FloatingActionButton(shape = FullRoundShape) { ... }
  * ```
  */
-val ConcaveFabShape = CutCornerShape(16.dp)
+val FullRoundShape = RoundedCornerShape(50)

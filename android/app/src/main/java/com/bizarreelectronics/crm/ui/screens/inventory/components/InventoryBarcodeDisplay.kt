@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.R
 import androidx.core.content.FileProvider
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.util.QrCodeGenerator
@@ -141,7 +142,8 @@ fun InventoryBarcodeDisplay(
                         ) {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
-                                contentDescription = "Code-128 barcode for SKU $sku",
+                                // §26 — a11y_* string resource for custom-drawn barcode image
+                                contentDescription = context.getString(R.string.a11y_barcode_code128, sku),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(80.dp),
@@ -166,7 +168,8 @@ fun InventoryBarcodeDisplay(
                         ) {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
-                                contentDescription = "QR code for SKU $sku",
+                                // §26 — a11y_* string resource for custom-drawn QR image
+                                contentDescription = context.getString(R.string.a11y_barcode_qr, sku),
                                 modifier = Modifier.size(180.dp),
                             )
                         }

@@ -17,7 +17,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.bizarreelectronics.crm.ui.components.PredictiveBackScaffold
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -65,6 +63,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ConcurrentEditBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailHeaderRow
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPhotoGallery
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPrintActions
@@ -74,7 +73,6 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketWarrantyDi
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
-import com.bizarreelectronics.crm.util.ShareSheet
 import com.bizarreelectronics.crm.util.ReduceMotion
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -197,25 +195,29 @@ data class TicketDetailUiState(
     val waiverFeatureEnabled: Boolean = false,
     /** True while the waiver availability check is in-flight. */
     val waiverCheckInProgress: Boolean = false,
-    // ─── §4.13 — Error states ─────────────────────────────────────────────────
+    // ─── §4.13 L777 — Concurrent-edit banner (409) ───────────────────────────
     /**
-     * True when the server returned HTTP 409 during a save attempt, meaning the
-     * ticket was modified by another session. [ConcurrentEditBanner] is shown
-     * and cleared when the user taps Reload.
+     * True when the server returned HTTP 409 (stale `updated_at`). Drives
+     * [ConcurrentEditBanner] — user must tap Reload to re-fetch and merge.
+     * Cleared by [TicketDetailViewModel.clearConcurrentEdit] on successful reload.
      */
-    val isConcurrentEditConflict: Boolean = false,
+    val isConcurrentEdit: Boolean = false,
+    // ─── §4.13 L776 — Permission-denied ephemeral message ────────────────────
     /**
-     * True when the API refresh failed but a cached [TicketEntity] is available.
-     * A soft "retry pill" is shown at the bottom of the cached detail instead of
-     * replacing the screen with a hard [ErrorState].
-     */
-    val hasStaleCachedData: Boolean = false,
-    /**
-     * Set when the server returns HTTP 403 on a user-initiated action (e.g.
-     * delete, status change). Surfaces as a Snackbar "Ask your admin to enable this."
-     * and is consumed-once via [clearPermissionDenied].
+     * Non-null when a role-gated action was attempted without sufficient privileges.
+     * Shown as a one-shot Snackbar; consumed by the UI then cleared via
+     * [TicketDetailViewModel.clearPermissionDenied].
      */
     val permissionDeniedMessage: String? = null,
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+    /**
+     * True when the "Notify customer of delay" dialog is open from the overflow
+     * menu. The dialog pre-fills a delay template and calls [TicketDetailViewModel.sendDelayNotificationSms]
+     * on confirm.
+     */
+    val showNotifyDelayDialog: Boolean = false,
+    /** Non-null while the delay SMS is being sent; drives a progress indicator in the dialog. */
+    val isDelaySendInProgress: Boolean = false,
 )
 
 @HiltViewModel
@@ -318,12 +320,9 @@ class TicketDetailViewModel @Inject constructor(
                     )
                     return@launch
                 }
-                // §4.13 — If we have a cached entity, keep cached data + show retry pill
+                // If we have a cached entity, just show a soft warning — not a hard error
                 if (_state.value.ticket != null) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        hasStaleCachedData = true,
-                    )
+                    _state.value = _state.value.copy(isLoading = false)
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -430,40 +429,12 @@ class TicketDetailViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                val code = (e as? HttpException)?.code()
-                when (code) {
-                    409 -> _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        isConcurrentEditConflict = true,
-                    )
-                    403 -> _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        permissionDeniedMessage = "Ask your admin to enable this.",
-                    )
-                    else -> _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Failed to change status: ${e.message}",
-                    )
-                }
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to change status: ${e.message}",
+                )
             }
         }
-    }
-
-    /** §4.13 — Clear the 409 conflict flag after user reloads. */
-    fun clearConcurrentEditConflict() {
-        _state.value = _state.value.copy(isConcurrentEditConflict = false)
-        loadTicketDetail()
-    }
-
-    /** §4.13 — Clear the retry-pill stale-cache flag after user taps Retry. */
-    fun retryAfterStaleCachedData() {
-        _state.value = _state.value.copy(hasStaleCachedData = false)
-        loadTicketDetail()
-    }
-
-    /** §4.13 — Consume the permission-denied message once shown in Snackbar. */
-    fun clearPermissionDenied() {
-        _state.value = _state.value.copy(permissionDeniedMessage = null)
     }
 
     fun addNote(text: String) {
@@ -661,15 +632,11 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
             try {
-                // Determine if query is phone (digits only), otherwise treat as IMEI/serial.
-                val isPhone = query.all { it.isDigit() || it == '+' || it == '-' || it == ' ' } && query.length < 15
-                val response = if (isPhone) {
-                    ticketApi.warrantyLookup(phone = query.trim())
-                } else {
-                    ticketApi.warrantyLookup(imei = query.trim())
-                }
-                val results = response.data
-                val first = results?.firstOrNull()
+                // Server lookup accepts imei/serial/phone as named query args.
+                // Caller's `query` is opaque — try imei (most common), fall back
+                // to serial if no result. Take the first match (server returns list).
+                val response = ticketApi.warrantyLookup(imei = query)
+                val first = response.data?.firstOrNull()
                 _state.value = if (first != null) {
                     _state.value.copy(warrantyLoading = false, warrantyResult = first)
                 } else {
@@ -1162,6 +1129,102 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
     // Override loadTicketDetail to detect 404 (L680)
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // §4.13 L776-L777 — Permission-denied + concurrent-edit helpers (additive)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Signal that a role-gated action was attempted without privileges.
+     * Sets [TicketDetailUiState.permissionDeniedMessage] which drives a one-shot Snackbar.
+     * Message follows §67 tone ("Ask your admin to enable this.").
+     */
+    fun signalPermissionDenied(action: String = "") {
+        val suffix = if (action.isNotBlank()) " ($action)" else ""
+        _state.value = _state.value.copy(
+            permissionDeniedMessage = "Ask your admin to enable this$suffix.",
+        )
+    }
+
+    /** Consume the permission-denied message after it has been shown. */
+    fun clearPermissionDenied() {
+        _state.value = _state.value.copy(permissionDeniedMessage = null)
+    }
+
+    /**
+     * Surface a concurrent-edit conflict (HTTP 409).
+     * Call from any PUT/PATCH catch block when `e.code() == 409`.
+     */
+    fun signalConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = true)
+    }
+
+    /** Dismiss the concurrent-edit banner (called before reload). */
+    fun clearConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = false)
+    }
+
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+
+    /** Open the "Notify customer of delay" dialog from the overflow menu. */
+    fun showNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = true)
+    }
+
+    /** Dismiss the notify-delay dialog without sending. */
+    fun dismissNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = false, isDelaySendInProgress = false)
+    }
+
+    /**
+     * Send the pre-filled delay SMS to the ticket's customer phone.
+     *
+     * Resolves phone from [TicketDetail.customer] (preferred) → [TicketEntity.customerPhone]
+     * (Room cache fallback). 404-tolerant: if the server returns 404 the dialog is still
+     * dismissed so the UI doesn't get stuck.
+     *
+     * @param message The (optionally edited) SMS body to send.
+     */
+    fun sendDelayNotificationSms(message: String) {
+        val phone = _state.value.ticketDetail?.customer?.phone
+            ?: _state.value.ticketDetail?.customer?.mobile
+            ?: _state.value.ticket?.customerPhone
+
+        if (phone.isNullOrBlank()) {
+            viewModelScope.launch {
+                withStateOnMain {
+                    copy(showNotifyDelayDialog = false, actionMessage = "No customer phone on file")
+                }
+            }
+            return
+        }
+
+        _state.value = _state.value.copy(isDelaySendInProgress = true)
+        viewModelScope.launch {
+            try {
+                smsApi.sendSms(mapOf("to" to phone, "message" to message))
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = "Delay notification sent",
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.tag("NotifyDelay").w(e, "Delay SMS send failed")
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = if ((e as? HttpException)?.code() == 404)
+                            "SMS not sent — server endpoint unavailable"
+                        else
+                            "Failed to send SMS: ${e.message}",
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -1190,10 +1253,6 @@ fun TicketDetailScreen(
     onCheckout: ((ticketId: Long, total: Double, customerName: String) -> Unit)? = null,
     // L780-L786 — navigate to WaiverListScreen; hidden when null (feature not yet wired)
     onNavigateToWaivers: ((ticketId: Long) -> Unit)? = null,
-    // §46.1 — navigate to the full Warranty Lookup screen (optional; inline dialog used when null)
-    onNavigateToWarrantyLookup: (() -> Unit)? = null,
-    // §46.2 — navigate to the full Device History screen (optional; inline sheet used when null)
-    onNavigateToDeviceHistory: (() -> Unit)? = null,
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1235,19 +1294,21 @@ fun TicketDetailScreen(
         }
     }
 
-    // §4.13 — Permission-denied Snackbar (403 on any action)
-    LaunchedEffect(state.permissionDeniedMessage) {
-        state.permissionDeniedMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
-            viewModel.clearPermissionDenied()
-        }
-    }
-
     // Navigate to the new invoice once convertToInvoice() succeeds.
     LaunchedEffect(state.convertedInvoiceId) {
         state.convertedInvoiceId?.let { invoiceId ->
             onNavigateToInvoice(invoiceId)
             viewModel.clearConvertedInvoiceId()
+        }
+    }
+
+    // §4.13 L776 — Permission-denied one-shot Snackbar.
+    // Shown when a role-gated action is attempted by a user without privileges.
+    LaunchedEffect(state.permissionDeniedMessage) {
+        val msg = state.permissionDeniedMessage
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearPermissionDenied()
         }
     }
 
@@ -1350,6 +1411,21 @@ fun TicketDetailScreen(
         }
     }
 
+    // ─── §4.22 — Notify customer of delay dialog ─────────────────────────────
+    if (state.showNotifyDelayDialog) {
+        val customerName = state.ticketDetail?.customer?.let { c ->
+            listOfNotNull(c.firstName, c.lastName).joinToString(" ").ifBlank { null }
+        } ?: ticket?.customerName ?: "Customer"
+        val orderId = ticket?.orderId?.let { "#$it" } ?: "your repair"
+        NotifyDelayDialog(
+            customerName = customerName,
+            orderId = orderId,
+            isSendInProgress = state.isDelaySendInProgress,
+            onSend = { msg -> viewModel.sendDelayNotificationSms(msg) },
+            onDismiss = { viewModel.dismissNotifyDelayDialog() },
+        )
+    }
+
     // ─── L740 — Status transition error snackbar ──────────────────────────────
     LaunchedEffect(state.statusTransitionError) {
         state.statusTransitionError?.let { err ->
@@ -1409,21 +1485,10 @@ fun TicketDetailScreen(
         )
     }
 
-    // §1.5 — PredictiveBackHandler: wraps the Scaffold so the back-swipe
-    // preview tracks the drag live (progress 0→1). The subtle scale mirrors
-    // the M3 recommended 90%-shrink on the exiting screen.
-    PredictiveBackScaffold(onBack = onBack) { backProgress ->
     Scaffold(
         // D5-8: lift bottom-anchored inputs (notes, comments, SMS composer)
         // above the soft keyboard instead of letting them vanish beneath it.
-        modifier = Modifier
-            .imePadding()
-            .graphicsLayer {
-                val scale = 1f - backProgress * 0.08f
-                scaleX = scale
-                scaleY = scale
-                alpha = 1f - backProgress * 0.3f
-            },
+        modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
@@ -1517,6 +1582,8 @@ fun TicketDetailScreen(
                             customerName = customerName,
                             deviceName = deviceName,
                             serverUrl = viewModel.serverUrl,
+                            // §55.3 — pass tracking URL so the label action can encode it in the QR
+                            trackingUrl = state.ticketDetail?.trackingUrl(),
                             snackbarHost = snackbarHostState,
                         )
                         // Overflow menu — Copy Link + permission-gated destructive actions
@@ -1539,51 +1606,77 @@ fun TicketDetailScreen(
                                         }
                                     },
                                 )
-                                // §55.1 — Share tracking link with customer
-                                run {
-                                    val trackingToken = state.ticketDetail?.trackingToken
-                                    val orderId = ticket.orderId
-                                    val serverUrl = viewModel.serverUrl
-                                    if (!trackingToken.isNullOrBlank() && serverUrl.isNotBlank()) {
-                                        DropdownMenuItem(
-                                            text = { Text("Share tracking link") },
-                                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
-                                            onClick = {
-                                                showOverflowMenu = false
-                                                val url = "$serverUrl/track/$orderId?token=$trackingToken"
-                                                ShareSheet.shareText(
-                                                    context,
-                                                    url,
-                                                    "Track your repair — $orderId",
+                                // §55.1 — Share tracking link (customer-facing repair status URL)
+                                val trackingUrl = state.ticketDetail?.trackingUrl()
+                                if (trackingUrl != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_label)) },
+                                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, trackingUrl)
+                                                putExtra(
+                                                    Intent.EXTRA_SUBJECT,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
                                                 )
-                                            },
-                                        )
-                                    }
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    shareIntent,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
+                                                )
+                                            )
+                                        },
+                                    )
                                 }
-                                // L725 — Check warranty (full screen if callback wired, inline dialog otherwise)
+                                // §25.3 — Copy order ID (ticket #) to clipboard
+                                val orderId = ticket?.orderId ?: "T-$ticketId"
+                                DropdownMenuItem(
+                                    text = { Text("Copy order ID") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        ClipboardUtil.copy(context, "Order ID", orderId)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Order ID copied")
+                                        }
+                                    },
+                                )
+                                // §25.3 — Copy IMEI (PII → sensitive copy, auto-clears 30 s)
+                                val firstImei = state.devices.firstOrNull { !it.imei.isNullOrBlank() }?.imei
+                                if (firstImei != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy IMEI") },
+                                        leadingIcon = { Icon(Icons.Default.PhoneAndroid, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            // IMEI is PII — use sensitive copy so Android 13+
+                                            // suppresses clipboard preview and auto-clears after 30 s.
+                                            ClipboardUtil.copySensitive(context, "IMEI", firstImei)
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("IMEI copied (auto-clears in 30 s)")
+                                            }
+                                        },
+                                    )
+                                }
+                                // L725 — Check warranty
                                 DropdownMenuItem(
                                     text = { Text("Check warranty") },
                                     leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
                                     onClick = {
                                         showOverflowMenu = false
-                                        if (onNavigateToWarrantyLookup != null) {
-                                            onNavigateToWarrantyLookup()
-                                        } else {
-                                            viewModel.showWarrantyDialog()
-                                        }
+                                        viewModel.showWarrantyDialog()
                                     },
                                 )
-                                // L726 — Device history (full screen if callback wired, inline sheet otherwise)
+                                // L726 — Device history
                                 DropdownMenuItem(
                                     text = { Text("Device history") },
                                     leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
                                     onClick = {
                                         showOverflowMenu = false
-                                        if (onNavigateToDeviceHistory != null) {
-                                            onNavigateToDeviceHistory()
-                                        } else {
-                                            viewModel.showDeviceHistory()
-                                        }
+                                        viewModel.showDeviceHistory()
                                     },
                                 )
                                 // L727 — Pin to dashboard
@@ -1595,6 +1688,20 @@ fun TicketDetailScreen(
                                         viewModel.pinToDashboard()
                                     },
                                 )
+                                // §4.22 — Notify customer of delay (only when customer has a phone)
+                                val canNotifyDelay = !(state.ticketDetail?.customer?.phone.isNullOrBlank() &&
+                                    state.ticketDetail?.customer?.mobile.isNullOrBlank() &&
+                                    state.ticket?.customerPhone.isNullOrBlank())
+                                if (canNotifyDelay) {
+                                    DropdownMenuItem(
+                                        text = { Text("Notify customer of delay") },
+                                        leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            viewModel.showNotifyDelayDialog()
+                                        },
+                                    )
+                                }
                                 // L741 — QC sign-off (admin / manager / tech)
                                 run {
                                     val qcRole = state.userRole?.lowercase()?.let { r ->
@@ -1802,10 +1909,13 @@ fun TicketDetailScreen(
                 visible = state.isDeletedWhileViewing,
                 onClose = onBack,
             )
-            // §4.13 — 409 concurrent-edit banner
+            // §4.13 L777 — Concurrent-edit banner (HTTP 409 stale updated_at)
             ConcurrentEditBanner(
-                visible = state.isConcurrentEditConflict,
-                onReload = { viewModel.clearConcurrentEditConflict() },
+                visible = state.isConcurrentEdit,
+                onReload = {
+                    viewModel.clearConcurrentEdit()
+                    viewModel.loadTicketDetail()
+                },
             )
             when {
                 state.isLoading -> {
@@ -1829,89 +1939,46 @@ fun TicketDetailScreen(
                 }
                 ticket != null -> {
                     // L677 — tablet split-pane: content + related rail side-by-side
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            TicketDetailContent(
-                                modifier = Modifier.weight(1f),
-                                ticket = ticket,
-                                ticketId = ticketId,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedContentScope = animatedContentScope,
-                                ticketDetail = state.ticketDetail,
-                                devices = state.devices,
-                                notes = state.notes,
-                                history = state.history,
-                                photos = state.photos,
-                                statuses = state.statuses,
-                                payments = state.ticketDetail?.payments ?: emptyList(),
-                                employees = state.employees,
-                                isActionInProgress = state.isActionInProgress,
-                                isBenchTimerRunning = state.isBenchTimerRunning,
-                                reduceMotion = reduceMotion,
-                                padding = padding,
-                                onNavigateToCustomer = onNavigateToCustomer,
-                                onEditDevice = onEditDevice,
-                                onAddPhotos = onAddPhotos,
-                                serverUrl = viewModel.serverUrl,
-                                onStatusSelected = { viewModel.changeStatus(it) },
-                                onAddNote = { viewModel.addNote(it) },
-                                onNavigateToSms = onNavigateToSms,
-                                onDeletePhoto = { viewModel.deletePhoto(it) },
-                                onBenchStart = { viewModel.startBenchTimer() },
-                                onBenchStop = { viewModel.stopBenchTimer() },
-                            )
-                            // L677 — Related rail: tablet only; phone gets zero-size stub
-                            TicketRelatedRail(
-                                photos = state.photos,
-                                serverUrl = viewModel.serverUrl,
-                            )
-                        }
-                        // §4.13 — Stale-cache retry pill: network failed but Room cache shown.
-                        if (state.hasStaleCachedData) {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 24.dp),
-                                shape = MaterialTheme.shapes.extraLarge,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                shadowElevation = 4.dp,
-                                tonalElevation = 2.dp,
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        Icons.Default.WifiOff,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        "Showing cached data",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    TextButton(
-                                        onClick = { viewModel.retryAfterStaleCachedData() },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    ) {
-                                        Text(
-                                            "Retry",
-                                            style = MaterialTheme.typography.labelMedium,
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        TicketDetailContent(
+                            modifier = Modifier.weight(1f),
+                            ticket = ticket,
+                            ticketId = ticketId,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedContentScope = animatedContentScope,
+                            ticketDetail = state.ticketDetail,
+                            devices = state.devices,
+                            notes = state.notes,
+                            history = state.history,
+                            photos = state.photos,
+                            statuses = state.statuses,
+                            payments = state.ticketDetail?.payments ?: emptyList(),
+                            employees = state.employees,
+                            isActionInProgress = state.isActionInProgress,
+                            isBenchTimerRunning = state.isBenchTimerRunning,
+                            reduceMotion = reduceMotion,
+                            padding = padding,
+                            onNavigateToCustomer = onNavigateToCustomer,
+                            onEditDevice = onEditDevice,
+                            onAddPhotos = onAddPhotos,
+                            serverUrl = viewModel.serverUrl,
+                            onStatusSelected = { viewModel.changeStatus(it) },
+                            onAddNote = { viewModel.addNote(it) },
+                            onNavigateToSms = onNavigateToSms,
+                            onDeletePhoto = { viewModel.deletePhoto(it) },
+                            onBenchStart = { viewModel.startBenchTimer() },
+                            onBenchStop = { viewModel.stopBenchTimer() },
+                        )
+                        // L677 — Related rail: tablet only; phone gets zero-size stub
+                        TicketRelatedRail(
+                            photos = state.photos,
+                            serverUrl = viewModel.serverUrl,
+                        )
                     }
                 }
             }
         }
     }
-    } // end PredictiveBackScaffold
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -2005,6 +2072,19 @@ private fun TicketDetailContent(
             }
         }
 
+        // §4.2 — Status / urgency / due-date chip row (completes [~] header item)
+        // §70.3 — pass shared-element scopes so the status pill morphs during
+        // the list→detail transition (STATUS_CHIP key matched by TicketListRow).
+        item {
+            TicketDetailHeaderRow(
+                ticket = ticket,
+                ticketId = ticketId,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedContentScope = animatedContentScope,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         // Info row
         item {
             Row(
@@ -2027,48 +2107,6 @@ private fun TicketDetailContent(
                         }
                     }
                 }
-            }
-        }
-
-        // §4.22 — SLA progress bar from dueOn field.
-        // Full SLA tracking with server definitions is §4.19 (deferred).
-        item {
-            val dueOnStr = ticket.dueOn
-            if (dueOnStr != null) {
-                val dueMs = runCatching {
-                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                        .parse(dueOnStr)?.time ?: 0L
-                }.getOrDefault(0L)
-                if (dueMs > 0L) {
-                    val nowMs = System.currentTimeMillis()
-                    val remainingMs = dueMs - nowMs
-                    // Approx 24h SLA for display when no server SLA definition
-                    val budgetMs = 24L * 60 * 60 * 1000
-                    val consumedPct = ((1.0 - remainingMs.toDouble() / budgetMs) * 100)
-                        .toInt().coerceIn(0, 200)
-                    val tier = com.bizarreelectronics.crm.util.SlaCalculator.tier(100 - consumedPct.coerceIn(0, 100))
-                    val remainingLabel = com.bizarreelectronics.crm.ui.screens.tickets.components.formatSlaRemaining(remainingMs)
-                    com.bizarreelectronics.crm.ui.screens.tickets.components.SlaProgress(
-                        consumedPct = consumedPct.coerceIn(0, 100),
-                        tier = tier,
-                        remainingLabel = remainingLabel,
-                        reduceMotion = reduceMotion,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    )
-                }
-            }
-        }
-
-        // §4.21 — Label chips from TicketEntity.labels (comma-separated)
-        item {
-            val labelList = remember(ticket.labels) {
-                ticket.labels?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
-            }
-            if (labelList.isNotEmpty()) {
-                com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips(
-                    labels = labelList,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         }
 
@@ -2401,4 +2439,87 @@ private fun CompactBottomBarButton(
             style = MaterialTheme.typography.labelSmall,
         )
     }
+}
+
+// ─── §4.22 NotifyDelayDialog ──────────────────────────────────────────────────
+
+/**
+ * §4.22 — "One-tap Notify customer of delay" dialog.
+ *
+ * Opens from the ticket-detail overflow menu when the customer has a phone number
+ * on file. Pre-fills a delay template that the staff member can edit before sending.
+ * Calls [onSend] with the (possibly edited) body; caller drives [isSendInProgress]
+ * to show a spinner while the SMS is in-flight.
+ *
+ * The dialog is self-contained: it manages the mutable message body state internally
+ * and surfaces it to the caller only on confirm. This keeps the ViewModel free of
+ * intermediate text state.
+ */
+@Composable
+private fun NotifyDelayDialog(
+    customerName: String,
+    orderId: String,
+    isSendInProgress: Boolean,
+    onSend: (message: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Pre-filled template — staff can edit before sending.
+    var messageBody by rememberSaveable {
+        mutableStateOf(
+            "Hi $customerName, we wanted to let you know that $orderId is " +
+                "taking a bit longer than expected. We appreciate your patience " +
+                "and will update you as soon as it's ready. Thank you!"
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSendInProgress) onDismiss() },
+        title = {
+            Text(
+                text = "Notify Customer of Delay",
+                style = MaterialTheme.typography.titleMedium,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Edit the message below before sending. It will be sent as an SMS to the customer's phone number on file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("SMS message") },
+                    minLines = 4,
+                    maxLines = 8,
+                    enabled = !isSendInProgress,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSend(messageBody) },
+                enabled = !isSendInProgress && messageBody.isNotBlank(),
+            ) {
+                if (isSendInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("Send SMS")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSendInProgress,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }

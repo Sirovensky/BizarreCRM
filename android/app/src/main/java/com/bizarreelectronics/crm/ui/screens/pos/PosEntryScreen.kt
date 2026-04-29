@@ -125,18 +125,41 @@ fun PosEntryScreen(
             searchFocusRequester.requestFocus()
         },
     ) {
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = WindowInsets(0),
+    // §23.5 PosFlowScaffold: unified chrome across POS-to-Ticket flow. POS Home
+    // is logical step 1/8 (POS Home → Customer → Device → Symptoms → Details →
+    // Damage → Diagnostic → Quote). Wave + top-bar + bottom-shelf shape matches
+    // CheckInEntry / CheckInHost so the cashier doesn't re-anchor between screens.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "POS",
+        subtitle = if (state.attachedCustomer != null) "Step 1 of 8 · Pick path"
+                   else "Step 1 of 8 · Pick customer or path",
+        stepIndex = 0,
+        totalSteps = 8,
+        onBack = null,
+        bottomBar = null, // SearchBar lives in content layer because M3 SearchBar
+                          // owns its own expansion lifecycle (active=true full-screen
+                          // overlay). Stuffing it into the bottomBar slot would
+                          // collide with that overlay.
     ) { innerPadding ->
-    // statusBarsPadding pushes the entire POS-entry surface below the
-    // system status bar so the customer banner / clock no longer overlap.
-    Box(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(innerPadding)) {
+    // Drop the bottom inset from innerPadding so the SearchBar (BottomCenter)
+    // pins to the actual visual bottom rather than floating above the empty
+    // PosFlowScaffold shelf. The shelf is empty when bottomBar = null, so
+    // overlapping it gives back the wasted vertical space.
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .padding(top = innerPadding.calculateTopPadding())
+    ) {
         // TASK-4: offline banner defensive placement (top of entry screen)
         PosOfflineBanner(
             isOnline = state.isOnline,
             pendingSaleCount = state.pendingSaleCount,
             modifier = Modifier.align(Alignment.TopCenter).zIndex(1f),
+        )
+        // SnackbarHost was previously hosted by the inner Scaffold; keep the
+        // host inside the content layer so error messages still surface.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
         )
         // ── Content layer ───────────────────────────────────────────────────
         AnimatedVisibility(
@@ -161,10 +184,12 @@ fun PosEntryScreen(
                     onNavigateToTender()
                 },
                 onWalkIn = {
-                    // Show the phone-capture dialog so the cashier can
-                    // optionally record a number for receipt SMS before
-                    // proceeding. Skip / dismiss falls back to bare walk-in.
-                    viewModel.showWalkInPhoneDialog()
+                    // Mockup PHONE 1 post-attach: walk-in still routes through
+                    // the path picker (Retail / Repair / Store credit) so the
+                    // cashier picks intent. Auto-nav to cart skipped that
+                    // picker for walk-ins; restore parity with named-customer
+                    // flow.
+                    viewModel.attachWalkIn()
                 },
                 onNavigateToCart = onNavigateToCart,
                 onNavigateToTicket = onNavigateToTicket,
@@ -206,7 +231,7 @@ fun PosEntryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(if (searchExpanded) Alignment.TopCenter else Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
+                .padding(horizontal = 16.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
                 .focusRequester(searchFocusRequester)
                 .onPreviewKeyEvent { event ->
                     // HID scanner buffer: accumulate chars arriving < 50ms apart.
@@ -272,25 +297,6 @@ fun PosEntryScreen(
             viewModel.clearError()
         }
     }
-
-    // Walk-in phone capture dialog — rendered outside the Scaffold Box so it
-    // layers correctly over the full screen.
-    if (state.showWalkInPhoneDialog) {
-        WalkInPhoneCaptureDialog(
-            onSkip = {
-                viewModel.dismissWalkInPhoneDialog()
-                viewModel.attachWalkIn(phone = null)
-            },
-            onContinue = { phone ->
-                viewModel.dismissWalkInPhoneDialog()
-                viewModel.attachWalkIn(phone = phone.takeIf { it.isNotBlank() })
-            },
-            onDismiss = {
-                viewModel.dismissWalkInPhoneDialog()
-                viewModel.attachWalkIn(phone = null)
-            },
-        )
-    }
     } // end PosKeyboardShortcuts
 }
 
@@ -329,10 +335,23 @@ private fun EntryContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp)
+                // 16dp gutter unifies POS + CheckIn flow screens (audit H1).
+                // CheckIn steps already use 16dp; POS used 14dp so the cashier
+                // saw the content margin shift on every POS→CheckIn boundary.
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 88.dp),
         ) {
-            CustomerHeaderBanner(customer = state.attachedCustomer!!)
+            run {
+                val c = state.attachedCustomer!!
+                val sub = listOfNotNull(
+                    c.phone,
+                    "${c.ticketCount} ${if (c.ticketCount == 1) "ticket" else "tickets"}",
+                ).joinToString(" · ").ifBlank { null }
+                com.bizarreelectronics.crm.ui.components.shared.CustomerHeaderPill(
+                    name = c.name,
+                    subtitle = sub,
+                )
+            }
             Spacer(modifier = Modifier.height(6.dp))
             // AUDIT-023: compact cart summary strip between the customer banner
             // and the path tiles. Tapping navigates to PosCart.
@@ -386,7 +405,7 @@ private fun EntryContent(
                     modifier = Modifier.heightIn(max = 280.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.readyForPickupTickets, key = { it.ticketId }) { ticket ->
+                    items(state.readyForPickupTickets) { ticket ->
                         ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
                     }
                     if (state.pastRepairs.isNotEmpty()) {
@@ -398,7 +417,7 @@ private fun EntryContent(
                                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                             )
                         }
-                        items(state.pastRepairs, key = { it.ticketId }) { repair ->
+                        items(state.pastRepairs) { repair ->
                             PastRepairRow(repair = repair, onOpen = { onNavigateToTicket(repair.ticketId) })
                         }
                     }
@@ -423,7 +442,8 @@ private fun PreAttachContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp)
+            // 16dp gutter unifies POS + CheckIn flow screens (audit H1).
+            .padding(horizontal = 16.dp)
             // Reserve room at the bottom for the docked SearchBar (~72dp + padding).
             .padding(bottom = 88.dp),
     ) {
@@ -490,96 +510,13 @@ private fun RecentTicketChip(repair: PastRepair, onClick: () -> Unit) {
     }
 }
 
-// ─── Walk-in phone capture dialog ────────────────────────────────────────────
-
-/**
- * Brief dialog shown when the cashier taps the "Walk-in customer" tile.
- * Captures an optional phone number for receipt SMS.
- *
- * - "Skip" / dismiss → bare walk-in, no phone recorded.
- * - "Continue" with a typed number → walk-in with phone (creates a minimal
- *   DB record so the number is available for receipt SMS).
- * - "Continue" with an empty field → treated as Skip.
- *
- * Validation: 10 digits = US format; 7–15 digits accepted as international.
- * We never block the cashier — invalid format shows a hint only.
- */
-@Composable
-private fun WalkInPhoneCaptureDialog(
-    onSkip: () -> Unit,
-    onContinue: (phone: String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var phone by remember { mutableStateOf("") }
-
-    val digitsOnly = phone.filter { it.isDigit() }
-    val isUsFormat = digitsOnly.length == 10
-    val isInternational = phone.trimStart('+').filter { it.isDigit() }.length in 7..15
-    val phoneIsValid = phone.isBlank() || isUsFormat || isInternational
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Walk-in customer") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Optional — for receipt SMS later",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it.take(20) },
-                    label = { Text("Phone number") },
-                    placeholder = { Text("(555) 867-5309") },
-                    prefix = { Text("+1 ") },
-                    singleLine = true,
-                    isError = phone.isNotBlank() && !phoneIsValid,
-                    supportingText = if (phone.isNotBlank() && !phoneIsValid) {
-                        { Text("Enter 10 digits (US) or international format") }
-                    } else null,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onDone = {
-                            if (phone.isBlank() || phoneIsValid) onContinue(phone.trim())
-                        },
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onSkip) { Text("Skip") }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onContinue(phone.trim()) },
-                enabled = phone.isBlank() || phoneIsValid,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) { Text("Continue") }
-        },
-    )
-}
-
-// 2026-04-26 — CreateCustomerDialog removed. POS now navigates to the
-// full-screen CustomerCreateScreen for parity with web (organization,
-// multi-phone, multi-email, address, tags, opt-ins, notes).
 
 // ─── Reusable sub-composables ────────────────────────────────────────────────
 
 // ─── Cart summary strip (AUDIT-023) ─────────────────────────────────────────
 
 /**
- * Compact one-line strip shown between CustomerHeaderBanner and the path tiles
+ * Compact one-line strip shown between CustomerHeaderPill and the path tiles
  * in the post-attach state. Shows item count + subtotal (or "Cart · empty")
  * and navigates to PosCart on tap.
  */
@@ -619,43 +556,6 @@ private fun CartSummaryStrip(
 }
 
 @Composable
-private fun CustomerHeaderBanner(customer: PosAttachedCustomer) {
-    val bannerDescription = buildString {
-        append("Customer ${customer.name}")
-        customer.phone?.let { append(", $it") }
-        append(", ${customer.ticketCount} ${if (customer.ticketCount == 1) "ticket" else "tickets"}")
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) { contentDescription = bannerDescription },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondary),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                customer.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSecondary,
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(customer.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            customer.phone?.let { ph ->
-                Text("$ph · ${customer.ticketCount} tickets", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
 private fun PathTile(
     emoji: String,
     title: String,
@@ -678,13 +578,19 @@ private fun PathTile(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // 2026-04-26 audit: revert Cookie9Sided to plain rounded square
-        // (mockup PHONE 1 uses 11px rounded square on BOTH primary +
-        // non-primary tiles — Cookie9Sided was a styling deviation).
+        // M3 Expressive: primary tile uses MaterialShapes.Cookie9Sided for
+        // its icon container so the alpha-shape morph is visible on the
+        // brand-cream + tile (mockup uses plain rounded square; we lean into
+        // expressive on the canonical primary action). Non-primary tiles
+        // stay rounded to keep the row readable.
+        @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+        val iconShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
+            MaterialShapes.Cookie9Sided.toShape()
+        else RoundedCornerShape(11.dp)
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(RoundedCornerShape(11.dp))
+                .clip(iconShape)
                 .background(if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -898,7 +804,7 @@ private fun SearchResultsContent(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-            items(results.customers, key = { it.id }) { c ->
+            items(results.customers) { c ->
                 CustomerResultRow(customer = c, onClick = { onCustomerSelected(c) })
             }
         }
@@ -911,7 +817,7 @@ private fun SearchResultsContent(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-            items(results.tickets, key = { it.id }) { t ->
+            items(results.tickets) { t ->
                 TicketResultRow(ticket = t, onClick = { onOpenTicket(t.id) })
             }
         }
@@ -939,10 +845,10 @@ private fun CustomerResultRow(customer: CustomerResult, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
-            modifier = Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
+            modifier = Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) {
-            Text(customer.initials, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondary)
+            Text(customer.initials, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(customer.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)

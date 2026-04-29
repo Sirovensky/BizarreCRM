@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -43,7 +44,9 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.expenses.components.EmployeeOption
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterSheet
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterState
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSortDropdown
 import com.bizarreelectronics.crm.util.formatAsMoney
@@ -70,8 +73,12 @@ data class ExpenseListUiState(
     val expenses: List<ExpenseEntity> = emptyList(),
     /** Total of all expenses shown in the list, in **cents**. */
     val totalAmount: Long = 0L,
-    /** Count of expenses with approvalStatus == "pending". */
-    val pendingApprovalCount: Int = 0,
+    /**
+     * Sum of all expenses whose [ExpenseEntity.status] == "pending", in **cents**.
+     * Computed by the ViewModel from the loaded entity list once the `status`
+     * column is present (Room migration 12 → 13).
+     */
+    val reimbursablePendingAmount: Long = 0L,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
@@ -80,17 +87,14 @@ data class ExpenseListUiState(
     val currentSort: ExpenseSort = ExpenseSort.DATE,
     /** Pre-grouped slices for the pie chart; empty = no data for this period. */
     val categorySlices: List<ExpenseSlice> = emptyList(),
-    // ── Advanced filters (shown in ExpenseFilterSheet) ──
-    /** ISO date string lower bound, e.g. "2025-01-01". Empty = no lower bound. */
-    val dateFrom: String = "",
-    /** ISO date string upper bound, e.g. "2025-12-31". Empty = no upper bound. */
-    val dateTo: String = "",
-    /** Approval status filter: "", "pending", "approved", or "denied". */
-    val approvalStatusFilter: String = "",
-    /** Partial employee name to filter by. Empty = no filter. */
-    val employeeNameFilter: String = "",
-    /** Whether the filter sheet is currently open. */
-    val isFilterSheetOpen: Boolean = false,
+    /** Advanced filter state (date range / employee / approval status). */
+    val advancedFilter: ExpenseFilterState = ExpenseFilterState(),
+    /**
+     * Employee options derived from the loaded expense list.
+     * Empty = no named employees in the current view; the filter button is
+     * still shown for date-range / status filters.
+     */
+    val employeeOptions: List<EmployeeOption> = emptyList(),
 )
 
 // TODO: cream-theme — pick token — chart-specific cycling palette; no single theme token maps to a multi-hue sequence
@@ -138,10 +142,10 @@ fun ExpenseListScreen(
     val state by viewModel.state.collectAsState()
     val categories = listOf("All") + EXPENSE_CATEGORIES + listOf(FILTER_PENDING_APPROVAL)
     var chartExpanded by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val reduceMotion = remember(context) {
         android.provider.Settings.Global.getFloat(
@@ -149,6 +153,16 @@ fun ExpenseListScreen(
             android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
             1f,
         ) == 0f
+    }
+
+    // Advanced filter sheet
+    if (showFilterSheet) {
+        ExpenseFilterSheet(
+            filterState = state.advancedFilter,
+            employeeOptions = state.employeeOptions,
+            onFilterChanged = { viewModel.onAdvancedFilterChanged(it) },
+            onDismiss = { showFilterSheet = false },
+        )
     }
 
     // SAF launcher for CSV export
@@ -179,18 +193,22 @@ fun ExpenseListScreen(
             BrandTopAppBar(
                 title = "Expenses",
                 actions = {
-                    // Advanced filter icon — badged when any filter is active
+                    // Advanced filter button — badge when any advanced filter is active
                     BadgedBox(
                         badge = {
-                            if (state.dateFrom.isNotBlank() || state.dateTo.isNotBlank() ||
-                                state.approvalStatusFilter.isNotBlank() || state.employeeNameFilter.isNotBlank()
-                            ) {
+                            if (state.advancedFilter.isActive) {
                                 Badge()
                             }
                         },
                     ) {
-                        IconButton(onClick = { viewModel.openFilterSheet() }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Advanced filters")
+                        IconButton(onClick = { showFilterSheet = true }) {
+                            Icon(
+                                Icons.Outlined.FilterList,
+                                contentDescription = if (state.advancedFilter.isActive)
+                                    "Advanced filters (active)"
+                                else
+                                    "Advanced filters",
+                            )
                         }
                     }
                     // Sort dropdown
@@ -235,7 +253,7 @@ fun ExpenseListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search expenses...",
+                placeholder = "Category, description, date…",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
@@ -309,18 +327,15 @@ fun ExpenseListScreen(
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "Pending approval",
+                                "Reimbursable pending",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                "${state.pendingApprovalCount}",
+                                state.reimbursablePendingAmount.formatAsMoney(),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (state.pendingApprovalCount > 0)
-                                    MaterialTheme.colorScheme.tertiary
-                                else
-                                    MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.tertiary,
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -465,26 +480,6 @@ fun ExpenseListScreen(
                     }
                 }
             }
-        }
-    }
-
-    // ── Advanced filter sheet ───────────────────────────────────────────────
-    if (state.isFilterSheetOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.closeFilterSheet() },
-            sheetState = filterSheetState,
-        ) {
-            ExpenseFilterSheet(
-                dateFrom = state.dateFrom,
-                dateTo = state.dateTo,
-                approvalStatus = state.approvalStatusFilter,
-                employeeName = state.employeeNameFilter,
-                onDateFromChanged = { viewModel.onDateFromChanged(it) },
-                onDateToChanged = { viewModel.onDateToChanged(it) },
-                onApprovalStatusChanged = { viewModel.onApprovalStatusFilterChanged(it) },
-                onEmployeeNameChanged = { viewModel.onEmployeeNameFilterChanged(it) },
-                onClearAll = { viewModel.clearAdvancedFilters() },
-            )
         }
     }
 }

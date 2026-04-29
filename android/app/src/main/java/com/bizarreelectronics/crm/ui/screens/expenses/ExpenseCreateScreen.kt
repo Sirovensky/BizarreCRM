@@ -25,6 +25,8 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateMileageExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreatePerDiemExpenseRequest
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
 import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -54,6 +56,9 @@ private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
 private const val MAX_AMOUNT = 100_000.0
 private val AMOUNT_DISPLAY_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy")
 
+/** Expense sub-type selected via the segmented button on the create screen. */
+enum class ExpenseSubtype { GENERAL, MILEAGE, PER_DIEM }
+
 data class ExpenseCreateUiState(
     val category: String = "",
     val amount: String = "",
@@ -70,6 +75,19 @@ data class ExpenseCreateUiState(
     val ocrToast: String? = null,
     /** True when offline create was queued (show distinct snackbar). */
     val savedOffline: Boolean = false,
+    // ── Mileage / Per-diem sub-type fields ────────────────────────────
+    /** Which sub-type is selected in the segmented button. */
+    val subtype: ExpenseSubtype = ExpenseSubtype.GENERAL,
+    /** Mileage: distance in miles (decimal). */
+    val miles: String = "",
+    /** Mileage: rate in cents per mile, entered as dollars (e.g. "0.67" = 67 ¢/mi). */
+    val mileageRateDollars: String = "0.67",
+    /** Mileage: vendor / business purpose. */
+    val vendor: String = "",
+    /** Per-diem: number of days. */
+    val perDiemDays: String = "",
+    /** Per-diem: rate in cents per day, entered as dollars (e.g. "75.00" = $75/day). */
+    val perDiemRateDollars: String = "75.00",
 )
 
 @HiltViewModel
@@ -99,7 +117,8 @@ class ExpenseCreateViewModel @Inject constructor(
 
     private fun isFormEmpty(): Boolean {
         val s = _state.value
-        return s.category.isBlank() && s.amount.isBlank() && s.description.isBlank()
+        return s.category.isBlank() && s.amount.isBlank() && s.description.isBlank() &&
+            s.miles.isBlank() && s.vendor.isBlank() && s.perDiemDays.isBlank()
     }
 
     fun updateCategory(value: String) {
@@ -145,6 +164,44 @@ class ExpenseCreateViewModel @Inject constructor(
     fun updateReimbursable(checked: Boolean) {
         _state.value = _state.value.copy(isReimbursable = checked)
         onFieldChanged()
+    }
+
+    fun updateSubtype(value: ExpenseSubtype) {
+        _state.value = _state.value.copy(subtype = value)
+        onFieldChanged()
+    }
+
+    fun updateMiles(value: String) {
+        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+            _state.value = _state.value.copy(miles = value)
+            onFieldChanged()
+        }
+    }
+
+    fun updateMileageRate(value: String) {
+        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+            _state.value = _state.value.copy(mileageRateDollars = value)
+            onFieldChanged()
+        }
+    }
+
+    fun updateVendor(value: String) {
+        _state.value = _state.value.copy(vendor = value)
+        onFieldChanged()
+    }
+
+    fun updatePerDiemDays(value: String) {
+        if (value.isEmpty() || value.matches(Regex("^\\d{0,3}$"))) {
+            _state.value = _state.value.copy(perDiemDays = value)
+            onFieldChanged()
+        }
+    }
+
+    fun updatePerDiemRate(value: String) {
+        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+            _state.value = _state.value.copy(perDiemRateDollars = value)
+            onFieldChanged()
+        }
     }
 
     fun clearError() {
@@ -242,6 +299,14 @@ class ExpenseCreateViewModel @Inject constructor(
 
     fun save() {
         val current = _state.value
+        when (current.subtype) {
+            ExpenseSubtype.MILEAGE -> saveMileage(current)
+            ExpenseSubtype.PER_DIEM -> savePerDiem(current)
+            ExpenseSubtype.GENERAL -> saveGeneral(current)
+        }
+    }
+
+    private fun saveGeneral(current: ExpenseCreateUiState) {
         if (current.category.isBlank()) {
             _state.value = current.copy(error = "Category is required")
             return
@@ -251,11 +316,8 @@ class ExpenseCreateViewModel @Inject constructor(
             _state.value = current.copy(error = "Amount must be between 0.01 and $100,000")
             return
         }
-
-        // Reimbursable + role → approval_status
         val userRole = authPreferences.userRole
         val approvalStatus: String? = if (current.isReimbursable && userRole != "admin") "pending" else null
-
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
             try {
@@ -268,8 +330,7 @@ class ExpenseCreateViewModel @Inject constructor(
                     approvalStatus = approvalStatus,
                 )
                 // ExpenseRepository handles online/offline transparently.
-                // Offline path writes to SyncQueueDao and returns a negative temp id
-                // (convention from OfflineIdGenerator.nextTempId).
+                // Offline path writes to SyncQueueDao and returns a negative temp id.
                 val createdId = expenseRepository.createExpense(request)
                 val wasOffline = createdId < 0
                 discardDraft()
@@ -282,6 +343,93 @@ class ExpenseCreateViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isSubmitting = false,
                     error = e.message ?: "Failed to create expense",
+                )
+            }
+        }
+    }
+
+    private fun saveMileage(current: ExpenseCreateUiState) {
+        if (current.category.isBlank()) {
+            _state.value = current.copy(error = "Category is required")
+            return
+        }
+        val miles = current.miles.toDoubleOrNull()
+        if (miles == null || miles <= 0 || miles > 1000) {
+            _state.value = current.copy(error = "Miles must be between 0.01 and 1,000")
+            return
+        }
+        val rateDollars = current.mileageRateDollars.toDoubleOrNull()
+        if (rateDollars == null || rateDollars <= 0) {
+            _state.value = current.copy(error = "Rate per mile must be greater than 0")
+            return
+        }
+        val rateCents = (rateDollars * 100).toInt().coerceIn(1, 50_000)
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            try {
+                val request = CreateMileageExpenseRequest(
+                    vendor = current.vendor.trim().ifBlank { null },
+                    description = current.description.trim().ifBlank { null },
+                    incurredAt = current.date.trim().ifBlank { null },
+                    miles = miles,
+                    rateCents = rateCents,
+                    category = current.category,
+                )
+                val createdId = expenseRepository.createMileageExpense(request)
+                val wasOffline = createdId < 0
+                discardDraft()
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    createdId = createdId,
+                    savedOffline = wasOffline,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    error = e.message ?: "Failed to create mileage expense",
+                )
+            }
+        }
+    }
+
+    private fun savePerDiem(current: ExpenseCreateUiState) {
+        if (current.category.isBlank()) {
+            _state.value = current.copy(error = "Category is required")
+            return
+        }
+        val days = current.perDiemDays.toIntOrNull()
+        if (days == null || days < 1 || days > 90) {
+            _state.value = current.copy(error = "Days must be between 1 and 90")
+            return
+        }
+        val rateDollars = current.perDiemRateDollars.toDoubleOrNull()
+        if (rateDollars == null || rateDollars <= 0) {
+            _state.value = current.copy(error = "Rate per day must be greater than 0")
+            return
+        }
+        val rateCents = (rateDollars * 100).toInt().coerceIn(1, 50_000)
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            try {
+                val request = CreatePerDiemExpenseRequest(
+                    description = current.description.trim().ifBlank { null },
+                    incurredAt = current.date.trim().ifBlank { null },
+                    days = days,
+                    rateCents = rateCents,
+                    category = current.category,
+                )
+                val createdId = expenseRepository.createPerDiemExpense(request)
+                val wasOffline = createdId < 0
+                discardDraft()
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    createdId = createdId,
+                    savedOffline = wasOffline,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    error = e.message ?: "Failed to create per-diem expense",
                 )
             }
         }
@@ -340,13 +488,33 @@ fun ExpenseCreateScreen(
         },
     )
 
-    // ── Amount validation ─────────────────────────────────────────────
+    // ── Amount validation (GENERAL sub-type only) ─────────────────────
     val amountDouble = state.amount.toDoubleOrNull()
-    val amountError = state.amount.isNotEmpty() &&
+    val amountError = state.subtype == ExpenseSubtype.GENERAL && state.amount.isNotEmpty() &&
         (amountDouble == null || amountDouble <= 0 || amountDouble > MAX_AMOUNT)
 
-    val canSave = state.category.isNotBlank() &&
-        amountDouble != null && amountDouble > 0 && amountDouble <= MAX_AMOUNT
+    // ── Mileage computed preview ──────────────────────────────────────
+    val milesDouble = state.miles.toDoubleOrNull()
+    val mileageRateDouble = state.mileageRateDollars.toDoubleOrNull()
+    val mileagePreviewAmount = if (milesDouble != null && mileageRateDouble != null)
+        "%.2f".format(milesDouble * mileageRateDouble) else null
+
+    // ── Per-diem computed preview ─────────────────────────────────────
+    val perDiemDaysInt = state.perDiemDays.toIntOrNull()
+    val perDiemRateDouble = state.perDiemRateDollars.toDoubleOrNull()
+    val perDiemPreviewAmount = if (perDiemDaysInt != null && perDiemRateDouble != null)
+        "%.2f".format(perDiemDaysInt * perDiemRateDouble) else null
+
+    val canSave = state.category.isNotBlank() && when (state.subtype) {
+        ExpenseSubtype.GENERAL ->
+            amountDouble != null && amountDouble > 0 && amountDouble <= MAX_AMOUNT
+        ExpenseSubtype.MILEAGE ->
+            milesDouble != null && milesDouble > 0 && milesDouble <= 1000 &&
+                mileageRateDouble != null && mileageRateDouble > 0
+        ExpenseSubtype.PER_DIEM ->
+            perDiemDaysInt != null && perDiemDaysInt in 1..90 &&
+                perDiemRateDouble != null && perDiemRateDouble > 0
+    }
 
     // ── Date display ──────────────────────────────────────────────────
     val displayDate = remember(state.date) {
@@ -464,6 +632,20 @@ fun ExpenseCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            // ── 0. Expense sub-type selector ──────────────────────────
+            val subtypeLabels = listOf("General", "Mileage", "Per Diem")
+            val subtypeValues = ExpenseSubtype.entries.toList()
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                subtypeValues.forEachIndexed { index, subtype ->
+                    SegmentedButton(
+                        selected = state.subtype == subtype,
+                        onClick = { viewModel.updateSubtype(subtype) },
+                        shape = SegmentedButtonDefaults.itemShape(index, subtypeValues.size),
+                        label = { Text(subtypeLabels[index]) },
+                    )
+                }
+            }
+
             // ── 1. Category — ExposedDropdownMenuBox ─────────────────
             ExposedDropdownMenuBox(
                 expanded = categoryExpanded,
@@ -502,38 +684,172 @@ fun ExpenseCreateScreen(
                 }
             }
 
-            // ── 2. Amount with validation ─────────────────────────────
-            OutlinedTextField(
-                value = state.amount,
-                onValueChange = viewModel::updateAmount,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Amount *") },
-                leadingIcon = {
-                    Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                },
-                placeholder = { Text("0.00") },
-                singleLine = true,
-                isError = amountError,
-                supportingText = if (amountError) {
-                    { Text("Must be 0.01–\$100,000") }
-                } else null,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next,
-                ),
-                keyboardActions = onNext,
-            )
+            // ── 2. Sub-type specific fields ───────────────────────────
+            when (state.subtype) {
+                ExpenseSubtype.GENERAL -> {
+                    // Amount field — only shown for general expenses
+                    OutlinedTextField(
+                        value = state.amount,
+                        onValueChange = viewModel::updateAmount,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Amount *") },
+                        leadingIcon = {
+                            Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        isError = amountError,
+                        supportingText = if (amountError) {
+                            { Text("Must be 0.01–\$100,000") }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Next,
+                        ),
+                        keyboardActions = onNext,
+                    )
+                    OutlinedTextField(
+                        value = state.description,
+                        onValueChange = viewModel::updateDescription,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Description / Vendor") },
+                        singleLine = false,
+                        minLines = 2,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = onNext,
+                    )
+                }
 
-            OutlinedTextField(
-                value = state.description,
-                onValueChange = viewModel::updateDescription,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Description / Vendor") },
-                singleLine = false,
-                minLines = 2,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = onNext,
-            )
+                ExpenseSubtype.MILEAGE -> {
+                    // Vendor field
+                    OutlinedTextField(
+                        value = state.vendor,
+                        onValueChange = viewModel::updateVendor,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Vendor / Business Purpose") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = onNext,
+                    )
+                    // Miles + rate on the same row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = state.miles,
+                            onValueChange = viewModel::updateMiles,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Miles *") },
+                            placeholder = { Text("0.0") },
+                            singleLine = true,
+                            isError = state.miles.isNotEmpty() && (milesDouble == null || milesDouble <= 0 || milesDouble > 1000),
+                            supportingText = if (state.miles.isNotEmpty() && (milesDouble == null || milesDouble <= 0 || milesDouble > 1000)) {
+                                { Text("0.01–1,000") }
+                            } else null,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next,
+                            ),
+                            keyboardActions = onNext,
+                        )
+                        OutlinedTextField(
+                            value = state.mileageRateDollars,
+                            onValueChange = viewModel::updateMileageRate,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Rate $/mi *") },
+                            placeholder = { Text("0.67") },
+                            leadingIcon = {
+                                Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next,
+                            ),
+                            keyboardActions = onNext,
+                        )
+                    }
+                    // Computed amount preview
+                    if (mileagePreviewAmount != null) {
+                        Text(
+                            text = "Computed amount: $$mileagePreviewAmount",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = state.description,
+                        onValueChange = viewModel::updateDescription,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Notes") },
+                        singleLine = false,
+                        minLines = 2,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = onNext,
+                    )
+                }
+
+                ExpenseSubtype.PER_DIEM -> {
+                    // Days + rate on the same row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = state.perDiemDays,
+                            onValueChange = viewModel::updatePerDiemDays,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Days *") },
+                            placeholder = { Text("1") },
+                            singleLine = true,
+                            isError = state.perDiemDays.isNotEmpty() && (perDiemDaysInt == null || perDiemDaysInt !in 1..90),
+                            supportingText = if (state.perDiemDays.isNotEmpty() && (perDiemDaysInt == null || perDiemDaysInt !in 1..90)) {
+                                { Text("1–90 days") }
+                            } else null,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next,
+                            ),
+                            keyboardActions = onNext,
+                        )
+                        OutlinedTextField(
+                            value = state.perDiemRateDollars,
+                            onValueChange = viewModel::updatePerDiemRate,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Rate $/day *") },
+                            placeholder = { Text("75.00") },
+                            leadingIcon = {
+                                Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next,
+                            ),
+                            keyboardActions = onNext,
+                        )
+                    }
+                    // Computed amount preview
+                    if (perDiemPreviewAmount != null) {
+                        Text(
+                            text = "Computed amount: $$perDiemPreviewAmount",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = state.description,
+                        onValueChange = viewModel::updateDescription,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Description / Purpose") },
+                        singleLine = false,
+                        minLines = 2,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = onNext,
+                    )
+                }
+            }
 
             // ── 3. Date picker ────────────────────────────────────────
             OutlinedTextField(

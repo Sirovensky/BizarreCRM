@@ -25,7 +25,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.Instant
@@ -82,6 +89,7 @@ fun SyncStatusBadge(
 ) {
     val isSyncing by isSyncingFlow.collectAsState()
     val pendingCount by pendingCountFlow.collectAsState(initial = 0)
+    val context = LocalContext.current
 
     val isPending = !isSyncing && pendingCount > 0
     // When the queue is pending and the caller wired an issues route, a tap
@@ -131,6 +139,14 @@ fun SyncStatusBadge(
         )
     }
 
+    // §26.1 — announce state changes to TalkBack without interrupting speech.
+    // liveRegion=Polite fires when isSyncing or pendingCount changes (status updates).
+    val syncA11yDesc = when {
+        isSyncing -> context.getString(R.string.a11y_sync_status_syncing)
+        pendingCount > 0 -> context.getString(R.string.a11y_sync_status_pending, pendingCount)
+        else -> context.getString(R.string.a11y_sync_status_clean)
+    }
+
     // D5-3: use Surface(onClick = ...) overload so M3 fires the native ripple
     // on tap. Layering .clickable on top of Surface suppressed the indication
     // because the Surface's own surface layer drew over the ripple target.
@@ -138,7 +154,11 @@ fun SyncStatusBadge(
         onClick = onTap,
         enabled = !isSyncing,
         modifier = modifier
-            .then(if (isPending) Modifier.alpha(pulseAlpha) else Modifier),
+            .then(if (isPending) Modifier.alpha(pulseAlpha) else Modifier)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = syncA11yDesc
+            },
         color = container,
         contentColor = onContainer,
         shape = MaterialTheme.shapes.small,

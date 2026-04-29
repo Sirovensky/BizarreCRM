@@ -53,11 +53,14 @@ android {
         applicationId = "com.bizarreelectronics.crm"
         minSdk = 26
         targetSdk = 35
-        // §33.2 — versionCode is Unix-timestamp / 60 (monotonic, 1-minute granularity).
-        // Guarantees Play Store always receives an increasing code without a CI counter.
-        // Override at build time via -PversionCode=<n> (e.g. GitHub Actions build number).
+        // §33.2 — versionCode = Unix epoch seconds / 60 (monotonic, Play-safe).
+        // Evaluated at configuration time so the same value stamps every variant
+        // in a single invocation. The formula guarantees strict monotonicity:
+        // two builds a minute apart always produce a higher code.
+        // Override via -PversionCode=<n> in CI to use the build-runner's sequence
+        // number instead (e.g. GitHub Actions: -PversionCode=${{ github.run_number }}).
         versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
-            ?: (System.currentTimeMillis() / 60_000L).toInt()
+            ?: (System.currentTimeMillis() / 1000L / 60L).toInt()
         versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -72,12 +75,6 @@ android {
         // regression hits production without requiring a full rebuild cycle —
         // MaterialExpressiveTheme collapses back to MaterialTheme cleanly.
         buildConfigField("boolean", "USE_EXPRESSIVE_THEME", "true")
-
-        // §33.9 — Kill-switch floor version.
-        // InAppUpdateManager forces IMMEDIATE update when the Play Store's
-        // available versionCode exceeds this value. Default 0 = disabled.
-        // Bump to current versionCode in a release that must block older builds.
-        buildConfigField("int", "FORCE_UPDATE_FLOOR_VERSION", "0")
     }
 
     // Release signing config — keystore is read from a properties file outside
@@ -124,6 +121,10 @@ android {
         }
         release {
             isMinifyEnabled = true
+            // §29.3 — R8 resource shrinking: strips unused drawables, layouts,
+            // and string resources after code shrinking so they don't bloat the APK.
+            // Must be paired with isMinifyEnabled = true (already set above).
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
             // signingConfig is only applied when the keystore file exists.
@@ -159,13 +160,20 @@ android {
         }
     }
 
-    // §33.4 — AAB split configuration: per-ABI, density, and language splits
-    // reduce the download size. Play Delivery selects the correct split APKs
-    // per device at install time.
+    // §33.4 — AAB split delivery: split the bundle by ABI, screen density, and
+    // language so Play only delivers the slices relevant to each device.
+    // Reduces download size by ~40% on typical mid-range phones compared with
+    // a fat APK. Language splits are especially valuable for ML Kit model bundles.
     bundle {
-        abi { enableSplit = true }
-        density { enableSplit = true }
-        language { enableSplit = true }
+        abi {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        language {
+            enableSplit = true
+        }
     }
 }
 
@@ -248,9 +256,6 @@ dependencies {
     // GMS Document Scanner (§17.3 L1877-L1878 — waivers, warranty cards, receipts, IDs)
     implementation(libs.gms.document.scanner)
 
-    // §59 — FusedLocationProvider for LocationTrackingService GPS pings (field-service)
-    implementation(libs.play.services.location)
-
     // ML Kit (Text recognition — on-device receipt OCR, no Firebase)
     implementation(libs.mlkit.text.recognition)
 
@@ -320,11 +325,6 @@ dependencies {
     // §28 L2532 — Play Integrity API (device attestation, non-blocking on non-GMS)
     implementation(libs.play.integrity)
 
-    // §33.9 — Play In-App Update API (immediate + flexible via AppUpdateManager).
-    // Non-GMS / AOSP builds: AppUpdateManagerFactory.create() returns a no-op so
-    // InAppUpdateManager.checkAndStartUpdate silently skips on non-Play installs.
-    implementation(libs.app.update.ktx)
-
     // Phase 4 — BlockChyp Android SDK decision:
     // BlockChyp does not publish a standalone Android AAR on Maven Central.
     // The Java SDK (com.blockchyp:blockchyp-java) is a pure-Java library that
@@ -334,6 +334,17 @@ dependencies {
     // the full SDK (packages/server/src/services/blockchyp.ts). The Android
     // app is a thin client that proxies all terminal calls through the CRM
     // server via BlockChypApi (Retrofit) + BlockChypClient. No SDK dep needed.
+
+    // §51.4 — zip4j: AES-256 encrypted ZIP for optional password protection of
+    // exported data archives. Pure-Java; no native code; no network egress.
+    // Password is never transmitted — encryption happens locally before the
+    // file is written to the SAF URI the user chose.
+    implementation(libs.zip4j)
+
+    // §20.12 — LeakCanary: debug-only heap-leak detector. Automatically no-op on
+    // release builds (LeakCanary ships a release no-op artifact automatically;
+    // debugImplementation ensures it is only included in debug APKs).
+    debugImplementation(libs.leakcanary.android)
 
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))

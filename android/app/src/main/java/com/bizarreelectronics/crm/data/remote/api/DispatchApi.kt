@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.DispatchJobDetail
 import com.bizarreelectronics.crm.data.remote.dto.DispatchJobListData
+import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeRequest
+import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeResult
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -38,6 +40,23 @@ interface DispatchApi {
         @Path("id") id: Long,
         @Body body: Map<String, @JvmSuppressWildcards Any?>,
     ): ApiResponse<Map<String, @JvmSuppressWildcards Any?>>
+
+    /**
+     * POST /routes/optimize  — §59.2 greedy nearest-neighbor route ordering.
+     *
+     * Manager / admin only (server enforces 403 for other roles).
+     * Rate-limited: 10 requests per minute per user.
+     *
+     * Body: { technician_id, route_date (YYYY-MM-DD), job_ids: number[] }
+     * Response data: { proposed_order: number[], total_distance_km: number,
+     *                  algorithm: string, note: string, start_from_home: boolean }
+     *
+     * Does NOT persist — caller must apply the order locally.
+     */
+    @POST("api/v1/field-service/routes/optimize")
+    suspend fun optimizeRoute(
+        @Body request: RouteOptimizeRequest,
+    ): ApiResponse<RouteOptimizeResult>
 
     /**
      * POST /jobs/:id/status with status=canceled — no separate cancel endpoint;

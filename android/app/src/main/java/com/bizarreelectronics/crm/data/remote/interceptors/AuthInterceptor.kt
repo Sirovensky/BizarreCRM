@@ -324,9 +324,19 @@ class AuthInterceptor @Inject constructor(
         // also exempt from the Bearer header. The previous logic attached Bearer
         // to the 2FA verify endpoint by mistake (the negative exclusion was
         // only for /auth/login/2fa, but the outer condition already matched it).
+        //
+        // §55 — /track/ endpoints are public (no app-level JWT required). The
+        // PublicTrackingApi supplies its own Authorization header with the
+        // per-ticket tracking token. Skipping here prevents the interceptor
+        // from overwriting that header with the staff JWT.
+        //
+        // §58 — /public/ endpoints are unauthenticated (self-booking slots +
+        // reservation). No bearer token is issued or consumed for these paths.
         return path.contains("/auth/login") ||
             path.contains("/auth/forgot-password") ||
-            path.contains("/auth/reset-password")
+            path.contains("/auth/reset-password") ||
+            path.contains("/track/") ||
+            path.contains("/public/")
     }
 
     private fun isRefreshEndpoint(request: Request): Boolean {

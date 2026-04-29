@@ -63,13 +63,19 @@ class SyncWorker @AssistedInject constructor(
         /**
          * Schedule the 15-minute periodic background sync.
          *
-         * Plan §20.3 L2110 — [NetworkType.CONNECTED] constraint ensures the worker
-         * never runs when offline. [ExistingPeriodicWorkPolicy.KEEP] prevents stacking
-         * if called multiple times (e.g. on every Activity resume).
+         * Plan §20.3 L2110 — [NetworkType.CONNECTED] ensures the worker never runs
+         * when offline. [setRequiresBatteryNotLow] defers the background sync when
+         * the battery is critically low (< 15 %) — on-demand syncs triggered by
+         * user action ([syncNow]) are NOT battery-gated so the UI stays responsive.
+         * [ExistingPeriodicWorkPolicy.KEEP] prevents stacking if called multiple times
+         * (e.g. on every Activity resume and onStop).
+         *
+         * §21.5 — Unique work name [WORK_NAME_PERIODIC] coalesces duplicate schedules.
          */
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
                 .build()
 
             val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
@@ -82,7 +88,7 @@ class SyncWorker @AssistedInject constructor(
                 ExistingPeriodicWorkPolicy.KEEP,
                 request,
             )
-            Log.d(TAG, "Periodic sync scheduled (15 min)")
+            Log.d(TAG, "Periodic sync scheduled (15 min, battery-not-low constrained)")
         }
 
         /**

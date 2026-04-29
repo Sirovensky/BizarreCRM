@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
@@ -50,6 +51,7 @@ import com.bizarreelectronics.crm.ui.auth.PinDots
 import com.bizarreelectronics.crm.ui.auth.PinKeypad
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
+import com.bizarreelectronics.crm.util.rememberReduceMotion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -86,6 +88,8 @@ data class SwitchUserUiState(
 class SwitchUserViewModel @Inject constructor(
     private val authApi: AuthApi,
     private val authPreferences: AuthPreferences,
+    /** Exposed for §26.4 ReduceMotion check in [SwitchUserScreen]. */
+    val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SwitchUserUiState())
@@ -282,6 +286,8 @@ fun SwitchUserScreen(
 
     val state by viewModel.state.collectAsState()
     val isTablet = isMediumOrExpandedWidth()
+    // §26.4 — honour Reduce Motion for the PinDots shake animation.
+    val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     // Success side-effect: trigger navigation.
     LaunchedEffect(state.switched) {
@@ -328,6 +334,7 @@ fun SwitchUserScreen(
                         state = state,
                         onDigit = viewModel::onDigit,
                         onBackspace = viewModel::onBackspace,
+                        reduceMotion = reduceMotion,
                         modifier = Modifier.padding(horizontal = 32.dp, vertical = 36.dp),
                     )
                 }
@@ -337,6 +344,7 @@ fun SwitchUserScreen(
                     state = state,
                     onDigit = viewModel::onDigit,
                     onBackspace = viewModel::onBackspace,
+                    reduceMotion = reduceMotion,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 48.dp),
@@ -355,6 +363,8 @@ private fun SwitchUserContent(
     state: SwitchUserUiState,
     onDigit: (Char) -> Unit,
     onBackspace: () -> Unit,
+    /** §26.4 — when true, PinDots shows a static red border instead of the shake animation. */
+    reduceMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -387,10 +397,12 @@ private fun SwitchUserContent(
         )
 
         // PIN dots with shake animation on wrong entry.
+        // §26.4: reduceMotion=true swaps shake for a static error border.
         PinDots(
             entered = state.entered.length,
             length = 6,
             shakeTrigger = state.wrongShakes,
+            reduceMotion = reduceMotion,
         )
 
         // Error message (wrong PIN, server errors, default-PIN advisory).

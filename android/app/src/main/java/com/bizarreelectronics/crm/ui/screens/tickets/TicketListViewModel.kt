@@ -15,9 +15,15 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketStateMachine
 import com.bizarreelectronics.crm.ui.screens.tickets.TransitionResult
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility.Companion.decode
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility.Companion.encode
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSort
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
+import com.bizarreelectronics.crm.util.ScrollPosition
+import com.bizarreelectronics.crm.util.restoreScrollPosition
+import com.bizarreelectronics.crm.util.saveScrollPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -75,6 +81,9 @@ data class TicketListUiState(
     val bulkTransitionSummary: BulkTransitionSummary? = null,
     // §4.21 — Active label filter (null = show all)
     val activeLabelFilter: String? = null,
+    // §4.1 L660 — Which optional ticket-row columns are visible (tablet/ChromeOS).
+    // Loaded from AppPreferences on init; defaults applied automatically on empty pref.
+    val columnVisibility: TicketColumnVisibility = TicketColumnVisibility(),
 )
 
 /**
@@ -136,10 +145,14 @@ class TicketListViewModel @Inject constructor(
             TicketSavedView.valueOf(appPreferences.ticketListSavedView)
         }.getOrDefault(TicketSavedView.None)
 
+        // Restore persisted column visibility (§4.1 L660)
+        val persistedColumnVisibility = decode(appPreferences.ticketColumnVisibility)
+
         _state.value = _state.value.copy(
             viewMode = persistedMode,
             savedView = persistedSavedView,
             pinnedTicketIds = appPreferences.pinnedTicketIds,
+            columnVisibility = persistedColumnVisibility,
         )
 
         collectTickets()
@@ -447,12 +460,73 @@ class TicketListViewModel @Inject constructor(
     }
 
     // -----------------------------------------------------------------------
+    // §4.21 — Bulk label apply (line 940)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Apply [label] to all currently-selected tickets via
+     * POST /tickets/bulk-labels { ids, label }.
+     *
+     * 404 is tolerated — the endpoint may not be deployed on self-hosted
+     * instances; a graceful toast is shown and select mode exits regardless.
+     */
+    fun bulkApplyLabel(label: String) {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                ticketApi.bulkSetLabels(mapOf("ids" to ids, "label" to label))
+                _state.value = _state.value.copy(
+                    isSelecting = false,
+                    selectedIds = emptySet(),
+                    toastMessage = "Label [$label] applied to ${ids.size} ticket${if (ids.size == 1) "" else "s"}",
+                )
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    // Endpoint not yet deployed on this tenant's server — exit gracefully.
+                    _state.value = _state.value.copy(
+                        isSelecting = false,
+                        selectedIds = emptySet(),
+                        toastMessage = "Label feature not available on this server",
+                    )
+                } else {
+                    Log.w(TAG, "bulkApplyLabel: HTTP ${e.code()} — ${e.message()}")
+                    _state.value = _state.value.copy(
+                        toastMessage = "Could not apply label — ${e.message()}",
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "bulkApplyLabel: ${e.message}")
+                _state.value = _state.value.copy(
+                    toastMessage = "Could not apply label",
+                )
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // View mode toggle (L644)
     // -----------------------------------------------------------------------
 
     fun onViewModeChanged(mode: TicketViewMode) {
         _state.value = _state.value.copy(viewMode = mode)
         appPreferences.ticketListViewMode = if (mode == TicketViewMode.Kanban) "kanban" else "list"
+    }
+
+    // -----------------------------------------------------------------------
+    // Column visibility (§4.1 L660) — tablet/ChromeOS persisted preference
+    // -----------------------------------------------------------------------
+
+    /**
+     * Applies and persists an updated [TicketColumnVisibility] config.
+     *
+     * Called from [TicketListScreen] when the user taps Apply in the
+     * [TicketColumnDensityPicker] sheet. The new config is stored to
+     * [AppPreferences] so it survives process death and app restarts.
+     */
+    fun onColumnVisibilityChanged(visibility: TicketColumnVisibility) {
+        _state.value = _state.value.copy(columnVisibility = visibility)
+        appPreferences.ticketColumnVisibility = with(visibility) { encode() }
     }
 
     // -----------------------------------------------------------------------
@@ -552,11 +626,25 @@ class TicketListViewModel @Inject constructor(
         }
     }
 
+    // §75.5 — scroll position persistence.
+    // Called from the screen's SaveScrollOnDispose effect so that if the
+    // process is killed while the user is on the Ticket detail and they
+    // return, the list is restored at the same scroll offset.
+    fun saveScrollPosition(position: ScrollPosition) {
+        savedStateHandle.saveScrollPosition(SSH_SCOPE_SCROLL, position)
+    }
+
+    /** Reads the last-persisted scroll position; returns (0, 0) on first launch. */
+    fun restoreScrollPosition(): ScrollPosition =
+        savedStateHandle.restoreScrollPosition(SSH_SCOPE_SCROLL)
+
     private companion object {
         private const val TAG = "TicketListViewModel"
         /** SavedStateHandle keys for process-death restoration (§1.8). */
         const val SSH_KEY_QUERY  = "ticket_list_search_query"
         const val SSH_KEY_FILTER = "ticket_list_selected_filter"
+        /** SavedStateHandle key-scope for §75.5 scroll position. */
+        const val SSH_SCOPE_SCROLL = "ticket_list"
     }
 }
 

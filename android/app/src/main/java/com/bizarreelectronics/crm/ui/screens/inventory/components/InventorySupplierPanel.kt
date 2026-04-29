@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.inventory.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AssignmentReturn
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
@@ -15,17 +16,15 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
  * Supplier detail panel for an inventory item (L1074).
  *
  * Shows the supplier name, contact info (if available from the extended detail),
- * last-known cost, and a "Place PO" stub button. Data is sourced from the
- * inventory entity's [supplierName] / [supplierId] fields; richer data can be
- * loaded via [InventoryApi.getSupplierDetail] when the endpoint is exposed.
- *
- * When no supplier is associated the panel renders a "No supplier linked" note.
+ * last-known cost, a "Place PO" stub button, and (§61.5) a "Log Return" button
+ * that navigates to the RMA create flow.
  *
  * @param supplierName  Display name of the supplier, or null if unset.
  * @param supplierId    Server ID of the supplier for deep-link / PO stub.
  * @param lastCostLabel Pre-formatted last cost string, e.g. "$12.50".
- * @param onPlacePo     Invoked when the "Place PO" button is tapped. Stub — caller
- *                      shows a toast or navigates to a PO screen once implemented.
+ * @param onPlacePo     Invoked when the "Place PO" button is tapped.
+ * @param onLogReturn   Invoked when the "Log Return" button is tapped; navigates to RMA create.
+ *                      Null hides the button (backward-compatible default).
  * @param modifier      Applied to the root [BrandCard].
  */
 @Composable
@@ -34,6 +33,7 @@ fun InventorySupplierPanel(
     supplierId: Long?,
     lastCostLabel: String,
     onPlacePo: () -> Unit,
+    onLogReturn: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     BrandCard(modifier = modifier.fillMaxWidth()) {
@@ -82,17 +82,37 @@ fun InventorySupplierPanel(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                OutlinedButton(
-                    onClick = onPlacePo,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        Icons.Default.ShoppingCart,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Place PO")
+                    OutlinedButton(
+                        onClick = onPlacePo,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(
+                            Icons.Default.ShoppingCart,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Place PO")
+                    }
+
+                    if (onLogReturn != null) {
+                        OutlinedButton(
+                            onClick = onLogReturn,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                Icons.Default.AssignmentReturn,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Log Return")
+                        }
+                    }
                 }
             }
         }

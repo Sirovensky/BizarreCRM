@@ -39,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -49,6 +50,8 @@ import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilter
 import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilterChipRow
 import com.bizarreelectronics.crm.ui.screens.communications.components.applySmsFilter
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
+import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -209,11 +212,21 @@ class SmsListViewModel @Inject constructor(
 @Composable
 fun SmsListScreen(
     onConversationClick: (String) -> Unit,
+    onConnectSmsProvider: () -> Unit = {},
     viewModel: SmsListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNewMsgDialog by rememberSaveable { mutableStateOf(false) }
+
+    // §75.5 — scroll to top + position preserved across back-nav / process death.
+    val smsListState = rememberSaveableLazyListState(key = "sms_list")
+    val scrollToTopBus = LocalScrollToTopBus.current
+    LaunchedEffect(scrollToTopBus) {
+        scrollToTopBus?.events?.collect { route ->
+            if (route == "messages") smsListState.animateScrollToItem(0)
+        }
+    }
     var newMsgPhone by rememberSaveable { mutableStateOf("") }
 
     if (showNewMsgDialog) {
@@ -300,7 +313,7 @@ fun SmsListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search conversations...",
+                placeholder = "Phone, name, message…",
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = "Search conversations" },
@@ -336,12 +349,29 @@ fun SmsListScreen(
                 state.conversations.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
-                            EmptyState(
-                                icon = Icons.Default.Forum,
-                                title = "No conversations",
-                                subtitle = "Tap the + button to start a new conversation",
-                                includeWave = false,
-                            )
+                            // §3.14 L589 — zero-data tenant gets the rich
+                            // EmptyStateIllustration (💬 emoji + "No messages yet" +
+                            // "Connect SMS provider" CTA). Active search empty falls
+                            // back to the simpler EmptyState because the tenant
+                            // already has data — they just can't find a match.
+                            if (state.searchQuery.isNotEmpty()) {
+                                EmptyState(
+                                    icon = Icons.Default.Forum,
+                                    title = "No conversations",
+                                    subtitle = "Try a different search",
+                                    includeWave = false,
+                                )
+                            } else {
+                                EmptyStateIllustration(
+                                    emoji = "💬",  // message/chat bubble
+                                    title = "No messages yet",
+                                    subtitle = "Conversations will appear here once SMS is connected.",
+                                    primaryCta = "Connect SMS provider",
+                                    onPrimaryCta = onConnectSmsProvider,
+                                    secondaryCta = null,
+                                    onSecondaryCta = null,
+                                )
+                            }
                         }
                     }
                 }
@@ -351,6 +381,7 @@ fun SmsListScreen(
                         onRefresh = { viewModel.refresh() },
                     ) {
                         LazyColumn(
+                            state = smsListState,
                             contentPadding = PaddingValues(bottom = 80.dp),
                             modifier = Modifier.semantics {
                                 liveRegion = LiveRegionMode.Polite

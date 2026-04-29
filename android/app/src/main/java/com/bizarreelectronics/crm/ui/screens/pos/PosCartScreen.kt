@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.*
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
@@ -48,7 +49,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionTaxResult
@@ -131,132 +137,120 @@ fun PosCartScreen(
         // Ctrl+F — catalog tab has tile grid, not a TextField. No-op.
         onFocusSearch = {},
     ) {
-    Scaffold(
-        // session 2026-04-26 — a11y: liveRegion Polite on cart snackbar host
-        // (cart-line additions = Polite per goal 4)
+    // §23.5 PosFlowScaffold: same chrome contract as PosEntry / CheckInEntry /
+    // CheckInHost. PosCart is logical step 6/8 in the POS-to-Ticket flow
+    // (POS Home → Customer → Device → Symptoms → Details → Cart → Tender →
+    // Receipt) but the cart is reached from POS Home + retail-sale path that
+    // bypasses the check-in steps, so the wave bar is hidden here (stepIndex
+    // = null) — showing 6/8 on a retail sale would be a lie. Title slot owns
+    // the customer pill + clickable-detach behavior; actions slot owns the
+    // scan barcode + overflow menu.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = if (state.customer == null) "Cart" else "",
+        stepIndex = null,
+        totalSteps = 8,
+        onBack = onBack,
         snackbarHost = {
             SnackbarHost(
                 snackbarHostState,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         },
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    // session 2026-04-26 — a11y: back button contentDescription
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
+        titleContent = state.customer?.let { c ->
+            {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
+                ) {
+                    Box(
+                        modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(
+                            c.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
                     }
-                },
-                title = {
-                    state.customer?.let { c ->
-                        // 2026-04-26 — chips moved to sub-bar below topbar so
-                        // the title slot has room for the customer name + a
-                        // single-line subtitle. Previously chips ate so much
-                        // width that the name wrapped one letter per row.
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
-                        ) {
-                            Box(
-                                modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    c.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondary,
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    c.name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
-                                val subtitle = when {
-                                    state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
-                                    state.lines.isEmpty() -> "Empty cart"
-                                    else -> "${state.lines.size} items"
-                                }
-                                Text(
-                                    subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
-                            }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            c.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        val subtitle = when {
+                            state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
+                            state.lines.isEmpty() -> "Empty cart"
+                            else -> "${state.lines.size} items"
                         }
-                    } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
-                },
-                actions = {
-                    // 2026-04-26 — location/shift/parked chips moved out of
-                    // actions slot into a sub-bar below the topbar. Keeping
-                    // them here was eating the title's width budget on phone
-                    // and forcing the customer name to wrap one letter per row.
-                    IconButton(onClick = onScanBarcode) {
-                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
                     }
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            // "Detach customer" only when a customer is attached
-                            if (state.customer != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Detach customer") },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        showDetachConfirm = true
-                                    },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Apply discount") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showDiscountDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Add note") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showNoteDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Park cart") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    // TODO: POS-PARK-001 — park cart implementation
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Split cart") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    onSplitCart()
-                                },
-                            )
-                        }
+                }
+            }
+        },
+        actions = {
+            IconButton(onClick = onScanBarcode) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
+            }
+            Box {
+                IconButton(onClick = { showOverflowMenu = true }) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    if (state.customer != null) {
+                        DropdownMenuItem(
+                            text = { Text("Detach customer") },
+                            onClick = {
+                                showOverflowMenu = false
+                                showDetachConfirm = true
+                            },
+                        )
                     }
-                },
-            )
+                    DropdownMenuItem(
+                        text = { Text("Apply discount") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showDiscountDialog = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add note") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showNoteDialog = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Park cart") },
+                        onClick = {
+                            showOverflowMenu = false
+                            // TODO: POS-PARK-001 — park cart implementation
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Split cart") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onSplitCart()
+                        },
+                    )
+                }
+            }
         },
         bottomBar = {
             TotalsAndTenderBar(state = state, onTender = onNavigateToTender)
@@ -622,7 +616,7 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             TotalsRow("Subtotal", subtotal.toDollarString())
             if (discount > 0) TotalsRow("Discount", "− ${discount.toDollarString()}", highlight = true)
             // TASK-5: multi-jurisdiction tax breakdown. When breakdown has
@@ -839,6 +833,7 @@ private fun CatalogTab(
                     selected = selectedCategory == null,
                     onClick = { selectedCategory = null },
                     label = { Text("All") },
+                    colors = FilterChipDefaults.brandColors(),
                 )
             }
             items(CATALOG_CATEGORIES, key = { it }) { category ->
@@ -848,6 +843,7 @@ private fun CatalogTab(
                         selectedCategory = if (selectedCategory == category) null else category
                     },
                     label = { Text(category) },
+                    colors = FilterChipDefaults.brandColors(),
                 )
             }
         }
@@ -974,6 +970,7 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
     // Math.round avoids float-truncation (e.g. 16.31 → 1630.999... → 1630).
     val priceCents = Math.round((priceInput.toDoubleOrNull() ?: 0.0) * 100)
     val canAdd = name.isNotBlank() && priceCents > 0L
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -985,6 +982,7 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
                     onValueChange = { name = it.take(120) },
                     label = { Text("Name") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -993,9 +991,11 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
                     label = { Text("Price") },
                     prefix = { Text("$") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
                     ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -1030,6 +1030,7 @@ private fun CartDiscountDialog(
     val cents = Math.round((input.toDoubleOrNull() ?: 0.0) * 100)
     val overflow = cents > subtotalCents
     val canApply = cents > 0L && !overflow
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1045,9 +1046,11 @@ private fun CartDiscountDialog(
                 supportingText = if (overflow) {
                     { Text("Discount cannot exceed subtotal ${subtotalCents.toDollarString()}") }
                 } else null,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done,
                 ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth(),
             )
         },
@@ -1085,6 +1088,7 @@ private fun TipDialog(
             if (currentTipCents > 0) "%.2f".format(currentTipCents / 100.0) else ""
         )
     }
+    val focusManager = LocalFocusManager.current
 
     val tipCents: Long = when {
         selectedPct != null -> subtotalCents * (selectedPct ?: 0) / 100
@@ -1106,6 +1110,7 @@ private fun TipDialog(
                                 if (selectedPct != null) customInput = ""
                             },
                             label = { Text("$pct%") },
+                            colors = FilterChipDefaults.brandColors(),
                         )
                     }
                     // Custom % chip
@@ -1113,6 +1118,7 @@ private fun TipDialog(
                         selected = selectedPct == null && customInput.isNotBlank(),
                         onClick = { selectedPct = null },
                         label = { Text("Custom") },
+                        colors = FilterChipDefaults.brandColors(),
                     )
                 }
                 if (selectedPct != null) {
@@ -1135,9 +1141,11 @@ private fun TipDialog(
                         label = { Text("Tip amount") },
                         prefix = { Text("$") },
                         singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
                         ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

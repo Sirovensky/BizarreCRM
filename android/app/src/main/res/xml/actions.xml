@@ -1,12 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<actions>
-    <action intentName="actions.intent.CREATE_TASK">
-        <fulfillment urlTemplate="bizarrecrm://tickets/new" />
+<!--
+  §24.5 — Google Assistant App Actions (Capabilities API).
+
+  Declares Built-in Intents (BIIs) that map voice commands to deep links
+  in BizarreCRM.  Registered via <meta-data android:name="android.app.actions">
+  in AndroidManifest.xml.
+
+  BIIs used:
+  ─────────
+  actions.intent.CREATE_MESSAGE  →  "Create a ticket in BizarreCRM"
+                                    Deep-links to bizarrecrm://ticket/new
+                                    Parameter: message.recipient.name → customerName
+
+  actions.intent.GET_RESERVATION →  "Look up appointment in BizarreCRM"
+                                    Deep-links to bizarrecrm://tickets?search={ticketId}
+                                    Parameter: reservation.confirmationNumber → ticketId
+
+  Custom BII shortcut for clock-in:
+  actions.intent.CREATE_MESSAGE is re-used as the closest available BII for
+  "Clock me in to BizarreCRM" — see the shortcut in shortcuts.xml.
+
+  Notes:
+  ─────
+  • The <fulfill> url-template must match an intent-filter declared in MainActivity.
+  • Parameter extraction by Assistant is best-effort; apps must handle missing params.
+  • Voice tests: "Hey Google, create ticket in BizarreCRM"
+                 "Hey Google, look up reservation 1042 in BizarreCRM"
+                 "Hey Google, clock me in to BizarreCRM"
+  • Deprecated path: androidx.google.shortcuts (App Actions SDK) is superseded by
+    the Shortcuts + Capabilities API used here.  Do not add
+    com.google.assistant.appactions as a dependency.
+-->
+<actions xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- CREATE_MESSAGE → New Ticket
+         Voice: "Create a ticket in BizarreCRM" or
+                "Create a ticket for [customer name] in BizarreCRM" -->
+    <action android:name="actions.intent.CREATE_MESSAGE">
+        <parameter
+            android:name="message.recipient.name"
+            android:key="customerName" />
+        <fulfill urlTemplate="bizarrecrm://ticket/new{?customerName}" />
     </action>
-    <action intentName="actions.intent.GET_RESERVATION">
-        <fulfillment urlTemplate="bizarrecrm://appointments" />
+
+    <!-- GET_RESERVATION → Ticket lookup
+         Voice: "Look up reservation [number] in BizarreCRM" or
+                "Get reservation [number] in BizarreCRM" -->
+    <action android:name="actions.intent.GET_RESERVATION">
+        <parameter
+            android:name="reservation.confirmationNumber"
+            android:key="ticketId" />
+        <fulfill urlTemplate="bizarrecrm://tickets{?ticketId}" />
     </action>
-    <action intentName="actions.intent.RECORD_ACTIVITY">
-        <fulfillment urlTemplate="bizarrecrm://timeclock/clock-in" />
+
+    <!-- Custom shortcut: Clock me in
+         Mapped via shortcut shortcutId="clock_in" in shortcuts.xml.
+         Voice: "Clock me in to BizarreCRM" -->
+    <action android:name="actions.intent.CREATE_MESSAGE">
+        <parameter
+            android:name="message.text"
+            android:key="clockAction" />
+        <fulfill urlTemplate="bizarrecrm://clockinout" />
     </action>
+
 </actions>

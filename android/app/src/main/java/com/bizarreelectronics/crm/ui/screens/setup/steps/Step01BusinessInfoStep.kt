@@ -22,11 +22,13 @@ import androidx.compose.ui.unit.dp
  *
  * [data] — current saved values for this step (may be empty on first entry).
  * [onDataChange] — called with the full updated field map on any change.
+ * [inlineError] — §36.4 validation error string to display inline; null when no error.
  */
 @Composable
 fun BusinessInfoStep(
     data: Map<String, Any>,
     onDataChange: (Map<String, Any>) -> Unit,
+    inlineError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var shopName  by remember { mutableStateOf(data["shop_name"]?.toString() ?: "") }
@@ -96,6 +98,15 @@ fun BusinessInfoStep(
                     label    = { Text(label) },
                 )
             }
+        }
+
+        // §36.4 — inline validation error displayed below step fields.
+        if (!inlineError.isNullOrBlank()) {
+            Text(
+                text  = inlineError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

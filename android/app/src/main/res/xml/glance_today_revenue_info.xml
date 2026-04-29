@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidgetProvider metadata for TodayRevenueGlanceWidget / TodayRevenueGlanceReceiver.
+
+  - minWidth  110dp  ≈ 2 grid cells  (2×2 minimum; shows revenue + open tickets).
+  - minHeight  80dp  ≈ 2 grid rows.
+  - resizeMode horizontal|vertical — user can expand to 4×2 for more breathing room.
+  - updatePeriodMillis 1800000 = 30 min OS-triggered fallback; live push via
+    publishTodayRevenue() after each successful dashboard sync.
+  - configure: WidgetConfigActivity for tenant / filter config on first add.
+  - description: widget_today_revenue_description (see strings.xml).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="80dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="80dp"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_dashboard"
+    android:previewImage="@drawable/glance_preview_today_revenue"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:configure="com.bizarreelectronics.crm.widget.WidgetConfigActivity"
+    android:description="@string/widget_today_revenue_description" />

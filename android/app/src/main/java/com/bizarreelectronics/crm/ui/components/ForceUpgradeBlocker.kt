@@ -50,13 +50,25 @@ import com.bizarreelectronics.crm.BuildConfig
  * @param content          The composable content to display when no upgrade is
  *   required.
  */
+/**
+ * Pure gate predicate extracted for JVM-testability without a Compose runtime.
+ *
+ * Returns `true` when [serverMinVersion] is non-null and strictly greater than
+ * [currentVersion], meaning the running build is too old and must be updated.
+ *
+ * @param serverMinVersion Version code floor returned by the server (`null` = no floor).
+ * @param currentVersion   The running build's version code (defaults to [BuildConfig.VERSION_CODE]).
+ */
+internal fun isUpgradeRequired(serverMinVersion: Int?, currentVersion: Int): Boolean =
+    serverMinVersion != null && currentVersion < serverMinVersion
+
 @Composable
 fun ForceUpgradeBlocker(
     serverMinVersion: Int?,
     content: @Composable () -> Unit,
 ) {
     val currentVersion = BuildConfig.VERSION_CODE
-    val upgradeRequired = serverMinVersion != null && currentVersion < serverMinVersion
+    val upgradeRequired = isUpgradeRequired(serverMinVersion, currentVersion)
 
     if (upgradeRequired) {
         ForceUpgradeScreen()

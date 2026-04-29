@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.audit
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -24,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -39,9 +45,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.remote.api.AuditEntry
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditEntryRow
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditFilter
@@ -77,6 +86,34 @@ fun AuditLogsScreen(
     val filter by viewModel.filter.collectAsState()
     val search by viewModel.search.collectAsState()
     val selectedEntry by viewModel.selectedEntry.collectAsState()
+    val exportState by viewModel.exportState.collectAsState()
+
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // §52.4 — SAF launcher: user picks a file name/location; we write CSV there.
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { destUri: Uri? ->
+        if (destUri != null) {
+            viewModel.exportCsvTo(context, destUri)
+        }
+    }
+
+    // React to export completion: show snackbar, then reset state.
+    LaunchedEffect(exportState) {
+        when (val s = exportState) {
+            is AuditLogsViewModel.ExportState.Success -> {
+                snackbarHostState.showSnackbar("Exported ${s.rowCount} rows to CSV")
+                viewModel.clearExportState()
+            }
+            is AuditLogsViewModel.ExportState.Error -> {
+                snackbarHostState.showSnackbar(s.message)
+                viewModel.clearExportState()
+            }
+            else -> Unit
+        }
+    }
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
@@ -108,15 +145,28 @@ fun AuditLogsScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Audit Log") },
+                title = { Text(stringResource(R.string.screen_audit_logs)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    // §52.4 — export current (filtered) page-set to CSV via SAF
+                    val exportFilename = stringResource(R.string.audit_export_csv_filename)
+                    IconButton(
+                        onClick = { csvLauncher.launch(exportFilename) },
+                        enabled = items.isNotEmpty() &&
+                            exportState !is AuditLogsViewModel.ExportState.InProgress,
+                    ) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = stringResource(R.string.audit_export_cd),
+                        )
+                    }
                     IconButton(onClick = { viewModel.loadFirstPage() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }

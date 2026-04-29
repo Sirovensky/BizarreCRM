@@ -1,21 +1,44 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
-import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,37 +46,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * §19.9 — SMS Settings screen.
- *
- * Wired:
- *  - Provider connection status — GET /settings/sms/providers (provider name + configured flag)
- *  - Sender number / TFN — GET /settings/store key "sms_from" (read-only; edit via web admin)
- *  - Compliance footer template — editable field saved to /settings/store "sms_compliance_footer"
- *  - Off-hours auto-reply template — read from /settings/store "sms_off_hours_reply"
- *  - Rate-limit display — GET /settings/config key "sms_daily_limit" + AppPreferences SMS opt-in
- *    count as a proxy for usage
- *
- * NOTE (2026-04-26): SMS rate-limit counter is not directly exposed by a server endpoint;
- * /settings/config may carry sms_daily_limit but actual usage counter requires
- * GET /settings/audit-logs or a dedicated quota endpoint that does not exist. Showing
- * the configured limit only.
- *
- * NOTE (2026-04-26): Compliance footer and off-hours auto-reply are stored via
- * PUT /settings/store. The server does NOT enforce the footer on outbound SMS —
- * that enforcement happens in SmsSendHandler which reads from store_config. Consumer
- * IS wired on the server side (L1528 compliance footer logic in sms.routes.ts).
- */
-
-data class SmsSettingsUiState(
-    val isLoading: Boolean = true,
-    val error: String? = null,
-    val providerName: String = "Not configured",
-    val providerConfigured: Boolean = false,
+data class SmsSettingsState(
+    /** Name of the configured SMS provider (e.g. "twilio", "telnyx"). */
+    val providerType: String = "",
+    /** Sender phone number / TFN / short code in E.164 or alphanumeric. */
     val senderNumber: String = "",
-    val complianceFooter: String = "",
+    /** Off-hours auto-reply message template. */
     val offHoursReply: String = "",
-    val dailyLimit: Int = 0,
+    /** TCPA/CTIA compliance footer text. */
+    val complianceFooter: String = "Reply STOP to opt out.",
+    val isLoading: Boolean = false,
+    val isSaving: Boolean = false,
+    val errorMessage: String? = null,
+    val savedOk: Boolean = false,
 )
 
 @HiltViewModel
@@ -61,59 +66,68 @@ class SmsSettingsViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SmsSettingsUiState())
-    val uiState: StateFlow<SmsSettingsUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(SmsSettingsState(isLoading = true))
+    val uiState: StateFlow<SmsSettingsState> = _uiState.asStateFlow()
 
     init {
         load()
     }
 
-    fun load() {
+    private fun load() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                val storeResp = settingsApi.getStoreConfig()
-                val store = storeResp.data ?: emptyMap()
+            val configResult = runCatching { settingsApi.getStoreConfig() }
+            val providersResult = runCatching { settingsApi.getSmsProviders() }
 
-                val providersResp = runCatching { settingsApi.getSmsProviders() }.getOrNull()
-                val providers = providersResp?.data ?: emptyList()
-                val configured = providers.any { it["configured"] == true || it["enabled"] == true }
-                val providerName = providers.firstOrNull()?.get("name")?.toString() ?: "Not configured"
+            val cfg = configResult.getOrNull()?.data ?: emptyMap()
 
-                val configResp = runCatching { settingsApi.getConfig() }.getOrNull()
-                val cfg = configResp?.data ?: emptyMap()
+            // Determine active provider type from store-config key "sms_provider_type".
+            // Fall back to the name of the first provider entry from getSmsProviders() if absent.
+            val providerFromProviders = providersResult.getOrNull()?.data
+                ?.firstOrNull()
+                ?.get("provider_type") as? String ?: ""
 
-                _uiState.value = SmsSettingsUiState(
-                    isLoading = false,
-                    providerName = store["sms_provider"]?.takeIf { it.isNotBlank() } ?: providerName,
-                    providerConfigured = configured || store["sms_provider"]?.isNotBlank() == true,
-                    senderNumber = store["sms_from"] ?: "",
-                    complianceFooter = store["sms_compliance_footer"] ?: "",
-                    offHoursReply = store["sms_off_hours_reply"] ?: "",
-                    dailyLimit = cfg["sms_daily_limit"]?.toIntOrNull() ?: 0,
+            _uiState.value = SmsSettingsState(
+                providerType = cfg["sms_provider_type"] ?: providerFromProviders,
+                senderNumber = cfg["sms_sender_number"] ?: cfg["sms_from_number"] ?: "",
+                offHoursReply = cfg["sms_off_hours_reply"] ?: "",
+                complianceFooter = cfg["sms_compliance_footer"] ?: "Reply STOP to opt out.",
+                isLoading = false,
+                errorMessage = configResult.exceptionOrNull()?.message,
+            )
+        }
+    }
+
+    fun update(block: SmsSettingsState.() -> SmsSettingsState) {
+        _uiState.value = _uiState.value.block()
+    }
+
+    fun save() {
+        val s = _uiState.value
+        _uiState.value = s.copy(isSaving = true, errorMessage = null)
+        viewModelScope.launch {
+            runCatching {
+                settingsApi.putStoreConfig(
+                    mapOf(
+                        "sms_sender_number" to s.senderNumber,
+                        "sms_off_hours_reply" to s.offHoursReply,
+                        "sms_compliance_footer" to s.complianceFooter,
+                    )
                 )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load SMS settings")
             }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        errorMessage = "Save failed: ${it.message}",
+                    )
+                }
         }
     }
 
-    fun saveComplianceFooter(footer: String) {
-        _uiState.value = _uiState.value.copy(complianceFooter = footer)
-        viewModelScope.launch {
-            runCatching {
-                settingsApi.putStoreConfig(mapOf("sms_compliance_footer" to footer))
-            }
-        }
-    }
-
-    fun saveOffHoursReply(reply: String) {
-        _uiState.value = _uiState.value.copy(offHoursReply = reply)
-        viewModelScope.launch {
-            runCatching {
-                settingsApi.putStoreConfig(mapOf("sms_off_hours_reply" to reply))
-            }
-        }
+    fun clearSavedOk() {
+        _uiState.value = _uiState.value.copy(savedOk = false)
     }
 }
 
@@ -123,15 +137,22 @@ fun SmsSettingsScreen(
     onBack: () -> Unit,
     viewModel: SmsSettingsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    var editingFooter by remember { mutableStateOf(false) }
-    var footerEdit by remember { mutableStateOf("") }
-    var editingReply by remember { mutableStateOf(false) }
-    var replyEdit by remember { mutableStateOf("") }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.savedOk) {
+        if (state.savedOk) {
+            snackbarHostState.showSnackbar("SMS settings saved")
+            viewModel.clearSavedOk()
+        }
+    }
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { snackbarHostState.showSnackbar(it) }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("SMS Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -140,149 +161,125 @@ fun SmsSettingsScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        when {
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+        if (state.isLoading) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Provider status (read-only; configured via web admin)
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Provider", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (state.providerType.isNotBlank())
+                            "Connected: ${state.providerType.replaceFirstChar { it.uppercase() }}"
+                        else
+                            "No SMS provider configured",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state.providerType.isNotBlank())
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        "Android version settings coming soon. Configuration synchronizes with the web admin panel when available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            uiState.error != null -> {
-                Box(Modifier.fillMaxSize().padding(padding)) {
-                    ErrorState(message = uiState.error!!, onRetry = { viewModel.load() })
-                }
-            }
-            else -> {
+
+            // Sender number
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Provider status
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Provider", style = MaterialTheme.typography.titleSmall)
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(
-                                    if (uiState.providerConfigured) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = if (uiState.providerConfigured) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Text(
-                                    uiState.providerName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                            if (uiState.senderNumber.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(uiState.senderNumber, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Text(
-                                "Provider credentials and sender number are configured via the web admin panel (Settings > SMS). Read-only here.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    // Compliance footer
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Compliance footer", style = MaterialTheme.typography.titleSmall)
-                            if (editingFooter) {
-                                OutlinedTextField(
-                                    value = footerEdit,
-                                    onValueChange = { footerEdit = it },
-                                    label = { Text("Footer text") },
-                                    placeholder = { Text("Reply STOP to opt out.") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    minLines = 2,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { editingFooter = false }) { Text("Cancel") }
-                                    Button(onClick = {
-                                        viewModel.saveComplianceFooter(footerEdit)
-                                        editingFooter = false
-                                    }) { Text("Save") }
-                                }
-                            } else {
-                                Text(
-                                    uiState.complianceFooter.ifBlank { "(Not set — default: \"Reply STOP to opt out.\")" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (uiState.complianceFooter.isBlank())
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    else
-                                        MaterialTheme.colorScheme.onSurface,
-                                )
-                                TextButton(onClick = {
-                                    footerEdit = uiState.complianceFooter
-                                    editingFooter = true
-                                }) { Text("Edit") }
-                            }
-                        }
-                    }
-
-                    // Off-hours auto-reply
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Off-hours auto-reply", style = MaterialTheme.typography.titleSmall)
-                            if (editingReply) {
-                                OutlinedTextField(
-                                    value = replyEdit,
-                                    onValueChange = { replyEdit = it },
-                                    label = { Text("Auto-reply message") },
-                                    placeholder = { Text("We're closed right now, we'll reply soon.") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    minLines = 3,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { editingReply = false }) { Text("Cancel") }
-                                    Button(onClick = {
-                                        viewModel.saveOffHoursReply(replyEdit)
-                                        editingReply = false
-                                    }) { Text("Save") }
-                                }
-                            } else {
-                                Text(
-                                    uiState.offHoursReply.ifBlank { "(Not set)" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (uiState.offHoursReply.isBlank())
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    else
-                                        MaterialTheme.colorScheme.onSurface,
-                                )
-                                TextButton(onClick = {
-                                    replyEdit = uiState.offHoursReply
-                                    editingReply = true
-                                }) { Text("Edit") }
-                            }
-                        }
-                    }
-
-                    // Rate limit / quota
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Rate limits & quota", style = MaterialTheme.typography.titleSmall)
-                            if (uiState.dailyLimit > 0) {
-                                Text(
-                                    "Daily limit: ${uiState.dailyLimit} messages",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                            Text(
-                                "Real-time usage counters require a dedicated quota endpoint not yet available. Daily limit shown from config when set.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    Text("Sender", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.senderNumber,
+                        onValueChange = { viewModel.update { copy(senderNumber = it) } },
+                        label = { Text("From number / TFN / Sender ID") },
+                        supportingText = { Text("E.164 format (+12125551234) or alphanumeric sender") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Phone,
+                            imeAction = ImeAction.Next,
+                        ),
+                        singleLine = true,
+                    )
                 }
+            }
+
+            // Compliance footer
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Compliance", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.complianceFooter,
+                        onValueChange = { viewModel.update { copy(complianceFooter = it) } },
+                        label = { Text("Opt-out footer") },
+                        supportingText = { Text("Appended once per recipient per TCPA/CTIA rules") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        singleLine = true,
+                    )
+                }
+            }
+
+            // Off-hours auto-reply
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Off-hours auto-reply", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.offHoursReply,
+                        onValueChange = { viewModel.update { copy(offHoursReply = it) } },
+                        label = { Text("Auto-reply template") },
+                        supportingText = { Text("Sent automatically during off-hours. Leave blank to disable.") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        minLines = 3,
+                        maxLines = 5,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            FilledTonalButton(
+                onClick = { viewModel.save() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.isSaving,
+            ) {
+                if (state.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = 8.dp).height(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Text("Save changes")
             }
         }
     }

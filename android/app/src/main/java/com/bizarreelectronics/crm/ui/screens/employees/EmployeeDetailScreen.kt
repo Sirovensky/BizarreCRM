@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import java.time.LocalDate
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,13 +18,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.AssignRoleBody
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.EmployeeApi
-import com.bizarreelectronics.crm.data.remote.api.RolesApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
-import com.bizarreelectronics.crm.data.remote.api.ShiftDto
-import com.bizarreelectronics.crm.data.remote.api.ShiftsApi
+import com.bizarreelectronics.crm.data.remote.api.ShiftScheduleApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
@@ -49,6 +45,16 @@ data class EmployeePerformanceData(
 /** §14.3 L1629 — one day in the weekly timesheet grid */
 data class TimesheetDay(val label: String, val hoursWorked: Double)
 
+/** §14.2 L1619 — an upcoming shift entry shown in the detail screen. */
+data class UpcomingShift(
+    val id: Long,
+    val dayLabel: String,
+    val startTime: String,
+    val endTime: String,
+    val role: String?,
+    val notes: String?,
+)
+
 /** §14.3 L1628 — a single time-clock entry for the admin edit list */
 data class TimeEntry(
     val id: Long,
@@ -67,14 +73,11 @@ data class EmployeeDetailUiState(
     // §14.3 timesheet
     val weeklyTimesheet: List<TimesheetDay> = emptyList(),
     val timesheetLoading: Boolean = false,
+    // §14.2 L1619 — upcoming shifts
+    val upcomingShifts: List<UpcomingShift> = emptyList(),
+    val shiftsLoading: Boolean = false,
     // §14.3 time entries for admin edit
     val timeEntries: List<TimeEntry> = emptyList(),
-    // §14.2 schedule — upcoming shifts for this employee
-    val upcomingShifts: List<ShiftDto> = emptyList(),
-    val shiftsLoading: Boolean = false,
-    // §14.4 — assign role dialog
-    val showAssignRoleDialog: Boolean = false,
-    val pendingRole: String = "",
     // admin action feedback
     val actionMessage: String? = null,
     val showDeactivateDialog: Boolean = false,
@@ -89,8 +92,7 @@ data class EmployeeDetailUiState(
 class EmployeeDetailViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val employeeApi: EmployeeApi,
-    private val shiftsApi: ShiftsApi,
-    private val rolesApi: RolesApi,
+    private val shiftScheduleApi: ShiftScheduleApi,
     private val authPreferences: AuthPreferences,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -120,7 +122,7 @@ class EmployeeDetailViewModel @Inject constructor(
                     _state.value = _state.value.copy(isLoading = false, employee = match, error = null)
                     loadPerformance()
                     loadTimesheet()
-                    loadUpcomingShifts()
+                    loadSchedule()
                 }
             } catch (t: Throwable) {
                 _state.value = _state.value.copy(
@@ -178,63 +180,43 @@ class EmployeeDetailViewModel @Inject constructor(
         }
     }
 
-    /**
-     * §14.2 — Load upcoming shifts for this employee from /schedule/shifts.
-     * 404-tolerant: show empty state if endpoint missing.
-     */
-    private fun loadUpcomingShifts() {
+    /** §14.2 L1619 — load upcoming shifts for this employee; stub empty on 404. */
+    private fun loadSchedule() {
         viewModelScope.launch {
             _state.value = _state.value.copy(shiftsLoading = true)
-            val today = java.time.LocalDate.now().toString()
-            val nextWeek = java.time.LocalDate.now().plusDays(14).toString()
-            val shifts = runCatching {
-                shiftsApi.getShifts(userId = employeeId, fromDate = today, toDate = nextWeek)
+            val response = runCatching {
+                shiftScheduleApi.getShifts(userId = employeeId)
             }.getOrNull()
-            val list = (shifts?.data ?: emptyList())
-                .sortedBy { it.startAt }
-                .take(5)
-            _state.value = _state.value.copy(shiftsLoading = false, upcomingShifts = list)
+            val shifts = parseUpcomingShifts(response?.data)
+            _state.value = _state.value.copy(shiftsLoading = false, upcomingShifts = shifts)
         }
     }
 
-    // region — assign role (§14.4)
-
-    fun showAssignRoleDialog(currentRole: String) {
-        _state.value = _state.value.copy(
-            showAssignRoleDialog = true,
-            pendingRole = currentRole,
-        )
-    }
-
-    fun updatePendingRole(role: String) {
-        _state.value = _state.value.copy(pendingRole = role)
-    }
-
-    fun dismissAssignRoleDialog() {
-        _state.value = _state.value.copy(showAssignRoleDialog = false)
-    }
-
-    fun confirmAssignRole() {
-        val newRole = _state.value.pendingRole
-        viewModelScope.launch {
-            _state.value = _state.value.copy(showAssignRoleDialog = false)
-            runCatching {
-                rolesApi.assignRole(
-                    userId = employeeId,
-                    body = com.bizarreelectronics.crm.data.remote.api.AssignRoleBody(role = newRole),
-                )
-            }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Role updated to ${newRole.replaceFirstChar { it.uppercase() }}")
-                    load()
-                }
-                .onFailure { t ->
-                    _state.value = _state.value.copy(actionMessage = t.message ?: "Role update failed")
-                }
+    @Suppress("UNCHECKED_CAST")
+    private fun parseUpcomingShifts(data: Any?): List<UpcomingShift> {
+        val list = when (data) {
+            is List<*> -> data
+            is Map<*, *> -> (data["shifts"] as? List<*>) ?: return emptyList()
+            else -> return emptyList()
+        }
+        val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        return list.take(7).mapNotNull { raw ->
+            val m = raw as? Map<*, *> ?: return@mapNotNull null
+            val startStr = m["start_time"] as? String ?: return@mapNotNull null
+            val dayLabel = runCatching {
+                val date = java.time.LocalDate.parse(startStr.take(10))
+                dayNames.getOrElse(date.dayOfWeek.value - 1) { "?" }
+            }.getOrDefault("?")
+            UpcomingShift(
+                id = (m["id"] as? Number)?.toLong() ?: return@mapNotNull null,
+                dayLabel = dayLabel,
+                startTime = startStr.drop(11).take(5),
+                endTime = (m["end_time"] as? String ?: "").drop(11).take(5),
+                role = m["role"] as? String,
+                notes = m["notes"] as? String,
+            )
         }
     }
-
-    // endregion
 
     // region — admin actions
 
@@ -337,56 +319,6 @@ fun EmployeeDetailScreen(
         viewModel.clearActionMessage()
     }
 
-    // §14.4 — Assign role dialog
-    if (state.showAssignRoleDialog) {
-        val roleOptions = listOf("admin", "manager", "technician", "cashier")
-        var roleDropdownExpanded by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissAssignRoleDialog() },
-            title = { Text("Assign Role") },
-            text = {
-                ExposedDropdownMenuBox(
-                    expanded = roleDropdownExpanded,
-                    onExpandedChange = { roleDropdownExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = state.pendingRole.replaceFirstChar { it.uppercase() },
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Role") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = roleDropdownExpanded)
-                        },
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = roleDropdownExpanded,
-                        onDismissRequest = { roleDropdownExpanded = false },
-                    ) {
-                        roleOptions.forEach { role ->
-                            DropdownMenuItem(
-                                text = { Text(role.replaceFirstChar { it.uppercase() }) },
-                                onClick = {
-                                    viewModel.updatePendingRole(role)
-                                    roleDropdownExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.confirmAssignRole() }) { Text("Apply") }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissAssignRoleDialog() }) { Text("Cancel") }
-            },
-        )
-    }
-
     // Deactivate confirm dialog
     if (state.showDeactivateDialog) {
         AlertDialog(
@@ -473,7 +405,6 @@ fun EmployeeDetailScreen(
                     onShowDeactivate = { viewModel.showDeactivateDialog() },
                     onShowResetPin = { viewModel.showResetPinDialog() },
                     onShowSendResetLink = { viewModel.showSendResetLinkDialog() },
-                    onShowAssignRole = { role -> viewModel.showAssignRoleDialog(role) },
                     padding = padding,
                 )
             }
@@ -491,7 +422,6 @@ private fun EmployeeDetailBody(
     onShowDeactivate: () -> Unit,
     onShowResetPin: () -> Unit,
     onShowSendResetLink: () -> Unit,
-    onShowAssignRole: (currentRole: String) -> Unit,
     padding: PaddingValues,
 ) {
     val employee = state.employee ?: return
@@ -668,11 +598,11 @@ private fun EmployeeDetailBody(
             }
         }
 
-        // ── §14.2 — Upcoming schedule ────────────────────────────────────────
+        // ── §14.2 L1619 — Schedule (upcoming shifts) ────────────────────────
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Upcoming Schedule", style = MaterialTheme.typography.titleSmall)
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Upcoming shifts", style = MaterialTheme.typography.titleSmall)
                     if (state.shiftsLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else if (state.upcomingShifts.isEmpty()) {
@@ -688,34 +618,28 @@ private fun EmployeeDetailBody(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = shift.startAt.take(16).replace("T", " "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    shift.dayLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.width(40.dp),
                                 )
                                 Text(
-                                    text = "→ ${shift.endAt.take(16).replace("T", " ")}",
+                                    "${shift.startTime} – ${shift.endTime}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    shift.role?.replaceFirstChar { it.uppercase() } ?: "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            if (!shift.roleTag.isNullOrBlank()) {
-                                Text(
-                                    text = shift.roleTag,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                )
-                            }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                            )
                         }
                     }
                 }
             }
         }
 
-        // ── §14.4 — Admin actions ────────────────────────────────────────────
+        // ── §14.2 L1621/L1622 — Admin actions ───────────────────────────────
         // ── §2.15 L388 adds "Send reset link to staff's email" alongside ───
         if (state.isAdmin) {
             item {
@@ -751,19 +675,6 @@ private fun EmployeeDetailBody(
                                 Spacer(Modifier.width(4.dp))
                                 Text("Deactivate")
                             }
-                        }
-                        // §14.4 — Assign role button
-                        OutlinedButton(
-                            onClick = { onShowAssignRole(employee.role ?: "technician") },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(
-                                Icons.Default.Badge,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Assign Role")
                         }
                         // §2.15 L388 — send PIN-reset email on behalf of staff member.
                         // 404 tolerated: ViewModel shows a graceful snackbar message.

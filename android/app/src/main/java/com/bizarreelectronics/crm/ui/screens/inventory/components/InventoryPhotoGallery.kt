@@ -41,6 +41,8 @@ fun InventoryPhotoGallery(
     photoUrls: List<String>,
     onUploadPhoto: () -> Unit,
     modifier: Modifier = Modifier,
+    /** §6.3: When true, show an upload progress indicator instead of the add button. */
+    isUploading: Boolean = false,
 ) {
     BrandCard(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -65,12 +67,25 @@ fun InventoryPhotoGallery(
                     )
                 }
 
-                IconButton(onClick = onUploadPhoto) {
-                    Icon(
-                        Icons.Default.AddPhotoAlternate,
-                        contentDescription = "Upload photo",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
+                // §6.3: Show spinner while upload is in-flight; button otherwise.
+                if (isUploading) {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onUploadPhoto) {
+                        Icon(
+                            Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Upload photo",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
@@ -83,11 +98,25 @@ fun InventoryPhotoGallery(
                         .height(160.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "No photos yet. Tap + to upload.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (isUploading) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator()
+                            Text(
+                                "Uploading photo…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        Text(
+                            "No photos yet. Tap + to upload.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             } else {
                 val pagerState = rememberPagerState(pageCount = { photoUrls.size })

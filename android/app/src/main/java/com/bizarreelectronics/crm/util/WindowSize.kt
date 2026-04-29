@@ -42,6 +42,11 @@ fun isCompactWidth(): Boolean = rememberWindowMode() == WindowMode.Phone
 @ReadOnlyComposable
 fun isMediumOrExpandedWidth(): Boolean = rememberWindowMode() != WindowMode.Phone
 
+/** §23 — true on Expanded (≥840dp) widths where PermanentNavigationDrawer is used. */
+@Composable
+@ReadOnlyComposable
+fun isPermanentDrawerWidth(): Boolean = rememberWindowMode() == WindowMode.Desktop
+
 fun widthDpToMode(widthDp: Int): WindowMode = when {
     widthDp < TABLET_MIN_DP -> WindowMode.Phone
     widthDp < DESKTOP_MIN_DP -> WindowMode.Tablet

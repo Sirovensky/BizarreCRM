@@ -3,9 +3,9 @@ package com.bizarreelectronics.crm.ui.screens.tv
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.DashboardApi
 import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
+import com.bizarreelectronics.crm.service.WebSocketService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,19 +26,49 @@ import javax.inject.Inject
  * All other errors (network, 5xx) surface via [TvQueueUiState.error]
  * so the screen can display a transient message while the periodic
  * refresh loop continues.
+ *
+ * ## §56.5 WebSocket live updates
+ * Subscribes to [WebSocketService.events] in [viewModelScope]. When the
+ * server emits `ticket:created`, `ticket:updated`, or
+ * `ticket:status_changed` the ViewModel calls [refresh] immediately so
+ * the board re-animates on the next frame without waiting for the
+ * 30-second polling interval.
  */
 @HiltViewModel
 class TvQueueBoardViewModel @Inject constructor(
     private val dashboardApi: DashboardApi,
-    private val appPreferences: AppPreferences,
+    private val webSocketService: WebSocketService,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(TvQueueUiState(privacyMode = appPreferences.tvPrivacyMode))
+    private val _uiState = MutableStateFlow(TvQueueUiState())
     val uiState: StateFlow<TvQueueUiState> = _uiState.asStateFlow()
 
     /** Kick off the first load immediately when the ViewModel is created. */
     init {
         refresh()
+        subscribeWebSocket()
+    }
+
+    /**
+     * §56.5 — Subscribe to WebSocket ticket events so the board re-animates
+     * immediately when a ticket status changes, without waiting for the 30-second
+     * polling interval in [TvQueueBoardScreen].
+     *
+     * Only ticket-mutation events trigger a refresh; noise events (pong, sms, etc.)
+     * are ignored so we do not thrash the endpoint on busy shops.
+     */
+    private fun subscribeWebSocket() {
+        viewModelScope.launch {
+            webSocketService.events.collect { event ->
+                when (event.type) {
+                    "ticket:created", "ticket:updated", "ticket:status_changed" -> {
+                        Log.d(TAG, "WS ${event.type} — refreshing TV queue")
+                        refresh()
+                    }
+                    else -> { /* not relevant to TV queue */ }
+                }
+            }
+        }
     }
 
     /**
@@ -102,20 +132,16 @@ class TvQueueBoardViewModel @Inject constructor(
 /**
  * UI state for [TvQueueBoardScreen].
  *
- * @property isLoading   True during the first fetch and each subsequent refresh.
- * @property groups      Tickets grouped by [TvQueueGroup], in display order.
- *                       Empty map when the endpoint returns 404 or no tickets.
- * @property error       Non-null when the last refresh failed (non-404). The
- *                       screen shows this transiently while the loop continues.
- * @property privacyMode When true, customer names are masked to first-name +
- *                       last-initial ("John S.") in [TvQueueBoardScreen].
- *                       Set once from [AppPreferences.tvPrivacyMode] at VM init.
+ * @property isLoading True during the first fetch and each subsequent refresh.
+ * @property groups    Tickets grouped by [TvQueueGroup], in display order.
+ *                     Empty map when the endpoint returns 404 or no tickets.
+ * @property error     Non-null when the last refresh failed (non-404). The
+ *                     screen shows this transiently while the loop continues.
  */
 data class TvQueueUiState(
     val isLoading: Boolean = true,
     val groups: Map<TvQueueGroup, List<TvQueueItem>> = emptyMap(),
     val error: String? = null,
-    val privacyMode: Boolean = false,
 ) {
     /** True when there are no tickets across all groups and the endpoint is live. */
     val isEmpty: Boolean get() = !isLoading && groups.values.all { it.isEmpty() }

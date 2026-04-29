@@ -7,12 +7,19 @@ data class RepairServiceItem(
     val name: String,
     val slug: String?,
     val category: String?,
+    val description: String? = null,
+    /**
+     * Default labor rate as a plain Double (server stores as REAL, not cents).
+     * Use [java.text.NumberFormat.getCurrencyInstance] for display.
+     */
+    @SerializedName("labor_price")
+    val laborPrice: Double = 0.0,
     @SerializedName("is_active")
     val isActive: Int = 1,
     @SerializedName("sort_order")
     val sortOrder: Int = 0,
-    @SerializedName("labor_price")
-    val laborPrice: Double = 0.0,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null,
 )
 
 data class RepairPriceLookup(

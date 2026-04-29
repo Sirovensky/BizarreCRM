@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.KeyEvent
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.view.LifecycleCameraController
@@ -14,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,11 +27,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -53,6 +59,12 @@ import java.util.concurrent.Executors
 // BarcodeAnalyzer. Green reticle overlay drawn via Canvas. Haptic on match.
 // Multi-scan (stocktake) mode: keeps scanning after each result with a beep highlight.
 // Torch toggle. Falls back to manual-entry keyboard input when permission denied.
+//
+// §6.5: HID-scanner support — hidden focused Modifier.onKeyEvent sink. A Bluetooth
+// scanner in HID mode types characters just like a keyboard. We detect rapid keystrokes
+// (intra-key gap <50 ms) to distinguish scanner input from regular keyboard input.
+// Characters accumulate in a buffer; KEYCODE_ENTER (or IME_ACTION_SEARCH) flushes
+// the buffer and calls onScanned, identical to the CameraX path.
 //
 // Formats: Code128, Code39, EAN-13, UPC-A, UPC-E, QR, DataMatrix, ITF (ALL_FORMATS).
 
@@ -94,6 +106,19 @@ fun BarcodeScanScreen(
 
     // Torch state
     var torchEnabled by rememberSaveable { mutableStateOf(false) }
+
+    // §6.5: HID-scanner (Bluetooth barcode scanner in keyboard/HID mode).
+    // We keep a character buffer + the timestamp of the last keystroke.
+    // When ENTER arrives after a run of keystrokes that each came in <50 ms
+    // apart we treat the whole buffer as a scanner result.
+    val hidBuffer = remember { StringBuilder() }
+    var hidLastKeyTimeMs by remember { mutableLongStateOf(0L) }
+    // FocusRequester for the invisible HID sink so we can steal focus back
+    // after the snackbar / manual-entry TextField dismisses.
+    val hidFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { hidFocusRequester.requestFocus() }
+    }
 
     // CameraX controller
     val cameraController = remember { LifecycleCameraController(context) }
@@ -182,6 +207,51 @@ fun BarcodeScanScreen(
             )
         },
     ) { padding ->
+        // §6.5: Invisible 0×0 Box that holds keyboard focus for HID scanners.
+        // The Box intercepts KeyDown events; character keys append to the HID
+        // buffer; KEYCODE_ENTER flushes the buffer and fires onScanned.
+        // Intra-key gap threshold 50 ms separates fast scanner input from
+        // deliberate keyboard typing — scanners typically burst keys in <10 ms.
+        Box(
+            modifier = Modifier
+                .size(0.dp)
+                .focusRequester(hidFocusRequester)
+                .focusable()
+                .onKeyEvent { keyEvent ->
+                    if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
+                    val now = System.currentTimeMillis()
+                    val gap = now - hidLastKeyTimeMs
+                    hidLastKeyTimeMs = now
+
+                    when (val code = keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            val scanned = hidBuffer.toString().trim()
+                            hidBuffer.clear()
+                            if (scanned.isNotBlank() && gap < 2000L) {
+                                hapticHit()
+                                if (multiScanMode) {
+                                    scannedResults = scannedResults + (scanned to "HID")
+                                } else {
+                                    onScanned(scanned)
+                                }
+                            }
+                            true
+                        }
+                        else -> {
+                            // Only accumulate if this keystroke arrived quickly (scanner burst)
+                            // OR the buffer is already non-empty (mid-scan).
+                            val char = keyEvent.nativeKeyEvent.unicodeChar.toChar()
+                            if (char.isLetterOrDigit() || char in "-._/\\") {
+                                if (gap < 50L || hidBuffer.isNotEmpty()) {
+                                    hidBuffer.append(char)
+                                }
+                            }
+                            false
+                        }
+                    }
+                },
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()

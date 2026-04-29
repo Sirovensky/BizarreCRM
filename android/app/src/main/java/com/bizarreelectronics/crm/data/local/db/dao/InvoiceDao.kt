@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.data.local.db.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -14,6 +15,28 @@ interface InvoiceDao {
 
     @Query("SELECT * FROM invoices ORDER BY created_at DESC")
     fun getAll(): Flow<List<InvoiceEntity>>
+
+    // ── Paging3 sources (§7.1 cursor-based pagination) ──────────────────────
+
+    /**
+     * Unbounded paging source — all invoices newest-first.
+     * Consumed by [InvoiceRemoteMediator] via [InvoiceRepository.invoicesPaged].
+     */
+    @Query("SELECT * FROM invoices ORDER BY created_at DESC")
+    fun pagingSource(): PagingSource<Int, InvoiceEntity>
+
+    /**
+     * Status-scoped paging source for the status tabs (Paid / Unpaid / Partial / Void).
+     * The [status] value must match the server-returned status string exactly.
+     */
+    @Query("SELECT * FROM invoices WHERE status = :status ORDER BY created_at DESC")
+    fun pagingSourceByStatus(status: String): PagingSource<Int, InvoiceEntity>
+
+    /**
+     * Customer-scoped paging source — used by CustomerDetailScreen invoices tab.
+     */
+    @Query("SELECT * FROM invoices WHERE customer_id = :customerId ORDER BY created_at DESC")
+    fun pagingSourceByCustomer(customerId: Long): PagingSource<Int, InvoiceEntity>
 
     @Query("SELECT * FROM invoices WHERE id = :id")
     fun getById(id: Long): Flow<InvoiceEntity?>

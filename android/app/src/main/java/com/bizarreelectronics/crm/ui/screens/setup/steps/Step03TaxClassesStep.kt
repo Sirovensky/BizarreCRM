@@ -22,11 +22,13 @@ import androidx.compose.ui.unit.dp
  *
  * [data] — current saved values (used to restore "skipped" state).
  * [onDataChange] — called with the field map on any change.
+ * [inlineError] — §36.4 validation error string to display inline; null when no error.
  */
 @Composable
 fun TaxClassesStep(
     data: Map<String, Any>,
     onDataChange: (Map<String, Any>) -> Unit,
+    inlineError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var skipped by remember { mutableStateOf(data["skipped"] == "true") }
@@ -73,6 +75,15 @@ fun TaxClassesStep(
                 onClick  = { skipped = false; emit() },
                 modifier = Modifier.weight(1f),
             ) { Text("Use defaults") }
+        }
+
+        // §36.4 — inline validation error displayed below step fields.
+        if (!inlineError.isNullOrBlank()) {
+            Text(
+                text  = inlineError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

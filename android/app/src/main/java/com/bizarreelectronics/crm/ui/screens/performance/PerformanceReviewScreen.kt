@@ -46,17 +46,37 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import java.time.LocalDate
 
 private val CYCLE_OPTIONS = listOf("Q1-2026", "Q2-2026", "Q3-2026", "Q4-2026", "annual-2025", "annual-2026")
 
+/** Human-readable descriptor for each star level (1–5). */
+private val RATING_DESCRIPTORS = mapOf(
+    1 to "Poor",
+    2 to "Fair",
+    3 to "Good",
+    4 to "Great",
+    5 to "Excellent",
+)
+
+/** A draft review pending the "Approve review" confirmation step. */
+private data class PendingReview(
+    val employeeId: Long,
+    val cycle: String,
+    val ratings: ReviewRatings,
+    val comments: String,
+    val date: String,
+)
+
 /**
  * §48.2 Performance Reviews screen.
  *
  * Staff: read-only list of their own past reviews.
  * Manager/Admin: full list + FAB to write a new review for any employee.
+ * Uses [ConfirmDialog] before submitting ("Approve review").
  *
  * 404-tolerant: shows "not configured on this server" empty state.
  *
@@ -70,6 +90,8 @@ fun PerformanceReviewScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    /** Holds a completed form draft awaiting manager confirmation before submitting. */
+    var pendingReview by remember { mutableStateOf<PendingReview?>(null) }
 
     LaunchedEffect(state.toastMessage) {
         val msg = state.toastMessage
@@ -137,12 +159,38 @@ fun PerformanceReviewScreen(
         }
     }
 
+    // ── Create review dialog (shows form) ────────────────────────────────────
     if (state.showCreateDialog) {
         CreateReviewDialog(
             onDismiss = { viewModel.dismissCreateDialog() },
             onConfirm = { empId, cycle, ratings, comments, date ->
-                viewModel.submitReview(empId, cycle, ratings, comments, date)
+                // Dismiss the form and open the confirmation step
+                viewModel.dismissCreateDialog()
+                pendingReview = PendingReview(empId, cycle, ratings, comments, date)
             },
+        )
+    }
+
+    // ── Approve review confirmation ───────────────────────────────────────────
+    val draft = pendingReview
+    if (draft != null) {
+        ConfirmDialog(
+            title = "Submit Review",
+            message = "Submit this performance review for employee #${draft.employeeId}? " +
+                "Overall rating: ${RATING_DESCRIPTORS[draft.ratings.overall] ?: draft.ratings.overall}/5.",
+            confirmLabel = "Submit",
+            isDestructive = false,
+            onConfirm = {
+                viewModel.submitReview(
+                    draft.employeeId,
+                    draft.cycle,
+                    draft.ratings,
+                    draft.comments,
+                    draft.date,
+                )
+                pendingReview = null
+            },
+            onDismiss = { pendingReview = null },
         )
     }
 }
@@ -226,23 +274,33 @@ private fun StarRatingInput(
     value: Int,
     onValueChange: (Int) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Row {
-            (1..5).forEach { star ->
-                IconButton(onClick = { onValueChange(star) }) {
-                    Icon(
-                        imageVector = if (star <= value) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = "$star stars",
-                        tint = if (star <= value) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outlineVariant,
-                    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Row {
+                (1..5).forEach { star ->
+                    IconButton(onClick = { onValueChange(star) }) {
+                        Icon(
+                            imageVector = if (star <= value) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Rate $label $star out of 5",
+                            tint = if (star <= value) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
                 }
             }
+        }
+        if (value > 0) {
+            Text(
+                text = RATING_DESCRIPTORS[value] ?: "",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.End),
+            )
         }
     }
 }

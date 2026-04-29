@@ -82,6 +82,21 @@ data class PosGiftCardData(
     @SerializedName("remaining_cents") val remainingCents: Long,
 )
 
+/**
+ * Loyalty-points redemption request (§38.6 / §38.3 POS integration).
+ *
+ * NOTE: server has no `/memberships/:id/redeem-points` endpoint yet — this DTO
+ * is defined for when the endpoint is added. Redemption is currently applied
+ * client-side as a `loyalty_points` tender; the server ignores unknown tender
+ * methods and records it in the payments array. Full server-side point
+ * deduction requires a new migration + endpoint (see TODO §38.6).
+ */
+data class PosLoyaltyRedeemRequest(
+    @SerializedName("membership_id") val membershipId: Long,
+    @SerializedName("points_to_redeem") val pointsToRedeem: Int,
+    @SerializedName("amount_cents") val amountCents: Long,
+)
+
 data class QuickAddItem(
     val id: Long,
     val name: String,

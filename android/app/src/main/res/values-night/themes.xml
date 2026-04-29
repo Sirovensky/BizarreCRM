@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        §71.1 — Night-mode overrides for the splash screen theme.
+
+        In dark mode the splash background is the same warm near-black (#121017)
+        used by the app's root windowBackground — no visible change from the
+        day-mode value, but declaring it explicitly in values-night ensures the
+        OS reads the correct token even before DayNight config resolution runs.
+
+        Theme.BizarreCRM does not need a night override because it inherits from
+        Theme.AppCompat.DayNight.NoActionBar, which already switches between
+        light/dark material surfaces automatically via the DayNight mechanism.
+        We only need a values-night entry for the SplashScreen theme because
+        Theme.SplashScreen is NOT a DayNight parent and its colour attributes
+        must be duplicated explicitly for each night/day bucket.
+    -->
+    <style name="Theme.BizarreCRM.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#121017</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="windowSplashScreenAnimationDuration">300</item>
+        <item name="postSplashScreenTheme">@style/Theme.BizarreCRM</item>
+    </style>
+</resources>

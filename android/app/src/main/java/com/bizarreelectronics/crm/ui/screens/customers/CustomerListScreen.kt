@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -41,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ripple
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +74,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -87,7 +89,10 @@ import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSort
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSortDropdown
 import com.bizarreelectronics.crm.ui.screens.customers.components.ImportedContact
 import com.bizarreelectronics.crm.ui.screens.customers.components.rememberCustomerContactImport
+import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
+import com.bizarreelectronics.crm.util.SaveScrollOnDispose
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
+import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
@@ -100,6 +105,8 @@ fun CustomerListScreen(
     onCreateClickWithContact: ((ImportedContact) -> Unit)? = null,
     /** 5.8.2: pre-apply a tag filter when navigated from a TagChip tap. */
     initialTagFilter: String = "",
+    /** §3.14 L588: Secondary CTA callback for "Import from contacts" in empty state. */
+    onImportFromContacts: () -> Unit = {},
     viewModel: CustomerListViewModel = hiltViewModel(),
 ) {
     // Apply initial tag filter on first composition (5.8.2).
@@ -110,7 +117,14 @@ fun CustomerListScreen(
     }
     val state by viewModel.state.collectAsState()
     val lazyPagingItems = viewModel.customersPaged.collectAsLazyPagingItems()
-    val listState = rememberLazyListState()
+    // §75.5 — scroll position preserved across back-nav and process death.
+    val restoredPos = remember { viewModel.restoreScrollPosition() }
+    val listState = rememberSaveableLazyListState(
+        key = "customer_list",
+        initialIndex = restoredPos.firstVisibleItemIndex,
+        initialOffset = restoredPos.firstVisibleItemScrollOffset,
+    )
+    SaveScrollOnDispose(listState = listState) { pos -> viewModel.saveScrollPosition(pos) }
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -303,7 +317,7 @@ fun CustomerListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search customers...",
+                placeholder = "Name, phone, email, org…",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
@@ -340,6 +354,8 @@ fun CustomerListScreen(
                         onMarkVip = viewModel::onMarkVip,
                         onArchive = viewModel::onArchive,
                         onCreateTicket = { /* navigate — future wiring */ },
+                        onAddFirstCustomer = onCreateClick,
+                        onImportFromContacts = { launchContactImport() },
                     )
 
                     // A-Z fast-scroller on the right edge (phone only, plan:L879)
@@ -422,7 +438,21 @@ private fun CustomerPagingList(
     onMarkVip: (Long) -> Unit,
     onArchive: (Long) -> Unit,
     onCreateTicket: (Long) -> Unit,
+    // §3.14 L588 empty-state CTAs (zero-data tenant). Defaults are no-ops
+    // so legacy callers compile; the screen-level scope wires real
+    // handlers (onCreateClick + launchContactImport).
+    onAddFirstCustomer: () -> Unit = {},
+    onImportFromContacts: () -> Unit = {},
 ) {
+    // §5.1 tablet preview popover — avatar tap on tablet shows quick-stats card
+    var previewCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+    if (previewCustomer != null) {
+        CustomerPreviewPopover(
+            customer = previewCustomer,
+            onDismiss = { previewCustomer = null },
+        )
+    }
+
     when (lazyPagingItems.loadState.refresh) {
         is LoadState.Loading -> {
             Box(
@@ -455,11 +485,32 @@ private fun CustomerPagingList(
         lazyPagingItems.loadState.refresh !is LoadState.Loading
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            EmptyState(
-                icon = Icons.Default.Add,
-                title = "No customers yet.",
-                subtitle = "Tap + to create one, or import from Contacts.",
-            )
+            // §3.14 L588 — zero-data tenant gets the rich EmptyStateIllustration
+            // (👥 emoji + "No customers yet" + "Add first customer" + "Import from contacts").
+            // Active search empty falls back to the simpler EmptyState because the tenant
+            // already has data — they just can't find a match.
+            if (state.searchQuery.isNotEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.Add,
+                    title = "No customers yet.",
+                    subtitle = "Try a different search",
+                )
+            } else {
+                EmptyStateIllustration(
+                    emoji = "👥",
+                    title = "No customers yet",
+                    subtitle = "Create and manage your customer base",
+                    primaryCta = "Add first customer",
+                    onPrimaryCta = onAddFirstCustomer,
+                    secondaryCta = "Import from contacts",
+                    // Reuses screen-level rememberCustomerContactImport via
+                    // the onImportFromContacts param threaded down from the
+                    // CustomerPagingList call site, so the empty-state
+                    // secondary CTA fires the same ContactsContract picker
+                    // as the toolbar import button.
+                    onSecondaryCta = onImportFromContacts,
+                )
+            }
         }
         return
     }
@@ -499,6 +550,9 @@ private fun CustomerPagingList(
                         },
                         onLongPress = { onLongPress(customer.id) },
                         onCreateTicket = { onCreateTicket(customer.id) },
+                        onAvatarClick = if (isTablet) {
+                            { previewCustomer = customer }
+                        } else null,
                     )
                 }
                 BrandListItemDivider()
@@ -605,6 +659,8 @@ private fun CustomerContextMenuRow(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onCreateTicket: () -> Unit,
+    /** §5.1 tablet preview popover: non-null on tablet; tapping avatar fires it. */
+    onAvatarClick: (() -> Unit)? = null,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -642,7 +698,17 @@ private fun CustomerContextMenuRow(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    CustomerAvatar(name = fullName)
+                    // §5.1 tablet: avatar tap opens preview popover
+                    val avatarMod = if (onAvatarClick != null) {
+                        Modifier
+                            .semantics { contentDescription = "Preview $fullName" }
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = ripple(bounded = false, radius = 20.dp),
+                                onClick = onAvatarClick,
+                            )
+                    } else Modifier
+                    CustomerAvatar(name = fullName, modifier = avatarMod)
                 }
             },
             headline = {

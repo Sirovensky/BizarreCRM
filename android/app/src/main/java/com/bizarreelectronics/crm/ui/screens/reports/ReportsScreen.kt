@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material3.*
@@ -42,16 +44,13 @@ import com.bizarreelectronics.crm.data.remote.api.ScheduledReport
 import com.bizarreelectronics.crm.data.remote.api.ScheduledReportSpec
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
-import androidx.compose.foundation.Canvas
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.reports.components.ChartDrillThrough
 import com.bizarreelectronics.crm.ui.screens.reports.components.ReportType
 import com.bizarreelectronics.crm.ui.screens.reports.components.ReportTypeSelector
-import com.bizarreelectronics.crm.ui.screens.reports.components.ReportsExportActions
 import com.bizarreelectronics.crm.ui.screens.reports.components.printReport
-import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -164,73 +163,53 @@ data class SaleTransaction(
 )
 
 /**
- * One row from GET /reports/employees.
- * Fields match server response: name, role, tickets_assigned, tickets_closed,
- * commission_earned (dollars), hours_worked, revenue_generated (dollars).
+ * Summary totals for the Tickets report (§15.3).
+ *
+ * @property totalCreated          Total tickets opened in the period.
+ * @property totalClosed           Total tickets closed / resolved in the period.
+ * @property avgTurnaroundHours    Average hours from create → close across all closed tickets.
+ * @property slaBreaches           Number of tickets that breached their SLA target.
+ * @property byTech                Per-technician breakdown rows.
  */
-data class EmployeePerformanceRow(
-    val id: Long,
-    val name: String,
-    val role: String,
-    val ticketsAssigned: Int,
-    val ticketsClosed: Int,
-    val commissionEarned: Double,
-    val hoursWorked: Double,
-    val revenueGenerated: Double,
-)
-
-/** One row from GET /reports/tickets → byTech[]. */
-data class TechTicketRow(
-    val name: String,
-    val ticketCount: Int,
-    val closedCount: Int,
-    val totalRevenue: Double,
-)
-
-/** Parsed response from GET /reports/tickets. */
 data class TicketsReport(
     val totalCreated: Int = 0,
     val totalClosed: Int = 0,
-    val avgTurnaroundHours: Double? = null,
-    val byTech: List<TechTicketRow> = emptyList(),
-    /** byDay: ISO-date → created count (for throughput chart). */
-    val byDay: List<SalesByDayPoint> = emptyList(),
-)
-
-data class LowStockItem(
-    val id: Long,
-    val name: String,
-    val sku: String,
-    val inStock: Int,
-    val reorderLevel: Int,
-)
-
-data class TopMovingItem(
-    val name: String,
-    val sku: String,
-    val usedQty: Int,
-    val inStock: Int,
-)
-
-data class InventoryValueSummary(
-    val itemType: String,
-    val itemCount: Int,
-    val totalUnits: Int,
-    val totalCostValue: Double,
-    val totalRetailValue: Double,
+    val avgTurnaroundHours: Double = 0.0,
+    val slaBreaches: Int = 0,
+    val byTech: List<TechTicketsRow> = emptyList(),
 )
 
 /**
- * Parsed response from GET /reports/inventory.
- * NOTE §15.5 Shrinkage %: the server endpoint does not track shrinkage
- * (inventory adjustments vs expected movement). Left [ ] until server ships
- * a shrinkage/adjustment column.
+ * One row in the Tickets report per-tech table (§15.3 SLA compliance % per tech).
+ *
+ * @property name               Technician display name.
+ * @property ticketsAssigned    Tickets assigned in the period.
+ * @property ticketsClosed      Tickets closed in the period.
+ * @property avgTurnaroundHours Average hours per closed ticket for this tech.
+ * @property slaCompliancePct   0–100 % of assigned tickets completed within SLA.
  */
-data class InventoryReport(
-    val lowStock: List<LowStockItem> = emptyList(),
-    val valueSummary: List<InventoryValueSummary> = emptyList(),
-    val outOfStock: Int = 0,
-    val topMoving: List<TopMovingItem> = emptyList(),
+data class TechTicketsRow(
+    val id: String,
+    val name: String,
+    val ticketsAssigned: Int = 0,
+    val ticketsClosed: Int = 0,
+    val avgTurnaroundHours: Double = 0.0,
+    val slaCompliancePct: Double? = null,
+)
+
+/**
+ * One row in the employee performance leaderboard (§15.4).
+ * All numeric fields default to zero so the UI can gracefully handle partial server responses.
+ */
+data class EmployeePerformanceItem(
+    val id: String,
+    val name: String,
+    val ticketsAssigned: Int = 0,
+    val ticketsClosed: Int = 0,
+    val hoursWorked: Double = 0.0,
+    val revenueGenerated: Double = 0.0,
+    val commissionEarned: Double = 0.0,
+    val avgTicketValue: Double = 0.0,
 )
 
 data class ReportsUiState(
@@ -267,22 +246,18 @@ data class ReportsUiState(
     val currentFilterSpec: String = "",
     // Recent transactions list — sourced from local invoice cache for reprint support.
     val recentTransactions: List<SaleTransaction> = emptyList(),
-    // §15.4 — employee performance rows
-    val employeeRows: List<EmployeePerformanceRow> = emptyList(),
-    val isEmployeesLoading: Boolean = false,
-    val employeesError: String? = null,
-    // §15.7 — busy-hours heatmap (7 rows × 24 cols; null = not yet loaded)
-    val busyHoursGrid: List<List<Int>> = emptyList(),
-    val busyHoursPeak: Int = 1,
+    // §15.4 — Employee performance report
+    val employeePerformanceItems: List<EmployeePerformanceItem> = emptyList(),
+    val isEmployeesReportLoading: Boolean = false,
+    val employeesReportError: String? = null,
+    // §15.7 — Busy hours heatmap data (7×24 grid; empty = not yet loaded)
+    val busyHoursData: Array<IntArray> = emptyArray(),
     val isBusyHoursLoading: Boolean = false,
-    // §15.3 — tickets report
+    val busyHoursError: String? = null,
+    // §15.3 — Tickets report
     val ticketsReport: TicketsReport = TicketsReport(),
-    val isTicketsLoading: Boolean = false,
-    val ticketsError: String? = null,
-    // §15.5 — inventory report
-    val inventoryReport: InventoryReport = InventoryReport(),
-    val isInventoryLoading: Boolean = false,
-    val inventoryError: String? = null,
+    val isTicketsReportLoading: Boolean = false,
+    val ticketsReportError: String? = null,
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -412,7 +387,6 @@ class ReportsViewModel @Inject constructor(
             ReportType.SALES -> loadSalesReport()
             ReportType.TICKETS -> loadTicketsReport()
             ReportType.EMPLOYEES -> loadEmployeesReport()
-            ReportType.INVENTORY -> loadInventoryReport()
             ReportType.INSIGHTS -> loadBusyHoursHeatmap()
             else -> Unit
         }
@@ -497,6 +471,168 @@ class ReportsViewModel @Inject constructor(
         _state.update { it.copy(scheduleSnackbar = null) }
     }
 
+    // ── §15.4 — Employee performance report ──────────────────────────────────
+
+    /**
+     * Loads `/reports/employees` for the current date range.
+     * 404 is treated as an empty list so the screen shows an empty state rather than an error.
+     */
+    fun loadEmployeesReport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isEmployeesReportLoading = true, employeesReportError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date" to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getEmployeesReport(filters) }
+                .onSuccess { resp ->
+                    val items = parseEmployeesResponse(resp.data)
+                    _state.update { it.copy(isEmployeesReportLoading = false, employeePerformanceItems = items) }
+                }
+                .onFailure { e ->
+                    // 404 → empty list; any other error surfaces in the UI
+                    val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isEmployeesReportLoading = false,
+                            employeePerformanceItems = emptyList(),
+                            employeesReportError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseEmployeesResponse(data: Map<String, Any>?): List<EmployeePerformanceItem> {
+        if (data == null) return emptyList()
+        val rows = data["employees"] as? List<*> ?: return emptyList()
+        return rows.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            EmployeePerformanceItem(
+                id = (map["id"] as? String) ?: return@mapNotNull null,
+                name = (map["name"] as? String) ?: "Unknown",
+                ticketsAssigned = (map["tickets_assigned"] as? Number)?.toInt() ?: 0,
+                ticketsClosed = (map["tickets_closed"] as? Number)?.toInt() ?: 0,
+                hoursWorked = (map["hours_worked"] as? Number)?.toDouble() ?: 0.0,
+                revenueGenerated = (map["revenue_generated"] as? Number)?.toDouble() ?: 0.0,
+                commissionEarned = (map["commission_earned"] as? Number)?.toDouble() ?: 0.0,
+                avgTicketValue = (map["avg_ticket_value"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }.sortedByDescending { it.revenueGenerated }
+    }
+
+    // ── §15.3 — Tickets report ────────────────────────────────────────────────
+
+    /**
+     * Loads `GET /reports/tickets` for the current date range.
+     *
+     * Expected server shape:
+     * ```json
+     * { "summary": { "total_created": 42, "total_closed": 38,
+     *                "avg_turnaround_hours": 6.4, "sla_breaches": 3 },
+     *   "by_tech": [{ "id": "1", "name": "Alice",
+     *                 "tickets_assigned": 15, "tickets_closed": 13,
+     *                 "avg_turnaround_hours": 5.1, "sla_compliance_pct": 92.3 }] }
+     * ```
+     * 404 is tolerated — caller shows an empty / zero-fill state.
+     */
+    fun loadTicketsReport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isTicketsReportLoading = true, ticketsReportError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date"   to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getTicketsReport(filters) }
+                .onSuccess { resp ->
+                    val report = parseTicketsResponse(resp.data)
+                    _state.update { it.copy(isTicketsReportLoading = false, ticketsReport = report) }
+                }
+                .onFailure { e ->
+                    val isNotFound = e.message?.contains("404") == true
+                        || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isTicketsReportLoading = false,
+                            ticketsReport = TicketsReport(),
+                            ticketsReportError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseTicketsResponse(data: Map<String, Any>?): TicketsReport {
+        if (data == null) return TicketsReport()
+        val summary = data["summary"] as? Map<*, *>
+        val totalCreated = (summary?.get("total_created") as? Number)?.toInt() ?: 0
+        val totalClosed  = (summary?.get("total_closed")  as? Number)?.toInt() ?: 0
+        val avgTurnaround = (summary?.get("avg_turnaround_hours") as? Number)?.toDouble() ?: 0.0
+        val slaBreaches  = (summary?.get("sla_breaches")  as? Number)?.toInt() ?: 0
+        val byTechRaw = data["by_tech"] as? List<*> ?: emptyList<Any>()
+        val byTech = byTechRaw.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            TechTicketsRow(
+                id             = (map["id"] as? String) ?: return@mapNotNull null,
+                name           = (map["name"] as? String) ?: "Unknown",
+                ticketsAssigned = (map["tickets_assigned"] as? Number)?.toInt() ?: 0,
+                ticketsClosed   = (map["tickets_closed"]   as? Number)?.toInt() ?: 0,
+                avgTurnaroundHours = (map["avg_turnaround_hours"] as? Number)?.toDouble() ?: 0.0,
+                slaCompliancePct   = (map["sla_compliance_pct"]   as? Number)?.toDouble(),
+            )
+        }.sortedByDescending { it.ticketsClosed }
+        return TicketsReport(
+            totalCreated      = totalCreated,
+            totalClosed       = totalClosed,
+            avgTurnaroundHours = avgTurnaround,
+            slaBreaches       = slaBreaches,
+            byTech            = byTech,
+        )
+    }
+
+    // ── §15.7 — Busy hours heatmap ────────────────────────────────────────────
+
+    /**
+     * Loads `/reports/busy-hours-heatmap`.
+     * Returns a 7×24 IntArray; 404 / error → shows empty heatmap stub.
+     */
+    fun loadBusyHoursHeatmap() {
+        viewModelScope.launch {
+            _state.update { it.copy(isBusyHoursLoading = true, busyHoursError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date" to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getBusyHoursHeatmap(filters) }
+                .onSuccess { resp ->
+                    val grid = parseBusyHoursResponse(resp.data)
+                    _state.update { it.copy(isBusyHoursLoading = false, busyHoursData = grid) }
+                }
+                .onFailure { e ->
+                    val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isBusyHoursLoading = false,
+                            busyHoursData = emptyArray(),
+                            busyHoursError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseBusyHoursResponse(data: Map<String, Any>?): Array<IntArray> {
+        if (data == null) return emptyArray()
+        val rows = data["rows"] as? List<*> ?: return emptyArray()
+        return Array(rows.size.coerceAtMost(7)) { dayIdx ->
+            val row = rows[dayIdx] as? List<*> ?: return@Array IntArray(24)
+            IntArray(24) { hourIdx -> (row.getOrNull(hourIdx) as? Number)?.toInt() ?: 0 }
+        }
+    }
+
     // ── §15 L1730 — Filter-preservation for drill-through back-stack ──────────
 
     /**
@@ -567,193 +703,6 @@ class ReportsViewModel @Inject constructor(
                     )
                 }
             }
-        }
-    }
-
-    // ── §15.3 — tickets report ────────────────────────────────────────────────
-
-    fun loadTicketsReport() {
-        viewModelScope.launch {
-            _state.update { it.copy(isTicketsLoading = true, ticketsError = null) }
-            runCatching {
-                reportApi.getTicketsReport(
-                    mapOf(
-                        "from_date" to formatServerDate(_state.value.fromDate),
-                        "to_date"   to formatServerDate(_state.value.toDate),
-                    )
-                )
-            }.onSuccess { resp ->
-                val data = resp.data ?: run {
-                    _state.update { it.copy(isTicketsLoading = false) }
-                    return@onSuccess
-                }
-                val summary = data["summary"] as? Map<*, *>
-                val byTech = (data["byTech"] as? List<*>)?.mapNotNull { row ->
-                    val m = row as? Map<*, *> ?: return@mapNotNull null
-                    TechTicketRow(
-                        name         = (m["tech_name"] as? String) ?: "Unknown",
-                        ticketCount  = (m["ticket_count"] as? Number)?.toInt() ?: 0,
-                        closedCount  = (m["closed_count"] as? Number)?.toInt() ?: 0,
-                        totalRevenue = (m["total_revenue"] as? Number)?.toDouble() ?: 0.0,
-                    )
-                } ?: emptyList()
-                val byDay = (data["byDay"] as? List<*>)?.mapNotNull { row ->
-                    val m = row as? Map<*, *> ?: return@mapNotNull null
-                    val day = (m["day"] as? String) ?: return@mapNotNull null
-                    val count = (m["created"] as? Number)?.toLong() ?: 0L
-                    SalesByDayPoint(isoDate = day, totalCents = count) // reuses point type; cents = ticket count
-                } ?: emptyList()
-                _state.update {
-                    it.copy(
-                        isTicketsLoading = false,
-                        ticketsReport = TicketsReport(
-                            totalCreated       = (summary?.get("total_created") as? Number)?.toInt() ?: 0,
-                            totalClosed        = (summary?.get("total_closed") as? Number)?.toInt() ?: 0,
-                            avgTurnaroundHours = (summary?.get("avg_turnaround_hours") as? Number)?.toDouble(),
-                            byTech             = byTech,
-                            byDay              = byDay,
-                        ),
-                    )
-                }
-            }.onFailure { e ->
-                _state.update {
-                    it.copy(
-                        isTicketsLoading = false,
-                        ticketsError = e.message ?: "Failed to load tickets report",
-                    )
-                }
-            }
-        }
-    }
-
-    // ── §15.4 — employee performance ─────────────────────────────────────────
-
-    fun loadEmployeesReport() {
-        viewModelScope.launch {
-            _state.update { it.copy(isEmployeesLoading = true, employeesError = null) }
-            runCatching {
-                reportApi.getEmployeesReport(
-                    mapOf(
-                        "from_date" to formatServerDate(_state.value.fromDate),
-                        "to_date"   to formatServerDate(_state.value.toDate),
-                    )
-                )
-            }.onSuccess { resp ->
-                val rows = (resp.data?.get("rows") as? List<*>)?.mapNotNull { item ->
-                    val m = item as? Map<*, *> ?: return@mapNotNull null
-                    EmployeePerformanceRow(
-                        id               = (m["id"] as? Number)?.toLong() ?: 0L,
-                        name             = (m["name"] as? String) ?: "Unknown",
-                        role             = (m["role"] as? String) ?: "",
-                        ticketsAssigned  = (m["tickets_assigned"] as? Number)?.toInt() ?: 0,
-                        ticketsClosed    = (m["tickets_closed"] as? Number)?.toInt() ?: 0,
-                        commissionEarned = (m["commission_earned"] as? Number)?.toDouble() ?: 0.0,
-                        hoursWorked      = (m["hours_worked"] as? Number)?.toDouble() ?: 0.0,
-                        revenueGenerated = (m["revenue_generated"] as? Number)?.toDouble() ?: 0.0,
-                    )
-                } ?: emptyList()
-                _state.update { it.copy(isEmployeesLoading = false, employeeRows = rows) }
-            }.onFailure { e ->
-                _state.update {
-                    it.copy(
-                        isEmployeesLoading = false,
-                        employeesError = e.message ?: "Failed to load employee report",
-                    )
-                }
-            }
-        }
-    }
-
-    // ── §15.5 — inventory report ──────────────────────────────────────────────
-
-    fun loadInventoryReport() {
-        viewModelScope.launch {
-            _state.update { it.copy(isInventoryLoading = true, inventoryError = null) }
-            runCatching { reportApi.getInventoryReport() }
-                .onSuccess { resp ->
-                    val data = resp.data ?: run {
-                        _state.update { it.copy(isInventoryLoading = false) }
-                        return@onSuccess
-                    }
-                    val lowStock = (data["lowStock"] as? List<*>)?.mapNotNull { item ->
-                        val m = item as? Map<*, *> ?: return@mapNotNull null
-                        LowStockItem(
-                            id           = (m["id"] as? Number)?.toLong() ?: 0L,
-                            name         = (m["name"] as? String) ?: "",
-                            sku          = (m["sku"] as? String) ?: "",
-                            inStock      = (m["in_stock"] as? Number)?.toInt() ?: 0,
-                            reorderLevel = (m["reorder_level"] as? Number)?.toInt() ?: 0,
-                        )
-                    } ?: emptyList()
-                    val valueSummary = (data["valueSummary"] as? List<*>)?.mapNotNull { item ->
-                        val m = item as? Map<*, *> ?: return@mapNotNull null
-                        InventoryValueSummary(
-                            itemType         = (m["item_type"] as? String) ?: "",
-                            itemCount        = (m["item_count"] as? Number)?.toInt() ?: 0,
-                            totalUnits       = (m["total_units"] as? Number)?.toInt() ?: 0,
-                            totalCostValue   = (m["total_cost_value"] as? Number)?.toDouble() ?: 0.0,
-                            totalRetailValue = (m["total_retail_value"] as? Number)?.toDouble() ?: 0.0,
-                        )
-                    } ?: emptyList()
-                    val topMoving = (data["topMoving"] as? List<*>)?.mapNotNull { item ->
-                        val m = item as? Map<*, *> ?: return@mapNotNull null
-                        TopMovingItem(
-                            name    = (m["name"] as? String) ?: "",
-                            sku     = (m["sku"] as? String) ?: "",
-                            usedQty = (m["used_qty"] as? Number)?.toInt() ?: 0,
-                            inStock = (m["in_stock"] as? Number)?.toInt() ?: 0,
-                        )
-                    } ?: emptyList()
-                    val outOfStock = (data["outOfStock"] as? Number)?.toInt() ?: 0
-                    _state.update {
-                        it.copy(
-                            isInventoryLoading = false,
-                            inventoryReport = InventoryReport(
-                                lowStock     = lowStock,
-                                valueSummary = valueSummary,
-                                outOfStock   = outOfStock,
-                                topMoving    = topMoving,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { e ->
-                    _state.update {
-                        it.copy(
-                            isInventoryLoading = false,
-                            inventoryError = e.message ?: "Failed to load inventory report",
-                        )
-                    }
-                }
-        }
-    }
-
-    // ── §15.7 — busy-hours heatmap ────────────────────────────────────────────
-
-    fun loadBusyHoursHeatmap() {
-        viewModelScope.launch {
-            _state.update { it.copy(isBusyHoursLoading = true) }
-            runCatching { reportApi.getBusyHoursHeatmap() }
-                .onSuccess { resp ->
-                    // grid is a JSON array of arrays: [[Int,…]×24]×7
-                    val rawGrid = resp.data?.get("grid") as? List<*>
-                    val grid: List<List<Int>> = rawGrid?.mapNotNull { row ->
-                        (row as? List<*>)?.mapNotNull { cell ->
-                            (cell as? Number)?.toInt()
-                        }?.takeIf { it.size == 24 }
-                    } ?: emptyList()
-                    val peak = ((resp.data?.get("peak") as? Number)?.toInt() ?: 1).coerceAtLeast(1)
-                    _state.update {
-                        it.copy(
-                            isBusyHoursLoading = false,
-                            busyHoursGrid = grid,
-                            busyHoursPeak = peak,
-                        )
-                    }
-                }
-                .onFailure {
-                    _state.update { it.copy(isBusyHoursLoading = false) }
-                }
         }
     }
 
@@ -846,6 +795,10 @@ class ReportsViewModel @Inject constructor(
 fun ReportsScreen(
     navController: NavController = rememberNavController(),
     viewModel: ReportsViewModel = hiltViewModel(),
+    // §3.14 L591 — empty-state primary CTA when zero-data tenant. When non-null,
+    // the EmptyStateIllustration shows "Open POS" CTA to start first sale.
+    // Default no-op so existing call-sites without the wiring still compile.
+    onOpenPos: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -937,22 +890,37 @@ fun ReportsScreen(
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                when (state.selectedReportType) {
-                    ReportType.SALES -> SalesTabContent(
-                        state = state,
-                        selectedTabIndex = selectedTabIndex,
-                        viewModel = viewModel,
-                        onDrillThroughDate = { date ->
-                            viewModel.rememberFilterForDrill()
-                            navController.navigate("tickets?date=$date")
-                        },
-                    )
-                    ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
-                    ReportType.EMPLOYEES -> EmployeesReportScreen(state = state, viewModel = viewModel)
-                    ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
-                    ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
-                    ReportType.INSIGHTS -> InsightsScreen(state = state, viewModel = viewModel)
-                    ReportType.CUSTOM -> CustomReportScreen()
+                // §3.14 L591 — Zero-data tenant empty state: if no sales have been
+                // recorded yet (totalRevenue == 0 and revenueToday == 0), show the
+                // rich EmptyStateIllustration with "Open POS" CTA instead of tabs.
+                if (!state.isLoading && state.salesReport.totalRevenue == 0.0 && state.revenueToday == 0.0) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        com.bizarreelectronics.crm.ui.components.EmptyStateIllustration(
+                            emoji = "📊",
+                            title = "No report data yet",
+                            subtitle = "Come back after your first sale.",
+                            primaryCta = "Open POS",
+                            onPrimaryCta = onOpenPos,
+                        )
+                    }
+                } else {
+                    when (state.selectedReportType) {
+                        ReportType.SALES -> SalesTabContent(
+                            state = state,
+                            selectedTabIndex = selectedTabIndex,
+                            viewModel = viewModel,
+                            onDrillThroughDate = { date ->
+                                viewModel.rememberFilterForDrill()
+                                navController.navigate("tickets?date=$date")
+                            },
+                        )
+                        ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
+                        ReportType.EMPLOYEES -> EmployeesReportScreen(viewModel = viewModel)
+                        ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
+                        ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
+                        ReportType.INSIGHTS -> InsightsScreen(viewModel = viewModel)
+                        ReportType.CUSTOM -> CustomReportScreen()
+                    }
                 }
             }
         }
@@ -1044,364 +1012,6 @@ private fun SalesReportScreenInline(
         onCustomRangeSelected = viewModel::setCustomRange,
         onRetry = viewModel::loadSalesReport,
     )
-}
-
-// ─── Placeholder sub-report screens ──────────────────────────────────────────
-
-/**
- * Employee performance report (ActionPlan §15.4).
- *
- * Wired to GET /reports/employees. Shows a leaderboard table with:
- *   - Name / role
- *   - Tickets assigned vs closed
- *   - Hours worked (from clock_entries)
- *   - Revenue generated (payments attributed to this user)
- *   - Commission earned
- *
- * Data is loaded on demand when the EMPLOYEES segment is selected.
- * NOTE §15.4: "Label breakdowns" (15.3) — no /reports/tickets?labels server endpoint;
- * ticket_labels are not yet aggregated in the reports route.  Left [ ] until server ships.
- */
-@Composable
-private fun EmployeesReportScreen(
-    state: ReportsUiState,
-    viewModel: ReportsViewModel,
-) {
-    LaunchedEffect(Unit) {
-        if (state.employeeRows.isEmpty() && !state.isEmployeesLoading) {
-            viewModel.loadEmployeesReport()
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            BrandTopAppBar(
-                title = "Employee Performance",
-                actions = {
-                    ReportsExportActions(
-                        reportTitle = "Employee_Performance",
-                        csvContent = { buildEmployeesCsv(state.employeeRows) },
-                    )
-                },
-            )
-        },
-    ) { padding ->
-        when {
-            state.isEmployeesLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            state.employeesError != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ErrorState(
-                        message = state.employeesError,
-                        onRetry = { viewModel.loadEmployeesReport() },
-                    )
-                }
-            }
-            state.employeeRows.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "No employee data for this period.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(32.dp),
-                    )
-                }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        Text(
-                            "Leaderboard",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                    }
-                    items(state.employeeRows, key = { it.id }) { row ->
-                        EmployeePerformanceCard(row = row)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmployeePerformanceCard(row: EmployeePerformanceRow) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                contentDescription = buildString {
-                    append("${row.name}, ${row.role}. ")
-                    append("${row.ticketsClosed} of ${row.ticketsAssigned} tickets closed. ")
-                    append("Hours worked: ${"%.1f".format(row.hoursWorked)}. ")
-                    append("Revenue: ${CurrencyFormatter.format(row.revenueGenerated)}. ")
-                    append("Commission: ${CurrencyFormatter.format(row.commissionEarned)}.")
-                }
-            },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(row.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        row.role.replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    CurrencyFormatter.format(row.revenueGenerated),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                EmployeeStatChip(label = "Tickets", value = "${row.ticketsClosed}/${row.ticketsAssigned}")
-                EmployeeStatChip(label = "Hours", value = "${"%.1f".format(row.hoursWorked)} h")
-                EmployeeStatChip(label = "Commission", value = CurrencyFormatter.format(row.commissionEarned))
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmployeeStatChip(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private fun buildEmployeesCsv(rows: List<EmployeePerformanceRow>): String = buildString {
-    appendLine("Name,Role,Tickets Assigned,Tickets Closed,Hours Worked,Revenue Generated,Commission Earned")
-    rows.forEach { r ->
-        appendLine("${r.name},${r.role},${r.ticketsAssigned},${r.ticketsClosed},${"%.2f".format(r.hoursWorked)},${"%.2f".format(r.revenueGenerated)},${"%.2f".format(r.commissionEarned)}")
-    }
-}
-
-/**
- * Insights screen (ActionPlan §15.7).
- *
- * Wired to GET /reports/busy-hours-heatmap.  Renders a 7×24 ticket-volume
- * heatmap (Canvas-drawn grid) where cell opacity scales linearly from 0 to
- * peak.  Tapping a cell fires [onDrillThroughDow] → filters tickets to that
- * day-of-week (formatted as "dow=N" query param).
- *
- * BI widget cards (Profit Hero, Churn, Forecast) continue to point to the
- * Dashboard where those widgets already live (shipped in commit 12a8756).
- */
-@Composable
-private fun InsightsScreen(
-    state: ReportsUiState,
-    viewModel: ReportsViewModel,
-) {
-    LaunchedEffect(Unit) {
-        if (state.busyHoursGrid.isEmpty() && !state.isBusyHoursLoading) {
-            viewModel.loadBusyHoursHeatmap()
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        // Heatmap card
-        item {
-            ChartSection(title = "Busy Hours Heatmap") {
-                when {
-                    state.isBusyHoursLoading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    state.busyHoursGrid.isEmpty() -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "No ticket data available.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
-                    else -> {
-                        BusyHoursHeatmap(
-                            grid = state.busyHoursGrid,
-                            peak = state.busyHoursPeak,
-                        )
-                    }
-                }
-            }
-        }
-
-        // BI pointer card — dashboard widgets already live there
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Insights,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Column {
-                        Text(
-                            "AI Business Insights",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "Profit Hero, Churn, Forecast, and Missing Parts cards live on the Dashboard.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Canvas-drawn busy-hours heatmap.
- *
- * grid[dow][hour] — dow 0=Sun, hour 0–23.  Cell color is the theme primary
- * blended from 0% to 100% alpha against the surface color proportionally to
- * value / peak.  Row labels (Sun–Sat) are drawn on the left; hour ticks are
- * drawn along the top (every 6 hours: 0, 6, 12, 18).
- *
- * TalkBack: a single contentDescription summarises the peak dow and hour.
- */
-@Composable
-private fun BusyHoursHeatmap(
-    grid: List<List<Int>>,
-    peak: Int,
-    modifier: Modifier = Modifier,
-) {
-    val dayLabels = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-    val primary = MaterialTheme.colorScheme.primary
-
-    // Find busiest (dow, hour) for a11y
-    var peakDow = 0; var peakHour = 0
-    for (d in grid.indices) {
-        for (h in grid[d].indices) {
-            if (grid[d][h] > (grid.getOrNull(peakDow)?.getOrNull(peakHour) ?: 0)) {
-                peakDow = d; peakHour = h
-            }
-        }
-    }
-    val a11yDesc = if (grid.isNotEmpty()) {
-        "Busy hours heatmap. Busiest: ${dayLabels.getOrElse(peakDow) { "?" }} at ${peakHour}:00."
-    } else "No data"
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = a11yDesc },
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        // Hour header (0, 6, 12, 18, 23)
-        Row(modifier = Modifier.fillMaxWidth().padding(start = 36.dp)) {
-            listOf(0, 6, 12, 18).forEach { h ->
-                Text(
-                    "$h",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(6f),
-                )
-            }
-            // filler for last 5 columns (19–23)
-            Spacer(modifier = Modifier.weight(4f))
-        }
-
-        for (dow in 0 until 7) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Day label
-                Text(
-                    dayLabels.getOrElse(dow) { "" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(32.dp),
-                )
-                // 24 cells
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(1.dp),
-                ) {
-                    for (hour in 0 until 24) {
-                        val value = grid.getOrNull(dow)?.getOrNull(hour) ?: 0
-                        val alpha = if (peak > 0) value.toFloat() / peak.toFloat() else 0f
-                        val cellColor = primary.copy(alpha = alpha.coerceIn(0.05f, 1f))
-                        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            drawRect(color = cellColor)
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ─── §15 L1758 — Schedule report bottom sheet ────────────────────────────────
@@ -2074,7 +1684,7 @@ private fun RevenueChangeCard(changePct: Double) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
-                if (isPositive) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                if (isPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                 // decorative — non-clickable revenue change card; sibling Text siblings carry the announcement
                 contentDescription = null,
                 tint = textColor,

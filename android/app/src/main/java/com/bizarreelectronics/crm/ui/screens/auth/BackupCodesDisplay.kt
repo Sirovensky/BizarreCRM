@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.ui.theme.clickableHover
 import com.bizarreelectronics.crm.util.ClipboardUtil
 
 /**
@@ -165,7 +166,7 @@ fun BackupCodesDisplay(
                             clearAfterMillis = 30_000L,
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickableHover(),
                 ) {
                     Icon(
                         Icons.Default.ContentCopy,
@@ -199,6 +200,7 @@ fun BackupCodesDisplay(
             Button(
                 onClick = onDismiss,
                 enabled = savedConfirmed,
+                modifier = Modifier.clickableHover(),
             ) {
                 Text("Done — go to dashboard")
             }

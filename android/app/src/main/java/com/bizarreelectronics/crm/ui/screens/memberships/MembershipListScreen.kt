@@ -17,16 +17,19 @@ import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.remote.api.MembershipTier
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.formatAsMoney
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 /**
- * Membership list — active members, tier summary chips, and enroll CTA.
+ * Membership list — active members, tier summary chips, enroll CTA,
+ * cancel-membership ConfirmDialog, and loyalty-point badges.
  *
  * Shows "Not available on this server" when the server returns 404.
- * Plan §38.1 / §38.2 L3001-L3011.
+ * Plan §38.1 / §38.2 L3302-L3311.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,7 +40,9 @@ fun MembershipListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val enrollState by viewModel.enrollState.collectAsState()
+    val cancelState by viewModel.cancelState.collectAsState()
     var showEnrollDialog by remember { mutableStateOf(false) }
+    var cancelTarget by remember { mutableStateOf<Membership?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Surface enroll result via snackbar
@@ -51,6 +56,22 @@ fun MembershipListScreen(
             is EnrollState.Error -> {
                 snackbarHostState.showSnackbar(s.message)
                 viewModel.clearEnrollState()
+            }
+            else -> Unit
+        }
+    }
+
+    // Surface cancel result via snackbar
+    LaunchedEffect(cancelState) {
+        when (val s = cancelState) {
+            is CancelState.Success -> {
+                snackbarHostState.showSnackbar("Membership cancelled")
+                viewModel.clearCancelState()
+                cancelTarget = null
+            }
+            is CancelState.Error -> {
+                snackbarHostState.showSnackbar(s.message)
+                viewModel.clearCancelState()
             }
             else -> Unit
         }
@@ -89,7 +110,14 @@ fun MembershipListScreen(
             }
 
             is MembershipUiState.NotAvailable -> {
-                NotAvailableCard(modifier = Modifier.padding(padding).padding(16.dp))
+                // §38 — server doesn't support memberships; show branded EmptyState
+                EmptyState(
+                    icon = Icons.Default.CardMembership,
+                    title = "Memberships unavailable",
+                    subtitle = "Update your server to enable membership tiers and loyalty points.",
+                    action = null,
+                    includeWave = true,
+                )
             }
 
             is MembershipUiState.Error -> {
@@ -104,13 +132,14 @@ fun MembershipListScreen(
                     tiers = state.tiers,
                     memberships = state.memberships,
                     onNavigateToCustomer = onNavigateToCustomer,
+                    onCancelMembership = { membership -> cancelTarget = membership },
                     modifier = Modifier.padding(padding),
                 )
             }
         }
     }
 
-    // Enroll dialog
+    // ── Enroll dialog ────────────────────────────────────────────────────────
     if (showEnrollDialog) {
         val tiers = (uiState as? MembershipUiState.Ready)?.tiers ?: emptyList()
         EnrollMemberDialog(
@@ -125,6 +154,24 @@ fun MembershipListScreen(
             },
         )
     }
+
+    // ── Cancel confirm dialog ─────────────────────────────────────────────────
+    cancelTarget?.let { membership ->
+        ConfirmDialog(
+            title = "Cancel membership?",
+            message = "Cancel the ${membership.tierName ?: "membership"} for Customer #${membership.customerId}? " +
+                "This will take effect at the end of the current period.",
+            confirmLabel = "Cancel membership",
+            onConfirm = {
+                viewModel.cancelMembership(membership.id, immediate = false)
+            },
+            onDismiss = {
+                cancelTarget = null
+                viewModel.clearCancelState()
+            },
+            isDestructive = true,
+        )
+    }
 }
 
 // ─── Content ─────────────────────────────────────────────────────────────────
@@ -134,6 +181,7 @@ private fun MembershipContent(
     tiers: List<MembershipTier>,
     memberships: List<Membership>,
     onNavigateToCustomer: (Long) -> Unit,
+    onCancelMembership: (Membership) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -166,10 +214,13 @@ private fun MembershipContent(
 
         if (memberships.isEmpty()) {
             item {
-                Text(
-                    "No active memberships yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // §38 — branded EmptyState for zero members
+                EmptyState(
+                    icon = Icons.Default.GroupAdd,
+                    title = "No members yet",
+                    subtitle = "Enroll a customer to start tracking memberships and loyalty points.",
+                    includeWave = false,
+                    action = null,
                 )
             }
         } else {
@@ -177,6 +228,7 @@ private fun MembershipContent(
                 MembershipRow(
                     membership = membership,
                     onClick = { onNavigateToCustomer(membership.customerId) },
+                    onCancel = { onCancelMembership(membership) },
                 )
             }
         }
@@ -213,6 +265,7 @@ fun TierChip(
 private fun MembershipRow(
     membership: Membership,
     onClick: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     BrandCard {
         ListItem(
@@ -241,12 +294,28 @@ private fun MembershipRow(
             },
             trailingContent = {
                 Column(horizontalAlignment = Alignment.End) {
+                    // §38.3 — loyalty points badge
                     Text(
                         "${membership.points} pts",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    // Cancel action inline — triggers ConfirmDialog in parent
+                    if (membership.status == "active") {
+                        TextButton(
+                            onClick = onCancel,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        ) {
+                            Text(
+                                "Cancel",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -348,34 +417,4 @@ private fun EnrollMemberDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
-}
-
-// ─── Not-available card ───────────────────────────────────────────────────────
-
-@Composable
-private fun NotAvailableCard(modifier: Modifier = Modifier) {
-    BrandCard(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(24.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                Icons.Default.CardMembership,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(40.dp),
-            )
-            Text(
-                "Memberships not available on this server",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Update your server to enable membership tiers and loyalty points.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }

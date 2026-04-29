@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.checkin.entry
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,13 +27,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DevicesOther
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.TabletAndroid
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,7 +93,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun CheckInEntryScreen(
     onCancel: () -> Unit,
-    onStartCheckIn: (customerId: Long, customerName: String, deviceName: String) -> Unit,
+    onStartCheckIn: (customerId: Long, customerName: String, deviceName: String, deviceModelId: Long?) -> Unit,
     preFillCustomerId: Long = -1L,
     viewModel: CheckInEntryViewModel = hiltViewModel(),
 ) {
@@ -109,36 +122,42 @@ fun CheckInEntryScreen(
         step1.attachedCustomer == null
     ) 1 else currentStep
 
-    Scaffold(
-        topBar = {
-            CheckInEntryTopBar(
-                currentStep = effectiveStep,
-                onBack = { if (effectiveStep == 0) onCancel() else viewModel.goBack() },
-            )
-        },
+    val ctaLabel = if (effectiveStep == 1) "Start check-in →" else "Next — Device info"
+    val canAdvance = if (effectiveStep == 0) step1.attachedCustomer != null
+                     else step2.deviceModel.isNotBlank()
+
+    // System back gesture: at step 1 (Device) intercept and step back to
+    // Customer instead of popping the destination. At step 0 fall through
+    // to default back (calls onCancel via the top-bar arrow path).
+    BackHandler(enabled = effectiveStep > 0) { viewModel.goBack() }
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "Check-in",
+        subtitle = if (effectiveStep == 0) "Step 2 of 8 · Customer" else "Step 3 of 8 · Device",
+        // entry/0 customer = step 2; entry/1 device = step 3 (POS Home is step 1).
+        stepIndex = effectiveStep + 1,
+        totalSteps = 8,
+        onBack = { if (effectiveStep == 0) onCancel() else viewModel.goBack() },
         bottomBar = {
-            CheckInEntryBottomBar(
-                currentStep = effectiveStep,
-                // Read from the collected state (step1/step2) — NOT from the
-                // VM's plain-getter properties — so recomposition kicks in
-                // when attachedCustomer / deviceModel change. Reading via
-                // `viewModel.canAdvanceStep1` took a non-Compose-tracked
-                // snapshot that left the button stuck-disabled after
-                // attachCustomer() or attachWalkIn().
-                canAdvance = if (effectiveStep == 0) step1.attachedCustomer != null
-                             else step2.deviceModel.isNotBlank(),
-                onAdvance = {
+            Button(
+                onClick = {
                     if (effectiveStep == 0) {
                         viewModel.advance()
                     } else {
-                        val customer = step1.attachedCustomer ?: return@CheckInEntryBottomBar
+                        val customer = step1.attachedCustomer ?: return@Button
                         val deviceName = step2.deviceModel.trim()
-                        onStartCheckIn(customer.id, customer.name, deviceName)
+                        onStartCheckIn(customer.id, customer.name, deviceName, step2.selectedModelId)
                     }
                 },
-            )
+                enabled = canAdvance,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = ctaLabel },
+            ) {
+                Text(ctaLabel)
+            }
         },
     ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
         when (effectiveStep) {
             0 -> Step1CustomerContent(
                 state = step1,
@@ -180,59 +199,17 @@ fun CheckInEntryScreen(
                 onSelectOnFileDevice = viewModel::selectOnFileDevice,
                 onAddNewDevice = viewModel::toggleManualEntry,
                 onDeviceTypeSelected = viewModel::onDeviceTypeSelected,
+                onManufacturerSelected = viewModel::onManufacturerSelected,
+                onModelSelected = viewModel::onModelSelected,
+                onDrillBack = viewModel::onDrillBack,
             )
         }
+        } // close Column
     }
 }
 
-// ─── Top bar ─────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CheckInEntryTopBar(currentStep: Int, onBack: () -> Unit) {
-    val label = if (currentStep == 0) "1 of 2 · Customer" else "2 of 2 · Device"
-    TopAppBar(
-        title = {
-            Column {
-                Text("Check-in", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        navigationIcon = {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.semantics { contentDescription = "Go back" },
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-            }
-        },
-    )
-}
-
-// ─── Bottom bar ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun CheckInEntryBottomBar(
-    currentStep: Int,
-    canAdvance: Boolean,
-    onAdvance: () -> Unit,
-) {
-    val label = if (currentStep == 1) "Start check-in →" else "Next — Device info"
-    Button(
-        onClick = onAdvance,
-        enabled = canAdvance,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .semantics { contentDescription = label },
-    ) {
-        Text(label)
-    }
-}
+// Top + bottom bar moved to PosFlowScaffold (see ui/components/shared/PosFlowScaffold.kt)
+// for cohesive POS-to-Ticket chrome — same wave/back/CTA shape across all flow screens.
 
 // ─── Step 1: Customer ─────────────────────────────────────────────────────────
 
@@ -253,10 +230,10 @@ private fun Step1CustomerContent(
     onNewEmail: (String) -> Unit,
     onSubmitNew: () -> Unit,
 ) {
+    // Outer Column already applies paddingValues — don't double-count.
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -283,6 +260,12 @@ private fun Step1CustomerContent(
                             selected = false,
                             onClick = { onAttachRecent(c) },
                             label = { Text(c.name) },
+                            // Defensive brand colors so if the selected
+                            // state is ever surfaced, the chip stays cream
+                            // like every other FilterChip in the flow
+                            // instead of falling back to the M3 default
+                            // teal `secondaryContainer`.
+                            colors = FilterChipDefaults.brandColors(),
                             modifier = Modifier.semantics { contentDescription = "Select recent customer ${c.name}" },
                         )
                     }
@@ -382,14 +365,20 @@ private fun Step2DeviceContent(
     onSelectOnFileDevice: (Long) -> Unit = {},
     onAddNewDevice: () -> Unit = {},
     onDeviceTypeSelected: (String?) -> Unit = {},
+    onManufacturerSelected: (Long?) -> Unit = {},
+    onModelSelected: (com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem) -> Unit = {},
+    onDrillBack: () -> Unit = {},
 ) {
+    // Outer Column in CheckInEntryScreen already applies paddingValues from
+    // PosFlowScaffold. Re-applying here would double-count the top/bottom
+    // bar inset and squeeze content (top empty + bottom rows covered by
+    // shelf). Use fillMaxSize only; safe scroll buffer via contentPadding.
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(paddingValues)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
     ) {
         // Mockup PHONE 2 'ON FILE · N' header + selectable rows.
         if (state.onFileDevices.isNotEmpty()) {
@@ -430,52 +419,146 @@ private fun Step2DeviceContent(
         // 'Add new device' or selects nothing. Stays as a 3-field stack so
         // the existing text-field layout doesn't regress.
         if (state.showManualEntry) {
-            // 2026-04-26 — device-type chip-row pulled from server-driven
-            // DeviceCategoryRepository (refreshed at app start). Phone /
-            // Tablet / Laptop / TV / Game Console / Desktop tap-to-select.
-            item {
-                Text(
-                    "TYPE",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+            // 2026-04-27 — drill-down: CATEGORY tiles → MANUFACTURER tiles → MODEL tiles → DETAILS fields.
+            // Each step renders a 2-column tile grid matching the issue-tile mockup
+            // (ios/pos-phone-mockups.html). Back chip on non-root steps reverts one level.
+            val drillHeader = when (state.drillStep) {
+                com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.CATEGORY -> "TYPE"
+                com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.MANUFACTURER -> "MAKE"
+                com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.MODEL -> "MODEL"
+                com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.DETAILS -> "DEVICE"
             }
             item {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                ) {
-                    items(state.deviceCategories, key = { it.slug }) { cat ->
-                        FilterChip(
-                            selected = state.selectedDeviceType == cat.slug,
-                            onClick = {
-                                onDeviceTypeSelected(
-                                    if (state.selectedDeviceType == cat.slug) null else cat.slug
-                                )
-                            },
-                            label = { Text(cat.label) },
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (state.drillStep != com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.CATEGORY) {
+                        IconButton(onClick = onDrillBack, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Text(
+                        drillHeader,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            // CATEGORY tile grid
+            if (state.drillStep == com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.CATEGORY) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.deviceCategories.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { cat ->
+                                    DeviceTypeTile(
+                                        slug = cat.slug,
+                                        label = cat.label,
+                                        selected = state.selectedDeviceType == cat.slug,
+                                        onClick = { onDeviceTypeSelected(cat.slug) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }
-            item {
-                OutlinedTextField(
-                    value = state.deviceModel,
-                    onValueChange = onDeviceModelChange,
-                    label = { Text("Device model *") },
-                    placeholder = { Text("e.g. iPhone 15 Pro") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Words,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .semantics { contentDescription = "Device model field, required" },
-                )
+            // MANUFACTURER tile grid
+            if (state.drillStep == com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.MANUFACTURER) {
+                if (state.drillLoading) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text("Loading…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else if (state.manufacturers.isEmpty()) {
+                    item {
+                        Text(
+                            state.drillError ?: "No manufacturers found for this category.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    }
+                } else {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.manufacturers.chunked(2).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    row.forEach { m ->
+                                        ManufacturerTile(
+                                            label = m.name,
+                                            modelCount = m.modelCount,
+                                            selected = state.selectedManufacturerId == m.id,
+                                            onClick = { onManufacturerSelected(m.id) },
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            // MODEL tile grid
+            if (state.drillStep == com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.MODEL) {
+                if (state.drillLoading) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text("Loading…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else if (state.models.isEmpty()) {
+                    item {
+                        Text(
+                            state.drillError ?: "No models found.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    }
+                } else {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.models.chunked(2).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    row.forEach { m ->
+                                        ModelTile(
+                                            label = m.name,
+                                            year = m.releaseYear,
+                                            onClick = { onModelSelected(m) },
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // DETAILS — show device-model field (pre-filled) + IMEI + notes only after drill complete.
+            if (state.drillStep == com.bizarreelectronics.crm.ui.screens.checkin.entry.DeviceDrillStep.DETAILS) {
+                item {
+                    OutlinedTextField(
+                        value = state.deviceModel,
+                        onValueChange = onDeviceModelChange,
+                        label = { Text("Device model *") },
+                        placeholder = { Text("e.g. iPhone 15 Pro") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Next,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .semantics { contentDescription = "Device model field, required" },
+                    )
+                }
             item {
                 OutlinedTextField(
                     value = state.imeiSerial,
@@ -507,6 +590,150 @@ private fun Step2DeviceContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Color or capacity note field, optional" },
+                )
+            }
+            } // close DETAILS step
+        }
+    }
+}
+
+/**
+ * Device-type picker tile (mockup parity: ios/pos-phone-mockups.html issues
+ * grid). 2-col grid item, surface bg, cream primary border 1.5dp on select,
+ * outline 1dp idle, RoundedCornerShape(10dp), padding 12dp, 96dp tall.
+ * Icon picked from Material from category slug; falls back to DevicesOther.
+ */
+@Composable
+private fun DeviceTypeTile(
+    slug: String,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val borderWidth = if (selected) 1.5.dp else 1.dp
+    val labelColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val iconTint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val icon = when (slug) {
+        "phone", "smartphone" -> Icons.Filled.Smartphone
+        "tablet" -> Icons.Filled.TabletAndroid
+        "laptop" -> Icons.Filled.Laptop
+        "desktop" -> Icons.Filled.Print
+        "tv" -> Icons.Filled.Tv
+        "game-console", "console" -> Icons.Filled.SportsEsports
+        "watch", "smartwatch" -> Icons.Filled.Watch
+        "drone" -> Icons.Filled.DevicesOther
+        "headphones" -> Icons.Filled.Headphones
+        else -> Icons.Filled.DevicesOther
+    }
+    Surface(
+        modifier = modifier
+            .height(96.dp)
+            .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
+            .clickable(onClickLabel = "Select $label") { onClick() },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp).fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = labelColor,
+            )
+        }
+    }
+}
+
+/** Manufacturer drill tile — same dimensions as DeviceTypeTile but no icon (text-only). */
+@Composable
+private fun ManufacturerTile(
+    label: String,
+    modelCount: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val borderWidth = if (selected) 1.5.dp else 1.dp
+    val labelColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    Surface(
+        modifier = modifier
+            .height(96.dp)
+            .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
+            .clickable(onClickLabel = "Select $label") { onClick() },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp).fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = labelColor,
+            )
+            if (modelCount > 0) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "$modelCount models",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** Model drill tile — model name + optional release year. */
+@Composable
+private fun ModelTile(
+    label: String,
+    year: Int?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .height(96.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+            .clickable(onClickLabel = "Select $label") { onClick() },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp).fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+            )
+            if (year != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = year.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -610,53 +837,15 @@ private fun AddNewDeviceTile(expanded: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun AttachedCustomerBanner(customer: AttachedCustomerEntry, onDetach: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    customer.name.take(2).uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondary,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(customer.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                customer.phone?.let { ph ->
-                    Text(
-                        "$ph · ${customer.ticketCount} tickets",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Icon(
-                Icons.Filled.Check,
-                contentDescription = "Customer attached",
-                tint = MaterialTheme.colorScheme.secondary,
-            )
-            IconButton(
-                onClick = onDetach,
-                modifier = Modifier.semantics { contentDescription = "Remove attached customer" },
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = null)
-            }
-        }
-    }
+    val sub = listOfNotNull(
+        customer.phone,
+        "${customer.ticketCount} ${if (customer.ticketCount == 1) "ticket" else "tickets"}",
+    ).joinToString(" · ").ifBlank { null }
+    com.bizarreelectronics.crm.ui.components.shared.CustomerHeaderPill(
+        name = customer.name,
+        subtitle = sub,
+        onDetach = onDetach,
+    )
 }
 
 @Composable
@@ -681,14 +870,14 @@ private fun CustomerSearchRow(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.tertiary),
+                .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 initials,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiary,
+                color = MaterialTheme.colorScheme.onPrimary,
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -863,6 +1052,11 @@ private fun CreateNewCustomerForm(
                     imeAction = ImeAction.Next,
                 ),
                 isError = state.createError != null && state.newFirstName.isBlank(),
+                // §26.1 — supportingText is read by TalkBack when isError=true so the
+                // error is announced inline rather than only visible on screen.
+                supportingText = if (state.createError != null && state.newFirstName.isBlank()) {
+                    { Text("First name is required") }
+                } else null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics { contentDescription = "First name field, required" },

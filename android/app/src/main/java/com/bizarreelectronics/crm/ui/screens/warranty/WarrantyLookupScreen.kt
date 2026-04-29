@@ -1,94 +1,101 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.bizarreelectronics.crm.ui.screens.warranty
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.bizarreelectronics.crm.data.remote.dto.WarrantyResult
+import com.bizarreelectronics.crm.R
+import com.bizarreelectronics.crm.data.remote.api.WarrantyLookupRowDto
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
-import com.bizarreelectronics.crm.ui.components.shared.EmptyState
-import com.bizarreelectronics.crm.util.DateFormatter
 
 /**
- * §46.1 — Standalone Warranty Lookup screen.
+ * §46.1 — Warranty lookup screen.
  *
- * Search by IMEI / serial / phone / customer last name.
- * Results show device name, warranty duration, expiry, eligibility chip.
- * Tapping a record reveals a "Create warranty-return ticket" CTA that calls
- * POST /warranties/:id/claim via [WarrantyLookupViewModel].
- * Back-press with a record selected shows [ConfirmDialog] before discarding.
+ * ### Flow
+ * 1. Search by IMEI / Serial / Phone.
+ * 2. Results list: each matched record shows device, install date, expiry, active badge.
+ * 3. Tap "Create warranty-return ticket" → [ConfirmDialog] → [onCreateWarrantyTicket].
  *
- * @param onNavigateToTicket  Navigate to the newly created ticket after claim.
- * @param onBack              Pop this screen from the back stack.
+ * @param onCreateWarrantyTicket  Navigate to check-in pre-filled for warranty return,
+ *                                carrying the [ticketId] of the source repair.
+ * @param onBack                  Pop this screen from the back stack.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WarrantyLookupScreen(
-    onNavigateToTicket: (ticketId: Long) -> Unit,
+    onCreateWarrantyTicket: (sourceTicketId: Long) -> Unit,
     onBack: () -> Unit,
     viewModel: WarrantyLookupViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHost = remember { SnackbarHostState() }
-    var showCloseConfirm by remember { mutableStateOf(false) }
 
-    // Handle branch outcomes
-    LaunchedEffect(state.claimResult) {
-        val result = state.claimResult ?: return@LaunchedEffect
-        when (result.branch) {
-            "within", "out" -> {
-                result.newTicketId?.let { onNavigateToTicket(it) }
-                viewModel.clearClaimResult()
-            }
-            "manual" -> {
-                snackbarHost.showSnackbar(result.message ?: "Manual review required — contact the manager.")
-                viewModel.clearClaimResult()
-            }
-        }
-    }
-    LaunchedEffect(state.claimError) {
-        val err = state.claimError ?: return@LaunchedEffect
+    LaunchedEffect(state.error) {
+        val err = state.error ?: return@LaunchedEffect
         snackbarHost.showSnackbar(err)
     }
 
-    if (showCloseConfirm) {
+    // "Create warranty-return ticket" confirmation dialog.
+    state.pendingCreateTicket?.let { row ->
         ConfirmDialog(
-            title = "Discard warranty claim?",
-            message = "You have a warranty record selected. Leaving now will discard your unsaved claim.",
-            confirmLabel = "Leave",
+            title = stringResource(R.string.warranty_lookup_confirm_create_ticket_title),
+            message = stringResource(
+                R.string.warranty_lookup_confirm_create_ticket_msg,
+                row.deviceName ?: stringResource(R.string.warranty_lookup_unknown_device),
+            ),
+            confirmLabel = stringResource(R.string.warranty_lookup_create_ticket_cta),
             onConfirm = {
-                showCloseConfirm = false
-                viewModel.clearSelection()
-                onBack()
+                viewModel.dismissCreateTicket()
+                onCreateWarrantyTicket(row.ticketId)
             },
-            onDismiss = { showCloseConfirm = false },
-            isDestructive = false,
+            onDismiss = viewModel::dismissCreateTicket,
         )
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Warranty Lookup") },
+                title = { Text(stringResource(R.string.screen_warranty_lookup)) },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (state.selectedWarranty != null) showCloseConfirm = true else onBack()
-                        },
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back),
+                        )
                     }
                 },
             )
@@ -102,17 +109,18 @@ fun WarrantyLookupScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // ── Query type chips ─────────────────────────────────────────────
+            // Query type chips
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("Search by", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.warranty_lookup_search_by),
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .horizontalScroll(rememberScrollState()),
+                    modifier = Modifier.padding(top = 6.dp),
                 ) {
-                    WarrantyQueryType.entries.forEach { type ->
+                    WarrantyLookupQueryType.values().forEach { type ->
                         FilterChip(
                             selected = state.queryType == type,
                             onClick = { viewModel.onQueryTypeChange(type) },
@@ -122,138 +130,74 @@ fun WarrantyLookupScreen(
                 }
             }
 
-            // ── Search field ──────────────────────────────────────────────────
+            // Search field
             item {
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::onQueryChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Enter ${state.queryType.label}") },
+                    label = { Text(state.queryType.label) },
                     singleLine = true,
                     trailingIcon = {
-                        TextButton(onClick = viewModel::search) { Text("Search") }
+                        IconButton(
+                            onClick = viewModel::search,
+                            enabled = state.query.isNotBlank(),
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.warranty_lookup_search_cd),
+                            )
+                        }
                     },
                 )
             }
 
-            // ── Loading ──────────────────────────────────────────────────────
-            if (state.isSearching) {
+            // Loading indicator
+            if (state.isLoading) {
                 item {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator()
                     }
                 }
             }
 
-            // ── Error / empty ────────────────────────────────────────────────
-            state.searchError?.let { err ->
-                item {
-                    EmptyState(
-                        icon = Icons.Default.SearchOff,
-                        title = "No records found",
-                        subtitle = err,
-                        action = null,
-                        includeWave = false,
-                    )
-                }
-            }
-
-            // ── Results ──────────────────────────────────────────────────────
-            if (state.searchResults.isNotEmpty()) {
+            // Results header
+            if (state.results.isNotEmpty()) {
                 item {
                     Text(
-                        "${state.searchResults.size} record(s) found",
+                        stringResource(R.string.warranty_lookup_results_count, state.results.size),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                items(state.searchResults, key = { it.ticketId?.toString() ?: it.hashCode().toString() }) { warranty ->
-                    WarrantyLookupCard(
-                        warranty = warranty,
-                        isSelected = state.selectedWarranty === warranty,
-                        onSelect = { viewModel.selectWarranty(warranty) },
+
+                items(state.results, key = { it.ticketId }) { row ->
+                    WarrantyLookupResultCard(
+                        row = row,
+                        onCreateTicket = { viewModel.requestCreateTicket(row) },
                     )
                 }
             }
 
-            // ── Claim section ─────────────────────────────────────────────────
-            state.selectedWarranty?.let { warranty ->
-                item {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text("File Warranty Claim", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        buildString {
-                            warranty.ticketId?.let { append("Ticket #$it · ") }
-                            append(warranty.customerName)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                item {
-                    OutlinedTextField(
-                        value = state.claimNotes,
-                        onValueChange = viewModel::onClaimNotesChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Notes (optional)") },
-                        minLines = 2,
-                        maxLines = 4,
-                    )
-                }
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(
-                            onClick = { showCloseConfirm = true },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Cancel") }
-                        Button(
-                            onClick = viewModel::fileClaim,
-                            enabled = !state.isSubmitting && warranty.ticketId != null,
-                            modifier = Modifier.weight(2f),
-                        ) {
-                            if (state.isSubmitting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .padding(end = 8.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            }
-                            Text(
-                                if (warranty.warrantyActive == true) "Create warranty-return ticket"
-                                else "File paid claim",
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(24.dp))
-                }
-            }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
 
-// ─── Warranty lookup card ─────────────────────────────────────────────────────
+// ─── Result card ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun WarrantyLookupCard(
-    warranty: WarrantyResult,
-    isSelected: Boolean,
-    onSelect: () -> Unit,
+private fun WarrantyLookupResultCard(
+    row: WarrantyLookupRowDto,
+    onCreateTicket: () -> Unit,
 ) {
-    val isActive = warranty.warrantyActive == true
-    Card(
-        onClick = onSelect,
-        modifier = Modifier.fillMaxWidth(),
-        border = if (isSelected) CardDefaults.outlinedCardBorder() else null,
-    ) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -261,59 +205,69 @@ private fun WarrantyLookupCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    warranty.customerName,
+                    text = listOfNotNull(row.customerFirst, row.customerLast).joinToString(" ")
+                        .ifBlank { stringResource(R.string.warranty_lookup_unknown_customer) },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                WarrantyEligibilityChip(active = isActive)
+                WarrantyStatusChip(active = row.warrantyActive)
             }
-            if (!warranty.deviceName.isNullOrBlank()) {
-                Text("Device: ${warranty.deviceName}", style = MaterialTheme.typography.bodySmall)
+
+            row.deviceName?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
             }
-            if (!warranty.imei.isNullOrBlank()) {
-                Text("IMEI: ${warranty.imei}", style = MaterialTheme.typography.bodySmall)
-            }
-            if (!warranty.serial.isNullOrBlank()) {
-                Text("Serial: ${warranty.serial}", style = MaterialTheme.typography.bodySmall)
-            }
-            warranty.warrantyDays?.let {
+            row.imei?.let {
                 Text(
-                    "Duration: $it days",
+                    stringResource(R.string.warranty_lookup_imei_label, it),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (!warranty.warrantyExpires.isNullOrBlank()) {
+            row.serial?.let {
                 Text(
-                    "Expires: ${DateFormatter.formatAbsolute(warranty.warrantyExpires)}",
+                    stringResource(R.string.warranty_lookup_serial_label, it),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isActive) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.error,
                 )
             }
-            if (isSelected) {
-                Text(
-                    "Selected — fill in notes below to file claim",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
+            Text(
+                stringResource(R.string.warranty_lookup_expires_label, row.warrantyExpires ?: "—"),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (row.warrantyActive) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.error,
+            )
+            Text(
+                stringResource(R.string.warranty_lookup_duration_label, row.warrantyDays),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (row.warrantyActive) {
+                Spacer(Modifier.height(4.dp))
+                FilledTonalButton(
+                    onClick = onCreateTicket,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.warranty_lookup_create_ticket_cta))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun WarrantyEligibilityChip(active: Boolean) {
+private fun WarrantyStatusChip(active: Boolean) {
     val (bg, fg) = if (active) {
-        MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f) to MaterialTheme.colorScheme.secondary
+        MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
     } else {
         MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
     }
-    Surface(shape = MaterialTheme.shapes.small, color = bg) {
+    androidx.compose.material3.Surface(
+        shape = MaterialTheme.shapes.small,
+        color = bg,
+    ) {
         Text(
-            text = if (active) "Under warranty" else "Out of warranty",
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            text = if (active) stringResource(R.string.warranty_lookup_active)
+                   else stringResource(R.string.warranty_lookup_expired),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
             color = fg,
             fontWeight = FontWeight.Medium,

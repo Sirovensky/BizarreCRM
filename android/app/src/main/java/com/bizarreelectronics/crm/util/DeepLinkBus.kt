@@ -133,4 +133,65 @@ class DeepLinkBus @Inject constructor() {
     fun consumeForgotPinToken() {
         _pendingForgotPinToken.value = null
     }
+
+    // §68.3 — Auth-required deep link queuing.
+    //
+    // When a `bizarrecrm://` or HTTPS App Link arrives and the user is NOT yet
+    // authenticated, the route is queued here instead of being dropped.
+    // AppNavGraph's deep-link LaunchedEffect checks isLoggedIn; on transition
+    // to logged-in it re-publishes the queued route via [publish] so the user
+    // lands on their intended destination after sign-in. This mirrors the
+    // `intent_after_login` pattern described in §68.3.
+    //
+    // Callers MUST call [consumePendingAfterLogin] after the queued route
+    // has been published for nav-graph consumption, otherwise a subsequent
+    // login event (e.g. forced re-auth on session expiry) would re-fire it.
+
+    private val _pendingRouteAfterLogin = MutableStateFlow<String?>(null)
+
+    /** Queued deep-link route that arrived while the user was not logged in. */
+    val pendingRouteAfterLogin: StateFlow<String?> = _pendingRouteAfterLogin.asStateFlow()
+
+    /**
+     * Queue [route] to be navigated to immediately after the user successfully
+     * signs in. Null is a no-op. Replaces any previously queued route — only
+     * the most-recent intent is honoured (last-tap-wins, avoids stale queues).
+     */
+    fun queueAfterLogin(route: String?) {
+        if (route == null) return
+        _pendingRouteAfterLogin.value = route
+    }
+
+    /** Clear the post-login queue entry after it has been dispatched. */
+    fun consumePendingAfterLogin() {
+        _pendingRouteAfterLogin.value = null
+    }
+
+    // §25.2 Inbound-share bus.
+    //
+    // When another app shares content to BizarreCRM via ACTION_SEND /
+    // ACTION_SEND_MULTIPLE, MainActivity.resolveInboundShare() calls
+    // [publishInboundShare] with the action + MIME type. The Tickets list
+    // screen (or a future dedicated picker) collects from [pendingInboundShare]
+    // and shows the "Attach to ticket / New note" bottom sheet.
+    // The original Intent remains accessible via Activity.getIntent() at the
+    // call site; only the (action, mimeType) pair is carried here.
+    // Consumers MUST call [consumeInboundShare] after processing.
+
+    data class InboundShare(val action: String, val mimeType: String)
+
+    private val _pendingInboundShare = MutableStateFlow<InboundShare?>(null)
+
+    /** Collected by the Tickets list or dedicated inbound-share picker composable. */
+    val pendingInboundShare: StateFlow<InboundShare?> = _pendingInboundShare.asStateFlow()
+
+    /** Called by MainActivity when an ACTION_SEND / ACTION_SEND_MULTIPLE intent arrives. */
+    fun publishInboundShare(action: String, mimeType: String) {
+        _pendingInboundShare.value = InboundShare(action, mimeType)
+    }
+
+    /** Called after [pendingInboundShare] has been handled by the UI. */
+    fun consumeInboundShare() {
+        _pendingInboundShare.value = null
+    }
 }

@@ -32,9 +32,14 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import android.content.Context
+import com.bizarreelectronics.crm.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,8 +47,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.service.ClockInTileService
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.widget.glance.publishClockState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -72,6 +80,7 @@ data class ClockInTileState(
 class ClockInTileViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val authPreferences: AuthPreferences,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -122,11 +131,15 @@ class ClockInTileViewModel @Inject constructor(
                 if (isClockedIn == true) {
                     settingsApi.clockOut(userId, emptyMap())
                     _state.value = _state.value.copy(isClockedIn = false, isLoading = false)
+                    // §14.10 — sync QS tile + Glance widget
+                    broadcastClockState(isClockedIn = false)
                     onSuccess("Clocked out")
                 } else {
                     settingsApi.clockIn(userId, emptyMap())
                     val timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
                     _state.value = _state.value.copy(isClockedIn = true, justClockedInAt = timeStr, isLoading = false)
+                    // §14.10 — sync QS tile + Glance widget
+                    broadcastClockState(isClockedIn = true)
                     onSuccess("Clocked in at $timeStr")
                 }
             }.onFailure {
@@ -135,6 +148,40 @@ class ClockInTileViewModel @Inject constructor(
                 onFallbackToScreen()
             }
         }
+    }
+
+    /**
+     * §14.10 — Writes the clock state to both the Quick Settings tile's
+     * SharedPreferences and the Glance home-screen widget DataStore so both
+     * surfaces reflect the new state without requiring the user to open the app.
+     *
+     * Failures are logged and swallowed — the QS tile and widget are decorative;
+     * a failure here should never block the clock-in/out action itself.
+     */
+    private suspend fun broadcastClockState(isClockedIn: Boolean) {
+        val displayName = buildString {
+            append(authPreferences.userFirstName.orEmpty())
+            val last = authPreferences.userLastName.orEmpty()
+            if (last.isNotBlank()) {
+                if (isNotEmpty()) append(" ")
+                append(last)
+            }
+        }.ifBlank { authPreferences.username.orEmpty() }
+
+        runCatching {
+            ClockInTileService.persistClockState(
+                context = appContext,
+                isClockedIn = isClockedIn,
+            )
+        }.onFailure { android.util.Log.w("ClockInTile", "tile persist failed: ${it.message}") }
+
+        runCatching {
+            publishClockState(
+                context = appContext,
+                isClockedIn = isClockedIn,
+                employeeName = displayName,
+            )
+        }.onFailure { android.util.Log.w("ClockInTile", "widget publish failed: ${it.message}") }
     }
 }
 
@@ -149,17 +196,35 @@ fun ClockInTile(
     val isOn = state.isClockedIn == true
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            // §26.1 — merge children so TalkBack reads "Clocked in, <name>,
-            // Button" as one labeled action instead of focusing the icon,
-            // title, subtitle, and chevron separately.
+            // §26.1 — merge children so TalkBack reads the tile as one labeled action.
+            // stateDescription announces the clocked-in/out state change when it
+            // flips so TalkBack users do not have to navigate back to the tile.
             // §22.3 — hand pointer on tablet / desktop hover.
             .semantics(mergeDescendants = true) {
                 role = Role.Button
+                // §26.1 — stateDescription for toggle-like rows
+                contentDescription = when (state.isClockedIn) {
+                    true -> context.getString(
+                        R.string.a11y_clock_in_tile_on,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                    false -> context.getString(
+                        R.string.a11y_clock_in_tile_off,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                    null -> context.getString(
+                        R.string.a11y_clock_in_tile_unknown,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                }
+                stateDescription = if (isOn) context.getString(R.string.a11y_toggle_on)
+                                   else context.getString(R.string.a11y_toggle_off)
             }
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable {

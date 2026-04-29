@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -65,6 +66,36 @@ fun ExportCsvMenuItem(
         },
         leadingIcon = {
             Icon(Icons.Default.Download, contentDescription = null)
+        },
+    )
+}
+
+// -----------------------------------------------------------------------
+// §4.22 — SLA heatmap overflow menu item
+// -----------------------------------------------------------------------
+
+/**
+ * Overflow [DropdownMenuItem] that navigates to the [SlaHeatmapScreen].
+ *
+ * Visible to all roles; the heatmap screen itself is read-only and surfacing
+ * SLA health data to technicians as well as managers is intentional.
+ *
+ * @param onDismiss  Called immediately so the parent dropdown closes.
+ * @param onClick    Navigation callback wired to [Screen.SlaHeatmap] in AppNavGraph.
+ */
+@Composable
+fun SlaHeatmapMenuItem(
+    onDismiss: () -> Unit,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text("SLA Heatmap") },
+        onClick = {
+            onDismiss()
+            onClick()
+        },
+        leadingIcon = {
+            Icon(Icons.Default.TableChart, contentDescription = null)
         },
     )
 }

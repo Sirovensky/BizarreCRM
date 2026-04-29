@@ -54,6 +54,17 @@ object NotificationController {
     // Silent dedup channel for SMS while the thread is open.
     private const val CH_SMS_SILENT = BizarreCrmApp.CH_SMS_SILENT
 
+    // §73.3 — 60-second dedup map: type → last-fire epoch-ms.
+    // When the same event type fires again within 60 s we reuse the existing
+    // notification ID so Android merges the shade entry instead of stacking.
+    // ConcurrentHashMap is safe: onMessageReceived may arrive on concurrent IO
+    // threads from the Firebase-managed executor.
+    private val lastNotifEpochByType =
+        java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val dedupNotifIdByType =
+        java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private const val DEDUP_WINDOW_MS = 60_000L
+
     private val notificationIdCounter = AtomicInteger(1_000)
 
     /**
@@ -76,8 +87,6 @@ object NotificationController {
         val quietOverride = data["_quiet_override"] == "true"
         val badgeCount = data["_badge_count"]?.toIntOrNull() ?: 0
 
-        val id = notificationIdCounter.getAndIncrement()
-
         // Determine whether we should use the silent dedup channel.
         val isSmsActiveThread = type == "sms_inbound" &&
             threadPhone != null &&
@@ -94,15 +103,80 @@ object NotificationController {
                 BizarreCrmApp.CH_SECURITY_EVENT
             type == "payment_received" || type == "invoice_paid" || type == "deposit_received" ->
                 BizarreCrmApp.CH_PAYMENT_RECEIVED
+            // §51.3 — export-ready push: server sends type=export_ready when the
+            // async export job transitions to status=ready.
+            type == "export_ready" -> BizarreCrmApp.CH_EXPORT_READY
             type == "mention" || type == "mentioned" -> BizarreCrmApp.CH_MENTION
             type == "low_stock" || type == "inventory_low" -> BizarreCrmApp.CH_LOW_STOCK
             type == "daily_summary" || type == "end_of_day" -> BizarreCrmApp.CH_DAILY_SUMMARY
             type == "backup_report" || type == "backup_failed" || type == "diagnostics" ->
                 BizarreCrmApp.CH_BACKUP_REPORT
+            // §73 — new per-event matrix channels.
+            type == "payment_declined" || type == "card_declined" -> BizarreCrmApp.CH_PAYMENT_DECLINED
+            type == "invoice_overdue" -> BizarreCrmApp.CH_INVOICE_OVERDUE
+            type == "estimate_approved" -> BizarreCrmApp.CH_ESTIMATE_APPROVED
+            type == "shift_starting" -> BizarreCrmApp.CH_SHIFT_STARTING
+            type == "timeoff_request" || type == "manager_timeoff" -> BizarreCrmApp.CH_MANAGER_TIMEOFF
+            type == "team_mention" -> BizarreCrmApp.CH_TEAM_MENTION
+            type == "weekly_digest" -> BizarreCrmApp.CH_WEEKLY_DIGEST
+            type == "setup_wizard_incomplete" -> BizarreCrmApp.CH_SETUP_WIZARD
+            type == "subscription_renewal" -> BizarreCrmApp.CH_SUBSCRIPTION_RENEWAL
+            type == "integration_disconnected" -> BizarreCrmApp.CH_INTEGRATION_DISCONNECTED
             else -> BizarreCrmApp.CH_SYNC
         }
 
         Timber.d("NotificationController: type=%s channel=%s silentDedup=%s", type, channelId, isSmsActiveThread)
+
+        // §73.3 — 60-second dedup: if the same event type fired within the last
+        // 60 s, reuse the existing notification ID so Android replaces (merges)
+        // the shade entry rather than stacking a second alert for the same event.
+        // The body is updated to show the latest payload; the title gains a "+N more"
+        // counter so the user knows there were repeat events.
+        val nowMs = System.currentTimeMillis()
+        val lastMs = lastNotifEpochByType[type] ?: 0L
+        val withinDedupWindow = (nowMs - lastMs) < DEDUP_WINDOW_MS && !isSmsActiveThread
+        val id: Int
+        val dedupCount: Int
+        if (withinDedupWindow) {
+            id = dedupNotifIdByType[type] ?: notificationIdCounter.getAndIncrement()
+            dedupNotifIdByType[type] = id
+            // Count how many times this type has fired in the current window.
+            dedupCount = ((lastNotifEpochByType["${type}_count"]?.toInt()) ?: 1) + 1
+            lastNotifEpochByType["${type}_count"] = dedupCount.toLong()
+        } else {
+            id = notificationIdCounter.getAndIncrement()
+            dedupNotifIdByType[type] = id
+            dedupCount = 1
+            lastNotifEpochByType["${type}_count"] = 1L
+        }
+        lastNotifEpochByType[type] = nowMs
+
+        // §73.5 — Payment rich content: prepend amount + customer name to body
+        // when the server provides them so the shade is scannable without opening.
+        // Server should send data["amount"] (e.g. "42.50") and data["customer_name"].
+        val amount = data["amount"]?.takeIf { it.isNotBlank() }
+        val customerName = data["customer_name"]?.takeIf { it.isNotBlank() }
+        val deviceModel = data["device_model"]?.takeIf { it.isNotBlank() }
+        val ticketStatus = data["ticket_status"]?.takeIf { it.isNotBlank() }
+
+        // §73.5 — Build enriched body: payment events → amount + customer;
+        //          ticket events → device model + status appended.
+        val enrichedBody = when {
+            (type == "payment_received" || type == "payment_declined" || type == "invoice_paid") &&
+                    amount != null && customerName != null ->
+                "\$$amount — $customerName${if (body.isNotBlank()) "\n$body" else ""}"
+            (type == "ticket_assigned" || type == "ticket_updated") &&
+                    deviceModel != null ->
+                buildString {
+                    append(deviceModel)
+                    if (ticketStatus != null) append(" · $ticketStatus")
+                    if (body.isNotBlank()) append("\n$body")
+                }
+            else -> body
+        }
+
+        // §73.3 — Update title with "+N more" when deduplication is active.
+        val displayTitle = if (dedupCount > 1) "$title (+${dedupCount - 1} more)" else title
 
         // Tap-to-open intent — navigates MainActivity to the relevant screen.
         val tapIntent = Intent(context, MainActivity::class.java).apply {
@@ -131,8 +205,8 @@ object NotificationController {
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
+            .setContentTitle(displayTitle)
+            .setContentText(enrichedBody)
             .setAutoCancel(true)
             .setContentIntent(tapPendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -149,6 +223,19 @@ object NotificationController {
             builder.setPriority(NotificationCompat.PRIORITY_HIGH)
         }
 
+        // §73.4 — CATEGORY_ALARM on truly critical channels so the OS can allow
+        // these to break through DND when the user opts in via system settings.
+        // Only backup_failed + security_event + sla_breach + payment_declined
+        // qualify. DO NOT add other channels here — misuse blocks Play Store.
+        when (channelId) {
+            BizarreCrmApp.CH_BACKUP_REPORT,
+            BizarreCrmApp.CH_SECURITY_EVENT,
+            BizarreCrmApp.CH_SLA_BREACH,
+            BizarreCrmApp.CH_PAYMENT_DECLINED,
+            -> builder.setCategory(android.app.Notification.CATEGORY_ALARM)
+            else -> { /* IMPORTANCE_DEFAULT — no special category */ }
+        }
+
         // §13 L1579 — Rich push: download image_url and apply BigPictureStyle.
         // Downloads on the calling thread (FcmService is already on a bg thread)
         // with a 5-second timeout. Falls back to standard style on any failure.
@@ -158,16 +245,16 @@ object NotificationController {
                 builder.setStyle(
                     NotificationCompat.BigPictureStyle()
                         .bigPicture(bitmap)
-                        .setBigContentTitle(title)
-                        .setSummaryText(body),
+                        .setBigContentTitle(displayTitle)
+                        .setSummaryText(enrichedBody),
                 )
             } else {
                 // Fallback: use BigTextStyle so long body is still readable.
-                builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                builder.setStyle(NotificationCompat.BigTextStyle().bigText(enrichedBody))
             }
-        } else if (body.length > 40) {
+        } else if (enrichedBody.length > 40) {
             // Expand long text even without an image.
-            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(enrichedBody))
         }
 
         // §13.4: stamp badge count so Samsung One UI dot stays accurate.

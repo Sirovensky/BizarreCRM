@@ -73,6 +73,14 @@ fun PurchaseOrderDetailScreen(
                     }
                 },
                 actions = {
+                    // Send / Print actions — only shown once the PO is loaded
+                    if (order != null) {
+                        PurchaseOrderSendActions(
+                            order  = order,
+                            items  = state.items,
+                            snackbarHost = snackbarHostState,
+                        )
+                    }
                     IconButton(onClick = { viewModel.load() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }

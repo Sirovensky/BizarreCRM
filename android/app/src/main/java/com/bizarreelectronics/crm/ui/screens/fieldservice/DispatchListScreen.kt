@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.fieldservice
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -22,11 +27,14 @@ import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DispatchListScreen(
     onNavigateBack: () -> Unit,
+    /** Logged-in user ID — passed through to optimizeRoute so the server can look up home coords. */
+    currentUserId: Long = -1L,
     viewModel: DispatchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -62,6 +70,29 @@ fun DispatchListScreen(
                     }
                 },
                 actions = {
+                    // §59.2 Optimize Route — manager/admin only; server enforces 403 for techs.
+                    // Shown as a spinning indicator while in flight.
+                    if (state.isOptimizing) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics { contentDescription = "Optimising route" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { viewModel.optimizeRoute(technicianId = currentUserId) },
+                            enabled = state.jobs.isNotEmpty() && !state.isLoading,
+                            modifier = Modifier.semantics { contentDescription = "Optimize route" },
+                        ) {
+                            Icon(
+                                Icons.Default.Route,
+                                contentDescription = null,
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.refresh() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
@@ -71,12 +102,29 @@ fun DispatchListScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
 
-        PullToRefreshBox(
-            isRefreshing = state.isRefreshing,
-            onRefresh = { viewModel.refresh() },
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
+        ) {
+            // §59.2 — Route optimisation result banner (dismissible)
+            AnimatedVisibility(
+                visible = state.optimizationBanner != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                state.optimizationBanner?.let { banner ->
+                    OptimizationResultBanner(
+                        banner = banner,
+                        onDismiss = { viewModel.clearOptimizationBanner() },
+                    )
+                }
+            }
+
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
         ) {
             when {
                 state.isLoading -> {
@@ -145,6 +193,74 @@ fun DispatchListScreen(
                         }
                     }
                 }
+            }
+        }
+        } // end Column
+    }
+}
+
+// ─── §59.2 Optimisation result banner ────────────────────────────────────────
+
+/**
+ * Dismissible info banner shown after a successful route optimisation.
+ *
+ * Displays the estimated driving distance, whether home coords were used as the
+ * route start, and the server algorithm note (greedy nearest-neighbor caveat).
+ */
+@Composable
+private fun OptimizationResultBanner(
+    banner: OptimizationBanner,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .semantics { contentDescription = "Route optimised" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Route,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Route optimised — ~${
+                        String.format(Locale.US, "%.1f", banner.distanceKm)
+                    } km",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (banner.startFromHome) {
+                    Text(
+                        text = "Starting from your home location",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Dismiss optimisation banner",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }

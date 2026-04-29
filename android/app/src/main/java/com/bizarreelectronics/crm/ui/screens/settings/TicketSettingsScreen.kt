@@ -1,23 +1,50 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
-import com.bizarreelectronics.crm.data.remote.dto.StatusListData
-import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
-import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,38 +52,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * §19.7 — Ticket Settings screen.
- *
- * Shows:
- *  - Default assignee (read from GET /settings/config key "default_assignee_id") —
- *    **NOTE (2026-04-26): server stores default_assignee_id in store_config but no
- *    dedicated GET/PUT /settings/tickets endpoint exists; wired via GET/PUT /settings/config
- *    generic map but assignment picker needs employee list — deferred to employee picker PR.**
- *  - Default due-date rule (N business days) — GET /settings/config "default_due_days"
- *  - ticket_all_employees_view_all — GET /settings/config "ticket_all_employees_view_all"
- *  - IMEI / serial required flag — GET /settings/config "imei_required"
- *  - Photo count required on close — GET /settings/config "photos_required_on_close"
- *  - Status list (read-only count; full editor is §19.16 TicketStatusEditorScreen)
- *
- * Consumer: TicketListViewModel / TicketCreateViewModel reads AppPreferences keys that
- * mirror these server-side flags after each sync.
- *
- * NOTE (2026-04-26): The /settings/config PUT endpoint accepts these keys but the server-side
- * ENFORCER for imei_required / photos_required_on_close / default_due_days is not implemented
- * (65-of-70 toggles situation). UI persists to server but consumer enforcement gap is documented.
- */
-
-data class TicketSettingsUiState(
-    val isLoading: Boolean = true,
-    val error: String? = null,
-    // From /settings/config
-    val viewAllEnabled: Boolean = false,
+data class TicketSettingsState(
+    /** Default due date offset in business days (+N). Empty = no default. */
+    val defaultDueDays: String = "",
+    /** Require IMEI/serial on device before ticket can be saved. */
     val imeiRequired: Boolean = false,
-    val photosRequiredOnClose: Int = 0,
-    val defaultDueDays: Int = 3,
-    // From /settings/statuses
-    val statusCount: Int = 0,
+    /** Require at least one photo before closing the ticket. */
+    val photoRequiredOnClose: Boolean = false,
+    /** All employees can see all tickets (server: ticket_all_employees_view_all). */
+    val allEmployeesViewAll: Boolean = false,
+    val isLoading: Boolean = false,
+    val isSaving: Boolean = false,
+    val errorMessage: String? = null,
+    val savedOk: Boolean = false,
 )
 
 @HiltViewModel
@@ -64,67 +72,67 @@ class TicketSettingsViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(TicketSettingsUiState())
-    val uiState: StateFlow<TicketSettingsUiState> = _uiState.asStateFlow()
-
-    private var currentConfig: MutableMap<String, String> = mutableMapOf()
+    private val _uiState = MutableStateFlow(TicketSettingsState(isLoading = true))
+    val uiState: StateFlow<TicketSettingsState> = _uiState.asStateFlow()
 
     init {
         load()
     }
 
-    fun load() {
+    private fun load() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                val configResponse = settingsApi.getConfig()
-                val statusResponse = settingsApi.getStatuses()
-                val cfg = configResponse.data ?: emptyMap()
-                currentConfig = cfg.toMutableMap()
-                val statusList: List<TicketStatusItem> = statusResponse.data?.statuses ?: emptyList()
-                _uiState.value = TicketSettingsUiState(
-                    isLoading = false,
-                    viewAllEnabled = cfg["ticket_all_employees_view_all"]?.let { it == "1" || it == "true" } ?: false,
-                    imeiRequired = cfg["imei_required"]?.let { it == "1" || it == "true" } ?: false,
-                    photosRequiredOnClose = cfg["photos_required_on_close"]?.toIntOrNull() ?: 0,
-                    defaultDueDays = cfg["default_due_days"]?.toIntOrNull() ?: 3,
-                    statusCount = statusList.size,
+            runCatching { settingsApi.getStoreConfig() }
+                .onSuccess { response ->
+                    val cfg = response.data ?: emptyMap()
+                    _uiState.value = TicketSettingsState(
+                        defaultDueDays = cfg["default_due_days"] ?: "",
+                        imeiRequired = cfg["imei_required"] == "1" || cfg["imei_required"] == "true",
+                        photoRequiredOnClose = cfg["photo_required_on_close"] == "1" || cfg["photo_required_on_close"] == "true",
+                        allEmployeesViewAll = cfg["ticket_all_employees_view_all"] == "1" || cfg["ticket_all_employees_view_all"] == "true",
+                        isLoading = false,
+                    )
+                }
+                .onFailure {
+                    _uiState.value = TicketSettingsState(
+                        isLoading = false,
+                        errorMessage = "Failed to load ticket settings: ${it.message}",
+                    )
+                }
+        }
+    }
+
+    fun update(block: TicketSettingsState.() -> TicketSettingsState) {
+        _uiState.value = _uiState.value.block()
+    }
+
+    fun save() {
+        val s = _uiState.value
+        _uiState.value = s.copy(isSaving = true, errorMessage = null)
+        viewModelScope.launch {
+            runCatching {
+                settingsApi.putStoreConfig(
+                    mapOf(
+                        "default_due_days" to s.defaultDueDays,
+                        "imei_required" to if (s.imeiRequired) "1" else "0",
+                        "photo_required_on_close" to if (s.photoRequiredOnClose) "1" else "0",
+                        "ticket_all_employees_view_all" to if (s.allEmployeesViewAll) "1" else "0",
+                    )
                 )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load ticket settings")
             }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        errorMessage = "Save failed: ${it.message}",
+                    )
+                }
         }
     }
 
-    fun setViewAllEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(viewAllEnabled = enabled)
-        putConfig("ticket_all_employees_view_all", if (enabled) "1" else "0")
-    }
-
-    fun setImeiRequired(required: Boolean) {
-        _uiState.value = _uiState.value.copy(imeiRequired = required)
-        putConfig("imei_required", if (required) "1" else "0")
-    }
-
-    fun setPhotosRequired(count: Int) {
-        _uiState.value = _uiState.value.copy(photosRequiredOnClose = count)
-        putConfig("photos_required_on_close", count.toString())
-    }
-
-    fun setDefaultDueDays(days: Int) {
-        _uiState.value = _uiState.value.copy(defaultDueDays = days)
-        putConfig("default_due_days", days.toString())
-    }
-
-    private fun putConfig(key: String, value: String) {
-        viewModelScope.launch {
-            try {
-                currentConfig[key] = value
-                settingsApi.putStoreConfig(mapOf(key to value))
-            } catch (_: Exception) {
-                // Non-fatal — server note: 65/70 toggles unenforced; value stored regardless
-            }
-        }
+    fun clearSavedOk() {
+        _uiState.value = _uiState.value.copy(savedOk = false)
     }
 }
 
@@ -132,13 +140,26 @@ class TicketSettingsViewModel @Inject constructor(
 @Composable
 fun TicketSettingsScreen(
     onBack: () -> Unit,
+    /** Navigate to §19.16 Ticket-status editor. Null hides the entry row. */
+    onStatusEditor: (() -> Unit)? = null,
     viewModel: TicketSettingsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.savedOk) {
+        if (state.savedOk) {
+            snackbarHostState.showSnackbar("Ticket settings saved")
+            viewModel.clearSavedOk()
+        }
+    }
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { snackbarHostState.showSnackbar(it) }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Ticket Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -147,171 +168,131 @@ fun TicketSettingsScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        when {
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+        if (state.isLoading) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
             }
-            uiState.error != null -> {
-                Box(Modifier.fillMaxSize().padding(padding)) {
-                    ErrorState(message = uiState.error!!, onRetry = { viewModel.load() })
-                }
-            }
-            else -> {
+            return@Scaffold
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Due date defaults
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Visibility
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Visibility", style = MaterialTheme.typography.titleSmall)
-                            TicketSettingToggleRow(
-                                title = "All staff can view all tickets",
-                                subtitle = "When off, staff only see tickets assigned to them",
-                                checked = uiState.viewAllEnabled,
-                                onCheckedChange = { viewModel.setViewAllEnabled(it) },
-                            )
-                        }
-                    }
-
-                    // Requirements at intake / close
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Requirements", style = MaterialTheme.typography.titleSmall)
-                            TicketSettingToggleRow(
-                                title = "IMEI / serial required",
-                                subtitle = "Block ticket creation if IMEI or serial is blank",
-                                checked = uiState.imeiRequired,
-                                onCheckedChange = { viewModel.setImeiRequired(it) },
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                            // Photo count required on close — stepper
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Photos required to close", style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        "Minimum photos before marking complete (0 = none required)",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = { if (uiState.photosRequiredOnClose > 0) viewModel.setPhotosRequired(uiState.photosRequiredOnClose - 1) },
-                                        enabled = uiState.photosRequiredOnClose > 0,
-                                    ) {
-                                        Icon(Icons.Default.Remove, contentDescription = "Decrease")
-                                    }
-                                    Text(
-                                        uiState.photosRequiredOnClose.toString(),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        modifier = Modifier.widthIn(min = 32.dp),
-                                    )
-                                    IconButton(
-                                        onClick = { viewModel.setPhotosRequired(uiState.photosRequiredOnClose + 1) },
-                                        enabled = uiState.photosRequiredOnClose < 20,
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Increase")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Due date rule
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Defaults", style = MaterialTheme.typography.titleSmall)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Default due date", style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        "+${uiState.defaultDueDays} business day${if (uiState.defaultDueDays != 1) "s" else ""} from creation",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = { if (uiState.defaultDueDays > 1) viewModel.setDefaultDueDays(uiState.defaultDueDays - 1) },
-                                        enabled = uiState.defaultDueDays > 1,
-                                    ) {
-                                        Icon(Icons.Default.Remove, contentDescription = "Decrease")
-                                    }
-                                    Text(
-                                        uiState.defaultDueDays.toString(),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        modifier = Modifier.widthIn(min = 32.dp),
-                                    )
-                                    IconButton(
-                                        onClick = { if (uiState.defaultDueDays < 30) viewModel.setDefaultDueDays(uiState.defaultDueDays + 1) },
-                                        enabled = uiState.defaultDueDays < 30,
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Increase")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Status taxonomy info
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Statuses", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "${uiState.statusCount} statuses configured",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                "Full status editor (reorder, color, transition guards) requires §19.16 TicketStatusEditorScreen — server endpoints exist (PUT /settings/statuses/:id) but drag-reorder UI is deferred.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    // Default assignee note
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Default assignee", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Default assignee picker requires employee list integration — deferred.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    Text("Due date", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.defaultDueDays,
+                        onValueChange = { viewModel.update { copy(defaultDueDays = it) } },
+                        label = { Text("Default due in (business days)") },
+                        supportingText = { Text("Leave blank to require manual entry") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done,
+                        ),
+                        singleLine = true,
+                    )
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun TicketSettingToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Visibility
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("All employees view all tickets") },
+                    supportingContent = { Text("When off, employees only see tickets assigned to them") },
+                    trailingContent = {
+                        Switch(
+                            checked = state.allEmployeesViewAll,
+                            onCheckedChange = { viewModel.update { copy(allEmployeesViewAll = it) } },
+                        )
+                    },
+                )
+            }
+
+            // Requirements
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Text(
+                        "Requirements",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
+                    )
+                    ListItem(
+                        headlineContent = { Text("Require IMEI / serial number") },
+                        supportingContent = { Text("Ticket cannot be saved without device IMEI or serial") },
+                        trailingContent = {
+                            Switch(
+                                checked = state.imeiRequired,
+                                onCheckedChange = { viewModel.update { copy(imeiRequired = it) } },
+                            )
+                        },
+                    )
+                    ListItem(
+                        headlineContent = { Text("Require photo on close") },
+                        supportingContent = { Text("At least one repair photo required before closing ticket") },
+                        trailingContent = {
+                            Switch(
+                                checked = state.photoRequiredOnClose,
+                                onCheckedChange = { viewModel.update { copy(photoRequiredOnClose = it) } },
+                            )
+                        },
+                    )
+                }
+            }
+
+            // ── §19.16 Status taxonomy editor ─────────────────────────────
+            if (onStatusEditor != null) {
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    ListItem(
+                        headlineContent = { Text("Manage ticket statuses") },
+                        supportingContent = {
+                            Text("Edit status names, colors, and notification rules")
+                        },
+                        trailingContent = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        ),
+                        modifier = androidx.compose.ui.Modifier.clickable { onStatusEditor() },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            FilledTonalButton(
+                onClick = { viewModel.save() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.isSaving,
+            ) {
+                if (state.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = 8.dp).height(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Text("Save changes")
+            }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

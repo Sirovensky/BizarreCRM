@@ -6,8 +6,10 @@ import android.net.Uri
 import android.util.Base64
 import timber.log.Timber
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.Image
@@ -35,7 +37,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
@@ -44,17 +45,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
@@ -68,6 +70,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.util.PasswordStrength
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.ui.theme.clickableHover
+import com.bizarreelectronics.crm.ui.theme.textFieldHover
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
@@ -81,7 +85,6 @@ import com.bizarreelectronics.crm.util.DeviceBinding
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
 import com.bizarreelectronics.crm.util.DeepLinkBus
-import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.SmsOtpBus
 import com.bizarreelectronics.crm.util.SmsRetrieverHelper
 import com.bizarreelectronics.crm.util.SsoLauncher
@@ -288,6 +291,11 @@ data class LoginUiState(
     val domainSsoDetected: Boolean = false,
     val domainSsoProviderId: String? = null,
     val domainSsoChecking: Boolean = false,
+    // §26.4 — incremented on each wrong-credential (401) error so [CredentialsStep]
+    // can fire a shake animation (or static red border when Reduce Motion is on).
+    // Using a counter rather than a boolean means rapid retries each get a distinct
+    // trigger value and [LaunchedEffect] re-fires reliably on every wrong attempt.
+    val credentialShakes: Int = 0,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -300,8 +308,6 @@ class LoginViewModel @Inject constructor(
     private val biometricCredentialStore: BiometricCredentialStore,
     private val biometricAuth: BiometricAuth,
     private val deepLinkBus: DeepLinkBus,
-    // §2.4 drift gate: enforces TOTP window < 30s so OTPs aren't rejected by server.
-    private val clockDrift: ClockDrift,
 ) : ViewModel() {
 
     companion object {
@@ -403,6 +409,17 @@ class LoginViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     init {
+        // Diagnostic: log every step transition so the double-Sign-In bug
+        // can be reproduced from logcat. `adb logcat -s LoginVM:V` to read.
+        viewModelScope.launch {
+            var prev: SetupStep? = null
+            _state.collect {
+                if (it.step != prev) {
+                    timber.log.Timber.tag("LoginVM").i("step transition: %s -> %s", prev, it.step)
+                    prev = it.step
+                }
+            }
+        }
         // §2.12-L358 — observe device network state and mirror it into uiState.
         // This is purely informational: the offline banner cannot be bypassed
         // because login always requires a real network round-trip.
@@ -580,12 +597,6 @@ class LoginViewModel @Inject constructor(
             domainSsoDetected = false,
             domainSsoProviderId = null,
         )
-        // 2026-04-26 — bug fix: persist typed username to AuthPreferences so a
-        // failed login (or any VM/activity recreation) re-seeds the field on
-        // next composition via the init() path at line ~394. Without this,
-        // a wrong-password error followed by recomposition could surface an
-        // empty Username field.
-        authPreferences.username = value
         // §2.20 L449 — if the username looks like an email, debounce a domain check
         val atIdx = value.indexOf('@')
         if (atIdx > 0) {
@@ -640,6 +651,40 @@ class LoginViewModel @Inject constructor(
         if (value.length <= 6 && value.all { it.isDigit() }) {
             _state.value = _state.value.copy(totpCode = value, error = null)
         }
+    }
+
+    /**
+     * 2026-04-27 — User-driven backward nav from the LoginTabBar. Tab indexes:
+     * 0 = Server (or Register), 1 = Credentials (or SetPassword), 2 = TWO_FA_*.
+     * Forward jumps are rejected since later steps require valid intermediate
+     * data (URL probed, credentials authenticated). Backward jumps re-use the
+     * same state cleanup goBack() does so we don't leak TOTP secrets / 2FA
+     * setup data when a user backs all the way to Server from TWO_FA_SETUP.
+     */
+    fun goToTab(targetIndex: Int) {
+        val current = _state.value
+        val currentIndex = when (current.step) {
+            SetupStep.SERVER, SetupStep.REGISTER -> 0
+            SetupStep.CREDENTIALS, SetupStep.SET_PASSWORD -> 1
+            SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
+        }
+        if (targetIndex >= currentIndex) return  // forward / same — no-op.
+        val targetStep = when (targetIndex) {
+            0 -> SetupStep.SERVER
+            1 -> SetupStep.CREDENTIALS
+            else -> return  // unreachable in practice
+        }
+        _state.value = current.copy(
+            error = null,
+            step = targetStep,
+            // Same scrub rules as goBack(): clear TOTP secret + register form
+            // when leaving those steps, so backing out from a tab tap doesn't
+            // leave sensitive in-flight data live.
+            registerSubStep = if (current.step == SetupStep.REGISTER) RegisterSubStep.Company else current.registerSubStep,
+            twoFaSecret = if (currentIndex == 2) "" else current.twoFaSecret,
+            twoFaManualEntry = if (currentIndex == 2) "" else current.twoFaManualEntry,
+            qrCodeDataUrl = if (currentIndex == 2) "" else current.qrCodeDataUrl,
+        )
     }
 
     fun goBack() {
@@ -937,9 +982,18 @@ class LoginViewModel @Inject constructor(
     /** Step 2: Login with credentials */
     fun login() {
         val s = _state.value
+        if (s.isLoading) {
+            // Double-fire guard: ignore taps while a login round-trip is in flight.
+            // Without this, biometric auto-login + manual Sign In can race and the
+            // server's second response can briefly stomp the first, surfacing as a
+            // "sign-in screen showed twice" UX bug.
+            timber.log.Timber.tag("LoginVM").w("login() ignored — already isLoading")
+            return
+        }
         if (s.username.isBlank()) { _state.value = s.copy(error = "Username is required"); return }
         if (s.password.isBlank()) { _state.value = s.copy(error = "Password is required"); return }
 
+        timber.log.Timber.tag("LoginVM").i("login() start — step=%s", s.step)
         // Clear any stale probe/unreachable state from a previous attempt so
         // a successful login never leaves a misleading error banner visible.
         _state.value = s.copy(isLoading = true, error = null, probeError = null, unreachableHost = false)
@@ -1022,11 +1076,17 @@ class LoginViewModel @Inject constructor(
                     return@launch
                 }
                 val errorMsg = extractErrorMessage(e)
+                // §26.4 — increment credentialShakes on 401 (wrong creds) so
+                // CredentialsStep fires a shake animation (or red border under Reduce Motion).
+                val isWrongCredential = e is retrofit2.HttpException && e.code() == 401
                 _state.value = _state.value.copy(
                     isLoading = false,
                     unreachableHost = false,
                     rateLimited = false,
                     error = errorMsg,
+                    credentialShakes = if (isWrongCredential)
+                        _state.value.credentialShakes + 1
+                    else _state.value.credentialShakes,
                 )
             }
         }
@@ -1101,17 +1161,6 @@ class LoginViewModel @Inject constructor(
     fun verify2FA(onSuccess: () -> Unit) {
         val s = _state.value
         if (s.totpCode.length != 6) { _state.value = s.copy(error = "Enter a 6-digit code"); return }
-        // §2.4 drift gate: block TOTP verify when clock skew ≥ 30 s — the server
-        // will reject the OTP before we even send it.  isSafeFor2FA() returns true
-        // when no server time has been sampled yet (optimistic default) so we only
-        // block when we have confirmed evidence of a problem.
-        if (!clockDrift.isSafeFor2FA()) {
-            _state.value = s.copy(
-                error = "Your device clock is out of sync with the server. " +
-                    "Correct the date/time settings and try again.",
-            )
-            return
-        }
 
         _state.value = s.copy(isLoading = true, error = null)
         viewModelScope.launch {
@@ -1918,6 +1967,7 @@ class LoginViewModel @Inject constructor(
 
 // ─── UI ─────────────────────────────────────────────────────────────
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
@@ -2074,70 +2124,138 @@ fun LoginScreen(
     }
 
     // §2.13-L366: Scaffold provides the snackbar host for challenge-expired notification.
+    // §23.5 standaloneModal: contentWindowInsets = WindowInsets(0) so the Scaffold's
+    // default safeDrawing inset does not double-count with the explicit safeDrawingPadding()
+    // below. (LoginScreen sits outside the NavHost — there is no parent Scaffold above.)
+    // The previous combo (default safeDrawing innerPadding + .imePadding()) added the IME
+    // inset twice, leaving a dark blank band masking the Connect button when the keyboard
+    // was open. See ScaffoldInsetsDefaults.standaloneModal KDoc for the full strategy.
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        snackbarHost = {
+            // LOGIN-MOCK-150: wrap each snackbar in SwipeToDismissBox so the user can
+            // swipe it away instead of waiting for the auto-dismiss timer.
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                val dismissState = rememberSwipeToDismissBoxState()
+                LaunchedEffect(dismissState.currentValue) {
+                    if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+                        data.dismiss()
+                    }
+                }
+                SwipeToDismissBox(
+                    state = dismissState,
+                    backgroundContent = {},
+                ) {
+                    Snackbar(snackbarData = data)
+                }
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
-        // 2026-04-26 audit: drop Scaffold inset handling entirely. Box uses
-        // safeDrawingPadding which unions status+nav+IME without double-
-        // counting the nav-bar inset that previously left a dark gap between
-        // the Sign In button and the soft keyboard.
-        contentWindowInsets = WindowInsets(0),
-    ) { _ ->
+        contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.standaloneModal,
+    ) { innerPadding ->
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().padding(innerPadding)
             .safeDrawingPadding(),
-        // LOGIN-MOCK-102: removed .statusBarsPadding() — Scaffold's innerPadding already
-        // contains the status-bar inset on API 30+ (M3 default contentWindowInsets =
-        // safeDrawing). Adding statusBarsPadding() a second time pushed the wordmark
-        // down by an extra ~24–30dp (double-inset on API 30+).
         // LOGIN-MOCK-114: changed Center → TopCenter so the card is always reachable
         // by scrolling when the keyboard is up. Alignment.Center pins the column at
         // the vertical midpoint of the *remaining* Box height, which can push the
         // Connect button + footer row under the IME on shorter phones (screens 07/08).
         contentAlignment = Alignment.TopCenter,
     ) {
-        // 2026-04-26 — when IME is visible, collapse top spacing + hide
-        // wordmark+tagline so the form fields shift up into view without
-        // requiring the user to scroll.
-        @OptIn(ExperimentalLayoutApi::class)
+        // 2026-04-27: when IME is open we collapse the wordmark + top breathing
+        // room AND auto-scroll the column to its bottom so the active form's
+        // footer (Connect / Sign In / 2FA action row + supporting links) stays
+        // above the keyboard. Compose's per-field BringIntoViewRequester only
+        // scrolls the focused TextField into view, not its sibling buttons
+        // below — leaving the CTA hidden on small-DPI / shorter screens.
         val imeVisible = WindowInsets.isImeVisible
+        val scrollState = rememberScrollState()
+        LaunchedEffect(imeVisible, state.step) {
+            if (imeVisible) {
+                // Wait one frame for the IME-resize to propagate, then scroll
+                // the column to its new max so the bottom of the card is in
+                // view. Using animateScrollTo so the motion is smooth and
+                // tracks the IME-open animation.
+                kotlinx.coroutines.delay(50L)
+                scrollState.animateScrollTo(scrollState.maxValue)
+            } else {
+                // 2026-04-27 user-flagged: previously when the IME closed the
+                // scroll position stayed at maxValue, leaving the wordmark
+                // clipped above the viewport. Snap back to the top so the
+                // header always sits where it belongs when the keyboard is
+                // dismissed.
+                scrollState.animateScrollTo(0)
+            }
+        }
+        // 2026-04-27 user-flagged jitter: when IME closed (back press), wordmark
+        // would visually leap because three independent dp/visibility flips ran
+        // in one frame — outer Column vertical padding, top spacer, and the
+        // WaveDivider band. Animate the dp values + fade the wave so the
+        // wordmark never appears to teleport. Reduce Motion (ANIMATOR_DURATION_SCALE=0)
+        // collapses to 0ms — instant swap with no trail, matching the rest of
+        // the screen's reduce-motion contract.
+        val tween = androidx.compose.animation.core.tween<Dp>(durationMillis = animDuration)
+        val outerVertical by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 8.dp else 24.dp,
+            animationSpec = tween,
+            label = "login_outer_vpad",
+        )
+        val topSpacer by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 0.dp else 32.dp,
+            animationSpec = tween,
+            label = "login_top_spacer",
+        )
+        val waveSpacerBelow by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 8.dp else 12.dp,
+            animationSpec = tween,
+            label = "login_wave_below",
+        )
+        // 2026-04-28 — Tablet breathing room. On sw >= 600 dp the 420 dp card
+        // cap looked stranded in a sea of black; bump to 560 dp and pad the
+        // top with extra space so the form sits visually centered without
+        // every element clamped together.
+        val isTablet = androidx.compose.ui.platform.LocalConfiguration.current
+            .smallestScreenWidthDp >= 600
+        val cardMaxWidth = if (isTablet) 560.dp else 420.dp
+        val tabletExtraTop = if (isTablet) 32.dp else 0.dp
         Column(
             modifier = Modifier
-                .widthIn(max = 420.dp)
-                .padding(horizontal = 16.dp, vertical = if (imeVisible) 8.dp else 24.dp)
-                .verticalScroll(rememberScrollState())
-                // 2026-04-26 — Compose-native layout animation. Replaces hand-
-                // rolled animateDpAsState + AnimatedVisibility chain. Column
-                // measures itself before/after; Compose tweens the diff.
-                .animateContentSize(),
+                .widthIn(max = cardMaxWidth)
+                .padding(horizontal = 16.dp)
+                .padding(vertical = outerVertical)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(if (imeVisible) 4.dp else 32.dp))
-            if (!imeVisible) {
-                // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
-                Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
-                    Text(
-                        "Bizarre CRM",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 2,
-                        softWrap = true,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Electronics Repair Management",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            // Logo / App name — small top breathing room replaces the old 80dp pin.
+            Spacer(Modifier.height(topSpacer + tabletExtraTop))
+            // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
+            // 2026-04-28 — Wordmark left-aligned (was Center via parent
+            // horizontalAlignment) so on wide tablets it doesn't float
+            // above a centered card looking dropped from nowhere.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) { heading() },
+            ) {
+                Text(
+                    "Bizarre CRM",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 2,
+                    softWrap = true,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Electronics Repair Management",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            // Sanctioned WaveDivider placement — one branded moment under wordmark
-            // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
-            // LOGIN-MOCK-085: reduce WaveDivider height to 16dp (in WaveDivider.kt) and
-            //   spacer below from 24dp → 12dp. NET = 20 + 16 + 12 = 48dp ≈ target ~40-48dp.
-            Spacer(Modifier.height(20.dp))
-            WaveDivider()
-            Spacer(Modifier.height(12.dp))
+            // 2026-04-27 — WaveDivider under the wordmark removed; the new
+            // LinearWavyProgressIndicator step indicator on LoginTabBar is now
+            // the single brand wave on the screen ("only one wave at a time"
+            // rule from feedback_brand_color memory).
+            Spacer(Modifier.height(waveSpacerBelow))
 
             // §28.6 — sticky banner shown when the user landed here because
             // the server killed their session (refresh-failed / revoked).
@@ -2167,7 +2285,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = onSessionBannerDismissed) {
+                        TextButton(onClick = onSessionBannerDismissed, modifier = Modifier.clickableHover()) {
                             Text("Dismiss")
                         }
                     }
@@ -2198,7 +2316,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::dismissDeviceChangedBanner) {
+                        TextButton(onClick = viewModel::dismissDeviceChangedBanner, modifier = Modifier.clickableHover()) {
                             Text("OK")
                         }
                     }
@@ -2229,7 +2347,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::dismissServerRevokeBanner) {
+                        TextButton(onClick = viewModel::dismissServerRevokeBanner, modifier = Modifier.clickableHover()) {
                             Text("Dismiss")
                         }
                     }
@@ -2239,29 +2357,30 @@ fun LoginScreen(
 
             // Tab strip — Server | Sign In | 2FA
             // LOGIN-MOCK-153: pass animDuration so tab indicator respects Reduce Motion.
-            LoginTabBar(currentStep = state.step, animDuration = animDuration)
-            Spacer(Modifier.height(24.dp))
+            LoginTabBar(
+                currentStep = state.step,
+                animDuration = animDuration,
+                onTabClick = viewModel::goToTab,
+            )
+            Spacer(Modifier.height(12.dp)) // LOGIN-MOCK-272: 24→12dp to match mockup
 
             // Step content with animation
             AnimatedContent(
                 targetState = state.step,
                 transitionSpec = {
-                    // LOGIN-MOCK-141: explicit tween specs eliminate the transparent-frame
-                    // artifact caused by default 300ms simultaneous fade+slide. The 100ms
-                    // delay on fadeIn ensures the incoming card begins appearing only after
-                    // the outgoing card is nearly gone.
-                    // LOGIN-MOCK-153: animDuration is 0 when Reduce Motion is enabled.
-                    val isForward = targetState.ordinal > initialState.ordinal
-                    val direction = if (isForward) 1 else -1
-                    (slideInHorizontally(animationSpec = tween(animDuration)) { it * direction } +
-                        fadeIn(animationSpec = tween(animDuration, delayMillis = if (animDuration == 0) 0 else 100))) togetherWith
-                    (slideOutHorizontally(animationSpec = tween(animDuration)) { -it * direction } +
-                        fadeOut(animationSpec = tween(if (animDuration == 0) 0 else 150)))
+                    // 2026-04-27 perf: shortened to a single 180ms cross-fade
+                    // (was 300ms slide + delayed fadeIn + 150ms fadeOut). The
+                    // earlier triple-animation spec triggered ~5 simultaneous
+                    // animations on overlapping subtrees + animateContentSize
+                    // remeasures, eating frame budget on 90Hz devices and
+                    // causing visible jitter (~15fps perceived). Plain fade is
+                    // cheaper and the user lands on the new step faster.
+                    // Reduce Motion: animDuration=0 collapses to instant swap.
+                    fadeIn(animationSpec = tween(animDuration)) togetherWith
+                        fadeOut(animationSpec = tween(animDuration))
                 },
                 // AND-038: contentKey ensures AnimatedContent remeasures correctly
                 // when transitioning between enum values with the same ordinal index.
-                // Using ordinal (Int) rather than the enum itself avoids an extra
-                // Any-equality check per frame.
                 contentKey = { it.ordinal },
                 label = "step",
             ) { step ->
@@ -2275,17 +2394,15 @@ fun LoginScreen(
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
-                    // LOGIN-MOCK-051: bump vertical padding to 24dp so card title doesn't
-                    // crowd the top edge; horizontal stays at 20dp for side gutters.
-                    // LOGIN-MOCK-107: reduce vertical from 24dp → 20dp; card bottom gap
-                    // was ~8dp over the mockup's ~16dp visual gap when card ends with a TextButton.
-                    // LOGIN-MOCK-142: animateContentSize lets the card height interpolate
-                    // smoothly when transitioning between steps of different heights,
-                    // preventing a jarring snap to the new height mid-slide.
-                    // LOGIN-MOCK-153: animDuration 0 collapses to instant snap with Reduce Motion.
-                    Column(modifier = Modifier
-                        .padding(horizontal = 20.dp, vertical = 20.dp)
-                        .animateContentSize(animationSpec = tween(animDuration))) {
+                    // LOGIN-MOCK-051/107: 24dp horizontal × 20dp vertical card
+                    // padding. animateContentSize was previously layered on top
+                    // of the AnimatedContent slide+fade — that combination
+                    // remeasured the entire form subtree every frame on step
+                    // transitions, causing ~15fps perceived jitter on 90Hz
+                    // devices (user-flagged 2026-04-27). Removed; the new
+                    // single-fade transition crossfades the cards in place,
+                    // and any height delta is masked by the fade itself.
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
@@ -2311,8 +2428,30 @@ fun LoginScreen(
  * Inactive tabs: muted onSurfaceVariant text + faint divider underline.
  * Container is transparent so it blends with the screen background.
  */
+/**
+ * 2026-04-27 — Replaced TabRow with a M3 Expressive
+ * [androidx.compose.material3.LinearWavyProgressIndicator] step indicator.
+ * The wave doubles as the brand wave (the WaveDivider under the wordmark
+ * was removed so there's exactly one wave on screen).
+ *
+ * Layout from top:
+ *   1. 3 caption labels (Server / Sign In / 2FA), each in its own equal
+ *      column. Past = onSurface (cream-tappable). Active = primary cream
+ *      bold. Future = onSurfaceVariant 0.45α + disabled().
+ *   2. LinearWavyProgressIndicator with progress = (currentIndex + 1) / 3.
+ *   3. "Step N of 3" caption row.
+ *
+ * Tappable behaviour mirrors the prior TabRow: past captions fire
+ * onTabClick → ViewModel.goToTab; future captions are inert and carry
+ * disabled() semantics for TalkBack.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun LoginTabBar(currentStep: SetupStep, animDuration: Int = 300) {
+private fun LoginTabBar(
+    currentStep: SetupStep,
+    animDuration: Int = 300,
+    onTabClick: (Int) -> Unit = {},
+) {
     val tabLabels = listOf("Server", "Sign In", "2FA")
     val selectedIndex = when (currentStep) {
         SetupStep.SERVER, SetupStep.REGISTER -> 0
@@ -2321,68 +2460,81 @@ private fun LoginTabBar(currentStep: SetupStep, animDuration: Int = 300) {
     }
 
     val activeColor = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
 
-    TabRow(
-        selectedTabIndex = selectedIndex,
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = Color.Transparent,
-        indicator = { tabPositions ->
-            // LOGIN-MOCK-143: M3 Expressive removed Modifier.tabIndicatorOffset.
-            // Animate pos.left and pos.width via animateDpAsState so the indicator
-            // slides smoothly between tabs instead of hard-cutting.
-            val pos = tabPositions[selectedIndex]
-            // LOGIN-MOCK-153: animDuration respects Reduce Motion (0 = instant snap).
-            val animatedLeft by animateDpAsState(
-                targetValue = pos.left,
-                animationSpec = tween(durationMillis = animDuration),
-                label = "tab_indicator_left",
-            )
-            val animatedWidth by animateDpAsState(
-                targetValue = pos.width,
-                animationSpec = tween(durationMillis = animDuration),
-                label = "tab_indicator_width",
-            )
-            Box(Modifier.fillMaxSize()) {
-                TabRowDefaults.SecondaryIndicator(
+    // Progress fraction: animate to (selectedIndex + 1) / 3 so the wavy bar
+    // glides between steps instead of jumping. Reduce Motion (animDuration=0)
+    // collapses the tween to a snap.
+    val targetFraction = (selectedIndex + 1) / 3f
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(durationMillis = animDuration),
+        label = "login_step_progress",
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ── Caption row: 3 equal columns, tappable for past steps ─────────
+        Row(modifier = Modifier.fillMaxWidth()) {
+            tabLabels.forEachIndexed { index, label ->
+                val isSelected = index == selectedIndex
+                val isFuture = index > selectedIndex
+                val isPast = index < selectedIndex
+
+                val labelColor = when {
+                    isSelected -> activeColor
+                    isFuture -> inactiveColor.copy(alpha = 0.45f)
+                    else -> onSurface
+                }
+
+                val tapModifier = if (isPast) {
+                    Modifier.clickable(
+                        onClickLabel = "Go back to $label step",
+                    ) { onTabClick(index) }
+                } else Modifier
+
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = animatedLeft)
-                        .width(animatedWidth),
-                    height = 3.dp, // LOGIN-MOCK-103: match mockup ~3dp indicator weight
-                    color = activeColor,
-                )
-            }
-        },
-        divider = {
-            HorizontalDivider(color = dividerColor, thickness = 1.dp)
-        },
-    ) {
-        tabLabels.forEachIndexed { index, label ->
-            val isSelected = index == selectedIndex
-            // LOGIN-MOCK-053: tabs are display-only progress indicators; marking them
-            // disabled() removes the "double-tap to activate" TalkBack hint while
-            // role=Tab + selected communicates the current step to screen readers.
-            Tab(
-                selected = isSelected,
-                onClick = { /* tabs are display-only; step advances via ViewModel */ },
-                modifier = Modifier.semantics {
-                    role = Role.Tab
-                    selected = isSelected
-                    disabled()
-                },
-                text = {
+                        .weight(1f)
+                        .then(tapModifier)
+                        .padding(vertical = 8.dp)
+                        .semantics {
+                            role = Role.Tab
+                            selected = isSelected
+                            if (isSelected || isFuture) disabled()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (isSelected) activeColor else inactiveColor,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = labelColor,
                     )
-                },
-                selectedContentColor = activeColor,
-                unselectedContentColor = inactiveColor,
-            )
+                }
+            }
         }
+
+        // ── Wavy progress indicator (M3 Expressive) ────────────────────────
+        // The "Step N of 3" caption is intentionally omitted: caption labels
+        // above already convey the same info, and the extra row was pushing
+        // the form card off the top of the screen on shorter phones. The
+        // contentDescription on the progress bar still announces step N/3 to
+        // TalkBack, so a11y is preserved.
+        androidx.compose.material3.LinearWavyProgressIndicator(
+            progress = { animatedProgress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+                .semantics {
+                    contentDescription =
+                        "Step ${selectedIndex + 1} of ${tabLabels.size}, ${tabLabels[selectedIndex]}"
+                },
+            color = activeColor,
+            trackColor = trackColor,
+            waveSpeed = 5.dp,
+        )
     }
 }
 
@@ -2510,7 +2662,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             label = { Text("Server URL") },
             placeholder = { Text("https://192.168.0.240:443") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
             leadingIcon = { Icon(Icons.Default.Dns, null) },
             trailingIcon = {
                 if (state.serverConnected) {
@@ -2528,7 +2680,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             label = { Text("Shop Name") },
             placeholder = { Text("myshop") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
             leadingIcon = { Icon(Icons.Default.Store, null) },
             suffix = {
                 // LOGIN-MOCK-108: bodyLarge (16sp) matches OutlinedTextField value text size.
@@ -2569,18 +2721,19 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TextButton(onClick = viewModel::toggleCustomServer) {
+        TextButton(onClick = viewModel::toggleCustomServer, modifier = Modifier.clickableHover()) {
             Text(
                 if (state.useCustomServer) "Use BizarreCRM Cloud" else "Self-hosted?",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
         if (!state.useCustomServer) {
-            TextButton(onClick = viewModel::goToRegister) {
+            TextButton(onClick = viewModel::goToRegister, modifier = Modifier.clickableHover()) {
                 Text("Register new shop", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
             }
         }
     }
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 // ─── Step 1b: Register New Shop (single form) ───────────────────────
@@ -2627,7 +2780,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     // LOGIN-MOCK-098/055: title + subtitle merged into one heading stop; back arrow
     // sits outside the merged Column so it remains independently focusable.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
@@ -2655,7 +2808,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         label = { Text("Shop URL") },
         singleLine = true,
         // LOGIN-MOCK-094: shopUrlFocusRequester for auto-focus on card entry.
-        modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester),
+        modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester).textFieldHover(),
         leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
         isError = shopSlugError,
         suffix = {
@@ -2677,7 +2830,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(20.dp))
+    // LOGIN-MOCK-273: M3 supportingText already renders ~16dp bottom clearance; adding
+    // 20dp here produces a ~36dp compound gap that exceeds every other inter-field distance.
+    // Reduce to 4dp so the visual gap matches the 8dp shown in mockups screens 02–05.
+    Spacer(Modifier.height(4.dp))
 
     // Field 2: Shop Display Name
     OutlinedTextField(
@@ -2685,7 +2841,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterShopName,
         label = { Text("Shop Display Name") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
@@ -2698,7 +2854,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterEmail,
         label = { Text("Admin Email") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         isError = emailError,
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         // LOGIN-MOCK-176: inline email validation
@@ -2714,14 +2870,14 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterPassword,
         label = { Text("Admin Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         isError = passwordError,
         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             // LOGIN-MOCK-093: stateful contentDescription so TalkBack announces
             // the resulting visibility state, not a generic static label.
-            IconButton(onClick = { showPassword = !showPassword }) {
+            IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
                 Icon(
                     if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                     contentDescription = if (showPassword) "Hide password" else "Show password",
@@ -2746,6 +2902,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
             else focusManager.clearFocus()
         }),
     )
+    // LOGIN-MOCK-273: password supportingText has built-in bottom clearance; without an
+    // explicit spacer the error text runs flush to the helper line. 4dp gives breathing room
+    // consistent with the 4dp clearance used after the Shop URL supportingText above.
+    Spacer(Modifier.height(4.dp))
 
     // Error shown between password helper and Create Shop button
     // LOGIN-MOCK-091: liveRegion=Polite so TalkBack announces this error on appearance.
@@ -2771,7 +2931,9 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         )
     }
 
-    Spacer(Modifier.height(16.dp)) // LOGIN-MOCK-113: 20→16dp to match ServerStep CTA rhythm
+    // LOGIN-MOCK-273: collapse to 8dp above the Create Shop button now that the error
+    // block has its own 4dp top spacer; avoids double-gap when error is visible.
+    Spacer(Modifier.height(8.dp)) // LOGIN-MOCK-113: 20→16dp; LOGIN-MOCK-273: 16→8dp
 
     val isFormValid = state.shopSlug.length >= 3
         && state.registerShopName.isNotBlank()
@@ -2786,6 +2948,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         isLoading = state.isLoading,
         label = "Create Shop",
     )
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 // ─── Step 2: Credentials ────────────────────────────────────────────
@@ -2799,12 +2962,69 @@ private fun CredentialsStep(
     val focusManager = LocalFocusManager.current
     // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
     var showPassword by rememberSaveable { mutableStateOf(false) }
-    // 2026-04-26 — when keyboard up, compress field gaps so both Username +
-    // Password + Sign In fit on smaller phones without scrolling. Layout
-    // animation handled by ancestor Column's Modifier.animateContentSize().
-    @OptIn(ExperimentalLayoutApi::class)
-    val imeVisible = WindowInsets.isImeVisible
-    val fieldGap = if (imeVisible) 8.dp else 16.dp
+
+    // §26.4 — Wrong-credential shake animation + Reduce Motion static red border.
+    //
+    // When the server returns 401 the VM increments [LoginUiState.credentialShakes].
+    // This LaunchedEffect fires on every new distinct value:
+    //   - reduceMotion OFF  → horizontal shake (Animatable offset) to match §2.12-L364
+    //                         spec "shake animation + REJECT haptic". The shake
+    //                         sequence mirrors PinDots: 4-stop asymmetric wobble.
+    //   - reduceMotion ON   → skip all translation; [showCredentialErrorBorder] is true
+    //                         so the password field gets a 2dp error-colored border,
+    //                         giving a static-but-visible error cue without any motion.
+    //
+    // Haptic: REJECT fires on wrong credential regardless of reduce-motion (non-motion
+    // feedback channel per §26.8 — haptics are always an acceptable confirmation signal).
+    val ctx = LocalContext.current
+    val credReduceMotion = remember(ctx) {
+        Settings.Global.getFloat(
+            ctx.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }
+    val credShakeOffset = remember { Animatable(0f) }
+    // showCredentialErrorBorder is true when reduce-motion is active AND at least one
+    // wrong-credential attempt has happened. Resets to false when the user changes the
+    // password field (error is cleared by updatePassword → state.error = null).
+    val showCredentialErrorBorder = credReduceMotion && state.credentialShakes > 0 && state.error != null
+    val credHaptic = LocalHapticFeedback.current
+
+    LaunchedEffect(state.credentialShakes) {
+        if (state.credentialShakes == 0) return@LaunchedEffect
+        // §26.8 — REJECT haptic fires regardless of reduce-motion (non-motion cue).
+        credHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (credReduceMotion) return@LaunchedEffect  // §26.4: border replaces shake
+        // §2.12-L364 — asymmetric 4-stop shake matching PinDots pattern.
+        val kick = 14f
+        listOf(-kick, kick, -kick * 0.6f, kick * 0.4f, 0f).forEach { target ->
+            credShakeOffset.animateTo(target, tween(durationMillis = 50))
+        }
+    }
+
+    // 2026-04-27 user-flagged regression: tapping Connect on Server step
+    // landed here without auto-focusing the Username field, AND there was
+    // a brief flicker where the IME hid (during the AnimatedContent
+    // transition) before re-appearing. Race the IME hide-timer:
+    // request focus on the very first frame after CredentialsStep
+    // composes, so Android's IME policy never sees the gap where no
+    // TextField has focus and never decides to dismiss the keyboard.
+    // withFrameNanos waits for the next render frame — that's enough
+    // time for Modifier.focusRequester to bind, and short enough that
+    // the IME state machine treats it as a focus transfer instead of a
+    // dismiss-then-reopen. Guard on blank username so 2FA returns
+    // don't re-pop the keyboard.
+    val usernameFocusRequester = remember { FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        if (state.username.isBlank()) {
+            // One frame of layout settle so focusRequester is bound.
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { usernameFocusRequester.requestFocus() }
+            keyboardController?.show()
+        }
+    }
 
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
@@ -2814,15 +3034,6 @@ private fun CredentialsStep(
     // Non-blocking: login form renders immediately; probe result overlays or
     // adds an informational banner when it completes.
     LaunchedEffect(Unit) { viewModel.probeSetupStatus() }
-
-    // 2026-04-26 — auto-focus Username when transitioning from Server → Sign In
-    // so the IME stays open instead of closing + re-animating the wordmark.
-    val usernameFocus = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
-        usernameFocus.requestFocus()
-        keyboardController?.show()
-    }
 
     // §2.1 — transparent probe overlay: ≤400ms loading indicator per spec.
     // Shown while the probe is in flight. Does NOT block the form fields.
@@ -2878,7 +3089,7 @@ private fun CredentialsStep(
                     // LOGIN-MOCK-165: dismiss button
                     IconButton(
                         onClick = { viewModel.dismissSetupNeededBanner() },
-                        modifier = androidx.compose.ui.Modifier.size(24.dp),
+                        modifier = androidx.compose.ui.Modifier.size(24.dp).clickableHover(),
                     ) {
                         Icon(
                             Icons.Default.Close,
@@ -2898,7 +3109,7 @@ private fun CredentialsStep(
                         setupContext.startActivity(intent)
                     },
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                    modifier = androidx.compose.ui.Modifier.height(24.dp),
+                    modifier = androidx.compose.ui.Modifier.height(24.dp).clickableHover(),
                 ) {
                     Text(
                         "View setup guide",
@@ -2968,6 +3179,7 @@ private fun CredentialsStep(
                 TextButton(
                     onClick = viewModel::login,
                     contentPadding = PaddingValues(4.dp),
+                    modifier = Modifier.clickableHover(),
                 ) {
                     Text("Retry", style = MaterialTheme.typography.labelSmall)
                 }
@@ -3038,7 +3250,7 @@ private fun CredentialsStep(
     // LOGIN-MOCK-070: removed redundant Spacer(width(8.dp)) — IconButton already has
     // 12dp internal horizontal padding giving the correct optical gap to the title.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
@@ -3048,14 +3260,14 @@ private fun CredentialsStep(
             }
         }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp)) // LOGIN-MOCK-275: 16→20dp header-to-username gap
 
     OutlinedTextField(
         value = state.username,
         onValueChange = viewModel::updateUsername,
         label = { Text("Username") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(usernameFocus),
+        modifier = Modifier.fillMaxWidth().focusRequester(usernameFocusRequester).textFieldHover(),
         isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
         // LOGIN-MOCK-177: inline username validation
@@ -3065,80 +3277,93 @@ private fun CredentialsStep(
         // inert under the visible "Next" glyph on the native keyboard.
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(fieldGap))
+    Spacer(Modifier.height(16.dp))
 
+    // §26.4 — The Box below wraps password field + error message and carries
+    // the shake-offset translation. The [graphicsLayer] moves the whole block
+    // horizontally without affecting layout; [showCredentialErrorBorder] adds a
+    // 2dp error-colored rounded border around the block when Reduce Motion is on.
     // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
     // While check is in flight (domainSsoChecking), show a small spinner below the
     // username field instead of the password field, preventing flicker.
-    when {
-        state.domainSsoChecking -> {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(
-                        "Checking sign-in method\u2026",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        state.domainSsoDetected -> {
-            // Replace password field with "Continue with SSO" primary button.
-            BrandPrimaryButton(
-                onClick = viewModel::login,
-                enabled = !state.isLoading,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
-                    Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Continue with SSO")
-                }
-            }
-        }
-        else -> {
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::updatePassword,
-                label = { Text("Password") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                isError = credPasswordError,
-                leadingIcon = { Icon(Icons.Default.Lock, null) },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
-                    IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(
-                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showPassword) "Hide password" else "Show password",
+    // 2026-04-27 user-flagged: previously the in-flight branch pulled the
+    // password field out of the tree to render a "Checking sign-in method..."
+    // spinner. Removing the focused password TextField mid-typing dropped
+    // focus and dismissed the IME on every keystroke after `@`. The check
+    // now runs silently; the password field stays in place during the
+    // request and only morphs to the SSO button when SSO is actually
+    // detected (rare case). Non-SSO users never see any UI noise.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { translationX = credShakeOffset.value }
+            .then(
+                if (showCredentialErrorBorder) {
+                    // §26.4: static error border replaces shake when Reduce Motion is active.
+                    Modifier
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.error,
+                            shape = MaterialTheme.shapes.small,
                         )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                } else Modifier,
+            ),
+    ) {
+        Column {
+            when {
+                state.domainSsoDetected -> {
+                    // Replace password field with "Continue with SSO" primary button.
+                    BrandPrimaryButton(
+                        onClick = viewModel::login,
+                        enabled = !state.isLoading,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) {
+                        if (state.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
+                            Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Continue with SSO")
+                        }
                     }
-                },
-                // LOGIN-MOCK-177: inline password validation
-                supportingText = { if (credPasswordError) Text("Password cannot be empty") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
-            )
+                }
+                else -> {
+                    OutlinedTextField(
+                        value = state.password,
+                        onValueChange = viewModel::updatePassword,
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().textFieldHover(),
+                        isError = credPasswordError || showCredentialErrorBorder,
+                        leadingIcon = { Icon(Icons.Default.Lock, null) },
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
+                            IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
+                                Icon(
+                                    if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showPassword) "Hide password" else "Show password",
+                                )
+                            }
+                        },
+                        // LOGIN-MOCK-177: inline password validation
+                        supportingText = { if (credPasswordError) Text("Password cannot be empty") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
+                    )
+                }
+            }
+
+            ErrorMessage(state.error)
         }
     }
-
-    ErrorMessage(state.error)
-    Spacer(Modifier.height(fieldGap))
+    Spacer(Modifier.height(16.dp))
 
     // CROSS48: Sign In is the single dominant CTA on this step — route
     // through BrandPrimaryButton so every primary button in the app
@@ -3170,7 +3395,7 @@ private fun CredentialsStep(
 
         OutlinedButton(
             onClick = { showSsoSheet = true },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp).clickableHover(),
             enabled = !state.ssoExchangeLoading,
         ) {
             if (state.ssoExchangeLoading) {
@@ -3200,7 +3425,7 @@ private fun CredentialsStep(
                                     viewModel.launchSsoProvider(activity, provider)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickableHover(),
                         ) {
                             Text(provider.name)
                         }
@@ -3225,7 +3450,7 @@ private fun CredentialsStep(
 
         TextButton(
             onClick = { viewModel.openMagicLinkSheet() },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             Icon(
                 Icons.Default.Email,
@@ -3260,7 +3485,7 @@ private fun CredentialsStep(
                 }
             },
             enabled = !state.passkeyLoading,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             if (state.passkeyLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -3297,6 +3522,7 @@ private fun CredentialsStep(
             )
         }
     }
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 /**
@@ -3331,7 +3557,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                     onValueChange = viewModel::updateMagicLinkEmail,
                     label = { Text("Email address") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().textFieldHover(),
                     leadingIcon = { Icon(Icons.Default.Email, null) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
@@ -3348,7 +3574,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                 Button(
                     onClick = { viewModel.requestMagicLink() },
                     enabled = state.magicLinkEmail.isNotBlank() && !state.magicLinkLoading,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp).clickableHover(),
                 ) {
                     if (state.magicLinkLoading) {
                         CircularProgressIndicator(
@@ -3416,7 +3642,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                         viewModel.requestMagicLink()
                     },
                     enabled = cooldownSec <= 0L && !state.magicLinkLoading,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickableHover(),
                 ) {
                     if (cooldownSec > 0L) {
                         Text("Resend in ${cooldownSec}s", style = MaterialTheme.typography.labelMedium)
@@ -3520,7 +3746,7 @@ private fun MagicLinkPreviewDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) {
+            TextButton(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.clickableHover()) {
                 Text("Cancel")
             }
         },
@@ -3536,7 +3762,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     val focusManager = LocalFocusManager.current
     // LOGIN-MOCK-098/055/101: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -3553,7 +3779,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         onValueChange = viewModel::updateNewPassword,
         label = { Text("New Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
@@ -3569,7 +3795,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         onValueChange = viewModel::updateConfirmPassword,
         label = { Text("Confirm Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { viewModel.setPassword() }),
@@ -3717,7 +3943,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
         Spacer(Modifier.height(4.dp))
         TextButton(
             onClick = { manualEntryExpanded = (manualEntryExpanded == false) },
-            modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally),
+            modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).clickableHover(),
         ) {
             Text(
                 if (manualEntryExpanded) "Hide manual key" else "Can't scan?",
@@ -3746,7 +3972,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                             fontFamily = BrandMono.fontFamily,
                             letterSpacing = 2.sp,
                         ),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), // LOGIN-MOCK-279: 12/10→16/12dp
                     )
                 }
             }
@@ -3765,7 +3991,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                             clearAfterMillis = 30_000L,
                         )
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).clickableHover(),
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -3796,7 +4022,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                         onClick = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, otpauthUri))
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).clickableHover(),
                     ) {
                         Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -3857,7 +4083,7 @@ private fun TwoFaVerifyStep(
 
     // LOGIN-MOCK-098/055: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -3870,7 +4096,10 @@ private fun TwoFaVerifyStep(
             Text("Enter the 6-digit code from your TOTP app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Spacer(Modifier.height(24.dp))
+    // LOGIN-MOCK-277: align with every other step's 16 dp subtitle-to-first-field gap
+    // (ServerStep, RegisterStep, CredentialsStep, SetPasswordStep all use 16 dp here).
+    // The previous 24 dp made the verify card appear taller than its siblings.
+    Spacer(Modifier.height(16.dp))
 
     TotpCodeInputContent(state, viewModel, onSuccess)
     // §2.13-L366: countdown shown while challenge token is live
@@ -3881,7 +4110,7 @@ private fun TwoFaVerifyStep(
         Spacer(Modifier.height(4.dp))
         TextButton(
             onClick = onBackupCodeRecovery,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             Text(
                 "Lost 2FA access? Use a backup code",
@@ -3937,12 +4166,7 @@ private fun TotpCodeInputContent(
         },
         label = { Text("6-digit code") },
         singleLine = true,
-        // §2.4 L302 — ContentType.SmsOtpCode is public in Compose UI 1.8+ (BOM 2026.04.01).
-        // Signals to the Android autofill framework that this field receives SMS OTPs.
-        modifier = Modifier
-            .fillMaxWidth()
-            .focusRequester(focusRequester)
-            .semantics { contentType = ContentType.SmsOtpCode },
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
         textStyle = LocalTextStyle.current.copy(
             fontFamily = BrandMono.fontFamily,
             fontSize = 24.sp,

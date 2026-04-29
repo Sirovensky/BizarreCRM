@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.data.local.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,8 +20,9 @@ import javax.inject.Singleton
  *    created inside the same millisecond.
  *
  * 2. **Human-visible offline references** (e.g. a ticket's `orderId`) — a monotonically
- *    increasing positive counter formatted as `OFFLINE-{n}`. These are displayed in the
- *    UI until the server confirms the real `orderId` via the sync reconciliation step.
+ *    increasing positive counter formatted as `OFFLINE-YYYY-MM-DD-NNNN` (date-stamped,
+ *    zero-padded to 4 digits). These are displayed in the UI until the server confirms
+ *    the real `orderId` via the sync reconciliation step. §20.6 L2137.
  *
  * 3. **Idempotency keys** — random UUIDs passed alongside create requests so the server
  *    can dedupe retried POSTs. Per AP5.
@@ -50,15 +53,20 @@ class OfflineIdGenerator @Inject constructor(
 
     /**
      * Returns the next offline reference string for UI display (e.g. an order id on a
-     * pending ticket). Callers are expected to replace this value once sync reconciles
-     * to the real server-assigned reference.
+     * pending ticket). Format: `OFFLINE-YYYY-MM-DD-NNNN` where NNNN is a zero-padded
+     * per-device monotonic counter. §20.6 L2137.
+     *
+     * Callers are expected to replace this value once sync reconciles to the real
+     * server-assigned reference. The date portion is the local date at creation time
+     * so the user can quickly identify which day an offline record was created.
      */
     @Synchronized
     fun nextOfflineReference(prefix: String = "OFFLINE"): String {
         val current = prefs.getLong(KEY_OFFLINE_REF_COUNTER, 0L)
         val next = current + 1L
         prefs.edit().putLong(KEY_OFFLINE_REF_COUNTER, next).apply()
-        return "$prefix-$next"
+        val date = LocalDate.now().format(DATE_FORMATTER)
+        return "$prefix-$date-${next.toString().padStart(4, '0')}"
     }
 
     /**
@@ -74,5 +82,8 @@ class OfflineIdGenerator @Inject constructor(
         // Start just below zero so the very first assignment becomes -1. Staying in
         // negative space preserves SyncManager's "entityId < 0 means temp" contract.
         private const val INITIAL_TEMP_ID = 0L
+
+        /** ISO-8601 date formatter for human-readable offline references. */
+        private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     }
 }

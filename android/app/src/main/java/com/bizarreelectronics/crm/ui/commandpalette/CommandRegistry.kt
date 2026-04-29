@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.bizarreelectronics.crm.util.FtsQuerySanitizer
 
 // ─── Command model ────────────────────────────────────────────────────────────
 
@@ -183,25 +184,59 @@ object CommandRegistry {
     /**
      * Filter [staticCommands] + [dynamicCommands] by [query], respecting
      * [isAdmin]. Returns results grouped in display order, capped at 20 items.
+     *
+     * Matching priority:
+     *  1. Exact/prefix substring match on label or keyword (fast path).
+     *  2. Fuzzy Levenshtein match (edit distance ≤ 2) via [FtsQuerySanitizer]
+     *     on words ≥ 4 chars — recovers from typos without flooding results.
+     *
+     * [recentCommandIds] are promoted to [CommandGroup.RECENT] and sorted
+     * by recency order within their group.
      */
     fun search(
         query: String,
         isAdmin: Boolean,
         dynamicCommands: List<Command> = emptyList(),
+        recentCommandIds: List<String> = emptyList(),
     ): List<Command> {
         val q = query.trim().lowercase()
         val allCommands = staticCommands + dynamicCommands
 
-        val candidates = allCommands.filter { cmd ->
-            if (cmd.adminOnly && !isAdmin) return@filter false
-            if (q.isBlank()) return@filter true
-            cmd.label.lowercase().contains(q) ||
-                cmd.keywords.any { kw -> kw.lowercase().contains(q) }
+        // Build a promoted copy for any command that appears in recentCommandIds,
+        // so its group is RECENT and ordering reflects recency (index in the list).
+        val recentSet = recentCommandIds.toSet()
+        val promotedCommands = allCommands.map { cmd ->
+            if (cmd.id in recentSet) cmd.copy(group = CommandGroup.RECENT) else cmd
         }
 
-        // Group order: NAVIGATION → ACTIONS → RECENT
+        val queryWords = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+
+        val candidates = promotedCommands.filter { cmd ->
+            if (cmd.adminOnly && !isAdmin) return@filter false
+            if (q.isBlank()) return@filter true
+
+            // 1. Substring match on label or any keyword (fast path)
+            val substringHit = cmd.label.lowercase().contains(q) ||
+                cmd.keywords.any { kw -> kw.lowercase().contains(q) }
+            if (substringHit) return@filter true
+
+            // 2. Fuzzy match: any query word within Levenshtein ≤ 2 of a label
+            //    token or keyword token (guards against short words via
+            //    FtsQuerySanitizer.MIN_LENGTH_FOR_FUZZY = 4).
+            val searchableText = (listOf(cmd.label) + cmd.keywords).joinToString(" ")
+            FtsQuerySanitizer.isFuzzyMatch(queryWords, searchableText)
+        }
+
+        // Sort: NAVIGATION → ACTIONS → RECENT; within RECENT respect recency order.
+        val recentOrder = recentCommandIds.withIndex().associate { (idx, id) -> id to idx }
         return candidates
-            .sortedWith(compareBy({ it.group.ordinal }, { it.label }))
+            .sortedWith(
+                compareBy(
+                    { it.group.ordinal },
+                    { if (it.group == CommandGroup.RECENT) recentOrder[it.id] ?: Int.MAX_VALUE else 0 },
+                    { it.label },
+                ),
+            )
             .take(20)
     }
 }

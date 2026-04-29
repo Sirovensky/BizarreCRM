@@ -28,11 +28,13 @@ import androidx.compose.ui.unit.dp
  *
  * [data] — current saved values for this step.
  * [onDataChange] — called with the full updated field map on any change.
+ * [inlineError] — §36.4 validation error string to display inline; null when no error.
  */
 @Composable
 fun OwnerAccountStep(
     data: Map<String, Any>,
     onDataChange: (Map<String, Any>) -> Unit,
+    inlineError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var username        by remember { mutableStateOf(data["username"]?.toString() ?: "") }
@@ -98,5 +100,14 @@ fun OwnerAccountStep(
             },
             supportingText = { Text("Minimum 8 characters") },
         )
+
+        // §36.4 — inline validation error displayed below step fields.
+        if (!inlineError.isNullOrBlank()) {
+            Text(
+                text  = inlineError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }

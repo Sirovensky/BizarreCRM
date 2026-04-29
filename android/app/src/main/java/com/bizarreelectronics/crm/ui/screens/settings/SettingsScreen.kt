@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -37,7 +39,9 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.util.DeviceTokenManager
+import com.bizarreelectronics.crm.util.HapticEvent
 import com.bizarreelectronics.crm.util.LanguageManager
+import com.bizarreelectronics.crm.util.LocalAppHapticController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -250,6 +254,8 @@ fun SettingsScreen(
     onPinSetup: (() -> Unit)? = null,
     // §32.3 — opens the Crash reports diagnostic screen.
     onCrashReports: (() -> Unit)? = null,
+    // §32.4 — opens the log viewer (ring buffer of last 500 Error+Warn entries).
+    onViewLogs: (() -> Unit)? = null,
     // §28 — opens About + diagnostics screen (copy-bundle for support).
     onAbout: (() -> Unit)? = null,
     // §1.3 [plan:L185] — opens Diagnostics (Export DB snapshot). DEBUG builds only.
@@ -268,6 +274,9 @@ fun SettingsScreen(
     // §3.19 L613–L616 — opens the Appearance / dashboard density picker.
     // Nullable so previews and callers that don't wire it can omit it.
     onAppearance: (() -> Unit)? = null,
+    // §1.5 line 202 — opens the Tab Order customisation sub-screen (phone only).
+    // Nullable so tablet/desktop callers that show no bottom bar can omit it.
+    onTabOrder: (() -> Unit)? = null,
     // §17.4/17.5 — opens the Hardware sub-screen (printers + BlockChyp terminal).
     onHardware: (() -> Unit)? = null,
     // §38 — opens the Memberships / Loyalty screen.
@@ -279,19 +288,27 @@ fun SettingsScreen(
     // §19.7 — opens the Ticket settings sub-screen.
     onTicketSettings: (() -> Unit)? = null,
     // §19.8 — opens the POS / payment settings sub-screen.
-    onPosSettings: (() -> Unit)? = null,
+    onPaymentSettings: (() -> Unit)? = null,
     // §19.9 — opens the SMS settings sub-screen.
     onSmsSettings: (() -> Unit)? = null,
-    // §19.19 — opens the Business Info sub-screen.
+    // §19.10 — opens the Integrations hub.
+    onIntegrations: (() -> Unit)? = null,
+    // §19.11 — opens the Team & Roles settings hub.
+    onTeamSettings: (() -> Unit)? = null,
+    // §19.12 — opens the Data settings (import/export/cache/reset).
+    onDataSettings: (() -> Unit)? = null,
+    // §19.13 — opens Full diagnostics.
+    onFullDiagnostics: (() -> Unit)? = null,
+    // §19.14 — opens App info (OSS licenses, Privacy, Terms, Rate app).
+    onAppInfo: (() -> Unit)? = null,
+    // §19.19 — opens Business info.
     onBusinessInfo: (() -> Unit)? = null,
-    // §44.1 — opens the Device Templates sub-screen.
-    onDeviceTemplates: (() -> Unit)? = null,
-    // §44.2 — opens the Repair Pricing catalog sub-screen.
-    onRepairPricing: (() -> Unit)? = null,
-    // §44.3 — opens the Device Catalog sub-screen.
-    onDeviceCatalog: (() -> Unit)? = null,
-    // §57 — opens the Kiosk / Lock-Task Mode sub-screen.
-    onKioskMode: (() -> Unit)? = null,
+    // §53 — opens Training Mode (sandbox) sub-screen.
+    onTrainingMode: (() -> Unit)? = null,
+    // §72 — opens in-app Help center (offline bundled articles + contact support).
+    onHelp: (() -> Unit)? = null,
+    // §6.8 — opens the Bin Locations manager (Settings → Inventory → Bin Locations).
+    onBinLocations: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -386,19 +403,6 @@ fun SettingsScreen(
                 )
             }
 
-            // §57 — Kiosk / Lock-Task Mode. Shown when the callback is wired
-            // (admin role gating is enforced at the navigation call site).
-            if (onKioskMode != null) {
-                val kioskEnabled = viewModel.appPreferences.kioskModeEnabled
-                SettingsRowWithBadge(
-                    icon = Icons.Default.TabletAndroid,
-                    title = "Kiosk Mode",
-                    badgeText = if (kioskEnabled) "On" else "Off",
-                    badgeEnabled = kioskEnabled,
-                    onClick = onKioskMode,
-                )
-            }
-
             // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
             if (onHardware != null) {
                 SettingsRow(
@@ -445,11 +449,11 @@ fun SettingsScreen(
             }
 
             // §19.8 — POS / payment settings (methods, tax, tips, cash drawer).
-            if (onPosSettings != null) {
+            if (onPaymentSettings != null) {
                 SettingsRow(
                     icon = Icons.Default.PointOfSale,
                     title = "POS & Payment",
-                    onClick = onPosSettings,
+                    onClick = onPaymentSettings,
                 )
             }
 
@@ -471,32 +475,15 @@ fun SettingsScreen(
                 )
             }
 
-            // §44.1 — Device templates (common repairs + parts per device model).
-            if (onDeviceTemplates != null) {
+            // §6.8 — Bin locations manager (warehouse aisle/shelf/bin CRUD).
+            if (onBinLocations != null) {
                 SettingsRow(
-                    icon = Icons.Default.PhoneAndroid,
-                    title = "Device Templates",
-                    onClick = onDeviceTemplates,
+                    icon = Icons.Default.LocationOn,
+                    title = "Bin Locations",
+                    onClick = onBinLocations,
                 )
             }
 
-            // §44.2 — Repair pricing catalog (service names + labor rates).
-            if (onRepairPricing != null) {
-                SettingsRow(
-                    icon = Icons.Default.Build,
-                    title = "Repair Pricing",
-                    onClick = onRepairPricing,
-                )
-            }
-
-            // §44.3 — Device catalog (manufacturers + models browser, admin can add).
-            if (onDeviceCatalog != null) {
-                SettingsRow(
-                    icon = Icons.Default.Devices,
-                    title = "Device Catalog",
-                    onClick = onDeviceCatalog,
-                )
-            }
 
             // §3.19 L613–L616 — Appearance / dashboard density sub-screen.
             // Placed immediately after Display so layout-related settings are grouped
@@ -508,6 +495,16 @@ fun SettingsScreen(
                     title = "Dashboard Density",
                     subtitle = currentDensity.name,
                     onClick = onAppearance,
+                )
+            }
+
+            // §1.5 line 202 — Tab Order customisation. Shows on phone (compact width)
+            // only: tablets/desktops use the rail/drawer so this setting is not relevant.
+            if (onTabOrder != null) {
+                SettingsRow(
+                    icon = Icons.Default.Tab,
+                    title = "Tab Order",
+                    onClick = onTabOrder,
                 )
             }
 
@@ -591,10 +588,21 @@ fun SettingsScreen(
                 )
             }
 
-            // §19.13 — Diagnostics: logs, force sync, DB export (dev-only export gated in-screen).
-            // Row visible in all builds; DB export in the screen is always available but
-            // a warning in the screen makes the dev-only nature clear.
-            if (onDiagnostics != null) {
+            // §32.4 — Diagnostics → View logs. Always visible so release
+            // users can share the Error+Warn ring buffer with support.
+            if (onViewLogs != null) {
+                SettingsRow(
+                    icon = Icons.Default.Article,
+                    title = "View logs",
+                    onClick = onViewLogs,
+                )
+            }
+
+            // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only:
+            // a plaintext/decrypted export would be a data-exfil risk in
+            // production. The callback is also gated on BuildConfig.DEBUG so
+            // the row is compiled-out in release builds entirely.
+            if (com.bizarreelectronics.crm.BuildConfig.DEBUG && onDiagnostics != null) {
                 SettingsRow(
                     icon = Icons.Default.BugReport,
                     title = "Diagnostics",
@@ -612,12 +620,114 @@ fun SettingsScreen(
                 )
             }
 
+            // §19.7 — Ticket settings (due-date defaults, IMEI required, photo required).
+            if (onTicketSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.ConfirmationNumber,
+                    title = "Ticket settings",
+                    onClick = onTicketSettings,
+                )
+            }
+
+            // §19.8 — POS / payment settings.
+            if (onPaymentSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Payment,
+                    title = "POS & Payment",
+                    onClick = onPaymentSettings,
+                )
+            }
+
+            // §19.9 — SMS settings.
+            if (onSmsSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Sms,
+                    title = "SMS settings",
+                    onClick = onSmsSettings,
+                )
+            }
+
+            // §19.10 — Integrations hub.
+            if (onIntegrations != null) {
+                SettingsRow(
+                    icon = Icons.Default.Hub,
+                    title = "Integrations",
+                    onClick = onIntegrations,
+                )
+            }
+
+            // §19.11 — Team & Roles.
+            if (onTeamSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.ManageAccounts,
+                    title = "Team & Roles",
+                    onClick = onTeamSettings,
+                )
+            }
+
+            // §19.12 — Data (import / export / cache / reset).
+            if (onDataSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Storage,
+                    title = "Data",
+                    onClick = onDataSettings,
+                )
+            }
+
+            // §19.13 — Full diagnostics (server URL, logs, force sync).
+            if (onFullDiagnostics != null) {
+                SettingsRow(
+                    icon = Icons.Default.Terminal,
+                    title = "Diagnostics",
+                    onClick = onFullDiagnostics,
+                )
+            }
+
+            // §19.19 — Business info (shop name, address, phone, email, social).
+            if (onBusinessInfo != null) {
+                SettingsRow(
+                    icon = Icons.Default.Store,
+                    title = "Business info",
+                    onClick = onBusinessInfo,
+                )
+            }
+
+            // §19.14 — App info (OSS licenses, Privacy, Terms, Rate app).
+            if (onAppInfo != null) {
+                SettingsRow(
+                    icon = Icons.Default.Info,
+                    title = "App info",
+                    onClick = onAppInfo,
+                )
+            }
+
             // §28 — About + diagnostics. Copy-bundle for support tickets.
             if (onAbout != null) {
                 SettingsRow(
                     icon = Icons.Default.Info,
                     title = "About",
                     onClick = onAbout,
+                )
+            }
+
+            // §53 — Training Mode (sandbox). Badge shows current On/Off state.
+            // Visible to all roles — staff members may practice workflows;
+            // enabling / disabling requires no special role gate client-side
+            // (the server ignores requests made in training mode anyway).
+            if (onTrainingMode != null) {
+                SettingsRow(
+                    icon = Icons.Default.Science,
+                    title = "Training Mode",
+                    onClick = onTrainingMode,
+                )
+            }
+
+            // §72.1 — Help center entry point (offline bundled articles + contact support).
+            if (onHelp != null) {
+                SettingsRow(
+                    icon = Icons.Outlined.HelpOutline,
+                    title = "Help",
+                    onClick = onHelp,
                 )
             }
 
@@ -838,6 +948,9 @@ fun SettingsScreen(
  * Reusable preference toggle row used within the Device Preferences card.
  * Icon tint is muted (onSurfaceVariant) per the TODO spec; purple lives on
  * the Switch thumb automatically via the theme.
+ *
+ * §69.1 — Toggle on/off fires [HapticEvent.ToggleChange] via [LocalAppHapticController]
+ * (CONTEXT_CLICK weight) before delegating to [onCheckedChange].
  */
 @Composable
 private fun PreferenceRow(
@@ -849,6 +962,7 @@ private fun PreferenceRow(
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true,
 ) {
+    val hapticCtrl = LocalAppHapticController.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -870,8 +984,17 @@ private fun PreferenceRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = { newValue ->
+                // §69.1 — Toggle on/off → CONTEXT_CLICK weight haptic.
+                hapticCtrl?.fire(HapticEvent.ToggleChange)
+                onCheckedChange(newValue)
+            },
             enabled = enabled,
+            // §26.1 — stateDescription so TalkBack announces "<title>, on" or
+            // "<title>, off" when the toggle changes state.
+            modifier = Modifier.semantics {
+                stateDescription = if (checked) "on" else "off"
+            },
         )
     }
 }

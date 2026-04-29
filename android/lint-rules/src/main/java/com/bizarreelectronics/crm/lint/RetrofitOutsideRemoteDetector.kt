@@ -12,56 +12,57 @@ import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UImportStatement
 
 /**
- * Bans direct imports of Retrofit / OkHttp / ApiClient classes outside the
- * `data/remote/` package tree.
+ * Lint rule: Retrofit / OkHttp imports are only permitted inside the
+ * `data/remote` package family (i.e. any source file whose fully-qualified
+ * class name contains `.data.remote.`).
  *
- * ## Rationale (ActionPlan §20.1)
+ * # Why this rule exists
  *
- * The repository pattern mandates that all network calls go through
- * `data/remote/` — ViewModels and domain layers must never hold a Retrofit
- * interface reference directly.  This rule enforces that at compile-time
- * without requiring code review to catch violations.
+ * §1.6 sovereignty — all outbound network calls must go through `RetrofitClient`
+ * and the typed Retrofit API interfaces in `data/remote/api/`. Direct use of
+ * Retrofit or OkHttp outside that package bypasses:
+ *   - the `DynamicBaseUrlInterceptor` (tenant-URL rewrite + HMAC validation)
+ *   - the `AuthInterceptor` (JWT attachment + token refresh)
+ *   - the `RedactingHttpLogger` (PII scrub before logcat)
+ *   - cert-pinning on release builds
+ *   - the no-third-party-egress invariant (§32.1)
  *
- * ## Banned import prefixes
+ * Any legitimate use of low-level OkHttp that cannot go through Retrofit
+ * (e.g. the BlockChyp local-terminal socket) must live in `data/remote/` or
+ * be explicitly suppressed with a justification comment.
  *
- * | Prefix                  | Why                              |
- * |-------------------------|----------------------------------|
- * | `retrofit2.`            | Retrofit service interfaces      |
- * | `okhttp3.OkHttpClient`  | Raw HTTP client                  |
- * | `com.bizarreelectronics.crm.data.remote.RetrofitClient` | Internal wrapper — VMs must use repositories |
+ * # Suppression
  *
- * ## Allowed packages
- *
- * Any file whose package starts with:
- * - `com.bizarreelectronics.crm.data.remote`  — network layer (retrofit services, interceptors)
- * - `com.bizarreelectronics.crm.di`           — Hilt modules that provide the client
- *
- * ## Suppression
- *
- * Add `// ok:retrofit-outside-remote` on the same line as the import statement
- * in the rare legitimate case (e.g. a test double that must hold the real type).
+ * ```kotlin
+ * @SuppressLint("RetrofitOutsideRemote")
+ * class MySpecialCase { ... }  // ok:direct-http — reason here
+ * ```
  */
 class RetrofitOutsideRemoteDetector : Detector(), Detector.UastScanner {
 
     companion object {
         val ISSUE: Issue = Issue.create(
             id = "RetrofitOutsideRemote",
-            briefDescription = "Retrofit/OkHttp/ApiClient import outside `data/remote/`",
+            briefDescription = "Retrofit / OkHttp import outside `data/remote` package",
             explanation = """
-                Retrofit service interfaces, OkHttpClient, and RetrofitClient must only be \
-                imported within `data/remote/` or `di/` packages. ViewModels and repositories \
-                must call server APIs through typed repository methods that return `Flow` or \
-                `suspend fun`, never by holding a raw Retrofit interface.
+                Retrofit and OkHttp imports are only allowed inside the
+                `data/remote` package (and its sub-packages).
 
-                This enforces the offline-first repository pattern: all network access is \
-                funnelled through the repository layer so offline fallbacks, optimistic UI, \
-                and sync-queue writes are consistently applied.
+                Direct use elsewhere bypasses the tenant-URL interceptor,
+                auth interceptor, PII-scrubbing logger, cert-pinning, and
+                the sovereignty rule (§1.6) that prohibits data egress to
+                any host other than the configured tenant server.
 
-                To suppress in a genuine test double: add `// ok:retrofit-outside-remote` \
-                to the same line as the offending import.
+                Move the network call into a Retrofit API interface under
+                `data/remote/api/` or, for non-REST sockets, co-locate the
+                code in `data/remote/`.
+
+                Suppress only when unavoidable (e.g. hardware SDKs with their
+                own HTTP stack) using `@SuppressLint("RetrofitOutsideRemote")`
+                with an explanatory comment.
             """,
-            category = Category.CORRECTNESS,
-            priority = 8,
+            category = Category.SECURITY,
+            priority = 10,
             severity = Severity.ERROR,
             implementation = Implementation(
                 RetrofitOutsideRemoteDetector::class.java,
@@ -69,18 +70,24 @@ class RetrofitOutsideRemoteDetector : Detector(), Detector.UastScanner {
             ),
         )
 
-        private val BANNED_IMPORT_PREFIXES = listOf(
+        /** Import prefixes that are banned outside `data.remote`. */
+        private val BANNED_PREFIXES: List<String> = listOf(
             "retrofit2.",
-            "okhttp3.OkHttpClient",
-            "com.bizarreelectronics.crm.data.remote.RetrofitClient",
+            "okhttp3.",
+            "okio.",
+            "com.google.firebase.crashlytics.",
+            "com.google.firebase.analytics.",
+            "com.google.firebase.perf.",
+            "com.google.firebase.remoteconfig.",
+            "io.sentry.",
         )
 
-        private val ALLOWED_PACKAGE_PREFIXES = listOf(
-            "com.bizarreelectronics.crm.data.remote",
-            "com.bizarreelectronics.crm.di",
-        )
-
-        private const val SUPPRESS_COMMENT = "ok:retrofit-outside-remote"
+        /**
+         * The path segment that marks a file as being inside the data/remote
+         * layer. Path comparison is used (not package reflection) to avoid
+         * relying on PSI type dispatch that varies across IDE / Lint versions.
+         */
+        private const val ALLOWED_PATH_SEGMENT = "/data/remote/"
     }
 
     override fun getApplicableUastTypes(): List<Class<out UElement>> =
@@ -89,47 +96,29 @@ class RetrofitOutsideRemoteDetector : Detector(), Detector.UastScanner {
     override fun createUastHandler(context: JavaContext): UElementHandler =
         object : UElementHandler() {
             override fun visitImportStatement(node: UImportStatement) {
-                val importFqn = node.importReference?.asSourceString() ?: return
+                val importedFqn = node.importReference?.asSourceString() ?: return
 
-                // Only flag imports that match a banned prefix.
-                val isBanned = BANNED_IMPORT_PREFIXES.any { importFqn.startsWith(it) }
-                if (!isBanned) return
+                // Is it a banned import?
+                val banned = BANNED_PREFIXES.any { importedFqn.startsWith(it) }
+                if (!banned) return
 
-                // Allow within data/remote and di packages.
-                val packageName = context.psiFile?.let { f ->
-                    (f as? com.intellij.psi.PsiJavaFile)?.packageName
-                        ?: run {
-                            // For Kotlin files, derive the package from the file's package directive.
-                            f.name // fallback — won't match an allowed prefix, so we continue below
-                        }
-                } ?: ""
-
-                // Use the file's containing directory path as a reliable signal.
+                // Derive the source-set-relative path using the canonical file
+                // separator so the check works on both POSIX and Windows CI.
                 val filePath = context.file.path.replace('\\', '/')
-                val isInAllowedPackage = ALLOWED_PACKAGE_PREFIXES.any { prefix ->
-                    // Convert the package prefix to a path fragment.
-                    val pathFragment = prefix.replace('.', '/')
-                    filePath.contains(pathFragment)
-                }
-                if (isInAllowedPackage) return
 
-                // Inline suppression comment on the import line.
-                val sourcePsi = node.sourcePsi ?: return
-                val document = context.psiFile?.viewProvider?.document
-                if (document != null) {
-                    val lineNumber = document.getLineNumber(sourcePsi.textOffset)
-                    val lineStart = document.getLineStartOffset(lineNumber)
-                    val lineEnd = document.getLineEndOffset(lineNumber)
-                    val lineText = document.getText().substring(lineStart, lineEnd)
-                    if (lineText.contains(SUPPRESS_COMMENT)) return
-                }
+                // Allow anything under data/remote (all sub-packages included).
+                if (ALLOWED_PATH_SEGMENT in filePath) return
+
+                // Allow test source sets — lint normally skips them, but be
+                // defensive so test utilities that mock Retrofit don't fail.
+                if ("/test/" in filePath || "/androidTest/" in filePath) return
 
                 context.report(
                     issue = ISSUE,
                     location = context.getLocation(node),
-                    message = "`$importFqn` must not be imported outside `data/remote/` or `di/`. " +
-                        "Call APIs through a repository that returns `Flow` / `suspend fun`. " +
-                        "See `RetrofitOutsideRemoteDetector` for suppression instructions.",
+                    message = "`$importedFqn` must only be imported inside `data/remote/`. " +
+                        "Use a Retrofit API interface or co-locate the code in `data/remote/`. " +
+                        "See `RetrofitOutsideRemoteDetector` KDoc for suppression instructions.",
                 )
             }
         }

@@ -18,6 +18,9 @@ import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerFilter
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSort
 import com.bizarreelectronics.crm.ui.screens.customers.components.filterKey
+import com.bizarreelectronics.crm.util.ScrollPosition
+import com.bizarreelectronics.crm.util.restoreScrollPosition
+import com.bizarreelectronics.crm.util.saveScrollPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -410,9 +413,19 @@ class CustomerListViewModel @Inject constructor(
         tagFilter = _state.value.activeTagFilter,
     )
 
+    // §75.5 — scroll position persistence.
+    fun saveScrollPosition(position: ScrollPosition) {
+        savedStateHandle.saveScrollPosition(SSH_SCOPE_SCROLL, position)
+    }
+
+    fun restoreScrollPosition(): ScrollPosition =
+        savedStateHandle.restoreScrollPosition(SSH_SCOPE_SCROLL)
+
     companion object {
         /** SavedStateHandle keys for process-death restoration (§1.8). */
         const val SSH_KEY_QUERY = "customer_list_search_query"
+        /** SavedStateHandle key-scope for §75.5 scroll position. */
+        const val SSH_SCOPE_SCROLL = "customer_list"
     }
 }
 

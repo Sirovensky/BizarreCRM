@@ -40,7 +40,8 @@ private const val MINIMUM_FIRMWARE_VERSION = "1.0.0"
 fun HardwareSettingsScreen(
     onBack: () -> Unit,
     onNavigateToPrinters: () -> Unit,
-    onNavigateToPairingWizard: () -> Unit = {},
+    onNavigateToScale: () -> Unit = {},
+    onNavigateToWizard: () -> Unit = {},
     viewModel: HardwareSettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -93,21 +94,44 @@ fun HardwareSettingsScreen(
                 }
             }
 
-            // ── §17.11 Pairing wizard entry point ────────────────────────────
+            // §17.7 — Weight scale
             item {
-                Spacer(Modifier.height(8.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = onNavigateToPairingWizard,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
+                    onClick = onNavigateToScale,
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Weight Scale") },
+                        supportingContent = { Text("Pair a Bluetooth scale for shipping / trade-in weight") },
+                        leadingContent = {
+                            Icon(Icons.Default.Scale, contentDescription = null)
+                        },
+                        trailingContent = {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        },
+                    )
+                }
+            }
+
+            // §17.11 — Add device wizard
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "PERIPHERALS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onNavigateToWizard,
                 ) {
                     ListItem(
                         headlineContent = { Text("Add Device") },
-                        supportingContent = { Text("Printer, scale, scanner, or terminal") },
+                        supportingContent = { Text("Guided setup for printers, scales, and card readers") },
                         leadingContent = {
-                            Icon(Icons.Default.AddCircle, contentDescription = null)
+                            Icon(Icons.Default.Add, contentDescription = null)
                         },
                         trailingContent = {
                             Icon(Icons.Default.ChevronRight, contentDescription = null)
@@ -139,54 +163,6 @@ fun HardwareSettingsScreen(
                     onDismissFirmwareBanner = viewModel::dismissFirmwareBanner,
                     onClearFeedback = viewModel::clearFeedback,
                 )
-            }
-
-            // ── §17.6 Tap-to-Pay evaluation notice ────────────────────────────
-            item {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "TAP TO PAY (EVALUATION)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(Icons.Default.Nfc, contentDescription = null)
-                            Text("Tap to Pay on Android", style = MaterialTheme.typography.titleSmall)
-                            Spacer(Modifier.weight(1f))
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                            ) {
-                                Text(
-                                    "Evaluating",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Android phones with NFC HCE can accept contactless payments without an " +
-                                "external terminal via BlockChyp's Tap to Pay on Android program. " +
-                                "Evaluation pending BlockChyp SDK support. For now, use the BlockChyp " +
-                                "terminal above.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
             }
         }
     }

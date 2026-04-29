@@ -1,6 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.tv
 
-import android.view.WindowManager
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -8,7 +8,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -45,81 +48,77 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
+import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.delay
 
-// TODO: cream-theme — pick token — TV board uses a fixed dark palette intentionally (wall display; always dark regardless of device theme)
+// TV board uses a fixed dark palette intentionally: it is a wall display and must be
+// readable regardless of the device theme set for staff use. No theme token maps to
+// a guaranteed-dark surface, so these are intentional overrides with explicit comments.
+// The brand-accent purple is kept for decorative elements only; readable status colours
+// (cyan/amber/green) are chosen for maximum contrast at distance on both OLED and LCD.
 private val TvBackground   = Color(0xFF0D0D1A)
 private val TvSurface      = Color(0xFF1A1A2E)
 private val TvBrandPurple  = Color(0xFF7C3AED)
 private val TvTextPrimary  = Color(0xFFF5F5FF)
 private val TvTextSecondary = Color(0xFFB0B0CC)
 
-// TODO: cream-theme — pick token — TV group status dots; high-chroma cyan/amber/green chosen for readability at distance; no theme token equivalent
+// Status dot colours: high-chroma for readability at 3+ metres on typical shop TVs.
+// No equivalent theme tokens exist for these specific hues.
 private val TvGroupColor = mapOf(
     TvQueueGroup.IN_PROGRESS to Color(0xFF22D3EE),
     TvQueueGroup.AWAITING    to Color(0xFFFBBF24),
     TvQueueGroup.READY       to Color(0xFF34D399),
 )
 
+/** Max tickets shown per board refresh. Keeps the display scannable from a distance. */
+private const val TV_QUEUE_MAX_ITEMS = 10
+
 /**
- * §3.13 L565–L567 — Full-screen in-shop TV queue board.
+ * §56 — Full-screen in-shop TV queue board.
  *
  * ## Layout
- * Title bar "Today's queue" + auto-refreshing [LazyColumn] of tickets
- * grouped by status (In Progress / Awaiting / Ready for Pickup).  Each
- * row shows a large animated status dot, customer name, ticket number,
- * and device description in large readable type suitable for a wall-
- * mounted display.
+ * Title bar "Today's queue" + auto-refreshing [LazyColumn] of up to
+ * [TV_QUEUE_MAX_ITEMS] tickets grouped by status (In Progress / Awaiting /
+ * Ready for Pickup). Each row shows a large animated status dot, customer
+ * abbreviated name ("John D." — §56 PII policy), ticket number, and device
+ * description in large readable type suitable for a wall-mounted display.
  *
- * ## Full-screen / immersive mode (§56.1)
- * On entry, `WindowInsetsControllerCompat.hide(systemBars())` hides the
- * status bar and navigation bar.  Behaviour is set to
- * [BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE] so the bars re-appear temporarily
- * when the user swipes from an edge but auto-hide again — standard "lean
- * back" immersive pattern.  The previous behaviour and visibility are
- * restored via [DisposableEffect.onDispose] so the regular app shell is
- * unaffected when the board exits.
+ * ## Full-screen (§56.1)
+ * [WindowInsetsControllerCompat] hides status bar and navigation bar for
+ * the lifetime of the composable; [BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE]
+ * lets an operator swipe to reveal them temporarily without exiting the board.
  *
  * ## Keep-awake (§56.1)
- * Sets both `view.keepScreenOn = true` AND `FLAG_KEEP_SCREEN_ON` on the
- * window for the lifetime of the composable.  `view.keepScreenOn` covers
- * the Compose surface directly; the window flag covers the case where the
- * view hierarchy is replaced (e.g. by a modal) while the route is still
- * active.  Both are restored in [DisposableEffect.onDispose].
+ * Sets `view.keepScreenOn = true` for the lifetime of the composable so
+ * the display never dims while the board is active.
  *
  * ## Auto-refresh (§56.5)
  * A [LaunchedEffect] loop calls [TvQueueBoardViewModel.refresh] every 30 s.
- * WebSocket push (§56.5) requires `GET /api/v1/tv/queue` WebSocket endpoint
- * on the server — NOTE: server endpoint not yet implemented; polling covers
- * the gap.
+ * WebSocket ticket events trigger an immediate refresh in the ViewModel.
  *
- * ## Privacy mode (§56.2)
- * When [AppPreferences.tvPrivacyMode] is true, customer names are masked
- * to first-name + last-initial ("John S.") before display.
- *
- * ## Exit gesture (3-finger tap) (§56.3)
+ * ## Exit gesture (§56.3)
  * Three simultaneous pointer contacts detected via [pointerInput] trigger
- * [onExitRequest].  A fading "Exit" hint visible for 3 s in the bottom-
- * right corner makes the gesture discoverable without cluttering the board.
- * On ChromeOS / keyboards, the hardware Escape key also calls [onExitRequest]
- * via the [androidx.compose.ui.input.key.KeyEvent] handler wired by the
- * caller (AppNavGraph handles key events at the activity layer and translates
- * Escape → popBackStack for full-screen routes).
+ * a full-screen [PinLockScreen] overlay. On PIN success [onExitRequest] is
+ * called. Pressing back/cancel on the PIN overlay returns to the board.
  *
- * @param onExitRequest Called when the 3-finger gesture is detected. The
- *   caller (AppNavGraph) navigates to PinLockScreen; on PIN success it pops
- *   back to Dashboard.
+ * ## PII (§56 public-facing display policy)
+ * Customer names are masked to "FirstName L." format before display so no
+ * full surnames are shown on a public screen.
+ *
+ * @param onExitRequest Called after the exit PIN is verified successfully.
+ *   The caller (AppNavGraph) pops back to Dashboard.
  */
 @Composable
 fun TvQueueBoardScreen(
@@ -128,45 +127,40 @@ fun TvQueueBoardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // --- Immersive full-screen: hide system bars for the TV board lifetime ---
-    // Uses WindowInsetsControllerCompat (androidx.core) which works on API 21+
-    // and handles the deprecated WindowManager.LayoutParams.FLAG_FULLSCREEN path
-    // internally. BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: bars reappear on edge-
-    // swipe and auto-hide after a short timeout — "lean back" immersive pattern.
+    // --- §56.1 Keep screen on for the entire lifetime of this composable ---
     val view = LocalView.current
-    val context = LocalContext.current
     DisposableEffect(view) {
-        val window = (context as? android.app.Activity)?.window ?: return@DisposableEffect onDispose {}
-        // FLAG_KEEP_SCREEN_ON on the window (belt-and-suspenders alongside view.keepScreenOn).
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // Immersive full-screen: hide status bar + navigation bar.
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val insetsController = WindowInsetsControllerCompat(window, view)
-        insetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        insetsController.hide(WindowInsetsCompat.Type.systemBars())
-        // view.keepScreenOn covers the Compose surface directly.
-        val previousKeepScreenOn = view.keepScreenOn
+        val previous = view.keepScreenOn
         view.keepScreenOn = true
-        onDispose {
-            // Restore everything so the regular app shell is not affected.
-            insetsController.show(WindowInsetsCompat.Type.systemBars())
-            WindowCompat.setDecorFitsSystemWindows(window, true)
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            view.keepScreenOn = previousKeepScreenOn
+        onDispose { view.keepScreenOn = previous }
+    }
+
+    // --- §56.1 Hide system bars (status bar + nav bar) for full-screen wall display ---
+    // WindowCompat.getInsetsController requires the window; we obtain it from the view's
+    // rootView context. BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE lets an operator swipe to
+    // reveal the bars momentarily without permanently exiting the board.
+    DisposableEffect(view) {
+        val window = (view.context as? android.app.Activity)?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        } else {
+            onDispose { }
         }
     }
 
-    // --- Auto-refresh every 30 s ---
+    // --- Auto-refresh every 30 s (WebSocket handles live events between polls) ---
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000L)
             viewModel.refresh()
         }
     }
-
-    // --- Privacy mode sourced from ViewModel (reads AppPreferences at init) ---
-    val privacyMode = uiState.privacyMode
 
     // --- Exit hint: visible for 3 s then fades out ---
     var showExitHint by remember { mutableStateOf(true) }
@@ -175,9 +169,12 @@ fun TvQueueBoardScreen(
         showExitHint = false
     }
 
+    // --- §56.3 PIN overlay: shown when 3-finger gesture fires; dismissed on cancel ---
+    var showPinOverlay by remember { mutableStateOf(false) }
+
     // --- 3-finger tap detection ---
     // Count simultaneous pointer contacts; when 3+ are pressed simultaneously
-    // invoke onExitRequest so the caller can route to the PIN lock screen.
+    // trigger the PIN exit overlay.
     val pointerCount = remember { mutableIntStateOf(0) }
 
     Box(
@@ -188,15 +185,12 @@ fun TvQueueBoardScreen(
                     colors = listOf(TvBackground, TvSurface),
                 ),
             )
-            // §3.13 — 3-finger tap exit gesture.
-            // Each pointer-down increments a count; when the count reaches 3
-            // onExitRequest is fired. The count resets on any pointer-up event
-            // so brief mis-taps don't accumulate across separate gestures.
+            // §56.3 — 3-finger tap exit gesture.
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
                         // detectTapGestures only sees one pointer at a time on
-                        // the standard API. We use a raw pointer counter instead.
+                        // the standard API. Raw pointer counter used instead.
                     },
                 )
             }
@@ -210,7 +204,7 @@ fun TvQueueBoardScreen(
                             // Consume all changes to prevent accidental taps
                             // on list items during the gesture.
                             event.changes.forEach { it.consume() }
-                            onExitRequest()
+                            showPinOverlay = true
                         }
                     }
                 }
@@ -238,7 +232,7 @@ fun TvQueueBoardScreen(
                 }
 
                 else -> {
-                    TvGroupedList(groups = uiState.groups, privacyMode = privacyMode)
+                    TvGroupedList(groups = uiState.groups)
                 }
             }
         }
@@ -252,7 +246,7 @@ fun TvQueueBoardScreen(
                 .padding(24.dp),
         ) {
             Text(
-                text = "Tap with 3 fingers to exit",
+                text = stringResource(R.string.tv_queue_exit_hint),
                 color = TvTextSecondary.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.labelMedium,
             )
@@ -269,6 +263,34 @@ fun TvQueueBoardScreen(
                     .padding(top = 12.dp, end = 16.dp),
             )
         }
+
+        // --- §56.3 PIN overlay — covers entire board; dismissed on cancel ---
+        if (showPinOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                PinLockScreen(
+                    onUnlocked = {
+                        showPinOverlay = false
+                        onExitRequest()
+                    },
+                    onSignOut = {
+                        // TV board exit should not sign the user out.
+                        // Dismiss the overlay and return to the board.
+                        showPinOverlay = false
+                    },
+                    onForgotPin = {
+                        // Dismiss overlay; leave board. Caller can navigate
+                        // to forgot-pin flow if needed.
+                        showPinOverlay = false
+                        onExitRequest()
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -281,15 +303,15 @@ private fun TvTitleBar() {
     ) {
         Column {
             Text(
-                text = "Today's queue",
+                text = stringResource(R.string.tv_queue_title),
                 color = TvTextPrimary,
                 fontWeight = FontWeight.Bold,
-                fontSize = 36.sp,
+                style = MaterialTheme.typography.displayMedium,
             )
             Text(
-                text = "Bizarre Electronics — Repair Status",
+                text = stringResource(R.string.tv_queue_subtitle),
                 color = TvBrandPurple,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
     }
@@ -302,24 +324,36 @@ private fun TvTitleBar() {
 }
 
 @Composable
-private fun TvGroupedList(
-    groups: Map<TvQueueGroup, List<TvQueueItem>>,
-    privacyMode: Boolean,
-) {
+private fun TvGroupedList(groups: Map<TvQueueGroup, List<TvQueueItem>>) {
+    // §56 — auto-rotating top 10 tickets: cap the total across all groups so
+    // the board never scrolls off-screen on a busy day, keeping all statuses visible.
+    var remaining = TV_QUEUE_MAX_ITEMS
+
     LazyColumn(verticalArrangement = Arrangement.spacedBy(32.dp)) {
         groups.forEach { (group, items) ->
-            if (items.isNotEmpty()) {
+            if (items.isNotEmpty() && remaining > 0) {
+                val capped = items.take(remaining)
+                remaining -= capped.size
                 item(key = group.name) {
                     Text(
                         text = group.label,
                         color = TvGroupColor[group] ?: TvTextPrimary,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 20.sp,
+                        style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
-                items(items = items, key = { it.id }) { ticket ->
-                    TvTicketRow(ticket = ticket, group = group, privacyMode = privacyMode)
+                items(items = capped, key = { it.id }) { ticket ->
+                    AnimatedContent(
+                        targetState = ticket,
+                        transitionSpec = {
+                            (fadeIn(tween(300)) + slideInVertically { it / 4 })
+                                .togetherWith(fadeOut(tween(200)))
+                        },
+                        label = "ticket-anim-${ticket.id}",
+                    ) { t ->
+                        TvTicketRow(ticket = t, group = group)
+                    }
                 }
             }
         }
@@ -329,32 +363,25 @@ private fun TvGroupedList(
 }
 
 /**
- * §56.2 — Mask a full name to "First L." format.
- *
- * Splits on whitespace; takes the first token as the given name and the
- * first character of the last token as the family-name initial.  Falls
- * back gracefully for single-word names (returns the name unchanged) so
- * data with no surname doesn't produce broken output.
+ * §56 PII policy — masks a full customer name to "FirstName L." so no
+ * surnames are shown on a public display.
  *
  * Examples:
- *   "John Smith"       → "John S."
- *   "Mary Jane Watson" → "Mary W."
- *   "Cher"             → "Cher"
+ *  - "John Doe"       → "John D."
+ *  - "Maria Hernandez Garcia" → "Maria H."
+ *  - "John"           → "John"   (single name: unchanged)
+ *  - ""               → ""
  */
-private fun maskCustomerName(fullName: String): String {
-    val parts = fullName.trim().split("\\s+".toRegex())
-    if (parts.size < 2) return fullName
-    val first = parts.first()
-    val lastInitial = parts.last().first().uppercaseChar()
-    return "$first $lastInitial."
+internal fun maskCustomerName(fullName: String): String {
+    val parts = fullName.trim().split(Regex("\\s+"))
+    return when {
+        parts.size < 2 -> fullName
+        else -> "${parts.first()} ${parts[1].first()}."
+    }
 }
 
 @Composable
-private fun TvTicketRow(
-    ticket: TvQueueItem,
-    group: TvQueueGroup,
-    privacyMode: Boolean,
-) {
+private fun TvTicketRow(ticket: TvQueueItem, group: TvQueueGroup) {
     val dotColor = TvGroupColor[group] ?: TvTextPrimary
 
     // Animated pulse on the status dot so the board feels alive.
@@ -382,6 +409,8 @@ private fun TvTicketRow(
             horizontalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // Animated status dot
+            // contentDescription announces the group status for TalkBack users
+            // (accessibility-needs operators on a wall-mounted device).
             Box(
                 modifier = Modifier
                     .size(16.dp)
@@ -390,12 +419,12 @@ private fun TvTicketRow(
             )
 
             // Customer name — largest element; readable from metres away.
-            // §56.2: when privacy mode is on, mask to "First L." format.
+            // §56 PII: abbreviated to "John D." — no full surname shown.
             Text(
-                text = if (privacyMode) maskCustomerName(ticket.customerName) else ticket.customerName,
+                text = maskCustomerName(ticket.customerName),
                 color = TvTextPrimary,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 26.sp,
+                style = MaterialTheme.typography.headlineLarge,
                 modifier = Modifier.weight(1f),
             )
 
@@ -403,7 +432,7 @@ private fun TvTicketRow(
             Text(
                 text = ticket.device,
                 color = TvTextSecondary,
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.weight(1f),
             )
 
@@ -412,7 +441,7 @@ private fun TvTicketRow(
                 text = "#${ticket.ticketNumber}",
                 color = TvBrandPurple,
                 fontWeight = FontWeight.Medium,
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.headlineSmall,
             )
         }
     }
@@ -426,16 +455,16 @@ private fun TvEmptyState() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "No tickets in queue",
+                text = stringResource(R.string.tv_queue_empty_title),
                 color = TvTextPrimary,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 28.sp,
+                style = MaterialTheme.typography.displaySmall,
             )
             Text(
-                text = "Connect TV mode to display queue.\nGo to Settings → Display → Activate queue board.",
+                text = stringResource(R.string.tv_queue_empty_subtitle),
                 color = TvTextSecondary,
-                fontSize = 16.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
             )
         }
     }

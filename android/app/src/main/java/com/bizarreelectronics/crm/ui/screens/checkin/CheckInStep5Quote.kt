@@ -14,7 +14,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -336,6 +338,7 @@ private fun DepositSection(
                         onDepositChange(preset)
                     },
                     label = { Text(centsToDisplay(preset)) },
+                    colors = FilterChipDefaults.brandColors(),
                     modifier = Modifier.semantics {
                         contentDescription = "Deposit preset: ${centsToDisplay(preset)}"
                     },
@@ -349,6 +352,7 @@ private fun DepositSection(
                         onDepositChange(quoteTotalCents)
                     },
                     label = { Text("Full") },
+                    colors = FilterChipDefaults.brandColors(),
                     modifier = Modifier.semantics {
                         contentDescription = "Collect full balance as deposit"
                     },

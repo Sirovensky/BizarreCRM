@@ -166,8 +166,13 @@ fun MorningChecklistScreen(
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
+                // §3.15 L589 — Skip records the event locally + attempts a server
+                // audit-log POST (404-tolerant) before navigating back.
                 TextButton(
-                    onClick = onBack,
+                    onClick = {
+                        viewModel.skipChecklist()
+                        onBack()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Skip checklist for today")

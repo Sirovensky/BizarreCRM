@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.MorningChecklistCompleteBody
 import com.bizarreelectronics.crm.data.remote.dto.MorningChecklistConfigDto
+import com.bizarreelectronics.crm.data.remote.dto.MorningChecklistSkipBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -56,5 +57,21 @@ interface MorningChecklistApi {
     @POST("morning-checklist/complete")
     suspend fun postCompletion(
         @Body body: MorningChecklistCompleteBody,
+    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    /**
+     * §3.15 L589 — Record a checklist skip for the audit log.
+     *
+     * Endpoint: `POST /morning-checklist/skip`
+     *
+     * 404 → silently tolerated; the skip is always recorded locally in
+     * [AppPreferences] regardless of server availability. The server may
+     * write the event into the tenant audit log when the endpoint ships.
+     *
+     * @param body Skip payload including date key and staff id.
+     */
+    @POST("morning-checklist/skip")
+    suspend fun postSkip(
+        @Body body: MorningChecklistSkipBody,
     ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
 }

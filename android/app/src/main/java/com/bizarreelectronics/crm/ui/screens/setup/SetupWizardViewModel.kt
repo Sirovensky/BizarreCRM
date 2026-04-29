@@ -27,13 +27,20 @@ const val SETUP_WIZARD_TOTAL_STEPS = 13
  * [currentStep] is 0-based (0 = Welcome, 12 = Finish & launch).
  * [stepData] stores per-step field maps using step index as key.
  * [isLoading] is true while async operations (save progress, complete) are in flight.
- * [error] is a human-readable string shown as a Snackbar when non-null.
+ * [error] is a human-readable string shown as a Snackbar (network / async errors only).
+ * [stepError] is a per-step validation error shown inline inside the active step composable.
+ *             Cleared automatically when the user edits the step's data or advances.
  */
 data class SetupWizardUiState(
     val currentStep: Int = 0,
     val stepData: Map<Int, Map<String, Any>> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    // §36.4 — inline validation error for the current step (separate from async [error]).
+    val stepError: String? = null,
+    // §3.14 L582 — sample data toggle state
+    val sampleDataLoaded: Boolean = false,
+    val isSampleDataBusy: Boolean = false,
 )
 
 /** One-shot navigation events emitted by the ViewModel. */
@@ -170,14 +177,15 @@ class SetupWizardViewModel @Inject constructor(
      * Merge [fields] into the data map for the current step.
      *
      * Returns a new [SetupWizardUiState] (immutable update) and clears any
-     * lingering [SetupWizardUiState.error].
+     * lingering [SetupWizardUiState.stepError] so inline validation feedback
+     * disappears as soon as the user starts editing.
      */
     fun updateStepData(fields: Map<String, Any>) {
         _uiState.update { current ->
             val merged = (current.stepData[current.currentStep] ?: emptyMap()) + fields
             current.copy(
-                stepData = current.stepData + (current.currentStep to merged),
-                error    = null,
+                stepData  = current.stepData + (current.currentStep to merged),
+                stepError = null,
             )
         }
     }
@@ -185,8 +193,8 @@ class SetupWizardViewModel @Inject constructor(
     /**
      * Validate the current step and advance to the next step.
      *
-     * On validation failure: sets [SetupWizardUiState.error] and stays on the
-     * current step so the user can correct input.
+     * On validation failure: sets [SetupWizardUiState.stepError] for inline display
+     * and stays on the current step so the user can correct input.
      *
      * On success: persists progress to the server (best-effort; 404 is silenced),
      * then increments [SetupWizardUiState.currentStep].
@@ -196,14 +204,16 @@ class SetupWizardViewModel @Inject constructor(
         val data  = state.stepData[state.currentStep] ?: emptyMap()
         val err   = SetupStepValidator.validate(state.currentStep, data)
         if (err != null) {
-            _uiState.update { it.copy(error = err) }
+            // §36.4 — set stepError for inline display; do not set snackbar error.
+            _uiState.update { it.copy(stepError = err) }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, stepError = null) }
             saveProgressRemote(state.currentStep, data)
             _uiState.update { it.copy(
                 isLoading   = false,
+                stepError   = null,
                 currentStep = (state.currentStep + 1).coerceAtMost(SETUP_WIZARD_TOTAL_STEPS - 1),
             ) }
         }
@@ -214,6 +224,7 @@ class SetupWizardViewModel @Inject constructor(
         _uiState.update { it.copy(
             currentStep = (it.currentStep - 1).coerceAtLeast(0),
             error       = null,
+            stepError   = null,
         ) }
     }
 
@@ -254,7 +265,71 @@ class SetupWizardViewModel @Inject constructor(
         _uiState.update { it.copy(
             currentStep = index.coerceIn(0, SETUP_WIZARD_TOTAL_STEPS - 1),
             error       = null,
+            stepError   = null,
         ) }
+    }
+
+    // ─── §3.14 L582 — Sample data toggle ────────────────────────────────────
+
+    /**
+     * §3.14 L582 — Check whether demo sample data is currently loaded, and sync
+     * [SetupWizardUiState.sampleDataLoaded] accordingly.
+     *
+     * Called when the Finish step is first displayed. 404 → treated as not loaded.
+     */
+    fun checkSampleDataState() {
+        viewModelScope.launch {
+            try {
+                val response = setupApi.getOnboardingState()
+                val loaded = (response.data?.get("sample_data_loaded") as? Boolean) ?: false
+                _uiState.update { it.copy(sampleDataLoaded = loaded) }
+            } catch (_: Exception) {
+                // 404 or network error — treat as not loaded; no-op.
+            }
+        }
+    }
+
+    /**
+     * §3.14 L582 — Load demo sample data via POST /onboarding/sample-data.
+     *
+     * Sets [SetupWizardUiState.isSampleDataBusy] during the call and flips
+     * [SetupWizardUiState.sampleDataLoaded] to true on success. 404 is
+     * silently tolerated (server predates the endpoint).
+     */
+    fun loadSampleData() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSampleDataBusy = true, error = null) }
+            try {
+                setupApi.loadSampleData()
+                _uiState.update { it.copy(sampleDataLoaded = true, isSampleDataBusy = false) }
+            } catch (e: retrofit2.HttpException) {
+                val msg = if (e.code() == 404) null else "Could not load sample data (${e.code()})"
+                _uiState.update { it.copy(isSampleDataBusy = false, error = msg) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSampleDataBusy = false, error = "Could not load sample data: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * §3.14 L582 — Remove all demo sample data via DELETE /onboarding/sample-data.
+     *
+     * Flips [SetupWizardUiState.sampleDataLoaded] back to false on success.
+     * 404 is treated as "already cleared" — flip anyway.
+     */
+    fun clearSampleData() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSampleDataBusy = true, error = null) }
+            try {
+                setupApi.clearSampleData()
+                _uiState.update { it.copy(sampleDataLoaded = false, isSampleDataBusy = false) }
+            } catch (e: retrofit2.HttpException) {
+                // 404 = already cleared; treat as success
+                _uiState.update { it.copy(sampleDataLoaded = false, isSampleDataBusy = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSampleDataBusy = false, error = "Could not clear sample data: ${e.message}") }
+            }
+        }
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────

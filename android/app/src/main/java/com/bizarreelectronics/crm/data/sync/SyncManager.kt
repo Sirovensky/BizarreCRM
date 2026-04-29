@@ -42,7 +42,6 @@ import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
-import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -51,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -82,7 +82,6 @@ class SyncManager @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
     private val gson: Gson,
-    private val offlineIdGenerator: OfflineIdGenerator,
     private val ticketRepository: TicketRepository,
     private val customerRepository: CustomerRepository,
     private val inventoryRepository: InventoryRepository,
@@ -92,7 +91,6 @@ class SyncManager @Inject constructor(
     private val estimateRepository: EstimateRepository,
     private val expenseRepository: ExpenseRepository,
     private val breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs,
-    private val cacheEvictor: CacheEvictor,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -146,13 +144,6 @@ class SyncManager @Inject constructor(
                 //    retention window so the queue table doesn't grow unbounded.
                 runIsolated("dead letter purge") { purgeOldDeadLetters() }
 
-                // 4. §20.9 — LRU-style cache eviction: trim entity tables to their
-                //    configured caps. Safe rows (no pending queue entry, not locally
-                //    modified) are removed oldest-first. Piggybacks the sync tick so
-                //    eviction always follows a full refresh — i.e. it targets stale
-                //    data that was just replaced by fresh server rows.
-                runIsolated("cache eviction") { cacheEvictor.runEviction() }
-
                 // Update last sync time — done even on partial failure so the user sees
                 // "last synced N minutes ago" rather than a stale value from hours ago.
                 appPreferences.lastFullSyncAt = java.time.Instant.now().toString().take(19).replace("T", " ")
@@ -196,26 +187,27 @@ class SyncManager @Inject constructor(
     }
 
     /**
-     * AUD-20260414-M5: manual-retry entry point for the "Sync Issues" screen.
-     * Resets the dead-letter row back to `pending` + zeroes the retry counter
-     * via [SyncQueueDao.resurrectDeadLetter], then kicks an opportunistic
-     * flush so the user sees the entry leave the list without waiting for
-     * the next scheduled sync pass. Failures during the flush are swallowed
-     * by [flushQueue]'s own try/catch — the entry either completes, stays
-     * pending for the next tick, or (after N more transient failures) lands
-     * back in dead-letter with a fresh error message.
+     * AUD-20260414-M5 / §20.7 — manual-retry entry point for the "Sync Issues" screen.
      *
-     * Safe to call from the main thread — Room suspends + withContext(IO) is
-     * handled by the DAO and by [syncAll]. Callers are expected to run this
-     * inside a ViewModel coroutine so the UI can reflect the result.
+     * Resets the dead-letter row back to `pending`, zeroes the retry counter, and
+     * rotates the idempotency key via [SyncQueueDao.resurrectDeadLetterWithFreshKey].
+     * Rotating the key is required (§20.7 [~]) because the server may have
+     * partially-applied the original attempt whose response was lost in transit. A
+     * stale key would cause the server to deduplicate the retry as a no-op.
+     *
+     * After the reset, kicks an opportunistic flush so the user sees the entry leave
+     * the list without waiting for the next scheduled sync pass. Failures during the
+     * flush are swallowed by [flushQueue]'s own try/catch — the entry either
+     * completes, stays pending for the next tick, or (after N more transient failures)
+     * lands back in dead-letter with a fresh error message.
+     *
+     * Safe to call from the main thread — Room suspends + withContext(IO) is handled
+     * by the DAO and by [syncAll]. Callers are expected to run this inside a ViewModel
+     * coroutine so the UI can reflect the result.
      */
     suspend fun retryDeadLetter(id: Long) {
-        // §20.7 — rotate idempotency key so the server doesn't see this retry as a
-        // duplicate of the original failed attempt (which may have partially executed
-        // or left stale state on the server). A fresh UUID guarantees the POST is
-        // treated as a new request on the server side.
-        val freshKey = offlineIdGenerator.newIdempotencyKey()
-        syncQueueDao.resurrectDeadLetter(id, freshKey)
+        val freshKey = UUID.randomUUID().toString()
+        syncQueueDao.resurrectDeadLetterWithFreshKey(id, freshKey)
         // Best-effort immediate flush. If offline, flushQueue() itself returns
         // without changing state and the next connection-online tick picks up
         // the newly-pending entry on its own.

@@ -1,13 +1,16 @@
 package com.bizarreelectronics.crm
 
+import android.app.assist.AssistContent
 import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import android.view.MotionEvent
 import android.view.WindowManager
+import org.json.JSONObject
 import timber.log.Timber
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -24,22 +27,28 @@ import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.local.prefs.PinPreferences
+import com.bizarreelectronics.crm.data.local.prefs.TrainingPreferences
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.ui.theme.ColorBlindMode
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
+import com.bizarreelectronics.crm.ui.theme.shouldDefaultDarkMode
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
-import com.bizarreelectronics.crm.util.LockScreenBlurHelper
 import com.bizarreelectronics.crm.util.RateLimiter
+import com.bizarreelectronics.crm.util.ScrollToTopBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.SessionTimeoutCore
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
 import com.bizarreelectronics.crm.util.LanguageManager
+import com.bizarreelectronics.crm.ui.components.ForceUpgradeBlocker
+import com.bizarreelectronics.crm.ui.components.WhatsNewDialog
+import com.bizarreelectronics.crm.util.LockScreenBlurHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -96,6 +105,10 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var rateLimiter: RateLimiter
 
+    // §53.1 — injected so AppNavGraph can drive the training-mode banner.
+    @Inject
+    lateinit var trainingPreferences: TrainingPreferences
+
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
      * onNewIntent intents. Shared by two entry points that both need to
@@ -110,6 +123,10 @@ class MainActivity : FragmentActivity() {
      */
     @Inject
     lateinit var deepLinkBus: DeepLinkBus
+
+    /** §75.5 — Signals primary list screens to scroll to top on tab re-select. */
+    @Inject
+    lateinit var scrollToTopBus: ScrollToTopBus
 
     /** Pending deep-link route extracted from the launch intent, if any. */
     private var pendingDeepLink: String? = null
@@ -152,6 +169,15 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 2026-04-28 — Lock to portrait on phones (smallestScreenWidth < 600 dp).
+        // Tablets and ChromeOS / DeX (sw >= 600) keep free orientation. Pixel-class
+        // landscape was unusable: POS flow steps designed for vertical real estate
+        // collapse below input minimums in landscape on a phone-sized screen.
+        if (resources.configuration.smallestScreenWidthDp < 600) {
+            requestedOrientation =
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+
         // AUDIT-AND-011 / §1.7 line 239 — FLAG_SECURE is now driven reactively by
         // AppPreferences.screenCapturePreventionFlow so the user can toggle it
         // from Settings without an activity recreate.
@@ -172,16 +198,41 @@ class MainActivity : FragmentActivity() {
             setRecentsScreenshotEnabled(!(screenCapturePrevEnabled || !BuildConfig.DEBUG))
         }
         enableEdgeToEdge()
+        // §29.2 — Opt into the highest available refresh rate (120 Hz on
+        // Pixel 6a / 7 / 8; 60 Hz fallback on older devices).
+        //
+        // Approach: set Window.preferredDisplayModeId to the mode with the
+        // highest refresh rate supported by the current display that matches
+        // the active physical resolution. All candidate modes share the same
+        // physicalWidth × physicalHeight as the current mode, so the switch
+        // does not trigger a resolution change / black flash.
+        //
+        // Activity.display is available on API 30+ (Android 11).  We also
+        // accept API 23's Display.getSupportedModes() which is gated on
+        // Build.VERSION_CODES.M. The preferredDisplayModeId field was added
+        // to LayoutParams in API 23 as well, so the whole block is safe from
+        // API 23 onward.
+        @Suppress("DEPRECATION")
+        val currentDisplay: android.view.Display? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display
+        } else {
+            (getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+        }
+        if (currentDisplay != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val currentMode = currentDisplay.mode
+            val bestMode = currentDisplay.supportedModes
+                .filter { it.physicalWidth == currentMode.physicalWidth &&
+                          it.physicalHeight == currentMode.physicalHeight }
+                .maxByOrNull { it.refreshRate }
+            if (bestMode != null && bestMode.modeId != currentMode.modeId) {
+                window.attributes = window.attributes.also { params ->
+                    params.preferredDisplayModeId = bestMode.modeId
+                }
+            }
+        }
         // §29 — start frame-timing collection so jank surfaces in
         // breadcrumbs without an external profiler.
         jankReporter.attach(this)
-
-        // §57 — If kiosk mode was left enabled from a previous session (e.g.
-        // the device was rebooted), re-enter lock-task on launch so the device
-        // stays pinned without requiring staff interaction.
-        if (appPreferences.kioskModeEnabled) {
-            startLockTask()
-        }
 
         // Resolve a route from two possible sources, in priority order:
         //   1. AND-20260414-H1: launcher shortcut / App Actions / QS tile
@@ -193,8 +244,14 @@ class MainActivity : FragmentActivity() {
         // A plain launcher-icon launch yields null and falls through to the
         // start destination. Publishing null is a no-op by contract on
         // [DeepLinkBus.publish].
-        pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
-        deepLinkBus.publish(pendingDeepLink)
+        // §25.2 — inbound share (ACTION_SEND / ACTION_SEND_MULTIPLE) is checked
+        // first; if it matches, resolveInboundShare() publishes to the dedicated
+        // DeepLinkBus.pendingInboundShare slot (not the route bus) and returns
+        // true, skipping the standard deep-link / FCM resolution path.
+        if (!resolveInboundShare(intent)) {
+            pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
+            deepLinkBus.publish(pendingDeepLink)
+        }
 
         // Decide whether to lock the UI behind a biometric prompt. The gate
         // is OFF unless (a) the user enabled it in Settings, (b) they still
@@ -241,11 +298,26 @@ class MainActivity : FragmentActivity() {
             // changes the setting on ThemeScreen — no activity recreate needed.
             val darkMode by appPreferences.darkModeFlow.collectAsState()
             val dynamicColor by appPreferences.dynamicColorFlow.collectAsState()
+            // §26.3 — ActionPlan line 3391: observe highContrastEnabledFlow so
+            // BizarreCrmTheme switches to the AAA 7:1 high-contrast color schemes
+            // whenever the user toggles the setting on AppearanceScreen. No activity
+            // recreate needed — Compose recomposition propagates the new ColorScheme.
+            val highContrast by appPreferences.highContrastEnabledFlow.collectAsState()
+            // §26.3 — Color-blind safe palette: observe colorBlindModeFlow so
+            // ExtendedColors (success/warning/error/info) are remapped to hue sets
+            // distinguishable for the selected color vision deficiency.
+            // High-contrast takes precedence inside BizarreCrmTheme when both are on.
+            val colorBlindModeKey by appPreferences.colorBlindModeFlow.collectAsState()
+            val colorBlindMode = ColorBlindMode.fromKey(colorBlindModeKey)
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (darkMode) {
                 "dark"  -> true
                 "light" -> false
-                else    -> systemDark   // "system" follows OS setting
+                // §30.8 — "system" mode: follow OS dark preference first;
+                // if the OS is not in dark mode, fall back to the 7pm–7am
+                // auto-schedule so the app defaults dark in the evening even
+                // on devices where the user hasn't enabled system dark mode.
+                else    -> systemDark || shouldDefaultDarkMode()
             }
 
             // §1.7 line 239 — reactive FLAG_SECURE: observe the pref flow so
@@ -286,7 +358,11 @@ class MainActivity : FragmentActivity() {
             val dashboardDensity = if (sharedDeviceMode) DashboardDensity.Comfortable else rawDensity
 
             CompositionLocalProvider(LocalDashboardDensity provides dashboardDensity) {
-            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
+            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, highContrast = highContrast, colorBlindMode = colorBlindMode) {
+            // §28.9 — Force-upgrade blocker: blocks the UI when the server reports a
+            // min_supported_version higher than the installed app version code.
+            // serverMinVersion is populated from GET /auth/me; null = no floor enforced.
+            ForceUpgradeBlocker(serverMinVersion = authPreferences.serverMinVersion) {
                 // §1.7 line 238 — lock state is owned by lockedState (Activity level)
                 // so onResume can set it to true when the inactivity threshold has
                 // elapsed, causing the biometric prompt to re-appear without any
@@ -339,6 +415,28 @@ class MainActivity : FragmentActivity() {
                     if (isAuthenticated) {
                         rememberNotificationPermission(autoRequest = true)
                     }
+
+                    // §71.5 — "What's New" dialog: shown once per versionCode upgrade.
+                    // We compare the running versionCode against the last-acknowledged
+                    // value in AppPreferences.  The dialog only surfaces when the user
+                    // is not behind the lock screen, so they see it in full context.
+                    val currentVersionCode = BuildConfig.VERSION_CODE
+                    val prevVersionCode = appPreferences.lastSeenVersionCode
+                    var showWhatsNew by remember {
+                        mutableStateOf(currentVersionCode > prevVersionCode)
+                    }
+                    if (showWhatsNew) {
+                        WhatsNewDialog(
+                            versionName = BuildConfig.VERSION_NAME,
+                            versionCode = currentVersionCode,
+                            prevVersionCode = prevVersionCode,
+                            onDismiss = {
+                                showWhatsNew = false
+                                appPreferences.markWhatsNewSeen(currentVersionCode)
+                            },
+                        )
+                    }
+
                     AppNavGraph(
                         authPreferences = authPreferences,
                         serverReachabilityMonitor = serverReachabilityMonitor,
@@ -349,9 +447,15 @@ class MainActivity : FragmentActivity() {
                         clockDrift = clockDrift,
                         rateLimiter = rateLimiter,
                         sessionTimeout = sessionTimeout,
+                        // §53.1 — drives the training-mode banner above the NavHost.
+                        trainingPreferences = trainingPreferences,
+                        // §75.5 — re-selecting a bottom-nav tab signals the list
+                        // screens to animate their scroll position back to the top.
+                        scrollToTopBus = scrollToTopBus,
                     )
                 }
             }
+            } // end BizarreCrmTheme (ForceUpgradeBlocker + content inside)
             } // end CompositionLocalProvider(LocalDashboardDensity)
         }
     }
@@ -365,9 +469,12 @@ class MainActivity : FragmentActivity() {
         // any Compose code that re-reads it during recomposition.
         setIntent(intent)
         // Same two-source resolution as onCreate — see publish call there
-        // for the ordering rationale.
-        pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
-        deepLinkBus.publish(pendingDeepLink)
+        // for the ordering rationale. §25.2: inbound share is checked first
+        // and dispatched to DeepLinkBus.pendingInboundShare if recognised.
+        if (!resolveInboundShare(intent)) {
+            pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
+            deepLinkBus.publish(pendingDeepLink)
+        }
     }
 
     /**
@@ -393,6 +500,10 @@ class MainActivity : FragmentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // §28.3 — clear the Gaussian blur that was applied in onPause so the
+        // user sees normal content again when returning to the foreground.
+        window.decorView.let { LockScreenBlurHelper.clearBlur(it) }
+
         val timeoutState = sessionTimeout.state.value
         val hasSession = authPreferences.accessToken != null ||
             authPreferences.refreshToken != null
@@ -412,31 +523,16 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * §28.3 — Lock-screen blur: apply Gaussian blur to the decorView when the
-     * app moves to the background so that the Recents thumbnail and the lock-screen
-     * "preview" (Android 12+ `View.setRenderEffect`) do not expose customer PII.
-     *
-     * [LockScreenBlurHelper.applyBlur] is a no-op on API < 31; FLAG_SECURE already
-     * prevents screenshots on those devices. On API 31+ the blur is applied before
-     * the system captures the Recents thumbnail, making PII illegible even when
-     * FLAG_SECURE is not enabled (e.g. debug builds with screen-capture allowed).
-     *
-     * The decorView is the root of the entire window tree — blurring it covers all
-     * Compose content including overlays. It is safe to call on the main thread from
-     * this lifecycle hook.
+     * §28.3 — Apply Gaussian blur to the root decor view when the app moves to
+     * the background (Recents / lock screen preview). This prevents PII visible
+     * on ticket-detail or customer screens from leaking into the Recents
+     * thumbnail on Android 12+ devices (API 31+). On older devices FLAG_SECURE
+     * already suppresses the thumbnail; [LockScreenBlurHelper.applyBlur] is a
+     * no-op below API 31 so the call is safe on all API levels.
      */
-    override fun onStop() {
-        super.onStop()
-        LockScreenBlurHelper.applyBlur(window.decorView)
-    }
-
-    /**
-     * §28.3 — Remove the lock-screen blur when the app returns to the foreground.
-     * [LockScreenBlurHelper.clearBlur] is a no-op on API < 31.
-     */
-    override fun onStart() {
-        super.onStart()
-        LockScreenBlurHelper.clearBlur(window.decorView)
+    override fun onPause() {
+        super.onPause()
+        window.decorView.let { LockScreenBlurHelper.applyBlur(it) }
     }
 
     /**
@@ -579,6 +675,12 @@ class MainActivity : FragmentActivity() {
         val path = data.path?.trimStart('/').orEmpty()
         val candidate = if (path.isEmpty()) host else "$host/$path"
 
+        // §56.4 — Android TV / Leanback launcher fires bizarrecrm://tvqueue.
+        // Map the host-only deep link to the TV queue board nav route.
+        if (candidate == "tvqueue") {
+            return com.bizarreelectronics.crm.ui.navigation.Screen.TvQueueBoard.route
+        }
+
         // §68.3 — delegate to the testable allow-list util so the check
         // can be exercised from a JVM unit test without needing a Context.
         return com.bizarreelectronics.crm.util.DeepLinkAllowlist.resolve(candidate)
@@ -622,31 +724,88 @@ class MainActivity : FragmentActivity() {
             // referenced record themselves rather than the dashboard.
             "appointment"  -> "appointments"
             "expense"      -> "expenses"
-            // §12.5 — FCM `sms_inbound` / `sms` payloads carry an optional
-            // thread_phone extra. When present, navigate directly to the thread;
-            // fall back to the inbox if the extra is missing (e.g. older server).
-            "sms"          -> {
-                val threadPhone = intent.getStringExtra("thread_phone")
-                if (!threadPhone.isNullOrBlank()) {
-                    "messages/${android.net.Uri.encode(threadPhone)}"
-                } else {
-                    "messages"
-                }
-            }
+            // FCM `sms` payloads send a message id in entity_id, but the SMS
+            // thread route keys by phone number. Landing on the inbox is the
+            // closest we can get without a phone-number extra from the
+            // server.
+            "sms"          -> "messages"
             "notification" -> "notifications"
             else           -> null
         }
     }
 
+    /**
+     * Inbound ACTION_SEND / ACTION_SEND_MULTIPLE handler. Publishes a typed
+     * event to DeepLinkBus so AppNavGraph can land the user on the
+     * "attach to ticket / new note" picker. Returns true when the intent was
+     * recognised as a share, false otherwise. The original Intent is read at
+     * the call site via [Activity.intent] for the actual content.
+     */
+    internal fun resolveInboundShare(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val action = intent.action ?: return false
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return false
+        val type = intent.type ?: return false
+        val isHandled = type == "text/plain" || type.startsWith("image/") || type == "application/pdf"
+        if (!isHandled) return false
+        Timber.tag("MainActivity").i("inbound share: action=%s type=%s", action, type)
+        deepLinkBus.publishInboundShare(action, type)
+        return true
+    }
+
+    override fun onProvideAssistContent(outContent: AssistContent) {
+        super.onProvideAssistContent(outContent)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val route = pendingDeepLink ?: intent?.data?.toString()
+        val (webUrl, structuredData) = buildAssistData(route)
+        outContent.webUri = Uri.parse(webUrl)
+        runCatching {
+            outContent.structuredData = JSONObject(structuredData).toString()
+        }.onFailure { e ->
+            Timber.tag("MainActivity").w(e, "onProvideAssistContent JSON error")
+        }
+    }
+
+    /**
+     * Pure helper — maps a route string onto a (webUrl, structuredDataJson) pair
+     * for [onProvideAssistContent]. JSON is built via JSONObject (not raw string
+     * templates) to avoid a known Kotlin compiler parser bug with `$var`-laden
+     * triple-quoted strings inside this file.
+     */
+    internal fun buildAssistData(route: String?): Pair<String, String> {
+        val base = "https://app.bizarrecrm.com"
+        val obj = JSONObject()
+        when {
+            route != null && route.startsWith("tickets/") -> {
+                val id = route.removePrefix("tickets/").toLongOrNull()
+                if (id != null) {
+                    obj.put("@type", "Thing")
+                    obj.put("@id", "$base/tickets/$id")
+                    obj.put("name", "Repair ticket $id")
+                    return ("$base/tickets/$id") to obj.toString()
+                }
+                obj.put("@type", "ItemList"); obj.put("name", "Tickets")
+                return ("$base/tickets") to obj.toString()
+            }
+            route != null && route.startsWith("customers/") -> {
+                val id = route.removePrefix("customers/").toLongOrNull()
+                if (id != null) {
+                    obj.put("@type", "Person")
+                    obj.put("@id", "$base/customers/$id")
+                    obj.put("identifier", id)
+                    return ("$base/customers/$id") to obj.toString()
+                }
+                obj.put("@type", "ItemList"); obj.put("name", "Customers")
+                return ("$base/customers") to obj.toString()
+            }
+            else -> {
+                obj.put("@type", "WebSite"); obj.put("url", "$base/")
+                return ("$base/") to obj.toString()
+            }
+        }
+    }
+
     companion object {
-        /**
-         * Closed set of routes any external caller can jump to via
-         * `bizarrecrm://<route>`. Must stay in sync with the shortcuts.xml
-         * entries and any launcher shortcut / App Actions capability. New
-         * routes should only be added here after the nav graph is confirmed
-         * to handle them safely without trusting any caller-supplied data.
-         */
-        // Historical allow-list moved to [com.bizarreelectronics.crm.util.DeepLinkAllowlist]
-        // so it can be unit-tested without touching Activity lifecycle.
+        // Historical allow-list moved to com.bizarreelectronics.crm.util.DeepLinkAllowlist
     }
 }

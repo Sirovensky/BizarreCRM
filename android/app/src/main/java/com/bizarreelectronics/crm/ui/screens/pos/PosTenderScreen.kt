@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,6 +47,8 @@ fun PosTenderScreen(
     var showSplitDialog by remember { mutableStateOf(false) }
     var showDrawerManualDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §38.6 / §38.3 — Loyalty points redemption dialog
+    var showLoyaltyDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when order completes
@@ -120,6 +125,17 @@ fun PosTenderScreen(
         )
     }
 
+    // ── §38.6 / §38.3 — Loyalty points redemption dialog ─────────────────────
+    if (showLoyaltyDialog) {
+        LoyaltyPointsDialog(
+            onApply = { membershipId, points ->
+                viewModel.applyLoyaltyPoints(membershipId, points)
+                showLoyaltyDialog = false
+            },
+            onDismiss = { showLoyaltyDialog = false },
+        )
+    }
+
     PosKeyboardShortcuts(
         // F1 — new sale: go back (caller pops Tender → Cart → Entry, or
         // PosCoordinator handles full reset via back-stack).
@@ -147,69 +163,59 @@ fun PosTenderScreen(
         // Ctrl+F — no search field on tender screen. No-op.
         onFocusSearch = {},
     ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    // session 2026-04-26 — a11y: back button contentDescription
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
-                    ) {
-                        Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                title = { Text("Tender") },
-                actions = {
-                    Surface(
-                        shape = RoundedCornerShape(99.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Text(
-                            state.totalCents.toDollarString(),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // ── Task 5: Overflow menu — "Open cash drawer" ────────────
-                    // session 2026-04-26 — a11y: overflow button contentDescription
-                    Box {
-                        IconButton(
-                            onClick = { showOverflowMenu = true },
-                            modifier = Modifier.semantics { contentDescription = "More options" },
-                        ) {
-                            Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Open cash drawer") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showDrawerManualDialog = true
-                                },
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                },
-            )
-        },
-        bottomBar = {
-            TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
-        },
-        // session 2026-04-26 — a11y: liveRegion Assertive on tender snackbar
-        // (payment errors/success must interrupt speech per goal 4)
+    // §23.5 PosFlowScaffold: PosTender is the final flow step (POS-Cart→Tender
+    // →Receipt). Title is just "Tender" (cart screen owns the customer pill);
+    // actions slot keeps the running-total pill + overflow menu so the cashier
+    // sees the amount due in the same place across cart and tender.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "Tender",
+        stepIndex = null,
+        totalSteps = 8,
+        onBack = onBack,
         snackbarHost = {
             SnackbarHost(
                 snackbarHostState,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
             )
+        },
+        actions = {
+            Surface(
+                shape = RoundedCornerShape(99.dp),
+                color = MaterialTheme.colorScheme.primary,
+            ) {
+                Text(
+                    state.totalCents.toDollarString(),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.semantics { contentDescription = "More options" },
+                ) {
+                    Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Open cash drawer") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showDrawerManualDialog = true
+                        },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        },
+        bottomBar = {
+            TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -219,7 +225,8 @@ fun PosTenderScreen(
             pendingSaleCount = state.pendingSaleCount,
         )
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            // 16dp gutter unifies POS + CheckIn flow (audit H1).
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
         ) {
@@ -291,6 +298,7 @@ fun PosTenderScreen(
                     onStoreCredit = { viewModel.applyStoreCredit() },
                     onGiftCard = { showGiftCardDialog = true },
                     onInvoiceLater = { showInvoiceLaterConfirm = true },
+                    onLoyaltyPoints = { showLoyaltyDialog = true },
                 )
             }
         }
@@ -432,6 +440,7 @@ private fun PaymentMethodGrid(
     onStoreCredit: () -> Unit,
     onGiftCard: () -> Unit,
     onInvoiceLater: () -> Unit,
+    onLoyaltyPoints: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Mockup PHONE 5: Card-reader, Tap-to-pay (NFC), Cash, ACH as separate tiles.
@@ -508,6 +517,18 @@ private fun PaymentMethodGrid(
                 sublabel = "${attachedCustomerStoreCreditCents.toDollarString()} available",
                 isPrimary = false,
                 onClick = onStoreCredit,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        // §38.6 / §38.3 — Loyalty points redemption tile.
+        // NOTE: server-side point deduction blocked — see PosTenderViewModel.applyLoyaltyPoints.
+        if (hasAttachedCustomer) {
+            PaymentTile(
+                emoji = "⭐",
+                label = "Loyalty points",
+                sublabel = "Redeem member points",
+                isPrimary = false,
+                onClick = onLoyaltyPoints,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -660,6 +681,7 @@ private fun CashTenderDialog(
     // to prevent floating-point display error (e.g. $2.4999... instead of $2.50).
     val changeCents = (receivedCents - remainingCents).coerceAtLeast(0L)
     val canApply = receivedCents > 0L
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -672,9 +694,11 @@ private fun CashTenderDialog(
                     label = { Text("Amount") },
                     prefix = { Text("$") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
                     ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
@@ -701,6 +725,83 @@ private fun CashTenderDialog(
     )
 }
 
+// ─── Loyalty points redemption dialog ────────────────────────────────────────
+
+/**
+ * §38.6 / §38.3 — Dialog for redeeming loyalty points at POS.
+ *
+ * Cashier enters the customer's membership ID and the number of points to
+ * redeem. Points are converted at 1 pt = $0.01 and applied as a
+ * `loyalty_points` tender via [PosTenderViewModel.applyLoyaltyPoints].
+ *
+ * NOTE: server-side point deduction is not yet implemented — see
+ * [PosTenderViewModel.applyLoyaltyPoints] for the full rationale.
+ */
+@Composable
+private fun LoyaltyPointsDialog(
+    onApply: (membershipId: Long, pointsToRedeem: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var membershipIdText by remember { mutableStateOf("") }
+    var pointsText by remember { mutableStateOf("") }
+    val membershipId = membershipIdText.toLongOrNull()
+    val points = pointsText.toIntOrNull()?.takeIf { it > 0 }
+    val dollarValue = points?.let { it * 1L }
+    val canApply = membershipId != null && points != null
+    val focusManager = LocalFocusManager.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Redeem loyalty points") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = membershipIdText,
+                    onValueChange = { membershipIdText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Membership ID") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = pointsText,
+                    onValueChange = { pointsText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Points to redeem") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (dollarValue != null) {
+                    Text(
+                        "Value: ${(dollarValue).toDollarString()} (1 pt = \$0.01)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Note: point balance is deducted server-side when the next sync completes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canApply,
+                onClick = { onApply(membershipId!!, points!!) },
+            ) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 // ─── Bottom action bar ────────────────────────────────────────────────────────
 
 @Composable
@@ -710,7 +811,7 @@ private fun TenderActionBar(state: PosTenderUiState, onFinalize: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Button(
                 onClick = onFinalize,
                 enabled = state.isFullyPaid && !state.isProcessing,

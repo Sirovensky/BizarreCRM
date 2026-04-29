@@ -3,37 +3,25 @@ package com.bizarreelectronics.crm.ui.screens.dashboard.components
 /**
  * §3.2 L504 — Cash-Trapped card.
  *
- * Displays the total overdue-receivables sum (invoices that are past due and
- * unpaid). A non-zero balance is highlighted in error-red so it demands
- * attention. Tapping the card routes to the Aging Report screen.
+ * Shows the total value of slow-moving inventory (items in stock whose last sale
+ * was more than 90 days ago). Data comes from `GET /reports/cash-trapped`.
  *
- * Data contract:
- * - [overdueReceivablesCents]: total overdue balance in cents. Null = no data.
- * - [overdueCount]: number of overdue invoices. Null = unknown.
- * - [onNavigateToAging]: routes to Invoices → Aging. Null = inert card.
+ * Tapping the card navigates to the Aging report screen.
  *
- * Graceful degradation: null fields are safe — empty state shown; no crash.
- * Server endpoint: GET /reports/aging  (404-tolerant; null when absent).
+ * States:
+ *  - [totalCents] == null  → "Connect Inventory data" stub (endpoint 404 / not yet wired)
+ *  - [totalCents] == 0     → "No cash trapped — inventory is moving well"
+ *  - [totalCents] > 0      → formatted dollar amount + item count + chevron tap
  */
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,47 +29,57 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.bizarreelectronics.crm.ui.theme.ErrorRed
-import java.text.NumberFormat
-import java.util.Locale
+import com.bizarreelectronics.crm.ui.theme.WarningAmber
 
-private fun formatCentsUsd(cents: Long): String =
-    NumberFormat.getCurrencyInstance(Locale.US).format(cents / 100.0)
+/**
+ * Data class for a single overdue-receivables / slow-stock item displayed in
+ * [CashTrappedCard]. Mirrors the `top_offenders` array from the server response.
+ */
+data class CashTrappedItem(
+    val id: Long,
+    val name: String,
+    val valueCents: Long,
+    /** Days since last sale; null = never sold. */
+    val daysSinceLastSale: Int?,
+)
 
+private const val MAX_DISPLAYED = 3
+
+/**
+ * §3.2 L504 — Dashboard card showing cash trapped in slow-moving inventory.
+ *
+ * @param totalCents   Total value in cents.  Null = inventory endpoint not connected.
+ * @param itemCount    Number of slow-moving items. Null when [totalCents] is null.
+ * @param topItems     Up to 3 worst offenders for the detail rows.
+ * @param onTap        Called when the card is tapped; navigates to Aging report.
+ * @param modifier     Outer layout modifier.
+ */
 @Composable
 fun CashTrappedCard(
-    /** Total overdue balance in cents. Null = data not yet available. */
-    overdueReceivablesCents: Long?,
-    /** Count of overdue invoices. Null = unknown. */
-    overdueCount: Int? = null,
-    /** Routes to Aging Report. Null = card is informational-only. */
-    onNavigateToAging: (() -> Unit)? = null,
+    totalCents: Long?,
+    itemCount: Int? = null,
+    topItems: List<CashTrappedItem> = emptyList(),
+    onTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val isEmpty = overdueReceivablesCents == null
-    val hasBalance = !isEmpty && overdueReceivablesCents!! > 0
+    val isConnected = totalCents != null
+    val isHealthy = isConnected && totalCents == 0L
 
     val a11yDesc = when {
-        isEmpty -> "Cash Trapped: overdue receivables data unavailable."
-        overdueReceivablesCents == 0L -> "Cash Trapped: no overdue receivables. All invoices paid."
+        !isConnected -> "Cash Trapped: inventory data not connected."
+        isHealthy    -> "Cash Trapped: no slow-moving inventory — all items are moving well."
         else -> {
-            val countPart = if (overdueCount != null) "$overdueCount invoices, " else ""
-            "Cash Trapped: ${countPart}${formatCentsUsd(overdueReceivablesCents!!)} overdue. Tap to view aging report."
+            val dollars = (totalCents!! / 100.0)
+            "Cash Trapped: \$${String.format("%.0f", dollars)} across ${itemCount ?: 0} slow-moving items. Tap to view aging report."
         }
     }
 
-    val clickModifier = if (hasBalance && onNavigateToAging != null) {
-        Modifier
-            .semantics {
-                contentDescription = a11yDesc
-                role = Role.Button
-            }
-            .clickable(onClick = onNavigateToAging)
-    } else {
-        Modifier.semantics { contentDescription = a11yDesc }
+    val borderColor = when {
+        !isConnected -> MaterialTheme.colorScheme.outline
+        isHealthy    -> MaterialTheme.colorScheme.outline
+        else         -> WarningAmber.copy(alpha = 0.6f)
     }
 
     Card(
@@ -89,92 +87,164 @@ fun CashTrappedCard(
             .fillMaxWidth()
             .border(
                 width = 1.dp,
-                color = if (hasBalance)
-                    ErrorRed.copy(alpha = 0.6f)
-                else
-                    MaterialTheme.colorScheme.outline,
+                color = borderColor,
                 shape = MaterialTheme.shapes.medium,
             )
-            .then(clickModifier),
+            .semantics { contentDescription = a11yDesc }
+            .then(
+                if (onTap != null && isConnected && !isHealthy) {
+                    Modifier
+                        .semantics { role = Role.Button }
+                        .clickable(onClick = onTap)
+                } else Modifier,
+            ),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = if (hasBalance)
-                ErrorRed.copy(alpha = 0.06f)
-            else
-                MaterialTheme.colorScheme.surface,
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Default.AccountBalanceWallet,
-                contentDescription = null,
-                tint = if (hasBalance) ErrorRed
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp),
-            )
-
-            Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountBalance,
+                    contentDescription = null,
+                    tint = if (!isConnected || isHealthy)
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else WarningAmber,
+                    modifier = Modifier.size(20.dp),
+                )
                 Text(
                     text = "Cash Trapped",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                when {
-                    isEmpty -> Text(
-                        text = "No data available",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                if (onTap != null && isConnected && !isHealthy) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "View aging report",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
                     )
+                }
+            }
 
-                    overdueReceivablesCents == 0L -> Text(
-                        text = "No overdue receivables",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+            Spacer(modifier = Modifier.height(12.dp))
+
+            when {
+                !isConnected -> {
+                    // Stub / endpoint not connected
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Connect Inventory data",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+                isHealthy -> {
+                    // All inventory is moving
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            text = "No slow-moving inventory",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                else -> {
+                    // Show total + top offenders
+                    val dollars = (totalCents!! / 100.0)
+                    Text(
+                        text = "\$${String.format("%.2f", dollars)}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = WarningAmber,
                     )
+                    if (itemCount != null && itemCount > 0) {
+                        Text(
+                            text = "$itemCount item${if (itemCount == 1) "" else "s"} not sold in 90+ days",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
 
-                    else -> {
-                        Row(
-                            verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = formatCentsUsd(overdueReceivablesCents!!),
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 24.sp,
-                                ),
-                                color = ErrorRed,
-                            )
+                    if (topItems.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        topItems.take(MAX_DISPLAYED).forEachIndexed { idx, item ->
+                            CashTrappedRow(item = item)
+                            if (idx < (topItems.take(MAX_DISPLAYED).lastIndex)) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 3.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                )
+                            }
                         }
-                        if (overdueCount != null && overdueCount > 0) {
-                            Spacer(modifier = Modifier.height(2.dp))
+                        if (topItems.size > MAX_DISPLAYED) {
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "$overdueCount overdue invoice${if (overdueCount == 1) "" else "s"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = "+${topItems.size - MAX_DISPLAYED} more — tap to view all",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             )
                         }
                     }
                 }
             }
-
-            // Chevron only when tappable
-            if (hasBalance && onNavigateToAging != null) {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
         }
+    }
+}
+
+@Composable
+private fun CashTrappedRow(item: CashTrappedItem) {
+    val itemDollars = item.valueCents / 100.0
+    val ageLabel = when {
+        item.daysSinceLastSale == null -> "never sold"
+        item.daysSinceLastSale > 365   -> "${item.daysSinceLastSale / 365}y+ ago"
+        else                           -> "${item.daysSinceLastSale}d ago"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = item.name,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            text = "\$${String.format("%.0f", itemDollars)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = WarningAmber,
+        )
+        Text(
+            text = ageLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
     }
 }

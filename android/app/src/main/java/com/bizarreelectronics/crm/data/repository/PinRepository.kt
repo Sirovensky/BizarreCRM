@@ -50,7 +50,12 @@ class PinRepository @Inject constructor(
         val response = try {
             authApi.verifyPin(mapOf("pin" to pin))
         } catch (t: Throwable) {
-            return VerifyResult.Error(t.message ?: "Network error")
+            // §2.15 / §20 offline-ok: server unreachable → fall back to the
+            // locally mirrored Argon2id hash. The mirror is only written
+            // after a successful server-side change/setInitialPin, so the
+            // device must have set the PIN at least once while online.
+            // Lockout counters still apply, capping brute-force at MAX_ATTEMPTS.
+            return verifyOffline(pin, now)
         }
         if (!response.success) {
             return VerifyResult.Error(response.message ?: "Verification failed")
@@ -66,6 +71,30 @@ class PinRepository @Inject constructor(
                 pinPrefs.isInLockout() -> VerifyResult.Lockout(pinPrefs.lockoutUntilMillis)
                 else -> VerifyResult.WrongPin(remaining = (MAX_ATTEMPTS - count).coerceAtLeast(0))
             }
+        }
+    }
+
+    /**
+     * Offline branch of [verify]. Order of checks:
+     *   - No mirror present → [VerifyResult.Error] ("connect to verify").
+     *     Counter NOT incremented — a clean device shouldn't get penalized
+     *     just because the server is unreachable.
+     *   - Mirror matches → [VerifyResult.Success], counter reset.
+     *   - Mirror mismatches → counter incremented; lockout applies as usual.
+     */
+    private fun verifyOffline(pin: String, now: Long): VerifyResult {
+        if (!pinPrefs.hasMirror()) {
+            return VerifyResult.Error("Offline — no cached PIN. Connect to verify.")
+        }
+        if (pinPrefs.verifyPinLocally(pin)) {
+            pinPrefs.recordSuccess()
+            return VerifyResult.Success
+        }
+        val count = pinPrefs.recordFailure(now)
+        return when {
+            pinPrefs.hardLockout -> VerifyResult.HardLockout
+            pinPrefs.isInLockout() -> VerifyResult.Lockout(pinPrefs.lockoutUntilMillis)
+            else -> VerifyResult.WrongPin(remaining = (MAX_ATTEMPTS - count).coerceAtLeast(0))
         }
     }
 

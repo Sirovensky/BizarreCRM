@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Policy
@@ -32,6 +33,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -74,6 +76,7 @@ fun DataPrivacyScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val consentStatus by viewModel.consentStatus.collectAsState()
+    val telemetryEnabled by viewModel.telemetryEnabled.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -149,6 +152,34 @@ fun DataPrivacyScreen(
                     }
                 }
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // ─── §74.3 Telemetry opt-out ──────────────────────────────────────
+            // All analytics events go to the tenant's own server only.
+            // No GAID / ADID / Firebase Analytics / Google Analytics / Mixpanel.
+            // When disabled, the local crash log (CrashReporter) is unaffected.
+            ListItem(
+                headlineContent = { Text("Diagnostics & analytics") },
+                supportingContent = {
+                    Text(
+                        "Send anonymous usage events to this shop's server only. " +
+                            "No data leaves your server. " +
+                            "Crash logs are always kept locally for support.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                leadingContent = {
+                    Icon(Icons.Default.Analytics, contentDescription = null)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = telemetryEnabled,
+                        onCheckedChange = { viewModel.setTelemetryEnabled(it) },
+                    )
+                },
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 

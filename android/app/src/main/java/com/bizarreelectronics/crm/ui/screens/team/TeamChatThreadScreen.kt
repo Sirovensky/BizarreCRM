@@ -47,6 +47,10 @@ fun TeamChatThreadScreen(
     onBack: () -> Unit,
     viewModel: TeamChatThreadViewModel = hiltViewModel(),
     currentUserId: Long = 0L,
+    /** §47.3: navigate to ticket detail screen when @ticket embed is tapped. */
+    onTicketClick: ((ticketId: Long) -> Unit)? = null,
+    /** §47.3: navigate to customer search when @customer embed is tapped. */
+    onCustomerClick: ((name: String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -225,6 +229,9 @@ fun TeamChatThreadScreen(
                                     viewModel.toggleReaction(message.id, emoji)
                                 },
                                 onLongPress = { showReactionPickerFor = message.id },
+                                // §47.3: forward embed taps to the caller's nav handlers.
+                                onTicketClick = onTicketClick,
+                                onCustomerClick = onCustomerClick,
                             )
                         }
                     }

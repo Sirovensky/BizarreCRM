@@ -21,7 +21,6 @@ class CrmIssueRegistry : IssueRegistry() {
     override val issues: List<Issue> = listOf(
         StatefulObjectSingletonDetector.ISSUE,
         GlobalScopeLaunchDetector.ISSUE,
-        // §20.1 — Retrofit/OkHttp/ApiClient banned outside data/remote/ and di/.
         RetrofitOutsideRemoteDetector.ISSUE,
     )
 

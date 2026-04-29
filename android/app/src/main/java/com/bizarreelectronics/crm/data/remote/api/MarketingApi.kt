@@ -8,37 +8,38 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
-import retrofit2.http.QueryMap
 
 // ─── Campaign DTOs ────────────────────────────────────────────────────────────
 
 /**
- * A marketing campaign row returned by GET /campaigns or GET /campaigns/:id.
- *
- * Server source: packages/server/src/routes/campaigns.routes.ts
- * Table: marketing_campaigns
- *
- * Status values: "draft" | "active" | "paused" | "archived"
- * Type values:   "birthday" | "winback" | "review_request" | "churn_warning" |
- *                "service_subscription" | "custom"
- * Channel:       "sms" | "email" | "both"
+ * Campaign status values (server-enforced CHECK constraint).
+ * "draft" | "active" | "paused" | "archived"
  */
-data class CampaignDto(
+data class Campaign(
     val id: Long,
     val name: String,
-    val type: String,
-    @SerializedName("segment_id")   val segmentId: Long? = null,
-    val channel: String,
-    @SerializedName("template_subject") val templateSubject: String? = null,
+    val type: String,              // "birthday"|"winback"|"review_request"|"churn_warning"|"service_subscription"|"custom"
+    @SerializedName("segment_id")    val segmentId: Long?,
+    val channel: String,           // "sms" | "email" | "both"
+    @SerializedName("template_subject") val templateSubject: String?,
     @SerializedName("template_body")    val templateBody: String,
-    @SerializedName("trigger_rule_json") val triggerRuleJson: String? = null,
-    val status: String,
-    @SerializedName("sent_count")      val sentCount: Int = 0,
-    @SerializedName("replied_count")   val repliedCount: Int = 0,
-    @SerializedName("converted_count") val convertedCount: Int = 0,
-    @SerializedName("created_at")      val createdAt: String? = null,
-    @SerializedName("last_run_at")     val lastRunAt: String? = null,
+    @SerializedName("trigger_rule_json") val triggerRuleJson: String?,
+    val status: String,            // "draft" | "active" | "paused" | "archived"
+    @SerializedName("sent_count")       val sentCount: Int = 0,
+    @SerializedName("replied_count")    val repliedCount: Int = 0,
+    @SerializedName("converted_count")  val convertedCount: Int = 0,
+    @SerializedName("created_at")       val createdAt: String?,
+    @SerializedName("last_run_at")      val lastRunAt: String?,
 )
+
+data class CampaignListData(val campaigns: List<Campaign>? = null)
+
+/**
+ * The GET /campaigns response returns the list directly (not wrapped in a
+ * named field — the route does `res.json({ success:true, data: rows })`).
+ * Use [CampaignRawListData] for that endpoint.
+ */
+typealias CampaignRawListData = List<Campaign>
 
 data class CreateCampaignRequest(
     val name: String,
@@ -50,18 +51,49 @@ data class CreateCampaignRequest(
     @SerializedName("trigger_rule_json") val triggerRuleJson: String? = null,
 )
 
+data class UpdateCampaignRequest(
+    val name: String? = null,
+    val channel: String? = null,
+    val status: String? = null,
+    @SerializedName("template_subject") val templateSubject: String? = null,
+    @SerializedName("template_body")    val templateBody: String? = null,
+    @SerializedName("segment_id")       val segmentId: Long? = null,
+    @SerializedName("trigger_rule_json") val triggerRuleJson: String? = null,
+)
+
+data class CampaignData(val campaign: Campaign? = null)
+
+// ─── Campaign stats DTOs ──────────────────────────────────────────────────────
+
+data class CampaignCounts(
+    val sent: Int = 0,
+    val failed: Int = 0,
+    val replied: Int = 0,
+    val converted: Int = 0,
+)
+
 data class CampaignStatsData(
-    val campaign: CampaignDto,
-    val counts: Map<String, @JvmSuppressWildcards Int>,
+    val campaign: Campaign,
+    val counts: CampaignCounts,
+)
+
+// ─── Preview DTOs ─────────────────────────────────────────────────────────────
+
+data class PreviewRecipient(
+    @SerializedName("customer_id")    val customerId: Long,
+    @SerializedName("first_name")     val firstName: String?,
+    @SerializedName("rendered_body")  val renderedBody: String,
 )
 
 data class CampaignPreviewData(
-    @SerializedName("campaign_id")       val campaignId: Long,
-    @SerializedName("total_recipients")  val totalRecipients: Int,
-    val preview: List<@JvmSuppressWildcards Any>,
+    @SerializedName("campaign_id")        val campaignId: Long,
+    @SerializedName("total_recipients")   val totalRecipients: Int,
+    val preview: List<PreviewRecipient>,
 )
 
-data class CampaignRunResult(
+// ─── Run-now result DTOs ──────────────────────────────────────────────────────
+
+data class DispatchResult(
     val attempted: Int,
     val sent: Int,
     val failed: Int,
@@ -70,144 +102,131 @@ data class CampaignRunResult(
 
 // ─── Segment DTOs ─────────────────────────────────────────────────────────────
 
-/**
- * A customer segment row returned by GET /crm/segments.
- *
- * Server source: packages/server/src/routes/crm.routes.ts
- * Table: customer_segments
- */
-data class SegmentDto(
+data class CustomerSegment(
     val id: Long,
     val name: String,
-    val description: String? = null,
-    @SerializedName("rule_json")     val ruleJson: String? = null,
-    @SerializedName("is_auto")       val isAuto: Int = 0,
-    @SerializedName("member_count")  val memberCount: Int = 0,
-    @SerializedName("created_at")    val createdAt: String? = null,
-    @SerializedName("updated_at")    val updatedAt: String? = null,
+    val description: String?,
+    @SerializedName("rule_json")         val ruleJson: String,
+    @SerializedName("is_auto")           val isAuto: Int = 1,
+    @SerializedName("last_refreshed_at") val lastRefreshedAt: String?,
+    @SerializedName("member_count")      val memberCount: Int = 0,
+    @SerializedName("created_at")        val createdAt: String?,
 )
+
+data class SegmentListData(val segments: List<CustomerSegment>? = null)
+
+/**
+ * GET /crm/segments returns the list directly (same raw-list pattern as campaigns).
+ */
+typealias SegmentRawListData = List<CustomerSegment>
 
 data class CreateSegmentRequest(
     val name: String,
     val description: String? = null,
-    @SerializedName("rule_json") val ruleJson: String? = null,
+    @SerializedName("rule_json") val ruleJson: String,
+    @SerializedName("is_auto")   val isAuto: Int = 0,
 )
 
-// ─── API interfaces ───────────────────────────────────────────────────────────
+data class SegmentData(val segment: CustomerSegment? = null)
+
+data class SegmentMember(
+    val id: Long,
+    @SerializedName("first_name") val firstName: String?,
+    @SerializedName("last_name")  val lastName: String?,
+    val email: String?,
+    val phone: String?,
+)
+
+data class SegmentMembersData(
+    val members: List<SegmentMember>,
+    val total: Int,
+)
+
+// ─── Review-request trigger DTOs ──────────────────────────────────────────────
+
+data class ReviewRequestTriggerRequest(
+    @SerializedName("ticket_id") val ticketId: Long,
+)
+
+// ─── API interface ────────────────────────────────────────────────────────────
 
 /**
- * Campaign CRUD + dispatch endpoints.
+ * Marketing & Growth endpoints.
  *
- * Server: GET/POST /campaigns, GET/PATCH/DELETE /campaigns/:id,
- *         POST /campaigns/:id/preview, POST /campaigns/:id/run-now,
- *         GET  /campaigns/:id/stats
+ * Campaign CRUD at [GET/POST] /api/v1/campaigns.
+ * Segment CRUD at [GET/POST] /api/v1/crm/segments.
  *
- * All endpoints are admin-only on the server; the app should only show this
- * surface to admin-role users. 404 responses are tolerated — callers show
- * an "unavailable" state rather than crashing.
+ * 404-tolerant — callers catch [retrofit2.HttpException] with code 404 and
+ * show "Not available on this server" rather than crashing.
  *
- * Plan §37 (ActionPlan.md lines 3255-3360).
+ * Plan §37 ActionPlan.md L2959-L3000.
  */
 interface MarketingApi {
 
     // ── Campaign list ─────────────────────────────────────────────────────────
 
+    /** List all campaigns ordered by created_at DESC (§37.1). */
     @GET("campaigns")
-    suspend fun getCampaigns(
-        @QueryMap params: Map<String, String> = emptyMap(),
-    ): ApiResponse<List<@JvmSuppressWildcards CampaignDto>>
+    suspend fun getCampaigns(): ApiResponse<CampaignRawListData>
 
-    // ── Campaign CRUD ─────────────────────────────────────────────────────────
-
+    /** Get a single campaign by id (§37.1). */
     @GET("campaigns/{id}")
-    suspend fun getCampaign(
-        @Path("id") id: Long,
-    ): ApiResponse<CampaignDto>
+    suspend fun getCampaign(@Path("id") id: Long): ApiResponse<Campaign>
 
+    /** Create a new campaign in draft status (§37.2). */
     @POST("campaigns")
-    suspend fun createCampaign(
-        @Body request: CreateCampaignRequest,
-    ): ApiResponse<CampaignDto>
+    suspend fun createCampaign(@Body request: CreateCampaignRequest): ApiResponse<Campaign>
 
+    /** Update a campaign's fields (§37.2). */
     @PATCH("campaigns/{id}")
-    suspend fun patchCampaign(
+    suspend fun updateCampaign(
         @Path("id") id: Long,
-        @Body body: Map<String, @JvmSuppressWildcards Any>,
-    ): ApiResponse<CampaignDto>
+        @Body request: UpdateCampaignRequest,
+    ): ApiResponse<Campaign>
 
+    /** Archive / delete a campaign (§37.2). */
     @DELETE("campaigns/{id}")
-    suspend fun deleteCampaign(
-        @Path("id") id: Long,
-    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+    suspend fun deleteCampaign(@Path("id") id: Long): ApiResponse<Map<String, Long>>
 
-    // ── Campaign actions ──────────────────────────────────────────────────────
-
-    /**
-     * Dry-run: returns total_recipients count + 3 sample rendered messages.
-     * POST /campaigns/:id/preview
-     */
+    /** Preview recipients + rendered messages (§37.2). */
     @POST("campaigns/{id}/preview")
-    suspend fun previewCampaign(
-        @Path("id") id: Long,
-    ): ApiResponse<CampaignPreviewData>
+    suspend fun previewCampaign(@Path("id") id: Long): ApiResponse<CampaignPreviewData>
 
-    /**
-     * Dispatch campaign to all eligible recipients now.
-     * POST /campaigns/:id/run-now
-     * Rate-limited server-side: 3 dispatches/minute per user.
-     */
+    /** Dispatch a campaign immediately to all eligible recipients (§37.2). */
     @POST("campaigns/{id}/run-now")
-    suspend fun runCampaignNow(
-        @Path("id") id: Long,
-    ): ApiResponse<CampaignRunResult>
+    suspend fun runCampaignNow(@Path("id") id: Long): ApiResponse<DispatchResult>
+
+    /** Get sent/replied/converted stats for a campaign (§37.1). */
+    @GET("campaigns/{id}/stats")
+    suspend fun getCampaignStats(@Path("id") id: Long): ApiResponse<CampaignStatsData>
+
+    // ── Segments ──────────────────────────────────────────────────────────────
+
+    /** List all customer segments (§37.3). */
+    @GET("crm/segments")
+    suspend fun getSegments(): ApiResponse<SegmentRawListData>
+
+    /** Create a new segment (§37.3). */
+    @POST("crm/segments")
+    suspend fun createSegment(@Body request: CreateSegmentRequest): ApiResponse<CustomerSegment>
+
+    /** Refresh segment membership (re-evaluate rule) (§37.3). */
+    @POST("crm/segments/{id}/refresh")
+    suspend fun refreshSegment(@Path("id") id: Long): ApiResponse<CustomerSegment>
+
+    /** List segment members with pagination (§37.3 size preview). */
+    @GET("crm/segments/{id}/members")
+    suspend fun getSegmentMembers(@Path("id") id: Long): ApiResponse<SegmentMembersData>
+
+    // ── Review solicitation ───────────────────────────────────────────────────
 
     /**
-     * Per-campaign send metrics.
-     * GET /campaigns/:id/stats  → { campaign, counts: { sent, failed, replied, converted } }
+     * Trigger a review-request SMS for a closed ticket (§37.5).
+     * Requires an active `review_request` campaign; server no-ops gracefully
+     * if none exists.
      */
-    @GET("campaigns/{id}/stats")
-    suspend fun getCampaignStats(
-        @Path("id") id: Long,
-    ): ApiResponse<CampaignStatsData>
-}
-
-/**
- * Customer segment CRUD endpoints.
- *
- * Server: GET/POST /crm/segments, GET/PATCH/DELETE /crm/segments/:id,
- *         POST /crm/segments/:id/refresh
- *
- * Plan §37.3 (ActionPlan.md lines ~3285-3295).
- */
-interface SegmentApi {
-
-    @GET("crm/segments")
-    suspend fun getSegments(): ApiResponse<List<@JvmSuppressWildcards SegmentDto>>
-
-    @GET("crm/segments/{id}")
-    suspend fun getSegment(
-        @Path("id") id: Long,
-    ): ApiResponse<SegmentDto>
-
-    @POST("crm/segments")
-    suspend fun createSegment(
-        @Body request: CreateSegmentRequest,
-    ): ApiResponse<SegmentDto>
-
-    @PATCH("crm/segments/{id}")
-    suspend fun patchSegment(
-        @Path("id") id: Long,
-        @Body body: Map<String, @JvmSuppressWildcards Any>,
-    ): ApiResponse<SegmentDto>
-
-    @DELETE("crm/segments/{id}")
-    suspend fun deleteSegment(
-        @Path("id") id: Long,
-    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
-
-    /** Re-evaluate segment membership server-side. */
-    @POST("crm/segments/{id}/refresh")
-    suspend fun refreshSegment(
-        @Path("id") id: Long,
-    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+    @POST("campaigns/review-request/trigger")
+    suspend fun triggerReviewRequest(
+        @Body request: ReviewRequestTriggerRequest,
+    ): ApiResponse<DispatchResult>
 }
