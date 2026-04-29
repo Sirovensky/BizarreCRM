@@ -482,15 +482,26 @@ private struct BarcodeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Barcode").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            HStack {
+                Text("Barcode").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Spacer(minLength: 0)
+                if let sku = item.sku, !sku.isEmpty,
+                   let img = generateCode128(from: sku) {
+                    BarcodePrintButton(image: img, label: sku)
+                }
+            }
 
             if let sku = item.sku, !sku.isEmpty {
                 VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                     Text("SKU").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    Text(sku)
-                        .font(.brandMono(size: 14))
-                        .textSelection(.enabled)
-                        .foregroundStyle(.bizarreOnSurface)
+                    HStack(spacing: BrandSpacing.sm) {
+                        Text(sku)
+                            .font(.brandMono(size: 14))
+                            .textSelection(.enabled)
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer(minLength: 0)
+                        CopySKUButton(sku: sku)
+                    }
                     if let img = generateCode128(from: sku) {
                         Image(uiImage: img)
                             .resizable()
@@ -544,6 +555,82 @@ private struct BarcodeCard: View {
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
         guard let cgImage = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
         return UIImage(cgImage: cgImage)
+    }
+}
+
+// MARK: - §6.2 SKU Copy Button
+
+/// Inline button that copies the SKU string to the system pasteboard with haptic feedback.
+private struct CopySKUButton: View {
+    let sku: String
+    @State private var copied: Bool = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = sku
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                withAnimation(.easeInOut(duration: 0.15)) { copied = false }
+            }
+        } label: {
+            Label(copied ? "Copied" : "Copy SKU",
+                  systemImage: copied ? "checkmark" : "doc.on.clipboard")
+                .font(.brandLabelSmall())
+                .foregroundStyle(copied ? .bizarreSuccess : .bizarrePrimary)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(
+                    (copied ? Color.bizarreSuccess : Color.bizarrePrimary).opacity(0.1),
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copied ? "SKU copied" : "Copy SKU to clipboard")
+        .accessibilityHint(copied ? "" : "Double-tap to copy \(sku)")
+        .animation(.easeInOut(duration: 0.15), value: copied)
+    }
+}
+
+// MARK: - §6.2 Barcode Print Button
+
+/// Print-preview button for a barcode image via AirPrint (`UIPrintInteractionController`).
+private struct BarcodePrintButton: View {
+    let image: UIImage
+    let label: String
+
+    var body: some View {
+        Button {
+            printBarcode()
+        } label: {
+            Label("Print", systemImage: "printer")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarrePrimary)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarrePrimary.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Print barcode for \(label)")
+        .accessibilityHint("Opens AirPrint print preview")
+    }
+
+    private func printBarcode() {
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.outputType = .grayscale
+        printInfo.jobName = "Barcode – \(label)"
+
+        let printRenderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 288, height: 144))
+        let pdfData = printRenderer.pdfData { ctx in
+            ctx.beginPage()
+            image.draw(in: CGRect(x: 16, y: 16, width: 256, height: 112))
+        }
+
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = printInfo
+        controller.printingItem = pdfData
+        controller.present(animated: true, completionHandler: nil)
     }
 }
 
