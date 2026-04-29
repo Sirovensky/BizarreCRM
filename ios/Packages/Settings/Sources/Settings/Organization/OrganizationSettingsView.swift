@@ -57,6 +57,7 @@ public struct OrganizationSettingsView: View {
             contactSection
             localisationSection
             documentFooterSection       // §19.5
+            termsAndPoliciesSection     // §19.5 Terms & policies
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
@@ -76,6 +77,7 @@ public struct OrganizationSettingsView: View {
                 contactCard
                 localisationCard
                 documentFooterCard      // §19.5
+                termsAndPoliciesCard    // §19.5 Terms & policies
             }
             .padding(BrandSpacing.lg)
         }
@@ -174,6 +176,111 @@ public struct OrganizationSettingsView: View {
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
+    }
+
+    // MARK: §19.5 Terms & policies — printed on receipts (warranty, return, privacy)
+
+    private var termsAndPoliciesSection: some View {
+        Section {
+            policyEditor(
+                title: "Warranty policy",
+                identifier: "org.warrantyPolicy",
+                placeholder: "All repairs include a 90-day limited warranty…",
+                binding: warrantyPolicyBinding,
+                minHeight: 72,
+                maxHeight: 140
+            )
+            policyEditor(
+                title: "Return policy",
+                identifier: "org.returnPolicy",
+                placeholder: "Returns accepted within 14 days with original receipt…",
+                binding: returnPolicyBinding,
+                minHeight: 72,
+                maxHeight: 140
+            )
+            policyEditor(
+                title: "Privacy policy",
+                identifier: "org.privacyPolicy",
+                placeholder: "Customer data is never sold. See bizarrecrm.com/privacy…",
+                binding: privacyPolicyBinding,
+                minHeight: 72,
+                maxHeight: 140
+            )
+        } header: {
+            Text("Terms & Policies")
+        } footer: {
+            Text("Printed on receipts. Keep brief; long policies should link to a public URL.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+    }
+
+    private var termsAndPoliciesCard: some View {
+        GroupBox("Terms & Policies") {
+            VStack(alignment: .leading, spacing: BrandSpacing.md) {
+                policyEditor(
+                    title: "Warranty policy",
+                    identifier: "org.warrantyPolicy.pad",
+                    placeholder: "90-day limited warranty…",
+                    binding: warrantyPolicyBinding,
+                    minHeight: 64,
+                    maxHeight: 120
+                )
+                policyEditor(
+                    title: "Return policy",
+                    identifier: "org.returnPolicy.pad",
+                    placeholder: "Returns within 14 days…",
+                    binding: returnPolicyBinding,
+                    minHeight: 64,
+                    maxHeight: 120
+                )
+                policyEditor(
+                    title: "Privacy policy",
+                    identifier: "org.privacyPolicy.pad",
+                    placeholder: "Customer data handling…",
+                    binding: privacyPolicyBinding,
+                    minHeight: 64,
+                    maxHeight: 120
+                )
+            }
+        }
+        .groupBoxStyle(.organization)
+    }
+
+    @ViewBuilder
+    private func policyEditor(
+        title: String,
+        identifier: String,
+        placeholder: String,
+        binding: Binding<String>,
+        minHeight: CGFloat,
+        maxHeight: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text(title)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            ZStack(alignment: .topLeading) {
+                if binding.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.6))
+                        .padding(.horizontal, BrandSpacing.xs)
+                        .padding(.vertical, BrandSpacing.xs + 2)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: binding)
+                    .frame(minHeight: minHeight, maxHeight: maxHeight)
+                    .disabled(!canEdit)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier(identifier)
+                    .accessibilityLabel(title)
+            }
+        }
+        .listRowBackground(Color.bizarreSurface1)
     }
 
     private var documentFooterCard: some View {
@@ -411,6 +518,28 @@ public struct OrganizationSettingsView: View {
         Binding(
             get: { vm.settings.invoiceFooter },
             set: { vm.updateField(invoiceFooter: $0) }
+        )
+    }
+
+    // §19.5 Terms & policies bindings
+    private var warrantyPolicyBinding: Binding<String> {
+        Binding(
+            get: { vm.settings.warrantyPolicy },
+            set: { vm.updateField(warrantyPolicy: $0) }
+        )
+    }
+
+    private var returnPolicyBinding: Binding<String> {
+        Binding(
+            get: { vm.settings.returnPolicy },
+            set: { vm.updateField(returnPolicy: $0) }
+        )
+    }
+
+    private var privacyPolicyBinding: Binding<String> {
+        Binding(
+            get: { vm.settings.privacyPolicy },
+            set: { vm.updateField(privacyPolicy: $0) }
         )
     }
 

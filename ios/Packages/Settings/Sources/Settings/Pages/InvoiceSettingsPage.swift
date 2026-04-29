@@ -31,6 +31,11 @@ public struct InvoiceSettings: Codable, Sendable, Equatable {
     public var allowedPaymentMethods: [String]
     /// Processing surcharge percentage (0 = disabled).
     public var surchargePct: Double
+    /// §19.7 — Surface the list of accepted payment methods on the customer-facing
+    /// invoice portal (the "Pay this invoice" page). When `false`, the portal hides
+    /// the methods chip row and only shows "Pay" — useful when a tenant wants to
+    /// keep their options private until checkout.
+    public var portalShowAcceptedMethods: Bool
 
     public init(
         numberFormat: String = "INV-{year}-{seq:04}",
@@ -41,7 +46,8 @@ public struct InvoiceSettings: Codable, Sendable, Equatable {
         emailReplyTo: String = "",
         reminderDays: [Int] = [-3, 0, 3, 7],
         allowedPaymentMethods: [String] = ["card", "cash", "check"],
-        surchargePct: Double = 0
+        surchargePct: Double = 0,
+        portalShowAcceptedMethods: Bool = true
     ) {
         self.numberFormat = numberFormat
         self.netTermsDays = netTermsDays
@@ -52,6 +58,7 @@ public struct InvoiceSettings: Codable, Sendable, Equatable {
         self.reminderDays = reminderDays
         self.allowedPaymentMethods = allowedPaymentMethods
         self.surchargePct = surchargePct
+        self.portalShowAcceptedMethods = portalShowAcceptedMethods
     }
 
     enum CodingKeys: String, CodingKey {
@@ -64,6 +71,22 @@ public struct InvoiceSettings: Codable, Sendable, Equatable {
         case reminderDays          = "reminder_days"
         case allowedPaymentMethods = "allowed_payment_methods"
         case surchargePct          = "surcharge_pct"
+        case portalShowAcceptedMethods = "portal_show_accepted_methods"
+    }
+
+    // Tolerate older server payloads that omit `portal_show_accepted_methods`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.numberFormat   = (try? c.decode(String.self, forKey: .numberFormat)) ?? "INV-{year}-{seq:04}"
+        self.netTermsDays   = (try? c.decode(Int.self, forKey: .netTermsDays)) ?? 0
+        self.lateFeePercent = (try? c.decode(Double.self, forKey: .lateFeePercent)) ?? 0
+        self.lateFeGraceDays = (try? c.decode(Int.self, forKey: .lateFeGraceDays)) ?? 0
+        self.emailFrom      = (try? c.decode(String.self, forKey: .emailFrom)) ?? ""
+        self.emailReplyTo   = (try? c.decode(String.self, forKey: .emailReplyTo)) ?? ""
+        self.reminderDays   = (try? c.decode([Int].self, forKey: .reminderDays)) ?? [-3, 0, 3, 7]
+        self.allowedPaymentMethods = (try? c.decode([String].self, forKey: .allowedPaymentMethods)) ?? ["card", "cash", "check"]
+        self.surchargePct   = (try? c.decode(Double.self, forKey: .surchargePct)) ?? 0
+        self.portalShowAcceptedMethods = (try? c.decode(Bool.self, forKey: .portalShowAcceptedMethods)) ?? true
     }
 }
 
@@ -338,8 +361,18 @@ public struct InvoiceSettingsPage: View {
                 .listRowBackground(Color.bizarreSurface1)
                 .accessibilityIdentifier("invoice.method.\(key)")
             }
+
+            // §19.7 — Surface accepted methods on the customer portal
+            Toggle("Show on customer portal", isOn: $vm.settings.portalShowAcceptedMethods)
+                .tint(.bizarreOrange)
+                .listRowBackground(Color.bizarreSurface1)
+                .accessibilityIdentifier("invoice.portalShowMethods")
         } header: {
             Text("Accepted Payment Methods")
+        } footer: {
+            Text("When enabled, the “Pay this invoice” page on the customer portal lists the accepted methods so the customer knows what to expect at checkout.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
         }
     }
 

@@ -79,7 +79,12 @@ public final class OrganizationSettingsViewModel: Sendable {
             taxId: settings.taxId,
             currencyCode: settings.currencyCode,
             timezone: settings.timezone,
-            locale: settings.locale
+            locale: settings.locale,
+            receiptFooter: settings.receiptFooter,
+            invoiceFooter: settings.invoiceFooter,
+            warrantyPolicy: settings.warrantyPolicy,
+            returnPolicy: settings.returnPolicy,
+            privacyPolicy: settings.privacyPolicy
         )
     }
 
@@ -94,7 +99,12 @@ public final class OrganizationSettingsViewModel: Sendable {
             taxId: settings.taxId,
             currencyCode: settings.currencyCode,
             timezone: settings.timezone,
-            locale: settings.locale
+            locale: settings.locale,
+            receiptFooter: settings.receiptFooter,
+            invoiceFooter: settings.invoiceFooter,
+            warrantyPolicy: settings.warrantyPolicy,
+            returnPolicy: settings.returnPolicy,
+            privacyPolicy: settings.privacyPolicy
         )
     }
 
@@ -108,7 +118,10 @@ public final class OrganizationSettingsViewModel: Sendable {
         timezone: String? = nil,
         locale: String? = nil,
         receiptFooter: String? = nil,
-        invoiceFooter: String? = nil
+        invoiceFooter: String? = nil,
+        warrantyPolicy: String? = nil,
+        returnPolicy: String? = nil,
+        privacyPolicy: String? = nil
     ) {
         settings = OrganizationSettings(
             name: settings.name,
@@ -122,7 +135,10 @@ public final class OrganizationSettingsViewModel: Sendable {
             timezone: timezone         ?? settings.timezone,
             locale: locale             ?? settings.locale,
             receiptFooter: receiptFooter ?? settings.receiptFooter,
-            invoiceFooter: invoiceFooter ?? settings.invoiceFooter
+            invoiceFooter: invoiceFooter ?? settings.invoiceFooter,
+            warrantyPolicy: warrantyPolicy ?? settings.warrantyPolicy,
+            returnPolicy: returnPolicy ?? settings.returnPolicy,
+            privacyPolicy: privacyPolicy ?? settings.privacyPolicy
         )
     }
 }

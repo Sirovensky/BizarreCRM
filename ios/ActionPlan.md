@@ -640,12 +640,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **QR code** — 81130f8c — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [x] **Copy link to ticket** — 81130f8c — Universal Link `app.bizarrecrm.com/tickets/:id`.
-- [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
+- [x] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer. `CustomerQuickActionsRow` in `TicketDetailView` adds two new chips: "Open Customer" (Universal Link `https://app.bizarrecrm.com/customers/<id>` → DeepLinkRouter) and "New Ticket" (Universal Link `.../tickets/new?customer_id=<id>` to pre-seed the create flow). This commit.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
 - [x] **Time-spent counter** — `BenchTimerToggleCard` collapsed header now shows a live `timer.displayTime` monospaced label (orange when running, muted when paused/idle); `BenchTimerView` accepts an injected `BenchTimerState` so the card header and expanded body share the same timer instance. This commit.
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
-- [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
+- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]". `TicketDetailViewModel.load()` flips `deletedOnServerBanner` on `.notFound` from `AppError.from`; `TicketDetailView` renders a red `safeAreaInset` banner with `trash.circle.fill` icon, "Ticket removed." copy, and a Close button that calls `dismiss()`. Cached detail stays visible behind the banner. This commit (re-confirmed wiring).
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
 
 ### 4.3 Create — full-fidelity multi-step

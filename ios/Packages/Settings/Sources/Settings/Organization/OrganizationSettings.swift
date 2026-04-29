@@ -57,6 +57,17 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
     /// Max 500 chars; markdown bold/italic respected in PDF renderer.
     public var invoiceFooter: String
 
+    // MARK: §19.5 Terms & policies (printed on receipts)
+
+    /// Warranty policy text printed on receipts.
+    public var warrantyPolicy: String
+
+    /// Return policy text printed on receipts.
+    public var returnPolicy: String
+
+    /// Privacy policy text printed on receipts.
+    public var privacyPolicy: String
+
     // MARK: - Init
 
     public init(
@@ -71,7 +82,10 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
         timezone: String = "America/New_York",
         locale: String = "en_US",
         receiptFooter: String = "",
-        invoiceFooter: String = ""
+        invoiceFooter: String = "",
+        warrantyPolicy: String = "",
+        returnPolicy: String = "",
+        privacyPolicy: String = ""
     ) {
         self.name = name
         self.legalName = legalName
@@ -85,6 +99,9 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
         self.locale = locale
         self.receiptFooter = receiptFooter
         self.invoiceFooter = invoiceFooter
+        self.warrantyPolicy = warrantyPolicy
+        self.returnPolicy = returnPolicy
+        self.privacyPolicy = privacyPolicy
     }
 }
 
@@ -107,7 +124,10 @@ extension OrganizationSettings {
             timezone:      cfg["timezone"]        ?? cfg["store_timezone"] ?? "",
             locale:        cfg["locale"]          ?? "",
             receiptFooter: cfg["receipt_footer"]  ?? "",
-            invoiceFooter: cfg["invoice_footer"]  ?? ""
+            invoiceFooter: cfg["invoice_footer"]  ?? "",
+            warrantyPolicy: cfg["warranty_policy"] ?? "",
+            returnPolicy:   cfg["return_policy"]   ?? "",
+            privacyPolicy:  cfg["privacy_policy"]  ?? ""
         )
     }
 
@@ -127,6 +147,9 @@ extension OrganizationSettings {
             "locale":         locale,
             "receipt_footer": receiptFooter,
             "invoice_footer": invoiceFooter,
+            "warranty_policy": warrantyPolicy,
+            "return_policy":   returnPolicy,
+            "privacy_policy":  privacyPolicy,
         ]
     }
 }

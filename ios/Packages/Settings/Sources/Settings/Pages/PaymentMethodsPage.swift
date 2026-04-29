@@ -23,6 +23,15 @@ public struct PaymentMethodSettings: Equatable, Sendable {
     public var tipPresets: [Int]
     /// Allow manual keyed-entry of card numbers (card-not-present; higher interchange).
     public var manualKeyedCardAllowed: Bool
+    // §19.9 — Refund policy + auto-batch close
+    /// Maximum days since sale that a refund can be processed (0 = no limit).
+    public var refundMaxDaysSinceSale: Int
+    /// Refunds above this dollar amount require manager approval (0 = always allowed).
+    public var refundManagerApprovalAbove: Double
+    /// Auto-close card batch enabled (mirrors `batchCloseMinuteOfDay != nil`).
+    public var batchCloseEnabled: Bool
+    /// Minute-of-day (0–1439) when auto-close fires; `0` = midnight.
+    public var batchCloseMinuteOfDay: Int
 
     public static let `default` = PaymentMethodSettings(
         cashEnabled: true, cardEnabled: true,
@@ -31,7 +40,11 @@ public struct PaymentMethodSettings: Equatable, Sendable {
         cardSurchargeEnabled: false,
         tippingEnabled: false,
         tipPresets: [10, 15, 20],
-        manualKeyedCardAllowed: false
+        manualKeyedCardAllowed: false,
+        refundMaxDaysSinceSale: 30,
+        refundManagerApprovalAbove: 100,
+        batchCloseEnabled: false,
+        batchCloseMinuteOfDay: 23 * 60   // 11 PM default
     )
 }
 
@@ -71,7 +84,11 @@ public final class PaymentMethodsViewModel: Sendable {
                 cardSurchargeEnabled: resp.cardSurchargeEnabled ?? false,
                 tippingEnabled: resp.tippingEnabled ?? false,
                 tipPresets: resp.tipPresets ?? [10, 15, 20],
-                manualKeyedCardAllowed: resp.manualKeyedCardAllowed ?? false
+                manualKeyedCardAllowed: resp.manualKeyedCardAllowed ?? false,
+                refundMaxDaysSinceSale: resp.refundMaxDaysSinceSale ?? 30,
+                refundManagerApprovalAbove: resp.refundManagerApprovalAbove ?? 100,
+                batchCloseEnabled: resp.batchCloseMinuteOfDay != nil,
+                batchCloseMinuteOfDay: resp.batchCloseMinuteOfDay ?? (23 * 60)
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -94,7 +111,10 @@ public final class PaymentMethodsViewModel: Sendable {
                 cardSurchargeEnabled: settings.cardSurchargeEnabled,
                 tippingEnabled: settings.tippingEnabled,
                 tipPresets: settings.tipPresets,
-                manualKeyedCardAllowed: settings.manualKeyedCardAllowed
+                manualKeyedCardAllowed: settings.manualKeyedCardAllowed,
+                refundMaxDaysSinceSale: settings.refundMaxDaysSinceSale,
+                refundManagerApprovalAbove: settings.refundManagerApprovalAbove,
+                batchCloseMinuteOfDay: settings.batchCloseEnabled ? settings.batchCloseMinuteOfDay : nil
             )
             _ = try await api.savePaymentSettings(body)
             successMessage = "Payment settings saved."
@@ -220,6 +240,56 @@ public struct PaymentMethodsPage: View {
                 }
             }
 
+            // MARK: §19.9 — Refund policy
+            Section {
+                Stepper(
+                    "Max days since sale: \(vm.settings.refundMaxDaysSinceSale == 0 ? "No limit" : "\(vm.settings.refundMaxDaysSinceSale)")",
+                    value: $vm.settings.refundMaxDaysSinceSale, in: 0...365
+                )
+                .accessibilityIdentifier("payment.refundMaxDays")
+
+                HStack {
+                    Text("Manager approval above")
+                    Spacer()
+                    TextField("0", value: $vm.settings.refundManagerApprovalAbove,
+                              format: .currency(code: "USD"))
+                        #if canImport(UIKit)
+                        .keyboardType(.decimalPad)
+                        #endif
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 100)
+                        .accessibilityIdentifier("payment.refundManagerThreshold")
+                }
+            } header: {
+                Text("Refund policy")
+            } footer: {
+                Text("0 days = no time limit. Refunds above the threshold prompt for manager PIN at checkout.")
+            }
+
+            // MARK: §19.9 — Auto-close card batch
+            if vm.settings.cardEnabled {
+                Section {
+                    Toggle("Auto-close batch daily", isOn: $vm.settings.batchCloseEnabled)
+                        .accessibilityIdentifier("payment.batchCloseEnabled")
+
+                    if vm.settings.batchCloseEnabled {
+                        DatePicker(
+                            "Close at",
+                            selection: Binding(
+                                get: { batchCloseDate(minuteOfDay: vm.settings.batchCloseMinuteOfDay) },
+                                set: { vm.settings.batchCloseMinuteOfDay = minuteOfDay(from: $0) }
+                            ),
+                            displayedComponents: .hourAndMinute
+                        )
+                        .accessibilityIdentifier("payment.batchCloseTime")
+                    }
+                } header: {
+                    Text("Card batch close")
+                } footer: {
+                    Text("BlockChyp settles the day's transactions automatically at this time. Disable to close manually each evening.")
+                }
+            }
+
             if let msg = vm.errorMessage {
                 Section {
                     Label(msg, systemImage: "exclamationmark.triangle")
@@ -255,5 +325,20 @@ public struct PaymentMethodsPage: View {
                 ProgressView().accessibilityLabel("Loading payment settings")
             }
         }
+    }
+
+    // MARK: §19.9 — minute-of-day ↔ Date helpers
+
+    private func batchCloseDate(minuteOfDay: Int) -> Date {
+        let cal = Calendar.current
+        let mod = max(0, min(1439, minuteOfDay))
+        let h = mod / 60
+        let m = mod % 60
+        return cal.date(bySettingHour: h, minute: m, second: 0, of: Date()) ?? Date()
+    }
+
+    private func minuteOfDay(from date: Date) -> Int {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
     }
 }
