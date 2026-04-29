@@ -73,6 +73,8 @@ public final class CashDrawerManager {
     public private(set) var isPinValidating: Bool = false
     /// Non-nil when an operation fails.
     public private(set) var errorMessage: String?
+    /// Current jam assessment from the jam detector.
+    public private(set) var jamState: DrawerJamState = .clear
 
     // MARK: - Configuration
 
@@ -88,6 +90,8 @@ public final class CashDrawerManager {
     private let drawer: any CashDrawer
     private let pinValidator: (any ManagerPinValidator)?
     private let auditLogger: (any CashDrawerAuditLogger)?
+    /// Jam detector — uses advisory mode by default (most drawers are dumb).
+    private let jamDetector: DrawerJamDetector
 
     /// Monotonic count of opens since last sale was recorded.
     private var opensSinceLastSale: Int = 0
@@ -101,11 +105,22 @@ public final class CashDrawerManager {
     public init(
         drawer: any CashDrawer,
         pinValidator: (any ManagerPinValidator)? = nil,
-        auditLogger: (any CashDrawerAuditLogger)? = nil
+        auditLogger: (any CashDrawerAuditLogger)? = nil,
+        jamDetector: DrawerJamDetector = DrawerJamDetector()
     ) {
         self.drawer = drawer
         self.pinValidator = pinValidator
         self.auditLogger = auditLogger
+        self.jamDetector = jamDetector
+        // Forward jam state changes onto main actor.
+        jamDetector.onJamStateChanged = { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.jamState = state
+                if state.isJammed {
+                    AppLog.hardware.warning("CashDrawerManager: jam state → \(state.displayMessage, privacy: .public)")
+                }
+            }
+        }
     }
 
     // MARK: - Public API: tender-driven kick
@@ -122,6 +137,21 @@ public final class CashDrawerManager {
     /// Call when a sale completes (without a drawer kick) to reset the anti-theft counter.
     public func recordSaleCompleted() {
         opensSinceLastSale = 0
+        jamDetector.recordSuccessfulSale()
+    }
+
+    /// Call when the printer reports a drawer open/closed status byte (active sensing only).
+    /// - Parameter isOpen: `true` if the drawer is confirmed open.
+    public func recordDrawerStatusUpdate(isOpen: Bool) {
+        jamDetector.recordStatusUpdate(isOpen: isOpen)
+        if isOpen && status != .open { status = .open }
+    }
+
+    /// Manually clear a jam alert after staff inspects the drawer.
+    public func resolveJam() {
+        jamDetector.manuallyResolveJam()
+        jamState = .clear
+        AppLog.hardware.info("CashDrawerManager: jam manually resolved by staff")
     }
 
     // MARK: - Public API: manager override
@@ -173,6 +203,7 @@ public final class CashDrawerManager {
         errorMessage = nil
         do {
             try await drawer.open()
+            jamDetector.recordKickSent()
             let now = Date()
             openedAt = now
             status = .open

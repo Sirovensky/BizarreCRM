@@ -2748,6 +2748,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [x] **Annotations** — `PhotoAnnotationView` with `PKCanvasView` + `PKToolPicker`; `captureAnnotated()` flattens base + ink.
 - [x] **Photos library** — `PhotoCaptureView` wraps `PhotosPicker` with `selectionLimit: 10`, inline 3-col grid + tap-to-remove. Limited-library UX deferred.
 - [x] **Permissions UX** — `CameraCaptureView` + `PosScanSheet` glass permission-denied card with `UIApplication.openSettingsURLString` CTA.
+- [x] **Camera permission re-prompt** — `CameraPermissionMonitor` @Observable tracks `AVAuthorizationStatus` + refreshes on foreground (`scenePhase` change). `CameraPermissionRepromptCard` glass card with icon, copy, and CTA button: `.notDetermined` → request system dialog; `.denied` / `.restricted` → deep-link to `UIApplication.openSettingsURLString`. `CameraPermissionGate<Content>` wrapper hides camera UI and shows card until authorized. VoiceOver-accessible; card auto-dismisses when user returns from Settings with permission granted. `Settings/CameraPermissionReprompt.swift`. Commit `feat(§17): scale-tare-button, scanner-test, paper-low, drawer-jam, camera-reprompt`.
 - [x] **Mac (Designed for iPad)** — continuity camera via FaceTime-HD → same `AVCaptureSession` code works. `BarcodeScannerView` Mac Catalyst fallback already gates on `DataScannerViewController.isSupported`; continuity camera reuses identical `AVCaptureSession` code path. Commit `[agent-2 b4]`.
 - [x] **Live text** — `LiveTextView` (iOS 16+) with `ImageAnalysisInteraction` + `onTextRecognized` for IMEI/serial extraction.
 
@@ -2824,6 +2825,8 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [x] **Printer offline** — job queues in `PrintJobQueue` actor (model payload + target printer). Retry with exponential backoff (3 attempts); dead-letter after threshold. `PrintJobStore` persists pending + dead-letter jobs to disk (JSON file → GRDB migration path). Commit `[agent-2 b3]`.
 - [x] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. `CashDrawerFallbackView` + `APIClient.logManualDrawerOpen`. Commit `e348d254`.
 - [x] **Re-print** — `ReprintSearchView` + `ReprintSearchViewModel` + `ReprintDetailView` + `ReprintViewModel`. Search by receipt#/phone/name. Reason picker. Audit `POST /sales/:id/reprint-event`. ⌘⇧R shortcut. Tests ≥80%. (Phase 5 §16)
+- [x] **Printer paper-low warning** — `PrinterPaperLevel` enum (`.ok`/`.low`/`.empty`/`.unknown`) + `PrinterPaperMonitor` @Observable singleton updated by engine adapters via `setPaperLevel(_:for:)`. `PrinterPaperLowBanner` glass chip shown in POS toolbar / Settings when paper is low or empty. `.printerPaperLowAlert(monitor:)` ViewModifier fires an alert on level change. `Printing/PrinterPaperLowWarning.swift`. Commit `feat(§17): scale-tare-button, scanner-test, paper-low, drawer-jam, camera-reprompt`.
+- [x] **Drawer jam detection** — `DrawerJamDetector` (advisory + active sensing modes). Advisory mode fires after `advisoryThreshold` (default 2) consecutive unconfirmed kicks within a shift. Active mode times out if no open-status confirmation within 3 s. `DrawerJamState` (.clear/.suspected/.advisory) published on `CashDrawerManager.jamState`. `CashDrawerManager` gains `recordDrawerStatusUpdate(isOpen:)` + `resolveJam()`. `Drawer/DrawerJamDetection.swift`. Commit `feat(§17): scale-tare-button, scanner-test, paper-low, drawer-jam, camera-reprompt`.
 
 #### Templates (the views)
 - [x] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§17). All ship in `ReceiptView.swift` + `DocumentViews.swift` (IntakeFormView, ARStatementView, ZReportView, LabelView). Commit (prior batches + b3).
@@ -2865,11 +2868,13 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [x] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP). `BluetoothWeightScale` + `Weight` + `WeightDisplayChip` shipped.
 - [x] **Read weight** — `BluetoothWeightScale.stream()` / `read()` + characteristic 0x2A9D parser. Cart wiring deferred to §16.
 - [x] **Tare / zero** — button in POS when scale selected. `BluetoothWeightScale.tare()` + `WeightDisplayChip(onTare:)`. Commit `e348d254`.
+- [x] **Scale tare button (standalone)** — `ScaleTareButton` full-size SwiftUI button for use outside `WeighCaptureView` (toolbars, scale quick-action cards). Shows spinner while taring; "Zeroed" / error feedback with auto-clear; posts VoiceOver announcement. `Scale/ScaleTareButton.swift`. Commit `feat(§17): scale-tare-button, scanner-test, paper-low, drawer-jam, camera-reprompt`.
 
 ### 17.7 Bluetooth / peripherals shell
 - [x] **Permissions** — `NSBluetoothAlwaysUsageDescription` documented; written by `scripts/write-info-plist.sh`.
 - [x] **Device shelf** — `BluetoothSettingsView` + `HardwareSettingsView` aggregator shipped.
 - [x] **Reconnect** — auto-reconnect on launch; surface failures in status bar glass. `BluetoothReconnectService` + `remember/forget/allRememberedUUIDs`. Commit `e348d254`.
+- [x] **Scanner test screen** — `ScannerTestView` (Settings → Hardware → Scanner → "Test Scanner"). Animated waiting ring; accepts barcodes from `BarcodeScannerBuffer` (HID/BT wedge) or manual-entry fallback; last 5 entries in history list with timestamp + symbology hint; Clear toolbar button; full a11y. `Bluetooth/ScannerTestView.swift`. Commit `feat(§17): scale-tare-button, scanner-test, paper-low, drawer-jam, camera-reprompt`.
 
 ### 17.8 Customer-facing display
 - [x] **Dual-screen** — iPad with external display via USB-C/HDMI → cart mirror + tip prompt. `CustomerDisplayManager` owns `UIWindow` on external screen; auto-detects screen connect/disconnect. `CustomerCartMirrorView` + `CustomerTipPromptView` + `CustomerDisplayRootView`. Commit `[agent-2 b3]`.
