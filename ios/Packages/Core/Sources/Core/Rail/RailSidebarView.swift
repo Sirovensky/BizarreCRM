@@ -78,57 +78,66 @@ private struct RailItemButton: View {
     let isExpanded: Bool
     let pillBackground: Color
     let pillForeground: Color
+    /// §91.9-2: Optional 1pt outline drawn over the active pill in light mode.
+    let pillOutlineColor: Color?
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 0) {
-                ZStack {
-                    if isSelected {
-                        Capsule()
-                            .fill(pillBackground)
-                            .frame(width: isExpanded ? 180 : 48, height: 48)
-                            .animation(
-                                reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.28),
-                                value: isExpanded
-                            )
-                    }
-
-                    HStack(spacing: isExpanded ? 12 : 0) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: item.systemImage)
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle(isSelected ? pillForeground : Color.primary)
-                                .frame(width: 28, height: 28)
-
-                            if let badge = item.badge {
-                                BadgeView(badge: badge)
-                                    .offset(x: 6, y: -6)
+            ZStack {
+                if isSelected {
+                    Capsule()
+                        .fill(pillBackground)
+                        .frame(width: isExpanded ? 180 : 48, height: 48)
+                        .overlay {
+                            if let outline = pillOutlineColor {
+                                Capsule()
+                                    .strokeBorder(outline, lineWidth: 1)
                             }
                         }
+                        .animation(
+                            reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.28),
+                            value: isExpanded
+                        )
+                }
 
-                        if isExpanded {
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(isSelected ? pillForeground : Color.primary)
-                                .lineLimit(1)
-                                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                                .transition(.opacity)
+                HStack(alignment: .center, spacing: isExpanded ? 12 : 0) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(isSelected ? pillForeground : Color.primary)
+                            .frame(width: 28, height: 28)
+
+                        if let badge = item.badge {
+                            BadgeView(badge: badge)
+                                .offset(x: 6, y: -6)
                         }
                     }
-                    .padding(.horizontal, isExpanded ? 14 : 0)
+
+                    if isExpanded {
+                        Text(item.title)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isSelected ? pillForeground : Color.primary)
+                            .lineLimit(1)
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                            .transition(.opacity)
+                    }
                 }
-                .frame(width: isExpanded ? 180 : 48, height: 48)
+                .padding(.horizontal, isExpanded ? 14 : 0)
             }
+            .frame(width: isExpanded ? 180 : 48, height: 48)
         }
         .buttonStyle(.plain)
         .frame(width: isExpanded ? 180 : 48, height: 48)
         .contentShape(Rectangle())
         .railHoverEffect()
+        // §91.7-1: tooltip label visible on hover (Mac / iPadOS pointer)
+        .help(item.title)
+        // §91.7-2: VoiceOver label + selected state trait
         .accessibilityLabel(Text(item.title))
-        .accessibilityHint(isSelected ? "Selected" : "Navigate to")
+        .accessibilityHint(isSelected ? "Selected" : "Navigate to \(item.title)")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
@@ -234,16 +243,28 @@ public struct RailSidebarView: View {
     // MARK: - Pill colours (TODO: replace with `theme.primary` / `theme.primarySoft` once Core
     //         imports DesignSystem and Agent A's posTheme env is available here)
 
+    // §91.9-2: Bumped saturation so selected item reads clearly in both schemes.
+    //   Dark:  cream fill at 0.30 opacity (unchanged from §91.7-4) + cream outline.
+    //   Light: deep-orange fill at 0.18 opacity + 1pt deep-orange outline so the
+    //          active item is unmistakable against the white .regularMaterial surface.
     private var pillBackground: Color {
         colorScheme == .dark
-            ? Color(red: 253/255, green: 238/255, blue: 208/255, opacity: 0.18)  // cream-soft
-            : Color(red: 194/255, green: 65/255,  blue: 12/255,  opacity: 0.14)  // orange-soft
+            ? Color(red: 253/255, green: 238/255, blue: 208/255, opacity: 0.30)  // cream
+            : Color(red: 194/255, green: 65/255,  blue: 12/255,  opacity: 0.18)  // deep orange
     }
 
     private var pillForeground: Color {
         colorScheme == .dark
             ? Color(red: 253/255, green: 238/255, blue: 208/255)  // cream
             : Color(red: 194/255, green: 65/255,  blue: 12/255)   // deep orange
+    }
+
+    /// 1pt outline drawn on top of the pill capsule in light mode to ensure
+    /// the active state is legible even on a bright `.regularMaterial` surface.
+    private var pillOutlineColor: Color? {
+        colorScheme == .light
+            ? Color(red: 194/255, green: 65/255, blue: 12/255, opacity: 0.55)
+            : nil
     }
 
     private var expandAnimation: Animation {
@@ -264,15 +285,28 @@ public struct RailSidebarView: View {
                 .padding(.bottom, 8)
 
             // --- Scrollable items ---
+            // §91.7-5: Items are grouped with subtle dividers between sections:
+            //   Operations  — Dashboard, Tickets, Customers, POS, Inventory, SMS (indices 0–5)
+            //   Reports     — Reports (index 6)
+            //   Settings    — Settings (index 7)
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 4) {
+                VStack(alignment: .center, spacing: 4) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        // Insert divider before Reports group (index 6)
+                        // and before Settings group (index 7).
+                        if index == 6 || index == 7 {
+                            Divider()
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
+                        }
+
                         RailItemButton(
                             item: item,
                             isSelected: selection == item.destination,
                             isExpanded: isExpanded,
                             pillBackground: pillBackground,
-                            pillForeground: pillForeground
+                            pillForeground: pillForeground,
+                            pillOutlineColor: pillOutlineColor
                         ) {
                             selection = item.destination
                             AppLog.ui.debug("Rail selected: \(item.destination.rawValue)")
