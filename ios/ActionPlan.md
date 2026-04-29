@@ -6010,10 +6010,17 @@ Number preserved as stub so cross-refs don't break.
 ### 57.1 Map view
 - [x] **MapKit** — appointments pinned on map. (`FieldServiceMapView.swift` — UIViewRepresentable + ETAAnnotationView + a11y labels)
 - [x] **Route** to next job via Apple Maps. (`FieldServiceRouteService.swift` — MKDirections.calculate + MKMapItem.openInMaps; `NextJobCardView.swift` — Liquid Glass overlay + Navigate button)
+- [x] **Route map cluster annotation** — nearby pins auto-cluster into `RouteMapClusterAnnotationView`: orange circle badge with job count; scales to 44pt for 10+ jobs; a11y label "N appointments in this area". `FieldServiceMapView.registerClusterView(on:)` registers the view class. (`RouteMapClusterAnnotation.swift`)
+- [x] **ETA-changed banner** — top-edge slide-in overlay shown when the server pushes a revised ETA; auto-dismisses after 5 s; delta direction colour-coded (later=orange, sooner=green); VoiceOver announcement on appear; Reduce Motion uses opacity fade. (`ETAChangedBanner.swift`)
 
 ### 57.2 Check-in / check-out
 - [x] **GPS verified** — arrival → start-work auto. (`FieldCheckInService.swift` — actor + LocationCapture protocol; `FieldCheckInPromptView.swift` + `FieldCheckInPromptViewModel.swift` — geofence-triggered prompt)
 - [x] **Signature on completion**. (`FieldSignatureView.swift` — PKCanvasView, PNG export, a11y "Customer signed" announcement)
+- [x] **Completion-photo grid** — before/after photo capture via `PhotosPicker`; 3-column adaptive `LazyVGrid`; in-memory JPEG `Data` binding; per-thumbnail remove button; max-10 guard; a11y combined label "N photos". (`CompletionPhotoGrid.swift`)
+- [x] **Customer-on-route-arrival haptic** — `.heavy` impact on `onSite` status arrival; Reduce Motion swaps to `.soft` (cue preserved); optional double-pulse confirmation variant; `.onCustomerArrival(isOnSite:)` SwiftUI modifier for ergonomic call-site. (`CustomerArrivalHaptic.swift`)
+
+### 57.4 Dispatcher
+- [x] **Technician name chip** — `TechnicianNameChip` pill badge showing assigned tech; `.standard` (icon + name) and `.compact` (initials avatar) variants; deterministic hue per tech name so colours are stable across the app. (`TechnicianNameChip.swift`)
 
 ### 57.3 On-site invoice
 - [x] **POS in the field** — BlockChyp mobile terminal. (`FieldOnSiteInvoiceFlow.swift` — ChargeCoordinator via injected chargeHandler; pre-filled service lines from appointment context)
