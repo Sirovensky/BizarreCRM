@@ -4,11 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -20,7 +15,9 @@ import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.BenchTi
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.CustomerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.DeviceCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.PhotosCard
+import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.QuoteAddRow
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.QuoteCard
+import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion
 
 /**
  * Left meta pane for the tablet ticket-detail layout.
@@ -66,6 +63,10 @@ internal fun LeftMetaPane(
     onOpenPhoto: ((photoId: Long) -> Unit)? = null,
     onBenchStart: () -> Unit = {},
     onBenchStop: () -> Unit = {},
+    // T-C6 — Quote add-row typeahead.
+    quoteSuggestions: List<QuoteSuggestion> = emptyList(),
+    onQuoteQueryChange: (String) -> Unit = {},
+    onQuoteSuggestionPick: (QuoteSuggestion) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -97,6 +98,14 @@ internal fun LeftMetaPane(
             )
         }
         item {
+            QuoteAddRow(
+                deviceId = device?.id,
+                suggestions = quoteSuggestions,
+                onQueryChange = onQuoteQueryChange,
+                onPick = onQuoteSuggestionPick,
+            )
+        }
+        item {
             PhotosCard(
                 photos = photos,
                 serverUrl = serverUrl,
@@ -112,30 +121,5 @@ internal fun LeftMetaPane(
                 onStop = onBenchStop,
             )
         }
-        items(BUILD_OUT_PLACEHOLDERS) { placeholder ->
-            CardPlaceholder(label = placeholder)
-        }
-    }
-}
-
-/** Build-out placeholders shown until each phase lands. */
-private val BUILD_OUT_PLACEHOLDERS: List<String> = listOf(
-    "Quote add-row typeahead · lands in T-C6",
-)
-
-@Composable
-private fun CardPlaceholder(label: String) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(14.dp),
-        )
     }
 }

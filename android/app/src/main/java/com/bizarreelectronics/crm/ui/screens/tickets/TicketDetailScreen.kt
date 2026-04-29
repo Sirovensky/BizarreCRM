@@ -234,6 +234,9 @@ class TicketDetailViewModel @Inject constructor(
     private val multipartUpload: MultipartUpload,
     private val smsApi: com.bizarreelectronics.crm.data.remote.api.SmsApi,
     private val waiverApi: WaiverApi,
+    // T-C6 — typeahead Quote add-row needs Inventory + RepairPricing.
+    private val inventoryApi: com.bizarreelectronics.crm.data.remote.api.InventoryApi,
+    private val repairPricingApi: com.bizarreelectronics.crm.data.remote.api.RepairPricingApi,
 ) : ViewModel() {
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -498,13 +501,173 @@ class TicketDetailViewModel @Inject constructor(
                     entityType = "ticket_note",
                     entityId = ticketId,
                     operation = "add",
-                    payload = gson.toJson(mapOf("type" to "internal", "content" to text)),
+                    payload = gson.toJson(mapOf("type" to type, "content" to text)),
                 )
             )
             _state.value = _state.value.copy(
                 isActionInProgress = false,
                 actionMessage = "Note queued — will sync when online",
             )
+        }
+    }
+
+    // ── T-C6 — Quote add-row typeahead ─────────────────────────────────────────
+
+    private val _quoteSuggestions = MutableStateFlow<List<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>>(emptyList())
+    val quoteSuggestions: StateFlow<List<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>> =
+        _quoteSuggestions.asStateFlow()
+
+    private var quoteSuggestJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * T-C6 — debounced typeahead query against Inventory + RepairPricing.
+     *
+     * Caller invokes on every keystroke; we cancel any in-flight prior
+     * job, wait 250ms, then issue parallel `getItems(q=...)` and
+     * `getServices(q=...)` calls, merge the two lists, cap at 5 each,
+     * and emit them on [quoteSuggestions]. Empty query clears the
+     * dropdown immediately. When both server lists are empty, emits
+     * a single MISC fallback row for the user's literal query.
+     */
+    fun quoteSuggest(query: String) {
+        quoteSuggestJob?.cancel()
+        val q = query.trim()
+        if (q.isBlank()) {
+            _quoteSuggestions.value = emptyList()
+            return
+        }
+        quoteSuggestJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(250L)
+            val merged = mutableListOf<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>()
+            // Best-effort sequential calls — either may 404 on legacy DBs.
+            val parts: List<com.bizarreelectronics.crm.data.remote.dto.InventoryListItem> = try {
+                inventoryApi.getItems(mapOf("q" to q, "limit" to "5")).data?.items.orEmpty()
+            } catch (_: Exception) { emptyList() }
+            val services: List<com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem> = try {
+                repairPricingApi.getServices(query = q).data.orEmpty()
+            } catch (_: Exception) { emptyList() }
+
+            parts.take(5).forEach { p ->
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.PART,
+                    name = p.name ?: "(unnamed part)",
+                    meta = p.sku ?: p.upcCode,
+                    priceCents = ((p.price ?: 0.0) * 100.0).toLong(),
+                    inventoryItemId = p.id,
+                    inStock = p.inStock,
+                )
+            }
+            services.take(5).forEach { s ->
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.SVC,
+                    name = s.name,
+                    meta = s.category,
+                    priceCents = (s.laborPrice * 100.0).toLong(),
+                    repairServiceId = s.id,
+                )
+            }
+            if (merged.isEmpty()) {
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.MISC,
+                    name = "Add \"$q\" as one-off misc charge",
+                    meta = "Free-text line",
+                    priceCents = 0L,
+                )
+            }
+            _quoteSuggestions.value = merged
+        }
+    }
+
+    /**
+     * T-C6 — append a quote line to the device.
+     *
+     * PART suggestions ship a real [com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest]
+     * via the existing `tickets/devices/{deviceId}/parts` endpoint
+     * (server-wired today, supports inventory_item_id + price).
+     *
+     * SVC + MISC suggestions log the structured payload (Timber tag
+     * `T-C6-deferred`) and surface a "wiring deferred" snackbar — server
+     * routes for service-line + free-text MISC lines land in TODO.md
+     * T-C6-server. The UI is fully wired so the day the route exists,
+     * only this method's else-branches change.
+     *
+     * @param deviceId the ticket-device id to attach the line to.
+     *   When the ticket has no device yet we cannot ship anything; the
+     *   caller is expected to gate the add-row on a non-null device.
+     */
+    fun addQuoteLine(
+        deviceId: Long,
+        suggestion: com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion,
+    ) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            when (suggestion.kind) {
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.PART -> {
+                    val invId = suggestion.inventoryItemId
+                    if (invId == null) {
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Missing inventory id — cannot add",
+                        )
+                        return@launch
+                    }
+                    val req = com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest(
+                        inventoryItemId = invId,
+                        quantity = 1,
+                        price = suggestion.priceCents / 100.0,
+                    )
+                    runCatching { ticketApi.addPartToDevice(deviceId, req) }
+                        .onSuccess {
+                            _state.value = _state.value.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Added \"${suggestion.name}\"",
+                            )
+                            loadTicketDetail()
+                        }
+                        .onFailure { e ->
+                            _state.value = _state.value.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Add failed — ${e.message ?: "unknown error"}",
+                            )
+                        }
+                }
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.SVC -> {
+                    val payload = mapOf(
+                        "kind" to "service",
+                        "repair_service_id" to suggestion.repairServiceId,
+                        "name" to suggestion.name,
+                        "labor_price" to suggestion.priceCents / 100.0,
+                        "device_id" to deviceId,
+                        "ticket_id" to ticketId,
+                    )
+                    timber.log.Timber.tag("T-C6-deferred").i(
+                        "Service line payload (server endpoint pending): %s",
+                        gson.toJson(payload),
+                    )
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Service line wiring deferred — see TODO.md (T-C6-server)",
+                    )
+                }
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.MISC -> {
+                    val payload = mapOf(
+                        "kind" to "misc",
+                        "name" to suggestion.name,
+                        "amount_cents" to suggestion.priceCents,
+                        "device_id" to deviceId,
+                        "ticket_id" to ticketId,
+                    )
+                    timber.log.Timber.tag("T-C6-deferred").i(
+                        "Misc line payload (server endpoint pending): %s",
+                        gson.toJson(payload),
+                    )
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Misc line wiring deferred — see TODO.md (T-C6-server)",
+                    )
+                }
+            }
+            _quoteSuggestions.value = emptyList()
         }
     }
 
@@ -1257,6 +1420,8 @@ fun TicketDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val ticket = state.ticket
+    // T-C6 — typeahead suggestions flow drives the tablet QuoteAddRow.
+    val quoteSuggestions by viewModel.quoteSuggestions.collectAsState()
 
     // @audit-fixed: dialog visibility and the in-progress note text were lost
     // on rotation. The status dropdown is a transient menu so it can stay on
@@ -2104,6 +2269,14 @@ fun TicketDetailScreen(
                                     onOpenPhoto = null, // wired with viewer integration in a follow-up commit.
                                     onBenchStart = { viewModel.startBenchTimer() },
                                     onBenchStop = { viewModel.stopBenchTimer() },
+                                    // T-C6 — Quote add-row typeahead.
+                                    quoteSuggestions = quoteSuggestions,
+                                    onQuoteQueryChange = { viewModel.quoteSuggest(it) },
+                                    onQuoteSuggestionPick = { sugg ->
+                                        firstDevice?.id?.let { devId ->
+                                            viewModel.addQuoteLine(devId, sugg)
+                                        }
+                                    },
                                 )
                             },
                             // T-C9 — right pane Activity feed (weight 1) +
