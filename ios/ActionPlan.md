@@ -4553,15 +4553,15 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 =======
 - [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
-- [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
-- [ ] **Request coalescing** — dedupe concurrent same-URL requests.
-- [ ] **Timeout** — 15s default; 30s for large uploads.
+- [x] **Connection reuse** — keep-alive; avoid per-call sessions. (`APIClientImpl.keepAliveConnectionsPerHost = 6` named constant; lazy cached `session` reused across all calls; HTTP/2 multiplexes streams over the pool. `Packages/Networking/Sources/Networking/APIClient.swift`. feat(§29.7))
+- [x] **Request coalescing** — dedupe concurrent same-URL requests. (`RequestCoalescer` actor in `Packages/Networking/Sources/Networking/RequestCoalescer.swift`; key = method + URL + Authorization digest; wired in `APIClientImpl.get(...)`; only GETs collapse, mutating verbs unaffected. feat(§29.7))
+- [x] **Timeout** — 15s default; 30s for large uploads. (JSON session: `timeoutIntervalForRequest = 15`; background upload session: `timeoutIntervalForRequest = 30`, `timeoutIntervalForResource = 1h` for chunked transfers. `Packages/Networking/Sources/Networking/APIClient.swift`. feat(§29.7))
 - [x] **Compression** — Accept-Encoding: gzip, br. (Added to `httpAdditionalHeaders` in `APIClient.swift`. feat(§29.7): 7ae3cd0c)
 
 ### 29.8 Animations
-- [ ] **Springs** — use `.interactiveSpring` for responsiveness.
+- [x] **Springs** — use `.interactiveSpring` for responsiveness. (`BrandMotion.responsive` token in `Packages/DesignSystem/Sources/DesignSystem/Tokens+Motion.swift` — `.interactiveSpring(response: 0.18, dampingFraction: 0.86)`; paired `ReduceMotionFallback.responsive(reduced:)`. feat(§29.8))
 - [ ] **Avoid layout thrashing** — no animated heights on parent of scrollable.
-- [ ] **Opacity + transform** preferred over layout changes.
+- [x] **Opacity + transform** preferred over layout changes. (`BrandTransition.opacityTransform(reduceMotion:)` in `Packages/DesignSystem/Sources/DesignSystem/Motion/BrandTransition.swift` — opacity + scale only, never animates layout-affecting properties; Reduce Motion drops to `.opacity`. feat(§29.8))
 
 ### 29.9 Instruments profile
 - [x] **Debug perf overlay** — DEBUG-only floating HUD showing live resident memory (MB) + Low Power Mode indicator; sampled every 1s; `View.performanceDebugOverlay()` modifier is a no-op in RELEASE. (`Core/Performance/PerformanceDebugOverlay.swift` — `PerformanceOverlayModel` @Observable + `PerformanceDebugOverlay` View + modifier. feat(§29.9): actionplan/§29-batch2)

@@ -81,6 +81,12 @@ public actor APIClientImpl: APIClient {
     // events via `application(_:handleEventsForBackgroundURLSession:…)`.
     public static let backgroundUploadSessionIdentifier = "com.bizarrecrm.upload"
     public static let backgroundUploadSharedContainerIdentifier = "group.com.bizarrecrm"
+
+    // §29.7 Connection reuse — keep-alive pool size. HTTP/2 multiplexes many
+    // streams over one TCP connection, so 6 is more than enough for normal
+    // app traffic; URLSession won't open per-call sockets, it reuses the
+    // pool. Centralised so tests + analytics can reference it by name.
+    public static let keepAliveConnectionsPerHost = 6
     private var _uploadSession: URLSession?
 
     // Lazy — deferred until the first network call so app launch isn't
@@ -100,7 +106,7 @@ public actor APIClientImpl: APIClient {
         cfg.timeoutIntervalForResource = 300        // 5 min outer resource limit
         cfg.waitsForConnectivity = true
         cfg.httpShouldUsePipelining = false         // HTTP/2 multiplexes; pipelining not needed
-        cfg.httpMaximumConnectionsPerHost = 6       // keep-alive pool; enough for H/2 streams
+        cfg.httpMaximumConnectionsPerHost = APIClientImpl.keepAliveConnectionsPerHost  // §29.7 keep-alive pool; H/2 multiplexes
         cfg.urlCache = nil                          // data calls handled by repo layer (§29.7)
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.allowsCellularAccess = true
@@ -230,6 +236,11 @@ public actor APIClientImpl: APIClient {
         cfg.isDiscretionary = false
         cfg.sessionSendsLaunchEvents = true
         cfg.allowsCellularAccess = true
+        // §29.7 Timeouts — 30 s per-request for large uploads (vs 15 s on
+        // the JSON session). Resource budget is generous so multipart photo
+        // uploads can survive a backgrounded app and slow cellular.
+        cfg.timeoutIntervalForRequest = 30
+        cfg.timeoutIntervalForResource = 60 * 60 // 1 h outer cap for chunked transfer
         cfg.httpAdditionalHeaders = [
             "X-Origin": "ios",
             "Accept": "application/json"
@@ -253,7 +264,24 @@ public actor APIClientImpl: APIClient {
     }
 
     public func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
-        try await unwrap(perform(request(path, method: "GET", query: query, body: nil as String?), as: T.self))
+        // §29.7 Request coalescing — concurrent identical GETs collapse into
+        // one network round-trip. Key includes URL + Authorization digest so
+        // different users / tenants never share a response.
+        let req = try request(path, method: "GET", query: query, body: nil as String?)
+        let key = RequestCoalescer.key(for: req)
+        return try await RequestCoalescer.shared.run(key: key) { [self] in
+            try await self.coalescedGetUnwrapped(req, as: T.self)
+        }
+    }
+
+    // §29.7 Coalescer adapter — actor-isolated helper invoked from
+    // `RequestCoalescer.run`; returns the unwrapped payload so all callers
+    // sharing the in-flight task see the same value.
+    fileprivate func coalescedGetUnwrapped<T: Decodable & Sendable>(
+        _ req: URLRequest,
+        as _: T.Type
+    ) async throws -> T {
+        try await unwrap(perform(req, as: T.self))
     }
 
     public func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
