@@ -190,7 +190,14 @@ public struct CFDView: View {
             .padding(.vertical, BrandSpacing.lg)
 
             if bridge.isActive {
-                Text(localised("Please wait for your cashier"))
+                // §16.25 — show a repair-specific message when a repair
+                // ticket is attached to the current cart so customers
+                // understand they are checking in a device, not buying
+                // a retail item.
+                let waitKey = bridge.hasRepairTicket
+                    ? "Your device is being checked in"
+                    : "Please wait for your cashier"
+                Text(localised(waitKey))
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .padding(.bottom, BrandSpacing.md)
@@ -248,14 +255,18 @@ public struct CFDView: View {
     private func localised(_ key: String) -> String {
         let lang = bridge.customerLanguageCode
         let table: [String: [String: String]] = [
-            "Subtotal":                    ["es": "Subtotal",           "fr": "Sous-total", "de": "Zwischensumme"],
-            "Tax":                         ["es": "Impuesto",           "fr": "Taxe",       "de": "Steuer"],
-            "Tip":                         ["es": "Propina",            "fr": "Pourboire",  "de": "Trinkgeld"],
-            "TOTAL":                       ["es": "TOTAL",              "fr": "TOTAL",      "de": "GESAMT"],
-            "Please wait for your cashier":["es": "Por favor espere",   "fr": "Veuillez patienter", "de": "Bitte warten"],
-            "Thank you!":                  ["es": "¡Gracias!",          "fr": "Merci !",    "de": "Danke!"],
-            "Scan to track your order":    ["es": "Escanea para rastrear", "fr": "Scannez pour suivre", "de": "Scannen zum Verfolgen"],
-            "Leave us a review":           ["es": "Déjanos una reseña", "fr": "Laissez un avis", "de": "Bewertung abgeben"],
+            "Subtotal":                         ["es": "Subtotal",                 "fr": "Sous-total",         "de": "Zwischensumme"],
+            "Tax":                              ["es": "Impuesto",                 "fr": "Taxe",               "de": "Steuer"],
+            "Tip":                              ["es": "Propina",                  "fr": "Pourboire",          "de": "Trinkgeld"],
+            "TOTAL":                            ["es": "TOTAL",                    "fr": "TOTAL",              "de": "GESAMT"],
+            "Please wait for your cashier":     ["es": "Por favor espere",         "fr": "Veuillez patienter", "de": "Bitte warten"],
+            // §16.25 — Repair check-in customer-facing message.
+            "Your device is being checked in":  ["es": "Su dispositivo está siendo registrado",
+                                                 "fr": "Votre appareil est en cours d'enregistrement",
+                                                 "de": "Ihr Gerät wird eingecheckt"],
+            "Thank you!":                       ["es": "¡Gracias!",                "fr": "Merci !",            "de": "Danke!"],
+            "Scan to track your order":         ["es": "Escanea para rastrear",    "fr": "Scannez pour suivre","de": "Scannen zum Verfolgen"],
+            "Leave us a review":                ["es": "Déjanos una reseña",       "fr": "Laissez un avis",    "de": "Bewertung abgeben"],
         ]
         return table[key]?[lang] ?? key
     }

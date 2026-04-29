@@ -17,6 +17,10 @@ public struct KioskQueueEntry: Identifiable, Sendable, Equatable {
     public let status: TicketStatus
     /// When the ticket was last updated — used for relative time stamps.
     public let updatedAt: Date
+    /// 1-based position in the walk-in / service queue.
+    /// `nil` when not applicable (e.g. ready-for-pickup tickets already
+    /// pulled from the queue) or when the server does not provide ordering.
+    public let queuePosition: Int?
 
     public init(
         id: Int64,
@@ -24,7 +28,8 @@ public struct KioskQueueEntry: Identifiable, Sendable, Equatable {
         customerFirstName: String,
         deviceSummary: String? = nil,
         status: TicketStatus,
-        updatedAt: Date
+        updatedAt: Date,
+        queuePosition: Int? = nil
     ) {
         self.id = id
         self.displayId = displayId
@@ -32,6 +37,7 @@ public struct KioskQueueEntry: Identifiable, Sendable, Equatable {
         self.deviceSummary = deviceSummary
         self.status = status
         self.updatedAt = updatedAt
+        self.queuePosition = queuePosition
     }
 }
 
@@ -40,7 +46,7 @@ public struct KioskQueueEntry: Identifiable, Sendable, Equatable {
 public extension KioskQueueEntry {
     /// Creates a public-facing `KioskQueueEntry` from a full `Ticket` model,
     /// stripping surname to protect customer privacy on a shared display.
-    init(ticket: Ticket) {
+    init(ticket: Ticket, queuePosition: Int? = nil) {
         let firstName = ticket.customerName
             .components(separatedBy: " ")
             .first ?? ticket.customerName
@@ -50,7 +56,8 @@ public extension KioskQueueEntry {
             customerFirstName: firstName,
             deviceSummary: ticket.deviceSummary,
             status: ticket.status,
-            updatedAt: ticket.updatedAt
+            updatedAt: ticket.updatedAt,
+            queuePosition: queuePosition
         )
     }
 }
@@ -210,6 +217,18 @@ struct KioskQueueEntryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
             HStack {
+                // Queue position badge — shows "#N in queue" for walk-in
+                // tickets still being worked on; hidden once ready.
+                if let position = entry.queuePosition, !isReady {
+                    Text("#\(position)")
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, DesignTokens.Spacing.sm)
+                        .padding(.vertical, DesignTokens.Spacing.xxs)
+                        .background(Color.secondary.opacity(0.6), in: Capsule())
+                        .accessibilityLabel("Queue position \(position)")
+                }
+
                 Text(entry.displayId)
                     .font(.system(.headline, design: .monospaced).bold())
                     .foregroundStyle(isReady ? Color.orange : Color.primary)
@@ -281,6 +300,9 @@ struct KioskQueueEntryCard: View {
         ]
         if let device = entry.deviceSummary {
             parts.append(device)
+        }
+        if let position = entry.queuePosition, !isReady {
+            parts.append("Queue position \(position)")
         }
         parts.append(entry.status.displayName)
         if isReady {

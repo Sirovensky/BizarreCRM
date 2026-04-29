@@ -172,6 +172,21 @@ public enum HapticPatternLibrary: Sendable {
         crescendo(name: "signatureComplete", intensities: [0.2, 0.2, 0.2], sharpness: 0.4, interval: 0.06)
     }
 
+    // MARK: - §16.25 / §4 Repair / Pickup patterns
+
+    /// Four-tap ascending chime pattern (0.2 → 0.35 → 0.55 → 0.8) —
+    /// played when a ticket transitions to "Ready for Pickup" so the
+    /// cashier / tech gets a distinct tactile confirmation distinct from
+    /// the generic sale-success crescendo.
+    public static var pickupConfirm: HapticPatternDescriptor {
+        crescendo(
+            name: "pickupConfirm",
+            intensities: [0.2, 0.35, 0.55, 0.8],
+            sharpness: 0.55,
+            interval: 0.07
+        )
+    }
+
     // MARK: - Private builders
 
     private static func singleTap(

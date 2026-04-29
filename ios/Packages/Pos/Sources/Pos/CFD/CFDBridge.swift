@@ -62,6 +62,12 @@ public final class CFDBridge {
     /// `true` when at least one item is in the cart.
     public var isActive: Bool { !items.isEmpty }
 
+    /// `true` when the current cart is associated with a repair ticket
+    /// (check-in / deposit flow). Drives repair-specific copy on the CFD
+    /// so customers see "Your device is being checked in" instead of
+    /// the generic cashier-wait message.
+    public private(set) var hasRepairTicket: Bool = false
+
     // MARK: - §16 — Post-sale state
 
     /// When non-nil the CFD shows the thank-you / receipt state with this token
@@ -102,7 +108,12 @@ public final class CFDBridge {
 
     /// Push the latest `Cart` state to the CFD display.
     /// Call this from the POS scene on every cart mutation.
-    public func update(from cart: Cart) {
+    ///
+    /// - Parameters:
+    ///   - cart: The current POS cart.
+    ///   - isRepairCheckIn: Pass `true` when the cart represents a repair
+    ///     ticket check-in / deposit so the CFD shows repair-specific copy.
+    public func update(from cart: Cart, isRepairCheckIn: Bool = false) {
         items = cart.items.map { item in
             CFDCartLine(
                 id: item.id,
@@ -111,10 +122,11 @@ public final class CFDBridge {
                 lineTotalCents: item.lineSubtotalCents
             )
         }
-        subtotalCents = cart.subtotalCents
-        taxCents      = cart.taxCents
-        tipCents      = cart.tipCents
-        totalCents    = cart.totalCents
+        subtotalCents    = cart.subtotalCents
+        taxCents         = cart.taxCents
+        tipCents         = cart.tipCents
+        totalCents       = cart.totalCents
+        hasRepairTicket  = isRepairCheckIn
         // Clear post-sale state when a live cart arrives.
         postSaleState = nil
     }
@@ -148,12 +160,13 @@ public final class CFDBridge {
 
     /// Reset the display to the idle / between-sales state.
     public func clear() {
-        items         = []
-        subtotalCents = 0
-        taxCents      = 0
-        tipCents      = 0
-        totalCents    = 0
-        postSaleState = nil
+        items           = []
+        subtotalCents   = 0
+        taxCents        = 0
+        tipCents        = 0
+        totalCents      = 0
+        hasRepairTicket = false
+        postSaleState   = nil
     }
 }
 

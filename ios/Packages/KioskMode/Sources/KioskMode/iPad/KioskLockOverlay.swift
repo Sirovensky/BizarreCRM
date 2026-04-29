@@ -171,7 +171,7 @@ public struct KioskLockOverlay: View {
     }
 
     private var wakePrompt: some View {
-        Text("Tap anywhere to wake")
+        Text(wakePromptCopy)
             .font(.footnote.weight(.medium))
             .foregroundStyle(Color.bizarreOnSurface.opacity(0.7))
             .padding(.horizontal, DesignTokens.Spacing.lg)
@@ -179,12 +179,27 @@ public struct KioskLockOverlay: View {
             .brandGlass(.clear, tint: nil, interactive: false)
     }
 
+    /// Mode-specific copy for the wake prompt pill.
+    ///
+    /// - `.attract` (branded idle): invites customers to interact.
+    /// - `.blackout` (power-saving): minimal text; screen feels asleep.
+    private var wakePromptCopy: String {
+        switch config.mode {
+        case .attract:
+            return config.tagline != nil
+                ? "Tap anywhere to get started"
+                : "Tap anywhere to continue"
+        case .blackout:
+            return "Tap to wake"
+        }
+    }
+
     // MARK: - Accessibility
 
     private var accessibilityLabel: String {
         switch config.mode {
-        case .attract: return "Screen is idle — tap to wake"
-        case .blackout: return "Screen is sleeping — tap to wake"
+        case .attract: return "Kiosk is idle — tap anywhere to get started"
+        case .blackout: return "Screen is off — tap to wake the kiosk"
         }
     }
 }

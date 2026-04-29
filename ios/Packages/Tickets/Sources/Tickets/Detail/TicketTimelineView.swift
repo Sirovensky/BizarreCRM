@@ -256,6 +256,27 @@ private struct TimelineEventRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // §16.25 / §4 — "Ready for pickup" accent pill on the
+                // timeline row that represents the pickup-ready transition.
+                // Detects the transition by checking either a status diff
+                // containing "ready" or a message containing "pickup" so it
+                // works with both server-driven events and synthetic fallback.
+                if isPickupReadyEvent {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                        Text("Ready for pickup")
+                            .font(.brandLabelLarge())
+                    }
+                    .foregroundStyle(Color.bizarreSuccess)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .background(Color.bizarreSuccess.opacity(0.12), in: Capsule())
+                    .padding(.top, 2)
+                    .accessibilityLabel("Status: Ready for pickup")
+                }
+
                 // Diff chips (status change from → to)
                 if let diff = event.diff, !diff.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -276,6 +297,21 @@ private struct TimelineEventRow: View {
     }
 
     // MARK: — Private
+
+    /// True when this event represents a transition to "Ready for pickup".
+    /// Matches on either a diff `to` value containing "ready" (case-insensitive)
+    /// or the message containing "pickup" (covers synthetic fallback events).
+    private var isPickupReadyEvent: Bool {
+        guard event.kind == .statusChange else { return false }
+        if let diff = event.diff {
+            for entry in diff {
+                if let to = entry.to, to.localizedCaseInsensitiveContains("ready") {
+                    return true
+                }
+            }
+        }
+        return event.message.localizedCaseInsensitiveContains("pickup")
+    }
 
     private var dotColor: Color {
         switch event.kind {
