@@ -74,6 +74,10 @@ struct BulkActionMenu: View {
     @State private var showStatusPicker: Bool = false
     @State private var showReassignPicker: Bool = false
     @State private var showArchiveConfirm: Bool = false
+    // §4.5 — Confirm dialog before committing bulk status change
+    @State private var pendingStatusId: Int64?
+    @State private var pendingStatusName: String = ""
+    @State private var showStatusConfirm: Bool = false
 
     init(selection: BulkEditSelection, api: APIClient, onCommit: @escaping (BulkAction) -> Void) {
         self.selection = selection
@@ -105,6 +109,25 @@ struct BulkActionMenu: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This permanently removes the selected tickets. Inventory stock will be restored.")
+            }
+            // §4.5 — Bulk status-change confirmation dialog
+            .confirmationDialog(
+                "Change status to \"\(pendingStatusName)\"?",
+                isPresented: $showStatusConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Change Status") {
+                    if let id = pendingStatusId {
+                        dismiss()
+                        onCommit(.changeStatus(statusId: id))
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingStatusId = nil
+                    pendingStatusName = ""
+                }
+            } message: {
+                Text("This will update \(selection.count) ticket\(selection.count == 1 ? "" : "s"). This action cannot be undone from here.")
             }
             .alert("Error", isPresented: Binding(
                 get: { vm.errorMessage != nil },
@@ -186,9 +209,11 @@ struct BulkActionMenu: View {
                     } else {
                         List(vm.statuses) { status in
                             Button {
+                                // §4.5 — Stage the pending status and show confirm dialog
                                 showStatusPicker = false
-                                dismiss()
-                                onCommit(.changeStatus(statusId: status.id))
+                                pendingStatusId = status.id
+                                pendingStatusName = status.name
+                                showStatusConfirm = true
                             } label: {
                                 HStack {
                                     Text(status.name)

@@ -456,11 +456,14 @@ private struct FlowCustomerPickerSheet: View {
 
 private struct ServicePickerTarget: Identifiable { let id: Int }  // wraps device index
 private struct CatalogPickerTarget: Identifiable { let id: Int }  // wraps device index
+private struct TemplatePickerTarget: Identifiable { let id: Int }  // wraps device index — §4.10
 
 private struct DevicesStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
     @State private var servicePickerTarget: ServicePickerTarget? = nil
     @State private var catalogPickerTarget: CatalogPickerTarget? = nil
+    // §4.10 — Device template picker
+    @State private var templatePickerTarget: TemplatePickerTarget? = nil
 
     var body: some View {
         Form {
@@ -471,7 +474,8 @@ private struct DevicesStepView: View {
                         onUpdate: { update in vm.updateDevice(at: idx, update) },
                         onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) },
                         onPickService: { servicePickerTarget = ServicePickerTarget(id: idx) },
-                        onPickCatalogDevice: { catalogPickerTarget = CatalogPickerTarget(id: idx) }
+                        onPickCatalogDevice: { catalogPickerTarget = CatalogPickerTarget(id: idx) },
+                        onPickTemplate: { templatePickerTarget = TemplatePickerTarget(id: idx) }
                     )
 
                     if vm.devices.count > 1 {
@@ -531,6 +535,31 @@ private struct DevicesStepView: View {
                 catalogPickerTarget = nil
             }
         }
+        // §4.10 — Device template picker: pre-fills name, service, price + checklist
+        .sheet(item: $templatePickerTarget) { target in
+            TicketTemplatePickerSheet(api: vm.api) { template in
+                vm.updateDevice(at: target.id) { device in
+                    if device.deviceName.isEmpty {
+                        device.deviceName = template.model ?? template.name
+                    }
+                    if device.serviceName.isEmpty {
+                        device.serviceName = template.name
+                        if let cents = template.defaultPriceCents, device.price == 0 {
+                            device.price = Double(cents) / 100.0
+                        }
+                    }
+                    // Pre-fill intake checklist from template conditions
+                    if !template.conditions.isEmpty && device.checklist.allSatisfy({ !$0.checked }) {
+                        for (i, condition) in template.conditions.enumerated() {
+                            if i < device.checklist.count {
+                                device.checklist[i].label = condition
+                            }
+                        }
+                    }
+                }
+                templatePickerTarget = nil
+            }
+        }
     }
 }
 
@@ -540,6 +569,8 @@ private struct DeviceFormSection: View {
     let onToggleChecklist: (String) -> Void
     let onPickService: () -> Void
     let onPickCatalogDevice: () -> Void
+    // §4.10 — template picker callback (optional so callers that don't support it compile)
+    var onPickTemplate: (() -> Void)? = nil
 
     var body: some View {
         Group {
@@ -551,6 +582,16 @@ private struct DeviceFormSection: View {
                 ))
                 .autocorrectionDisabled()
                 .accessibilityLabel("Device name")
+                // §4.10 — template picker shortcut button
+                if let onPickTemplate {
+                    Button {
+                        onPickTemplate()
+                    } label: {
+                        Image(systemName: "doc.badge.plus")
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .accessibilityLabel("Pick device template")
+                }
                 Button {
                     onPickCatalogDevice()
                 } label: {

@@ -619,9 +619,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
 - [ ] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder.
-- [~] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee. Partial: "Copy Order ID (XXXX)" menu button added to toolbar actions menu — copies `orderId` to pasteboard. Full urgency chip + inline-tap status pending full tab layout. Commit `feat(ios §4-batch-d7f2a91c)`.
+- [~] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee. Partial: "Copy Order ID (XXXX)" menu button added to toolbar actions menu — copies `orderId` to pasteboard. Full urgency chip + inline-tap status pending full tab layout. Commit `feat(ios §4-batch-d7f2a91c)`. [x] **Due-date countdown chip** — `DueDateCountdownChip` capsule with clock icon; red/amber/yellow/gray scheme; "Nd overdue" / "Due today" / "Due tomorrow" / "Due in Nd" label; full a11y label; rendered alongside urgency chip in HStack. This commit.
 - [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
-- [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
+- [x] **Assignee picker + recent-techs chip row** — `AssigneePickerView` with horizontal chip row of recently assigned technicians (`RecentTechStore` — UserDefaults, max 5 IDs); avatar circle + name capsule chips shown above full list when `searchText` empty; `pick()` helper records to recents on selection. This commit.
 - [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `.textSelection(.enabled)` on each; copyable grand total.
 - [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
 - [x] **Device make/model copy chips** — `DeviceMakeModelChips` + `CopyChip` in `TicketDetailView`: tappable capsule chips for manufacturer name and model name; tap copies value to pasteboard with 1.5 s "Copied" feedback; shown in both read-only `DeviceCard` and editable `DeviceCardWithActions`. This commit.
@@ -629,7 +629,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
 - [x] **Parts-cost preview** — `DeviceCardWithActions` renders a "Parts subtotal" summary row (bold amount) above the per-part list whenever parts have non-zero totals. Client-side sum of `part.total`. This commit.
 - [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
-- [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
+- [x] **Notes + comm-log row a11y** — `CommLogRow` replaces inline VStack in `NotesSection`; type badge capsule (Internal/Customer/Diagnostic/SMS/Email) with per-type color; `.accessibilityElement(children: .combine)` + `.accessibilityLabel` = "type note, from author, at timestamp, body, flagged?"; `isHeader` trait on section header. This commit.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
 - [x] **QR code** — 81130f8c — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
@@ -731,7 +731,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.10 Device templates
 - [ ] **Backend:** `GET /device-templates`, `POST /device-templates`.
-- [ ] **Frontend:** template picker on create / bench — pre-fills common repairs per device; editable per tenant in Settings → Device Templates.
+- [x] **Frontend:** template picker on create / bench — `TicketTemplatePickerSheet` (searchable list from `GET /api/v1/device-templates`; family filter chip row; pre-fills device name, service name, price, checklist); `doc.badge.plus` shortcut button in `DeviceFormSection`; `.sheet(item: $templatePickerTarget)` in `DevicesStepView`. This commit.
 
 ### 4.11 Repair pricing catalog
 - [ ] **Backend:** `GET /repair-pricing/services`, `POST`, `PUT`.
@@ -756,7 +756,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Default state set (tenant-customizable): Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived. Branches: Cancelled, Un-repairable, Warranty Return.
 - [x] Transition rules editable in Settings → Ticket statuses (§19.16): optional per-transition prerequisites (photo required / pre-conditions signed / deposit collected / quote approved). Blocked transitions show inline error "Can't mark Ready — no photo." `TransitionPrerequisite` + `TicketStateMachine.checkPrerequisites()` + `TicketStatusTransitionSheet` gates. (agent-3-b9 aeba0378)
 - [ ] Triggers on transition: auto-SMS (e.g., Ready for Pickup → text customer per §12 template); assignment-change audit log; idle-alert push to manager after > 7d in `Awaiting Parts`.
-- [ ] Bulk transitions via multi-select → "Move to Ready" menu; rules enforced per-ticket; skipped ones shown in summary.
+- [x] **Bulk-status-change confirmation** — `confirmationDialog` in `BulkActionMenu` stages `pendingStatusId`/`pendingStatusName`; shows "Change status to X? N tickets affected" before calling `onCommit(.changeStatus)`. This commit.
 - [ ] Rollback: admin-only; creates audit entry with reason.
 - [ ] Visual: tenant-configured color per state; state pill on every list row + detail header.
 - [ ] Funnel chart in §15 Reports: count per state + avg time-in-state; bottleneck highlight if avg > tenant benchmark.

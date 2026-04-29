@@ -586,9 +586,14 @@ public struct TicketDetailView: View {
                         CustomerQuickActionsRow(customer: customer)
                     }
 
-                    // §4.2 — Urgency chip in detail header
-                    if let urgency = detail.urgency, !urgency.isEmpty {
-                        DetailUrgencyChip(urgency: urgency)
+                    // §4.2 — Urgency chip + due-date countdown chip in detail header
+                    HStack(spacing: BrandSpacing.sm) {
+                        if let urgency = detail.urgency, !urgency.isEmpty {
+                            DetailUrgencyChip(urgency: urgency)
+                        }
+                        if let dueOn = detail.dueOn, !dueOn.isEmpty {
+                            DueDateCountdownChip(isoDateString: dueOn)
+                        }
                     }
 
                     // §4.2 — Warranty / SLA badge
@@ -890,6 +895,82 @@ private struct DetailUrgencyChip: View {
     }
 }
 
+// MARK: - §4 Due-date countdown chip for detail header
+
+/// Capsule chip showing the number of days until (or since) the ticket due date.
+/// Color scheme: red = overdue, amber = due today or tomorrow, yellow = ≤3 days, gray = safe.
+/// Renders as a compact "Due in Nd" / "Due today" / "Nd overdue" label with a clock icon.
+private struct DueDateCountdownChip: View {
+    let isoDateString: String
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso8601Short: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let iso8601Date: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f
+    }()
+
+    private var dueDate: Date? {
+        Self.iso8601.date(from: isoDateString)
+            ?? Self.iso8601Short.date(from: isoDateString)
+            ?? Self.iso8601Date.date(from: isoDateString)
+    }
+
+    private var daysUntilDue: Int? {
+        guard let due = dueDate else { return nil }
+        return Int(due.timeIntervalSinceNow / 86400)
+    }
+
+    var body: some View {
+        if let days = daysUntilDue {
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: days < 0 ? "clock.badge.xmark" : "clock")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(chipColor(days: days))
+                    .accessibilityHidden(true)
+                Text(chipLabel(days: days))
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(chipColor(days: days))
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(chipColor(days: days).opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(chipColor(days: days).opacity(0.3), lineWidth: 0.5))
+            .accessibilityLabel(a11yLabel(days: days))
+        }
+    }
+
+    private func chipLabel(days: Int) -> String {
+        if days < 0  { return "\(-days)d overdue" }
+        if days == 0 { return "Due today" }
+        if days == 1 { return "Due tomorrow" }
+        return "Due in \(days)d"
+    }
+
+    private func a11yLabel(days: Int) -> String {
+        if days < 0  { return "Overdue by \(-days) day\(-days == 1 ? "" : "s")" }
+        if days == 0 { return "Due today" }
+        if days == 1 { return "Due tomorrow" }
+        return "Due in \(days) days"
+    }
+
+    private func chipColor(days: Int) -> Color {
+        if days < 0  { return .bizarreError }
+        if days <= 1 { return .bizarreOrange }
+        if days <= 3 { return Color(red: 0.93, green: 0.76, blue: 0.18) }
+        return .bizarreOnSurfaceMuted
+    }
+}
+
 // MARK: - Status chip row (§4.6 + §4.7 server hex color)
 
 private struct StatusChipRow: View {
@@ -1187,35 +1268,111 @@ private struct NotesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Notes").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            Text("Notes")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityAddTraits(.isHeader)
             ForEach(notes) { note in
-                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                    HStack {
-                        Text(note.userName)
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                        if note.isFlagged == true {
-                            Image(systemName: "flag.fill")
-                                .font(.caption)
-                                .foregroundStyle(.bizarreError)
-                                .accessibilityLabel("Flagged")
-                        }
-                        Spacer()
-                        if let ts = note.createdAt {
-                            Text(String(ts.prefix(16)))
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
-                    }
-                    Text(note.stripped)
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurface)
-                }
-                .cardBackground()
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(note.userName): \(note.stripped)\(note.isFlagged == true ? ", flagged" : "")")
+                CommLogRow(note: note)
             }
         }
+    }
+}
+
+// MARK: - §4 Customer-comm log row with full a11y
+
+/// A single customer-communication log row for notes, SMS, email and internal
+/// messages.  Fully accessible: VoiceOver reads type label, author, timestamp
+/// and body in one combined element; flagged notes announce the flag.
+private struct CommLogRow: View {
+    let note: TicketDetail.TicketNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            HStack(spacing: BrandSpacing.xs) {
+                // Note type badge
+                if let badge = typeBadgeLabel {
+                    Text(badge)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(typeBadgeColor)
+                        .padding(.horizontal, BrandSpacing.xs)
+                        .padding(.vertical, 2)
+                        .background(typeBadgeColor.opacity(0.12), in: Capsule())
+                        .accessibilityHidden(true)  // read in combined a11y label below
+                }
+
+                Text(note.userName)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+
+                if note.isFlagged == true {
+                    Image(systemName: "flag.fill")
+                        .font(.caption)
+                        .foregroundStyle(.bizarreError)
+                        .accessibilityHidden(true)  // included in combined label
+                }
+
+                Spacer()
+
+                if let ts = note.createdAt {
+                    Text(formattedTimestamp(ts))
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)  // included in combined label
+                }
+            }
+
+            Text(note.stripped)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+        }
+        .cardBackground()
+        // §4 a11y — single combined element for comm log rows so VoiceOver
+        // reads type + author + timestamp + body without extra swipes.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(a11yLabel)
+        .accessibilityHint(note.isFlagged == true ? "Flagged note — review required" : "")
+    }
+
+    // MARK: - Helpers
+
+    private var typeBadgeLabel: String? {
+        switch note.type?.lowercased() {
+        case "internal":          return "Internal"
+        case "customer":          return "Customer"
+        case "diagnostic":        return "Diagnostic"
+        case "sms":               return "SMS"
+        case "email":             return "Email"
+        case "string":            return nil
+        case .none:               return nil
+        default:                  return note.type?.capitalized
+        }
+    }
+
+    private var typeBadgeColor: Color {
+        switch note.type?.lowercased() {
+        case "internal":    return .bizarreOnSurfaceMuted
+        case "customer":    return .bizarreTeal
+        case "diagnostic":  return Color(red: 0.93, green: 0.76, blue: 0.18)
+        case "sms":         return .bizarreOrange
+        case "email":       return Color.blue
+        default:            return .bizarreOnSurfaceMuted
+        }
+    }
+
+    private var a11yLabel: String {
+        var parts: [String] = []
+        if let badge = typeBadgeLabel { parts.append("\(badge) note") }
+        parts.append("from \(note.userName)")
+        if let ts = note.createdAt { parts.append("at \(formattedTimestamp(ts))") }
+        parts.append(note.stripped)
+        if note.isFlagged == true { parts.append("flagged") }
+        return parts.joined(separator: ", ")
+    }
+
+    private func formattedTimestamp(_ iso: String) -> String {
+        // Show at most 16 chars (YYYY-MM-DDTHH:MM) with T replaced by space
+        String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
     }
 }
 
