@@ -103,6 +103,14 @@ public enum BiometricAvailability: Sendable, Equatable {
 /// - Existing `BiometricGate` (the app-level unlock chain) continues to
 ///   own the PIN-fallback path; this service is the pure credential-login
 ///   shortcut layer.
+///
+/// ## §28.10 Biometric reuse window (30 s)
+/// After a successful `evaluate(reason:)` call the timestamp is recorded.
+/// A subsequent call within `reuseWindow` seconds returns `.success` without
+/// re-prompting the user, so confirm-on-save flows don't double-prompt.
+/// The window is intentionally short (30 s) to match the §28.10 spec.
+/// Pass `ignoreReuseWindow: true` for destructive / high-value actions
+/// (void > $X, delete customer) that always require a fresh challenge.
 @MainActor
 public final class BiometricAuthService: @unchecked Sendable {
 
@@ -110,14 +118,44 @@ public final class BiometricAuthService: @unchecked Sendable {
 
     public private(set) var availability: BiometricAvailability = .unknown
 
+    // MARK: - §28.10 Reuse window
+
+    /// Seconds after a successful authentication during which a subsequent
+    /// call to `evaluate(reason:)` returns immediately without re-prompting.
+    /// §28.10 specifies 30 s.  Injectable for testing.
+    public let reuseWindow: TimeInterval
+
+    /// Timestamp of the last successful authentication, or `nil` if none.
+    public private(set) var lastAuthenticatedAt: Date?
+
+    /// `true` when a successful authentication occurred within `reuseWindow`
+    /// seconds of `now()`.
+    public var isWithinReuseWindow: Bool {
+        guard let last = lastAuthenticatedAt else { return false }
+        return now().timeIntervalSince(last) <= reuseWindow
+    }
+
     // MARK: - Dependencies
 
     private let context: LAContextProtocol
+    private let now: () -> Date
 
     // MARK: - Init
 
-    public init(context: LAContextProtocol = SystemLAContext()) {
+    /// - Parameters:
+    ///   - context: `LAContextProtocol` implementation.  Defaults to the
+    ///              production `SystemLAContext`.
+    ///   - reuseWindow: Seconds before a re-challenge is needed.  Defaults
+    ///                  to 30 as specified in §28.10.
+    ///   - now: Clock provider; inject a fixed clock in tests.
+    public init(
+        context: LAContextProtocol = SystemLAContext(),
+        reuseWindow: TimeInterval = 30,
+        now: @escaping () -> Date = { Date() }
+    ) {
         self.context = context
+        self.reuseWindow = reuseWindow
+        self.now = now
     }
 
     // MARK: - canEvaluate
@@ -145,10 +183,25 @@ public final class BiometricAuthService: @unchecked Sendable {
 
     /// Prompts the user for biometric authentication.
     ///
-    /// - Parameter reason: Localised string shown in the system prompt.
-    /// - Returns: `true` when authentication succeeded.
+    /// If a successful authentication occurred within `reuseWindow` seconds
+    /// and `ignoreReuseWindow` is `false` (the default), the method returns
+    /// `true` immediately without re-prompting.  Set `ignoreReuseWindow` to
+    /// `true` for destructive or high-value actions (§28.10).
+    ///
+    /// - Parameters:
+    ///   - reason: Localised string shown in the system prompt.
+    ///   - ignoreReuseWindow: When `true`, always performs a fresh challenge
+    ///     regardless of `lastAuthenticatedAt`.  Defaults to `false`.
+    /// - Returns: `true` when authentication succeeded (or was within the
+    ///            reuse window).
     /// - Throws: `BiometricAuthError` on any failure.
-    public func evaluate(reason: String) async throws -> Bool {
+    public func evaluate(reason: String, ignoreReuseWindow: Bool = false) async throws -> Bool {
+        // §28.10 — Return early when within the reuse window.
+        if !ignoreReuseWindow, isWithinReuseWindow {
+            AppLog.auth.debug("BiometricAuthService: reuse window active — skipping prompt")
+            return true
+        }
+
         // Always re-check availability so a runtime change (e.g. the user
         // just enrolled a finger) is reflected without restarting the app.
         let avail = checkAvailability()
@@ -158,13 +211,24 @@ public final class BiometricAuthService: @unchecked Sendable {
         }
 
         do {
-            return try await context.evaluate(
+            let result = try await context.evaluate(
                 policy: .deviceOwnerAuthenticationWithBiometrics,
                 localizedReason: reason
             )
+            if result {
+                // Record timestamp for subsequent reuse-window checks.
+                lastAuthenticatedAt = now()
+            }
+            return result
         } catch {
             throw mapLAError(error)
         }
+    }
+
+    /// Clears the reuse window timestamp, forcing a fresh challenge on
+    /// the next `evaluate(reason:)` call.  Call on session lock or timeout.
+    public func invalidateReuseWindow() {
+        lastAuthenticatedAt = nil
     }
 
     // MARK: - Helpers
