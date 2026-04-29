@@ -115,12 +115,16 @@ public extension Font {
     // MARK: - Chart axis labels (§91.10 — explicit size token)
     //
     // Swift Charts applies system default sizing to axis labels; override to
-    // a consistent 11 pt Roboto Regular so axis context stays legible without
+    // a consistent 12 pt Roboto Regular so axis context stays legible without
     // competing with data marks.
+    //
+    // §91.13: 12 pt is the minimum size that passes the Dynamic Type
+    // legibility test. Previously 11 pt; bumped to 12 pt to close §91.10
+    // "Axis labels < 12pt" and §91.13 "Many label texts under 12pt".
 
-    /// 11 pt  Roboto Regular — chart x/y axis labels and annotations.
+    /// 12 pt  Roboto Regular — chart x/y axis labels and annotations.
     static func brandChartAxisLabel() -> Font {
-        .custom("Roboto-Regular", size: 11, relativeTo: .caption2)
+        .custom("Roboto-Regular", size: 12, relativeTo: .caption)
     }
 
     // MARK: - Compatibility aliases for pre-§91.10 callsites

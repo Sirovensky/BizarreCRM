@@ -406,7 +406,9 @@ public struct FinancialDashboardView: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                                 Text("\(bucket.invoiceCount) inv")
-                                    .font(.system(size: 10, weight: .regular))
+                                    // §91.13: was 10pt — below 12pt minimum.
+                                    // Use brandChartAxisLabel (12pt) for compliance.
+                                    .font(.brandChartAxisLabel())
                                     .foregroundStyle(.bizarreOnSurfaceMuted)
                             }
                             .accessibilityElement(children: .combine)

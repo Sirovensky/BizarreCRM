@@ -8466,13 +8466,13 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 
 - [ ] **Reports body title `Reports` is 28pt with no descriptor / subtitle.** Dashboard uses `Good afternoon` greeting; Reports could use date range or store name as subtitle.
 - [ ] **KPI numbers vary in font weight.** Some bold, some regular within same card row — verify token usage.
-- [ ] **Axis labels < 12pt.** Charts use 9–10pt labels; below 11pt fails Dynamic Type test.
+- [x] **Axis labels < 12pt.** Charts use 9–10pt labels; below 11pt fails Dynamic Type test.
 - [ ] **`Period Summary` inline values colored cream while labels white.** Reverse — labels should be muted.
 
 ### 91.11 Charts
 
-- [ ] **Y-axis labels low contrast** (white-30% on dark — barely legible).
-- [ ] **Chart legends not surfaced** — bar colors vary but no key.
+- [x] **Y-axis labels low contrast** (white-30% on dark — barely legible).
+- [x] **Chart legends not surfaced** — bar colors vary but no key.
 - [ ] **No empty-state visual for charts.** Empty chart vs empty card both render as blank — introduce a "shape outline" empty state.
 - [ ] **No tap interaction on bars / sparklines.** Tap a bar in `Tickets by Status` does nothing; `Tap a bar to view technician details` hint promises an interaction that isn't wired.
 
@@ -8486,7 +8486,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 
 ### 91.13 Accessibility
 
-- [ ] **Many label texts under 12pt** (period units, axis labels, KPI captions).
+- [x] **Many label texts under 12pt** (period units, axis labels, KPI captions).
 - [ ] **Chart color-only encoding** — VoiceOver / Switch Control can't read which color is which status.
 - [x] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
 - [x] **No accessibility labels on charts.** `ChartScreenshotAltText` modifier + `.chartScreenshotAltText()` wired to `ZoomableRevenueChartCard`; `AXChartDescriptor` already present on `RevenueChartCard`.
@@ -8516,6 +8516,6 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Define a tenant-zero-state mode.** When tenant has < N transactions in selected period, swap the entire reports surface for a friendly onboarding panel ("Run your first sale to unlock these reports").
 - [ ] **Empty-state hierarchy review.** Audit every empty state: skeleton (loading) vs zero-data vs error vs offline; pick one of four and label it.
 - [ ] **Card-grid alignment.** Use a single shared `ReportsGrid` with consistent row heights and column counts on landscape vs portrait.
-- [ ] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
+- [x] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
 
 
