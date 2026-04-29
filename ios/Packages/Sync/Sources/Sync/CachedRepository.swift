@@ -211,9 +211,8 @@ public actor AbstractCachedRepository<Entity: Sendable, ListFilter: Sendable> {
     public func delete(id: String) async throws {
         // 1. Delete locally (optimistic).
         try await localDelete(id)
-        // 2. Enqueue sync op with a minimal sentinel entity.
-        // We build a tombstone payload directly since we can't reconstruct the entity.
-        let payloadData = try JSONEncoder().encode(["id": id, "deleted": "true"])
+        // 2. Enqueue sync op with a canonical tombstone payload (§20.5).
+        let payloadData = try Tombstone(id: id).encode()
         let tombstoneOp = SyncOp(
             op: "delete",
             entity: entityName,

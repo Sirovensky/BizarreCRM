@@ -3578,7 +3578,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Every read** lands in a GRDB table; SwiftUI views observe GRDB via `@FetchRequest` equivalent (`ValueObservation`).
 - [x] **Repository pattern** — `CachedRepository` protocol + `AbstractCachedRepository<Entity, ListFilter>` generic helper: `list(filter:maxAgeSeconds:)` returns `CachedResult<[Entity]>` (cache-first, background remote refresh when stale); `create`/`update`/`delete` persist locally then enqueue `SyncOp`. (`Sync/CachedRepository.swift`)
 - [x] **Read strategies** — `networkOnly` (force) / `cacheOnly` (offline) / `cacheFirst` (default) / `cacheThenNetwork` (stale-while-revalidate). (`ReadStrategy` enum in `Sync/CachedRepository.swift`. feat(§20.1): 17a3138c)
-- [ ] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min.
+- [x] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min. (`CacheTTL` in `Sync/CacheTTL.swift` — `tickets/inventory/customers/reports/settings` constants + `ttl(for:)` lookup.)
 - [x] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago". (`Sync/StalenessIndicator.swift` + `StalenessLogic`; color thresholds: < 1h green, < 4h amber, >= 4h red; Liquid Glass capsule; a11y label; Reduce Motion respected.)
 
 ### 20.2 Write queue architecture
@@ -3618,7 +3618,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **`loadMoreIfNeeded(rowId)`** behavior:
   - Online → `GET /<entity>?cursor=<stored>&limit=50`; upsert response into GRDB; update `sync_state`; list re-renders via `ValueObservation`.
   - Offline → no network call. If locally evicted older rows exist (§20.9), un-archive from cold store. Otherwise show "Offline — can't load more right now" inline.
-- [ ] **Tombstone support** — deleted items propagated as `deleted_at != null` to drop from cache.
+- [x] **Tombstone support** — deleted items propagated as `deleted_at != null` to drop from cache. (`Tombstone` value type in `Sync/Tombstone.swift` — canonical `{id, deleted, deleted_at}` payload + `isTombstone(payload:)` decoder; wired into `AbstractCachedRepository.delete(id:)`.)
 - [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected. Clears `sync_state` + re-pulls from server cursor=null.
 - [ ] **Silent-push row insert** — fresh rows delivered via WS / silent push upserted at correct chronological rank; scroll position anchored on existing rowId so user doesn't lose place.
 - [ ] **Client adapter for legacy page-based endpoints** — any server endpoint still returning `{ page, per_page, total_pages }` wrapped by `PagedToCursorAdapter` that synthesizes cursors. iOS code never sees `page=N`.
@@ -3629,7 +3629,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier 173d99c4)
 - [x] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override). (`MeteredUploadPolicy` + `MeteredNetworkWarningModifier` + `.meteredNetworkWarning(isUploadPending:)` in `Sync/MeteredNetworkWarning.swift`; glass banner safeAreaInset; per-session user override. feat(§20.6): 7000f88c)
 - [x] **Offline banner copy variants** — distinct copy for no-signal vs cellular vs constrained-wifi. `OfflineBannerCopy` value type in `Sync/OfflineBannerCopy.swift`; `ConnectivityBannerModifier` updated to use `ConnectivityCopyChip` for non-online states; "No internet connection / Changes will sync…" vs "Using cellular data / Large uploads paused…". (feat(§20.6))
-- [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
+- [x] **Stale-cache banner** — if offline > 1h on a data-heavy screen. (`StaleCacheBannerModifier` + `.staleCacheBanner(lastSyncedAt:threshold:)` in `Sync/StaleCacheBannerModifier.swift`; observes `Reachability`, refreshes age every 60s, glass chip via `safeAreaInset(.top)`.)
 
 ### 20.7 Selective sync (large tenants)
 - [ ] **First-boot** pulls — recent 90 days of tickets / invoices; all customers / inventory / staff.
@@ -3647,10 +3647,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use. (`Core/Performance/StorageBreakdown.swift` — `ImageCachePolicy` singleton; `StorageMonitor`; tiered eviction policy with `isEvictable` per `StorageCategory`. feat(§20.9): b12)
 - [ ] **GRDB VACUUM** — monthly on-launch background task; skipped if sync queue has pending writes.
 - [x] **Size monitoring** — footer in Settings → Data shows live breakdown (§29.3 storage panel). Warn only on device-low-disk (< 2 GB free), not on app-cache growth alone. (`StorageMonitor.measure(inject:)` async scanner + `StorageBreakdown` snapshot struct in `Core/Performance/StorageBreakdown.swift`; `ImageCachePolicy.isDeviceLowOnDisk()` threshold guard. feat(§29.3): b12)
-- [ ] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard.
+- [x] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard. (`LowDiskGuard` `@Observable @MainActor` singleton in `Core/Performance/LowDiskGuard.swift` — `refresh()` re-measures via `attributesOfFileSystem`, `isPaused` flips at `ImageCachePolicy.lowDiskThresholdBytes`, `allowsCacheWrites` for hot-path callers.)
 
 ### 20.10 Multi-device consistency
-- [ ] **Per-device-id** on mutations so server echoes back correct events.
+- [x] **Per-device-id** on mutations so server echoes back correct events. (`DeviceIdentity.shared.deviceId` in `Sync/DeviceIdentity.swift` — UserDefaults-backed, seeded from `UIDevice.identifierForVendor` with `UUID` fallback; `SyncOp.deviceId` field defaults to it so every enqueued mutation carries originating-device id.)
 - [ ] **WS echo** — if user has iPad + iPhone, update on other device via WS.
 - [ ] See §19 for the full list.
 - [ ] See §16 for the full list.
