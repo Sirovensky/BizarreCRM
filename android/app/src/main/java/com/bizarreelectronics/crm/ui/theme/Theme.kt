@@ -20,14 +20,18 @@
  */
 package com.bizarreelectronics.crm.ui.theme
 
+import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import com.bizarreelectronics.crm.BuildConfig
 import java.util.Calendar
 
@@ -496,6 +500,52 @@ fun shouldDefaultDarkMode(): Boolean {
 }
 
 // ---------------------------------------------------------------------------
+// §75.10 — System-bar appearance (status-bar icon colour)
+// ---------------------------------------------------------------------------
+
+/**
+ * §75.10 — Adjusts the status-bar and navigation-bar icon colours to match the
+ * active theme so the icons remain legible on every screen.
+ *
+ * Android draws status-bar icons in **dark** (black) or **light** (white) ink.
+ * By default [enableEdgeToEdge] in [MainActivity] picks the system's preference,
+ * but when the user switches between light and dark themes at runtime the icons
+ * need to be updated imperatively via [WindowCompat.getInsetsController].
+ *
+ * - Dark theme  → light icons (white on dark surface)
+ * - Light theme → dark icons (black on light surface)
+ *
+ * A [DisposableEffect] is used so the previous appearance is restored when the
+ * composable leaves the tree (e.g. the user navigates to a screen that manages
+ * its own insets, such as [TvQueueBoardScreen]).
+ *
+ * This composable is intentionally side-effect-only — it emits no UI.
+ *
+ * @param darkTheme Whether the active theme is dark (true) or light (false).
+ */
+@Composable
+fun SystemBarAppearance(darkTheme: Boolean) {
+    val view = LocalView.current
+    // Skip in preview / test environments where there is no real window.
+    if (view.isInEditMode) return
+    DisposableEffect(darkTheme) {
+        val window = (view.context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        val controller = WindowCompat.getInsetsController(window, view)
+        // isAppearanceLightStatusBars = true  → dark (black) icons, for light surfaces.
+        // isAppearanceLightStatusBars = false → light (white) icons, for dark surfaces.
+        val lightIcons = !darkTheme
+        controller.isAppearanceLightStatusBars = lightIcons
+        controller.isAppearanceLightNavigationBars = lightIcons
+        onDispose {
+            // Restore defaults to avoid bleeding into screens that override insets
+            // independently (e.g. TvQueueBoardScreen which hides bars entirely).
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Theme entry point
 // ---------------------------------------------------------------------------
 
@@ -600,6 +650,11 @@ fun BizarreCrmTheme(
         else -> if (darkTheme) Surface1 else Color(0xFFFFF8F0)
     }
     val resolvedAccent = tenantAccentWithContrastBump(tenantAccent, surfaceColor = activeSurface)
+
+    // §75.10 — Sync status-bar / nav-bar icon colour with the active theme.
+    // Placed here so every screen that uses BizarreCrmTheme (or DesignSystemTheme)
+    // inherits correct icon tinting automatically without per-screen boilerplate.
+    SystemBarAppearance(darkTheme = darkTheme)
 
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,

@@ -5704,7 +5704,7 @@ All events target tenant server (§32).
 
 ### 75.10 System bars
 - [x] Edge-to-edge everywhere.
-- [ ] `WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = ...` per screen theme. <!-- NOTE-defer: only TvQueueBoardScreen calls WindowCompat.getInsetsController; no per-screen status-bar appearance control elsewhere — needs implementation sweep -->
+- [x] `WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = ...` per screen theme. (session 2026-04-28 — `SystemBarAppearance(darkTheme)` composable added to `Theme.kt`; `DisposableEffect(darkTheme)` sets `isAppearanceLightStatusBars` + `isAppearanceLightNavigationBars` on the active `Activity` window via `WindowCompat.getInsetsController`; dark theme → light/white icons; light theme → dark/black icons; wired inside `BizarreCrmTheme` so every screen inherits correct tinting automatically; restores defaults on dispose to avoid bleed into screens that manage their own insets)
 - [ ] Light status on dark surfaces; dark status on light. <!-- NOTE-defer: dependent on the item above; theme defaults to dark (warm dark surfaces) but imperative per-screen bar color is not set -->
 
 ### 75.11 Ripple + tonal
