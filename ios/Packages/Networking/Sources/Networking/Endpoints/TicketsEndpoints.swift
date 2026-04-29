@@ -64,6 +64,9 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
     public let latestSms: LatestSms?
     /// ISO-8601 date string, e.g. `"2026-05-02T14:00:00.000Z"`. Nil when no due date set.
     public let dueOn: String?
+    /// §4.1 — Total count of photos + file attachments on this ticket.
+    /// Server field `attachment_count`; nil when the server omits it (older rows).
+    public let attachmentCount: Int?
 
     public struct Customer: Decodable, Sendable, Hashable {
         public let id: Int64
@@ -171,6 +174,7 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         case urgency
         case latestSms = "latest_sms"
         case dueOn = "due_on"
+        case attachmentCount = "attachment_count"
     }
 
     /// Defensive decode — older server rows occasionally omit `order_id`,
@@ -193,7 +197,8 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         self.slaStatus     = try? c.decode(String.self, forKey: .slaStatus)
         self.urgency       = try? c.decode(String.self, forKey: .urgency)
         self.latestSms     = try? c.decode(LatestSms.self, forKey: .latestSms)
-        self.dueOn         = try? c.decode(String.self, forKey: .dueOn)
+        self.dueOn            = try? c.decode(String.self, forKey: .dueOn)
+        self.attachmentCount  = try? c.decode(Int.self, forKey: .attachmentCount)
     }
 }
 

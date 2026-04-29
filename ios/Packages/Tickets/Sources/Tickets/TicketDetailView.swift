@@ -1106,6 +1106,9 @@ private struct DeviceCard: View {
                 .font(.brandBodyLarge())
                 .foregroundStyle(.bizarreOnSurface)
 
+            // §4.2 — Make / model copy chips (read-only view)
+            DeviceMakeModelChips(device: device)
+
             if let notes = device.additionalNotes, !notes.isEmpty {
                 Text(notes)
                     .font(.brandBodyMedium())
@@ -1386,6 +1389,10 @@ private struct DeviceCardWithActions: View {
                 .accessibilityLabel("Device actions for \(device.displayName)")
             }
 
+            // §4.2 — Make / model copy chips. Tap either chip to copy its value
+            // to the pasteboard (useful for ordering parts or looking up specs).
+            DeviceMakeModelChips(device: device)
+
             if let notes = device.additionalNotes, !notes.isEmpty {
                 Text(notes)
                     .font(.brandBodyMedium())
@@ -1410,6 +1417,24 @@ private struct DeviceCardWithActions: View {
 
             if let parts = device.parts, !parts.isEmpty {
                 Divider().overlay(Color.bizarreOutline.opacity(0.4))
+
+                // §4.2 — Parts-cost preview: subtotal of all parts for this device.
+                let partsSubtotal = parts.compactMap(\.total).reduce(0, +)
+                if partsSubtotal > 0 {
+                    HStack {
+                        Text("Parts subtotal")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        Spacer()
+                        Text(formatMoney(partsSubtotal))
+                            .font(.brandLabelLarge().bold())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .monospacedDigit()
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Parts subtotal: \(formatMoney(partsSubtotal))")
+                }
+
                 ForEach(parts) { part in
                     HStack {
                         Text("\(part.name ?? "Part")  ×\(part.quantity ?? 1)")
@@ -1438,12 +1463,107 @@ private struct DeviceCardWithActions: View {
     }
 }
 
+// MARK: - §4.2 Device make / model copy chips
+
+/// Two small tappable capsule chips showing the device manufacturer and model
+/// name separately. Tapping either chip copies its value to the pasteboard —
+/// handy when ordering parts or searching supplier catalogues.
+///
+/// Chips are only rendered when the relevant fields are non-empty and differ
+/// from the device's `displayName` (avoids duplicating text the tech already sees).
+private struct DeviceMakeModelChips: View {
+    let device: TicketDetail.TicketDevice
+
+    private var make: String? {
+        guard let m = device.manufacturerName, !m.isEmpty else { return nil }
+        return m
+    }
+
+    private var model: String? {
+        guard let m = device.deviceName, !m.isEmpty else { return nil }
+        // Don't show if it's already the displayName (avoids duplication).
+        if m == device.displayName && make == nil { return nil }
+        return m
+    }
+
+    var body: some View {
+        let chips: [(label: String, value: String)] = [
+            make.map { ("Make", $0) },
+            model.map { ("Model", $0) }
+        ].compactMap { $0 }
+
+        if !chips.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(chips, id: \.label) { chip in
+                        CopyChip(label: chip.label, value: chip.value)
+                    }
+                }
+            }
+            .scrollClipDisabled()
+        }
+    }
+}
+
+/// Tappable capsule chip that copies `value` to the pasteboard on tap.
+private struct CopyChip: View {
+    let label: String
+    let value: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = value
+            withAnimation(.easeIn(duration: 0.15)) { copied = true }
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.2)) { copied = false }
+                }
+            }
+        } label: {
+            HStack(spacing: BrandSpacing.xxs) {
+                Text(label.uppercased())
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(value)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(copied ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs + 2)
+            .background(
+                copied ? Color.bizarreSuccess.opacity(0.1) : Color.bizarreSurface1,
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        copied ? Color.bizarreSuccess.opacity(0.5) : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy \(label): \(value)")
+        .accessibilityHint(copied ? "Copied" : "Tap to copy to clipboard")
+    }
+}
+
 // MARK: - §4.9 Bench timer toggle card (chrome element — Actions tab)
 
 /// Glass card in Actions tab. Collapses to a single "Start Bench Timer" row;
 /// expands to show `BenchTimerView` inline when `isShowing` is true.
+/// §4.2 — The collapsed header shows a time-spent counter so techs can glance
+/// at elapsed time without expanding the card.
 private struct BenchTimerToggleCard: View {
     @Binding var isShowing: Bool
+    /// Shared timer state so the collapsed header and expanded body stay in sync.
+    @State private var timer = BenchTimerState()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1452,12 +1572,21 @@ private struct BenchTimerToggleCard: View {
             } label: {
                 HStack(spacing: BrandSpacing.sm) {
                     Image(systemName: "timer")
-                        .foregroundStyle(.bizarreOrange)
+                        .foregroundStyle(timer.phase == .running ? .bizarreOrange : .bizarreOnSurfaceMuted)
                         .accessibilityHidden(true)
                     Text("Bench Timer")
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)
                     Spacer()
+                    // §4.2 — Time-spent counter: always visible in collapsed header.
+                    if timer.phase != .idle || isShowing {
+                        Text(timer.displayTime)
+                            .font(.system(.callout, design: .monospaced, weight: .semibold))
+                            .foregroundStyle(timer.phase == .running ? .bizarreOrange : .bizarreOnSurfaceMuted)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .accessibilityLabel("Time spent: \(timer.displayTime)")
+                    }
                     Image(systemName: isShowing ? "chevron.up" : "chevron.down")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .font(.system(size: 12, weight: .medium))
@@ -1470,7 +1599,7 @@ private struct BenchTimerToggleCard: View {
 
             if isShowing {
                 Divider().overlay(Color.bizarreOutline.opacity(0.3))
-                BenchTimerView()
+                BenchTimerView(state: timer)
                     .padding(.horizontal, BrandSpacing.base)
                     .padding(.bottom, BrandSpacing.base)
                     .transition(.opacity.combined(with: .move(edge: .top)))

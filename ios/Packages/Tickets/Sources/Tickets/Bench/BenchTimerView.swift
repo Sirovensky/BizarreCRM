@@ -98,9 +98,20 @@ final class BenchTimerState {
 
 /// Small floating HUD showing elapsed bench time with start/pause/reset controls.
 /// Attach inside `BenchWorkflowView` as an overlay or inline section.
+///
+/// Pass an external `BenchTimerState` when the parent needs to observe elapsed
+/// time in its own UI (e.g., the `BenchTimerToggleCard` header counter).
+/// When no state is supplied the view manages its own local instance.
 struct BenchTimerView: View {
 
-    @State private var timer = BenchTimerState()
+    // §4.2 — If the caller provides a shared state object, use it; otherwise
+    // fall back to a locally-owned instance. We store the injected reference
+    // directly so `@Observable` re-renders propagate from the shared object.
+    private var timer: BenchTimerState
+
+    init(state: BenchTimerState? = nil) {
+        self.timer = state ?? BenchTimerState()
+    }
 
     var body: some View {
         VStack(spacing: BrandSpacing.sm) {

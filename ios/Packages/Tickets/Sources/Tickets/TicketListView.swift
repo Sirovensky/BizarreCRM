@@ -162,7 +162,7 @@ public struct TicketListView: View {
                 }
             }
             .navigationTitle("Tickets")
-            .searchable(text: $searchText, prompt: "Search tickets")
+            .searchable(text: $searchText, prompt: "ID, customer, phone, device, IMEI…")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
@@ -212,7 +212,7 @@ public struct TicketListView: View {
                 }
             }
             .navigationTitle("Tickets")
-            .searchable(text: $searchText, prompt: "Search tickets")
+            .searchable(text: $searchText, prompt: "ID, customer, phone, device, IMEI…")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
@@ -577,6 +577,11 @@ private struct TicketRow: View {
                 if let sla = ticket.slaStatus, !sla.isEmpty {
                     SLABadge(status: sla)
                 }
+
+                // §4.1 — Attachment-count badge: shown when server provides the count.
+                if let count = ticket.attachmentCount, count > 0 {
+                    AttachmentCountBadge(count: count)
+                }
             }
         }
         .padding(.vertical, BrandSpacing.xs)
@@ -704,6 +709,28 @@ private struct SLABadge: View {
         case "warning":  return .bizarreOrange
         default:         return .bizarreOnSurfaceMuted
         }
+    }
+}
+
+// MARK: - §4.1 Attachment-count badge
+
+/// Small paperclip badge showing how many photos/files are attached to a ticket.
+/// Only rendered when `attachmentCount > 0`.
+private struct AttachmentCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "paperclip")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text("\(count)")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .monospacedDigit()
+        }
+        .accessibilityLabel("\(count) attachment\(count == 1 ? "" : "s")")
     }
 }
 
