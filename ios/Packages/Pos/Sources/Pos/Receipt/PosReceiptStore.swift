@@ -41,11 +41,12 @@ public actor PosReceiptStore {
     }
 }
 
-// MARK: - Codable conformances for PosReceiptRenderer.Payload
-
-extension PosReceiptRenderer.Payload.Merchant: Codable {}
-extension PosReceiptRenderer.Payload.Line: Codable {}
-extension PosReceiptRenderer.Payload.Tender: Codable {}
+// MARK: - Codable conformance for PosReceiptRenderer.Payload
+//
+// `Merchant` / `Line` / `Tender` get synthesised Codable via inline
+// `: Codable` on their struct declarations in `PosReceiptRenderer.swift`
+// (synthesis must live in the declaring file). The Payload itself uses
+// a custom init/encode here so omitted defaults round-trip cleanly.
 
 extension PosReceiptRenderer.Payload: Codable {
     enum CodingKeys: String, CodingKey {

@@ -30,7 +30,7 @@ public enum PosReceiptRenderer {
     /// shape is a POS concern — the Hardware printer adapter ingests the
     /// shallow `Hardware.ReceiptPayload` produced by `PosReceiptPrintPayloadBuilder`.
     public struct Payload: Equatable, Sendable {
-        public struct Merchant: Equatable, Sendable {
+        public struct Merchant: Equatable, Sendable, Codable {
             public let name: String
             public let address: String?
             public let phone: String?
@@ -42,7 +42,7 @@ public enum PosReceiptRenderer {
             }
         }
 
-        public struct Line: Equatable, Sendable {
+        public struct Line: Equatable, Sendable, Codable {
             public let name: String
             public let sku: String?
             public let quantity: Int
@@ -67,7 +67,7 @@ public enum PosReceiptRenderer {
             }
         }
 
-        public struct Tender: Equatable, Sendable {
+        public struct Tender: Equatable, Sendable, Codable {
             public let method: String
             public let amountCents: Int
             public let last4: String?
