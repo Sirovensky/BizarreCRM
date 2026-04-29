@@ -646,8 +646,29 @@ struct PosCartRow: View {
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), quantity \(item.quantity), \(CartMath.formatCents(item.lineSubtotalCents)). Tap to edit.")
+        // §16 A11y — row label announces name + price so VoiceOver users hear
+        // the most important content first. A separate accessibilityValue carries
+        // the quantity so dynamic changes (stepper) trigger a value announcement
+        // without re-reading the whole label. The hint explains both tap and
+        // swipe-left actions so users know how to edit and how to remove.
+        .accessibilityLabel(a11yLabel)
+        .accessibilityValue("Quantity \(item.quantity)")
+        .accessibilityHint("Double tap to edit. Swipe left for remove option.")
         .accessibilityIdentifier("pos.cartRow.\(item.id)")
+    }
+
+    private var a11yLabel: String {
+        var parts: [String] = [item.name]
+        if item.discountCents > 0 {
+            let orig = CartMath.toCents(item.unitPrice * Decimal(item.quantity)) + item.discountCents
+            parts.append("\(CartMath.formatCents(item.lineSubtotalCents)), discounted from \(CartMath.formatCents(orig))")
+        } else {
+            parts.append(CartMath.formatCents(item.lineSubtotalCents))
+        }
+        if item.inventoryItemId == nil {
+            parts.append("custom line")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
