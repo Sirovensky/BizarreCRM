@@ -3994,9 +3994,9 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Receipt PDF** — same renderer. Commit `ef872a82`.
 - [x] **Customer vCard** — `CNMutableContact` → `CNContactVCardSerialization` → share. Commit `ef872a82`.
 - [x] **Ticket summary plaintext + image** — formatted block copy. Commit `ef872a82`.
-- [ ] **Public tracking link** — share short URL to public-tracking page (see §57).
-- [ ] **Photo** — ticket photo → share.
-- [ ] **Image with logo watermark** — before sharing.
+- [x] **Public tracking link** — share short URL to public-tracking page (see §57). (`App/Clipboard/ShareTransferables.swift`; `TrackingLinkPayload` Transferable + `View.shareTrackingLink(_:)` ShareLink helper using `ShareItem.trackingURL`)
+- [x] **Photo** — ticket photo → share. (`App/Clipboard/ShareTransferables.swift`; `TicketPhotoPayload` Transferable exports `UIImage` as PNG `DataRepresentation` for ShareLink)
+- [x] **Image with logo watermark** — before sharing. (`App/Clipboard/ShareTransferables.swift`; `WatermarkedImagePayload` applies `UIImage.watermarked()` before PNG export so receiver always gets the branded copy)
 
 ### 25.5 Share Extension (receive sheet)
 - [x] **Accept image** — from Photos app or other apps → "Attach to ticket" picker flow. (`BizarreCRMShareExtension/ShareViewController.swift`; `UTType.image` → App Group copy; e55bb72f)
@@ -4007,8 +4007,8 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 ### 25.6 Drag-and-drop
 - [ ] **Drop image from Files/Photos** → ticket photos, expense receipts, customer avatar.
 - [ ] **Drop PDF** → invoice attachments.
-- [ ] **Drop text** → note fields.
-- [ ] **Drag out** — ticket card draggable to other apps (e.g., drag to Notes).
+- [x] **Drop text** → note fields. (`App/Clipboard/DragDropModifiers.swift`; `DroppableTextModifier` + `View.droppableText($binding)` via `dropDestination(for: String.self)`, appends with newline separator)
+- [x] **Drag out** — ticket card draggable to other apps (e.g., drag to Notes). (`App/Clipboard/DragDropModifiers.swift`; `TicketDragPayload` Transferable carrying both plain-text summary + tracking URL representations + `View.ticketDraggable(_:)`)
 
 ### 25.7 Universal Links — cloud-hosted tenants only
 
