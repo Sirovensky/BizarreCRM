@@ -3911,10 +3911,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] `OpenPOSIntent` — "open POS / start a sale / go to register"; opens `bizarrecrm://pos`; snippet card. (`App/Intents/ShortcutsIntents.swift`; feat(§64))
 - [ ] Remaining catalog: `LookupTicketIntent`, `ClockInIntent` / `ClockOutIntent`, `TakePaymentIntent`, `SendTextIntent`, `NewAppointmentIntent`, `StartBreakIntent` / `EndBreakIntent`, `PendingTicketsCountIntent`, `SearchInventoryIntent`.
 - [x] Donate via `INInteraction` on each use so Siri suggests context-aware shortcuts ("Clock in" near 9am at shop). (`donateInteraction(intentTitle:)` called in every `perform()`; `App/Intents/ShortcutsIntents.swift`; feat(§64))
-- [ ] Focus-aware (§13): `SendTextIntent` disabled in DND unless urgent.
-- [ ] Parameter disambiguation: ambiguous customer → Siri "Which John?"; fuzzy match via §18 FTS5.
+- [x] Focus-aware (§13): `SendTextIntent` disabled in DND unless urgent. (`FocusAwareSendTextIntent` checks `focus.suppressNonUrgentSMS` from App Group; throws `IntentAppError.smsBlocked` if active + non-urgent; `BizarreCRMFocusFilterIntent: SetFocusFilterIntent` persists preference; `App/Intents/IntentEnhancements.swift`; feat(§24.10))
+- [x] Parameter disambiguation: ambiguous customer → Siri "Which John?"; `parameterSummary` on `CreateNewTicketIntent` + `SendSMSToCustomerIntent`; `CustomerNameOptionsProvider: DynamicOptionsProvider` reads `suggestions.recentCustomerNames` from App Group; `IntentAppError.ambiguousParameter` for unresolved cases. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
 - [x] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output. (`IntentConfirmationCard` — symbol + tint + title + body; `.regularMaterial` bg + `RoundedRectangle`; used in all 3 §64 intents; `App/Intents/ShortcutsIntents.swift`; feat(§64))
-- [ ] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32).
+- [x] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32). Intent errors are user-facing only via `IntentAppError: CustomLocalizedStringResourceConvertible` (`.smsBlocked`, `.customerNotFound`, `.datastoreUnavailable`, `.ambiguousParameter`); `IntentErrorCard` + `IntentResultCard` snippet views; no data leaves the tenant boundary. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
 - [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 - [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
@@ -3924,7 +3924,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] Taps: deep-links via bizarrecrm://tickets/:id, bizarrecrm://appointments/:id, bizarrecrm://pos. (feat(ios phase-6 §24))
 - [x] StandBy: AppointmentsNextWidget large + TodaysRevenueWidget medium in StandBy mode. (feat(ios phase-6 §24))
 - [x] Lock Screen variants: circular = ticket count; rectangular = X tickets open; inline = X open tickets. (feat(ios phase-6 §24))
-- [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
+- [x] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location. (`WidgetTenantConfigIntent: WidgetConfigurationIntent` with `tenantSlug` + `locationID` params; `TenantOptionsProvider` + `LocationOptionsProvider: DynamicOptionsProvider` read from App Group `config.tenantSlugs` / `config.locationIDs`; `App/Intents/IntentEnhancements.swift`; feat(§24.10))
 - [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
