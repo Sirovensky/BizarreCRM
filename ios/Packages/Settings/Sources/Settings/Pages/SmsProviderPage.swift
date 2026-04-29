@@ -33,6 +33,13 @@ public final class SmsProviderViewModel: Sendable {
     var a2pStatus: String = ""
     // §19.10 — MMS support toggle
     var mmsEnabled: Bool = false
+    // §19.10 — Auto-responses (out-of-hours auto-reply)
+    var autoReplyEnabled: Bool = false
+    var autoReplyMessage: String = "Thanks for messaging — we're closed right now. We'll respond when we open."
+    // §19.10 — Compliance (opt-out keywords + carrier-required footer)
+    var optOutKeywords: [String] = ["STOP", "UNSUBSCRIBE", "CANCEL", "QUIT"]
+    var optOutKeywordsText: String = "STOP, UNSUBSCRIBE, CANCEL, QUIT"
+    var complianceFooter: String = "Reply STOP to unsubscribe. Msg & data rates may apply."
 
     var isLoading: Bool = false
     var isSaving: Bool = false
@@ -58,6 +65,17 @@ public final class SmsProviderViewModel: Sendable {
             twilioAuthToken = resp.twilioAuthToken ?? ""
             a2pStatus = resp.a2pStatus ?? ""
             mmsEnabled = resp.mmsEnabled ?? false
+            autoReplyEnabled = resp.autoReplyEnabled ?? false
+            if let msg = resp.autoReplyMessage, !msg.isEmpty {
+                autoReplyMessage = msg
+            }
+            if let kws = resp.optOutKeywords, !kws.isEmpty {
+                optOutKeywords = kws
+                optOutKeywordsText = kws.joined(separator: ", ")
+            }
+            if let footer = resp.complianceFooter, !footer.isEmpty {
+                complianceFooter = footer
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -68,13 +86,23 @@ public final class SmsProviderViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
+            // Parse opt-out keywords from comma-separated text; trim, uppercase, drop blanks.
+            let parsedKeywords = optOutKeywordsText
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
+                .filter { !$0.isEmpty }
+            optOutKeywords = parsedKeywords
             let body = SmsSettingsDTO(
                 provider: selectedProvider.rawValue,
                 fromNumber: fromNumber,
                 twilioAccountSid: twilioAccountSid,
                 twilioAuthToken: twilioAuthToken,
                 a2pStatus: nil,
-                mmsEnabled: mmsEnabled
+                mmsEnabled: mmsEnabled,
+                autoReplyEnabled: autoReplyEnabled,
+                autoReplyMessage: autoReplyEnabled ? autoReplyMessage : nil,
+                optOutKeywords: parsedKeywords,
+                complianceFooter: complianceFooter
             )
             _ = try await api.saveSmsSettings(body)
             successMessage = "SMS settings saved."
@@ -159,6 +187,42 @@ public struct SmsProviderPage: View {
                         .accessibilityLabel("Twilio Auth token")
                         .accessibilityIdentifier("sms.twilioToken")
                 }
+            }
+
+            // §19.10 — Auto-responses (out-of-hours auto-reply).
+            Section {
+                Toggle("Out-of-hours auto-reply", isOn: $vm.autoReplyEnabled)
+                    .accessibilityIdentifier("sms.autoReplyEnabled")
+                if vm.autoReplyEnabled {
+                    TextField("Auto-reply message", text: $vm.autoReplyMessage, axis: .vertical)
+                        .lineLimit(2...5)
+                        .accessibilityLabel("Auto-reply message")
+                        .accessibilityIdentifier("sms.autoReplyMessage")
+                }
+            } header: {
+                Text("Auto-responses")
+            } footer: {
+                Text("Sent automatically when the shop is closed (per Organization → Hours). Customers receive this once per conversation per closed window.")
+            }
+
+            // §19.10 — Compliance: opt-out keywords + carrier-required footer.
+            Section {
+                TextField("Opt-out keywords (comma-separated)",
+                          text: $vm.optOutKeywordsText, axis: .vertical)
+                    .lineLimit(1...3)
+                    #if canImport(UIKit)
+                    .autocapitalization(.allCharacters)
+                    #endif
+                    .accessibilityLabel("Opt-out keywords")
+                    .accessibilityIdentifier("sms.optOutKeywords")
+                TextField("Compliance footer", text: $vm.complianceFooter, axis: .vertical)
+                    .lineLimit(1...3)
+                    .accessibilityLabel("Compliance footer")
+                    .accessibilityIdentifier("sms.complianceFooter")
+            } header: {
+                Text("Compliance")
+            } footer: {
+                Text("Inbound messages matching any opt-out keyword (e.g. STOP, HELP, START) trigger the carrier-mandated auto-response and unsubscribe the sender. The footer appears on outbound marketing messages where carriers require it (10DLC).")
             }
 
             Section {
