@@ -7,11 +7,17 @@ import Networking
 public enum DrillThroughContext: Sendable {
     case revenue(date: String)
     case ticketStatus(status: String, date: String)
+    /// §91.11 — drill by ticket status label (period-level, no specific date).
+    case ticketStatusFilter(status: String)
+    /// §91.11 — drill by technician name.
+    case employee(name: String)
 
     var metric: String {
         switch self {
-        case .revenue:      return "revenue"
-        case .ticketStatus: return "tickets"
+        case .revenue:              return "revenue"
+        case .ticketStatus:         return "tickets"
+        case .ticketStatusFilter:   return "tickets"
+        case .employee:             return "employee_tickets"
         }
     }
 
@@ -19,13 +25,17 @@ public enum DrillThroughContext: Sendable {
         switch self {
         case .revenue(let d):          return d
         case .ticketStatus(_, let d):  return d
+        case .ticketStatusFilter:      return ""
+        case .employee:                return ""
         }
     }
 
     var title: String {
         switch self {
-        case .revenue(let d):           return "Revenue on \(d)"
-        case .ticketStatus(let s, let d): return "\(s) Tickets on \(d)"
+        case .revenue(let d):                 return "Revenue on \(d)"
+        case .ticketStatus(let s, let d):     return "\(s) Tickets on \(d)"
+        case .ticketStatusFilter(let s):      return "\(s) Tickets"
+        case .employee(let n):                return "\(n) — Tickets"
         }
     }
 }

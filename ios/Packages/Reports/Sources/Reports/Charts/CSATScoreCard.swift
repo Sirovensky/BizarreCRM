@@ -20,9 +20,7 @@ public struct CSATScoreCard: View {
                 gaugeRow(s)
                 trendRow(s)
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityLabel("Loading CSAT score")
+                ChartDashedSilhouette(systemImage: "star.fill", label: "No CSAT data for this period.")
             }
         }
         .padding(BrandSpacing.base)

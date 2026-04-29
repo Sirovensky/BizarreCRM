@@ -6,9 +6,12 @@ import DesignSystem
 
 public struct TicketsByStatusCard: View {
     public let points: [TicketStatusPoint]
+    /// Called when the user taps a bar; receives the tapped status label.
+    public let onTap: ((String) -> Void)?
 
-    public init(points: [TicketStatusPoint]) {
+    public init(points: [TicketStatusPoint], onTap: ((String) -> Void)? = nil) {
         self.points = points
+        self.onTap = onTap
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -22,13 +25,20 @@ public struct TicketsByStatusCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if points.isEmpty {
-                emptyState
+                ChartDashedSilhouette(systemImage: "chart.bar.fill", label: "No ticket status data for this period.")
             } else {
                 chart
                     .frame(height: 160)
                     .chartXAxisLabel("Count", alignment: .center)
                     .chartYAxisLabel("Status", position: .leading)
+                    .chartYAxis {
+                        AxisMarks { _ in
+                            AxisValueLabel()
+                                .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                        }
+                    }
                     .accessibilityChartDescriptor(TicketStatusChartDescriptor(points: points))
+                legendRow
             }
         }
         .padding(BrandSpacing.base)
@@ -68,16 +78,39 @@ public struct TicketsByStatusCard: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: points.count)
+        .chartGesture { proxy in
+            SpatialTapGesture()
+                .onEnded { value in
+                    guard let status: String = proxy.value(atY: value.location.y) else { return }
+                    onTap?(status)
+                }
+        }
     }
 
-    private var emptyState: some View {
-        ContentUnavailableView("No Ticket Data",
-                               systemImage: "chart.bar.fill",
-                               description: Text("No ticket status data for this period."))
+    // MARK: - Legend row
+
+    private var legendRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(points.indices, id: \.self) { idx in
+                    let pt = points[idx]
+                    let color = Self.statusColors[idx % Self.statusColors.count]
+                    HStack(spacing: BrandSpacing.xxs) {
+                        Circle().fill(color).frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
+                        Text("\(pt.status) \(pt.count)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(points.map { "\($0.status): \($0.count)" }.joined(separator: ", "))
     }
 }
 
-// MARK: - AXChartDescriptor
+// MARK: - AXChartDescriptor (TicketsByStatus)
 
 private struct TicketStatusChartDescriptor: AXChartDescriptorRepresentable {
     let points: [TicketStatusPoint]

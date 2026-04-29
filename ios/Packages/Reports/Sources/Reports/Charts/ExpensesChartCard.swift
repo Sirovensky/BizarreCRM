@@ -39,7 +39,15 @@ public struct ExpensesChartCard: View {
                 .frame(height: 160)
                 .chartXAxisLabel("Date", alignment: .center)
                 .chartYAxisLabel("Amount ($)", position: .leading)
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                        AxisGridLine()
+                    }
+                }
                 .accessibilityLabel(axLabel)
+            if report?.dailyBreakdown.isEmpty == false { expensesLegendRow }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -56,7 +64,15 @@ public struct ExpensesChartCard: View {
                     .frame(height: 200)
                     .chartXAxisLabel("Date", alignment: .center)
                     .chartYAxisLabel("Amount ($)", position: .leading)
+                    .chartYAxis {
+                        AxisMarks { _ in
+                            AxisValueLabel()
+                                .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                            AxisGridLine()
+                        }
+                    }
                     .accessibilityLabel(axLabel)
+                if report?.dailyBreakdown.isEmpty == false { expensesLegendRow }
             }
             .frame(maxWidth: .infinity)
 
@@ -197,9 +213,30 @@ public struct ExpensesChartCard: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        ContentUnavailableView("No Expense Data",
-                               systemImage: "chart.bar.doc.horizontal",
-                               description: Text("No expense data for this period."))
+        ChartDashedSilhouette(systemImage: "chart.bar.doc.horizontal", label: "No expense data for this period.")
+    }
+
+    // MARK: - Legend row
+
+    private var expensesLegendRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle().fill(Color.bizarreTeal.opacity(0.75)).frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text("Revenue")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle().fill(Color.bizarreWarning.opacity(0.55)).frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text("COGS")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend: Revenue (teal), COGS (amber)")
     }
 
     // MARK: - Helpers

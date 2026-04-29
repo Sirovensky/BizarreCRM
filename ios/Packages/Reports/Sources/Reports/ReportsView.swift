@@ -320,8 +320,15 @@ public struct ReportsView: View {
         // §15.5 Inventory movement chart — bar via /reports/inventory
         InventoryMovementCard(report: vm.inventoryReport)
 
-        // §15.3 Tickets by status
-        TicketsByStatusCard(points: vm.ticketsByStatus)
+        // §15.3 Tickets by status — §91.11 tap interaction wired
+        TicketsByStatusCard(points: vm.ticketsByStatus) { status in
+            drillContext = .ticketStatusFilter(status: status)
+        }
+
+        // §91.11 Tickets by tech — new bar chart with tap interaction
+        TicketsByTechCard(employees: vm.employeePerf) { techName in
+            drillContext = .employee(name: techName)
+        }
 
         // §15.2 Avg ticket value KPI
         AvgTicketValueCard(value: vm.avgTicketValue)
@@ -441,6 +448,13 @@ private extension View {
 // MARK: - DrillThroughContext Identifiable
 
 extension DrillThroughContext: Identifiable {
-    public var id: String { "\(metric)-\(date)" }
+    public var id: String {
+        switch self {
+        case .revenue(let d):                return "revenue-\(d)"
+        case .ticketStatus(let s, let d):   return "ticketStatus-\(s)-\(d)"
+        case .ticketStatusFilter(let s):    return "ticketStatusFilter-\(s)"
+        case .employee(let n):              return "employee-\(n)"
+        }
+    }
 }
 
