@@ -194,4 +194,64 @@ public enum Analytics {
             "timeout_seconds": .double(timeoutSeconds)
         ])
     }
+
+    // MARK: — §32 Server response-time histogram
+
+    /// §32 — Record a server response time with a histogram bucket label.
+    ///
+    /// Call this at every API call-site where you measure round-trip latency.
+    /// The `bucket` label is computed automatically from `durationMs` using
+    /// `ServerResponseTimeBucket.classify(_:)`, allowing the server to
+    /// aggregate latency distributions without raw data.
+    ///
+    /// - Parameters:
+    ///   - endpoint: Path-only endpoint identifier (no query params, no PII).
+    ///   - durationMs: Round-trip time in milliseconds.
+    ///   - statusCode: HTTP status code of the response.
+    public static func trackServerResponseTime(
+        endpoint: String,
+        durationMs: Int,
+        statusCode: Int
+    ) {
+        let bucket = ServerResponseTimeBucket.classify(durationMs)
+        track(.serverResponseTime, properties: [
+            "endpoint":    .string(endpoint),
+            "duration_ms": .int(durationMs),
+            "bucket":      .string(bucket.rawValue),
+            "status_code": .int(statusCode),
+        ])
+    }
+}
+
+// MARK: — §32 ServerResponseTimeBucket
+
+/// Histogram bucket labels for server round-trip latency.
+///
+/// Buckets mirror the P50/P75/P95/P99 breakpoints used by the BizarreCRM
+/// server dashboard so client and server charts share the same X-axis labels.
+///
+/// | Bucket     | Range          |
+/// |------------|----------------|
+/// | `fast`     | < 200 ms       |
+/// | `ok`       | 200 – 499 ms   |
+/// | `slow`     | 500 – 999 ms   |
+/// | `very_slow`| 1000 – 2999 ms |
+/// | `timeout`  | ≥ 3000 ms      |
+public enum ServerResponseTimeBucket: String, Sendable {
+    case fast      = "fast"       // < 200 ms
+    case ok        = "ok"         // 200–499 ms
+    case slow      = "slow"       // 500–999 ms
+    case verySlow  = "very_slow"  // 1000–2999 ms
+    case timeout   = "timeout"    // ≥ 3000 ms
+
+    /// Classify a round-trip duration in milliseconds into a bucket label.
+    public static func classify(_ ms: Int) -> ServerResponseTimeBucket {
+        switch ms {
+        case ..<200:    return .fast
+        case 200..<500: return .ok
+        case 500..<1000: return .slow
+        case 1000..<3000: return .verySlow
+        default:        return .timeout
+        }
+    }
 }

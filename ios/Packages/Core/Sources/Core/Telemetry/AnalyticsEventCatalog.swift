@@ -172,6 +172,10 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case coldLaunchMs         = "perf.cold_launch_ms"
     /// §32.4 — `first_paint_ms` — milliseconds from scene activation to first meaningful paint.
     case firstPaintMs         = "perf.first_paint_ms"
+    /// §32 — Server response time histogram bucket.
+    /// Properties: `endpoint` (string), `duration_ms` (int), `bucket` (string),
+    /// `status_code` (int).
+    case serverResponseTime   = "perf.server_response_time"
 
     // MARK: Widgets / Live Activities
 
@@ -208,7 +212,7 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
              .syncQueueDrained, .offlineFallback, .syncConflictResolved,
              .syncStarted, .syncCompleted, .syncFailed,
              .posSaleComplete, .posSaleFailed,
-             .coldLaunchMs, .firstPaintMs,
+             .coldLaunchMs, .firstPaintMs, .serverResponseTime,
              .widgetViewed, .liveActivityStarted, .liveActivityEnded, .featureFirstUse:
             return .domain
 

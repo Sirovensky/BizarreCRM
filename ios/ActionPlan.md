@@ -4957,6 +4957,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 ### 32.1 OSLog
 - [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
 - [ ] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`.
+- [x] **NSError → AppLog auto-bridge** — `AppLog.bridge(_ error: Error, logger: Logger, requestId: String?)` in `Core/Logging/AppLog.swift`; logs `[domain:code] redacted-description` at `.error` level; requestId passed as public metadata; `LogRedactor.redact()` applied to `localizedDescription` before emission. (feat(§32): NSError → AppLog auto-bridge)
 - [ ] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII.
 - [x] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders. (`AppLog.Signpost` enum in `Core/Logging/AppLog.swift` — `.sync`, `.api`, `.listRender`, `.dbWrite`, `.imageLoad` `OSSignposter` instances for Instruments Time Profiler. feat(§32.1): OSSignposter catalog 173d99c4)
 - [ ] **In-app viewer** — Settings → Diagnostics streams live log (filters by category/level).
@@ -4965,7 +4966,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Subscribe** to `MXMetricManager` — hourly payloads. (`MetricKitManager` in `Core/Performance/`; `MXMetricManagerSubscriber` delegate; `MXMetricPayload.jsonRepresentation()` serialised into `MetricPayloadEnvelope`; POSTs to `/telemetry/metrics`. feat(§32.2) ae5febcf)
 - [x] **Collect** — launch time, hangs, hitches, CPU, memory, disk, battery. (Full `MXMetricPayload` JSON payload; MetricKit provides all standard counters.) <!-- shipped ae5febcf -->
 - [x] **Upload** — batched daily to server endpoint. (`TenantServerAnalyticsSink` for analytics; `MetricKitManager` for MetricKit hourly batch → `POST /telemetry/metrics`. feat(§32.2) ae5febcf)
-- [ ] **Diagnostic payloads** — hitch + CPU exception diagnostics.
+- [x] **Diagnostic payloads** — hitch + CPU exception diagnostics. (`MetricKitDelegate.didReceive(_ payloads: [MXDiagnosticPayload])` in `Core/Performance/MetricKitManager.swift`; serialises each payload via `MXDiagnosticPayload.jsonRepresentation()` wrapped in `MetricPayloadEnvelope(kind: "diagnostic_payload", ...)`; POSTs to `/diagnostics/report` via injected `uploadDiagnostic` closure; `MetricKitManager.init` extended with `uploadDiagnostic` param. feat(§32.2): MetricKit diagnostic payload subscription)
 
 ### 32.3 Crash reporting
 - [ ] **Apple crash logs** — TestFlight + App Store Connect default (device-level opt-in only).
@@ -4987,6 +4988,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Sync** — `sync_start`, `sync_complete { delta_count, duration_ms }`, `sync_failed`.
 - [ ] **POS** — `pos_sale_complete { total, tender }`, `pos_sale_failed { reason }`.
 - [ ] **Performance** — `cold_launch_ms`, `first_paint_ms`.
+- [x] **Server response-time histogram** — `perf.server_response_time { endpoint, duration_ms, bucket, status_code }` event added to `AnalyticsEventCatalog`; `Analytics.trackServerResponseTime(endpoint:durationMs:statusCode:)` helper in `Core/Telemetry/Analytics.swift`; `ServerResponseTimeBucket` enum with five buckets (fast <200 ms / ok 200–499 / slow 500–999 / very_slow 1000–2999 / timeout ≥3000) mirrors server dashboard breakpoints. (feat(§32): server response-time histogram)
 - [ ] **Retention** — dau / mau computed server-side.
 - [x] **Server-error event catalog** — three new events in `AnalyticsEventCatalog.swift`: `server.error.received { endpoint, status_code, error_code?, request_id? }`, `server.rate_limited { endpoint, status_code, retry_after_seconds? }`, `server.timeout { endpoint, timeout_seconds }`. Helpers: `Analytics.trackServerError`, `trackRateLimitHit`, `trackServerTimeout` in `Core/Telemetry/Analytics.swift`. (feat(§32): server-error event catalog)
 
@@ -5032,10 +5034,11 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 | Biometric-derived tokens | `*SECRET*` | |
 
 - [ ] **Redactor is the ONLY serializer path.** All `os_log`, `MetricKit`, event queue, crash payload, diagnostic bundle serializers go through it. Direct string interpolation bypassing it is a SwiftLint violation.
+- [x] **Network error redactor** — URL credential stripping (`scheme://user:pass@host` → `scheme://*SECRET*@host`), query-value masking (`?key=VALUE` → `?key=*REDACTED*`), token-fragment stripping (`#<base64>` → `#*SECRET*`) added as three new rules at the top of `LogRedactor.rules` in `Core/Logging/LogRedactor.swift`; run before all existing PII rules so URL-embedded credentials don't survive into downstream pattern matches. (feat(§32): network error URL redaction rules)
 - [ ] **Field-shape detection fallback** — for any string not explicitly tagged (legacy call sites) the Redactor regex-detects phone-like / email-like / token-like patterns and substitutes `*LIKELY_PII*`. False positives acceptable; raw leaks are not.
 - [ ] **Structured logging preferred** — `Logger.event("pos_sale_complete", properties: ["total_cents": 1200, "tender": "card", "customer_id_hash": hash(id)])`. Numeric + enum + hashed-ID values pass through unchanged; free-form text is replaced.
 - [x] **Stable hashes, not raw IDs** — when correlation is needed, `SHA-256` truncated to 8 chars, salted per tenant so the hash can't be reversed across tenants. (`TelemetryRedactor.hashTenantId(_:salt:)` in `Core/Telemetry/Sovereignty/TelemetryRedactor.swift` — SHA-256(salt:tenantId) first 4 bytes → 8 hex chars. feat(§32): hash-anonymizer)
-- [ ] **Allowlist, not blocklist** — events ship only fields declared in their schema (see §32.4 taxonomy). Unknown fields stripped at serializer rather than redacted-through.
+- [x] **Allowlist, not blocklist** — events ship only fields declared in their schema (see §32.4 taxonomy). Unknown fields stripped at serializer rather than redacted-through. (`AnalyticsRedactor.allowedDimensions: Set<String>` — 30-key canonical allowlist in `Core/Telemetry/AnalyticsRedactor.swift`; `scrub(_:allowlist:)` gains optional `allowlist` param defaulting to `allowedDimensions`; unknown keys stripped before PII-blocklist pass; legacy callers pass `allowlist: nil` to opt out. feat(§32.6): custom dimension allowlist)
 - [ ] **Unit tests** assert: every sample input in the table above emits the corresponding placeholder; the string `@example.com` and `555-1212` and similar canaries never appear in a serialized payload.
 - [ ] **CI fixture** — weekly job replays last 7 days of staged telemetry payloads through a PII scanner (string-length entropy + regex) and fails the build if any canary pattern slips through.
 - [ ] **Crash payloads** — stack frames + device model + OS version + app version + thread state. No heap snapshot, no register-pointing-at-string dumps (which could carry tokens), no user-facing strings.

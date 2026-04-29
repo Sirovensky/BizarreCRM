@@ -57,6 +57,46 @@ public enum AppLog {
         LogRedactor.redact(input)
     }
 
+    // MARK: — §32 NSError → AppLog auto-bridge
+
+    /// Log an `NSError` (or any `Error`) to the appropriate category logger at
+    /// `.error` level, automatically redacting the localised description.
+    ///
+    /// - Parameters:
+    ///   - error: The error to log. `NSError` metadata (domain, code) is always
+    ///     safe to log; `localizedDescription` is passed through `LogRedactor`
+    ///     first in case it was built from user-supplied text.
+    ///   - logger: The per-category logger to write to. Defaults to `AppLog.app`.
+    ///   - requestId: Optional opaque request correlation ID for API call sites.
+    ///   - file: Source file (auto-captured).
+    ///   - function: Function name (auto-captured).
+    ///   - line: Line number (auto-captured).
+    ///
+    /// Usage:
+    /// ```swift
+    /// AppLog.bridge(error, logger: AppLog.networking, requestId: response.requestId)
+    /// ```
+    public static func bridge(
+        _ error: Error,
+        logger: Logger = AppLog.app,
+        requestId: String? = nil,
+        file: String = #fileID,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        let ns = error as NSError
+        let safeDescription = LogRedactor.redact(ns.localizedDescription)
+        if let rid = requestId {
+            logger.error(
+                "[\(ns.domain, privacy: .public):\(ns.code, privacy: .public)] \(safeDescription, privacy: .public) requestId=\(rid, privacy: .public) [\(file, privacy: .public):\(line, privacy: .public)]"
+            )
+        } else {
+            logger.error(
+                "[\(ns.domain, privacy: .public):\(ns.code, privacy: .public)] \(safeDescription, privacy: .public) [\(file, privacy: .public):\(line, privacy: .public)]"
+            )
+        }
+    }
+
     // MARK: — §32.1 OSSignposter helpers
 
     /// OSSignposter for sync cycles — wire to Instruments Time Profiler.

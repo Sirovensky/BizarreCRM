@@ -43,6 +43,25 @@ public enum LogRedactor {
 
     // Patterns are ordered: more-specific before more-general.
     private static let rules: [Rule] = [
+        // §32 Network error redactor — strip credentials and query params from URLs
+        // before they reach any log sink or telemetry payload.
+        //
+        // 1. Userinfo in URLs: scheme://user:pass@host → scheme://*SECRET*@host
+        Rule(
+            #"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@/\s]+:[^@/\s]+)@"#,
+            "$1*SECRET*@"
+        ),
+        // 2. Query-string values: ?key=VALUE&key2=VALUE2 → ?key=*REDACTED*&…
+        //    Preserves key names (useful for routing) but masks values (may be tokens / IDs).
+        Rule(
+            #"(?<=[?&])([^=&\s]+)=([^&\s#]+)"#,
+            "$1=*REDACTED*"
+        ),
+        // 3. URL fragments that look like tokens (# followed by base64-ish segment)
+        Rule(
+            #"#[A-Za-z0-9+/\-_]{16,}={0,2}\b"#,
+            "#*SECRET*"
+        ),
         // Email addresses  (RFC-5321 simplified)
         Rule(
             #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#,
