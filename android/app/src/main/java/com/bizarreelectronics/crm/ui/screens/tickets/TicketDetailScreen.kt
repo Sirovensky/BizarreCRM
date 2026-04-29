@@ -1491,6 +1491,10 @@ fun TicketDetailScreen(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
+            // Width gate — tablet (sw >= 600 dp) renders its own top bar
+            // inside TicketDetailTabletLayoutV2 (T-C2 of the tablet
+            // redesign). Phone keeps the existing BrandTopAppBar.
+            if (com.bizarreelectronics.crm.util.isCompactWidth()) {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
             // sharedElement applied via titleContent so the orderId Text animates
             // from the list row without wrapping the whole TopAppBar.
@@ -1748,6 +1752,7 @@ fun TicketDetailScreen(
                     }
                 },
             )
+            } // closes `if (isCompactWidth())` — tablet renders its own top bar
         },
         bottomBar = {
             // AND-20260414-M9 (revised): previous attempt folded SMS +
@@ -2004,11 +2009,38 @@ fun TicketDetailScreen(
                             isBenchTimerRunning = state.isBenchTimerRunning,
                             reduceMotion = reduceMotion,
                             padding = padding,
+                            onBack = onBack,
+                            ticketTitle = ticket.orderId ?: "T-$ticketId",
+                            currentStatusName = ticket.statusName ?: "",
+                            currentStatusId = ticket.statusId,
+                            onStatusSelected = { id ->
+                                // Route through the same notify-preview flow phone uses.
+                                viewModel.requestStatusChangeWithNotify(id)
+                            },
+                            topBarActions = {
+                                // T-C2 minimal action stub — Pin + overflow placeholder.
+                                // Full feature parity (Print actions / Share / Copy / etc.)
+                                // moves over from the phone topBar in a follow-up phase.
+                                IconButton(onClick = { viewModel.togglePin() }) {
+                                    Icon(
+                                        Icons.Default.PushPin,
+                                        contentDescription = "Pin",
+                                        tint = if (state.ticketDetail?.isPinned == true)
+                                            MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                IconButton(onClick = { showOverflowMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                }
+                                // Reuse the existing overflow DropdownMenu from the phone path
+                                // by hosting it once at the tablet root in a future commit.
+                                // For T-C2 a placeholder snackbar so the icon isn't dead.
+                            },
                             onNavigateToCustomer = onNavigateToCustomer,
                             onEditDevice = onEditDevice,
                             onAddPhotos = onAddPhotos,
                             serverUrl = viewModel.serverUrl,
-                            onStatusSelected = { viewModel.changeStatus(it) },
                             onAddNote = { viewModel.addNote(it) },
                             onNavigateToSms = onNavigateToSms,
                             onDeletePhoto = { viewModel.deletePhoto(it) },
