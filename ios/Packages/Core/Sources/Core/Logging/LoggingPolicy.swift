@@ -58,6 +58,45 @@ public enum LoggingPolicy {
         "filename", "url", "path",
     ]
 
+    // MARK: - §32.9 Log levels
+
+    /// Canonical log-level taxonomy for BizarreCRM iOS.
+    ///
+    /// Map to the corresponding `OSLogType` when calling `Logger`:
+    /// - `.debug`  → `Logger.debug`  — stripped in Release builds by the OS; fine-grained tracing.
+    /// - `.info`   → `Logger.info`   — lifecycle milestones, startup sequence, config.
+    /// - `.notice` → `Logger.notice` — user-visible events: logins, sales, settings changes.
+    /// - `.error`  → `Logger.error`  — recoverable failures: network errors, decode failures.
+    /// - `.fault`  → `Logger.fault`  — unexpected state that indicates a programming error or
+    ///                                  imminent crash; wired to crash-analytics pipeline.
+    public enum LogLevel: Int, Comparable, Sendable, CaseIterable {
+        /// Verbose tracing; compile-stripped in Release by `OSLogType.debug`.
+        case debug = 0
+        /// Lifecycle + meaningful milestones.
+        case info = 1
+        /// User-visible events (logins, POS sales, key settings changes).
+        case notice = 2
+        /// Recoverable failures — caller can continue operating.
+        case error = 3
+        /// Unexpected / fatal state — triggers crash-analytics breadcrumb.
+        case fault = 4
+
+        public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
+
+        /// Human-readable label used in diagnostic exports and the in-app log viewer.
+        public var label: String {
+            switch self {
+            case .debug:  return "DEBUG"
+            case .info:   return "INFO"
+            case .notice: return "NOTICE"
+            case .error:  return "ERROR"
+            case .fault:  return "FAULT"
+            }
+        }
+    }
+
     // MARK: - Developer-facing documentation
 
     /// Canonical log call patterns:

@@ -6,6 +6,9 @@ import Networking
 import UIKit
 import StoreKit
 #endif
+#if canImport(Darwin)
+import Darwin
+#endif
 
 // MARK: - §19.24 About page — licenses, device info, App Store review, secret 7-tap
 
@@ -185,6 +188,21 @@ public struct AboutView: View {
     }
 
     private var deviceModel: String {
+        // §19.24 — Use sysctlbyname to retrieve the hardware machine identifier
+        // (e.g. "iPhone16,2") and map it to a human-readable marketing name.
+        // Falls back to UIDevice.current.model if the sysctlbyname lookup fails.
+        #if canImport(Darwin)
+        var size = 0
+        sysctlbyname("hw.machine", nil, &size, nil, 0)
+        if size > 0 {
+            var machine = [CChar](repeating: 0, count: size)
+            sysctlbyname("hw.machine", &machine, &size, nil, 0)
+            let identifier = String(cString: machine)
+            if let name = DeviceModelMap.marketingName(for: identifier) {
+                return name
+            }
+        }
+        #endif
         #if canImport(UIKit)
         return UIDevice.current.model
         #else
@@ -337,6 +355,68 @@ public struct LicensesView: View {
         InlineLicense(name: "Factory",            spdx: "MIT"),
         InlineLicense(name: "Swift Algorithms",   spdx: "Apache 2.0"),
         InlineLicense(name: "Swift Collections",  spdx: "Apache 2.0"),
+    ]
+}
+
+// MARK: - §19.24 Device model map
+
+/// Maps `hw.machine` hardware identifiers to Apple marketing names.
+/// Covers iPhone/iPad models relevant to iOS 16+ (the app's min target).
+/// Unknown identifiers fall through to the raw identifier string.
+enum DeviceModelMap {
+    static func marketingName(for identifier: String) -> String? {
+        // Simulator
+        if identifier == "x86_64" || identifier == "arm64" {
+            return "Simulator"
+        }
+        return table[identifier]
+    }
+
+    // swiftlint:disable:next line_length
+    private static let table: [String: String] = [
+        // iPhone 16 series
+        "iPhone17,1": "iPhone 16 Pro Max",
+        "iPhone17,2": "iPhone 16 Pro",
+        "iPhone17,3": "iPhone 16 Plus",
+        "iPhone17,4": "iPhone 16",
+        // iPhone 15 series
+        "iPhone16,1": "iPhone 15",
+        "iPhone16,2": "iPhone 15 Plus",
+        "iPhone16,3": "iPhone 15 Pro",
+        "iPhone16,4": "iPhone 15 Pro Max",
+        // iPhone 14 series
+        "iPhone15,2": "iPhone 14 Pro",
+        "iPhone15,3": "iPhone 14 Pro Max",
+        "iPhone14,7": "iPhone 14",
+        "iPhone14,8": "iPhone 14 Plus",
+        // iPhone 13 series
+        "iPhone14,4": "iPhone 13 mini",
+        "iPhone14,5": "iPhone 13",
+        "iPhone14,2": "iPhone 13 Pro",
+        "iPhone14,3": "iPhone 13 Pro Max",
+        // iPhone 12 series
+        "iPhone13,1": "iPhone 12 mini",
+        "iPhone13,2": "iPhone 12",
+        "iPhone13,3": "iPhone 12 Pro",
+        "iPhone13,4": "iPhone 12 Pro Max",
+        // iPhone SE
+        "iPhone14,6": "iPhone SE (3rd gen)",
+        "iPhone12,8": "iPhone SE (2nd gen)",
+        // iPad Pro 13-inch (M4)
+        "iPad16,3": "iPad Pro 11-inch (M4)",
+        "iPad16,4": "iPad Pro 13-inch (M4)",
+        // iPad Pro (M2)
+        "iPad14,3": "iPad Pro 11-inch (M2)",
+        "iPad14,4": "iPad Pro 11-inch (M2)",
+        "iPad14,5": "iPad Pro 12.9-inch (M2)",
+        "iPad14,6": "iPad Pro 12.9-inch (M2)",
+        // iPad Air
+        "iPad14,8": "iPad Air 11-inch (M2)",
+        "iPad14,9": "iPad Air 13-inch (M2)",
+        "iPad13,4": "iPad Air (M1)",
+        // iPad mini
+        "iPad14,1": "iPad mini (6th gen)",
+        "iPad14,2": "iPad mini (6th gen)",
     ]
 }
 
