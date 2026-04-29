@@ -254,7 +254,6 @@ public struct ReportsThreeColumnView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(minHeight: 44)
             .onChange(of: vm.selectedPreset) { _, _ in
                 Task { await vm.loadAll() }
             }
@@ -266,7 +265,6 @@ public struct ReportsThreeColumnView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(minHeight: 44)
             .onChange(of: vm.granularity) { _, _ in
                 Task { await vm.loadAll() }
             }

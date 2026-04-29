@@ -90,8 +90,7 @@ public struct StalenessIndicator: View {
     public var body: some View {
         chipContent
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Sync status")
-            .accessibilityValue(logic.a11yLabel)
+            .accessibilityLabel(logic.a11yLabel)
     }
 
     // §91.9-3: All sync-state pills now use a solid filled capsule so that

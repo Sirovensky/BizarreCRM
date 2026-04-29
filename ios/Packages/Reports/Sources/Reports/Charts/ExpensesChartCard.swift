@@ -206,7 +206,6 @@ public struct ExpensesChartCard: View {
             "Revenue": Color.bizarreTeal.opacity(0.75),
             "COGS": Color.bizarreWarning.opacity(0.55)
         ])
-        .accessibilityChartDescriptor(ExpensesChartDescriptor(report: r))
         .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
                    value: r.dailyBreakdown.count)
     }
@@ -251,45 +250,5 @@ public struct ExpensesChartCard: View {
         guard let r = report else { return "Expenses chart — no data." }
         return String(format: "Expenses and revenue chart. Total expenses $%.2f, revenue $%.2f.",
                       r.totalDollars, r.revenueDollars)
-    }
-}
-
-// MARK: - AXChartDescriptor
-
-private struct ExpensesChartDescriptor: AXChartDescriptorRepresentable {
-    let report: ExpensesReport
-
-    func makeChartDescriptor() -> AXChartDescriptor {
-        let dates = report.dailyBreakdown.map(\.date)
-        let maxVal = report.dailyBreakdown.flatMap { [$0.revenue, $0.cogs] }.max() ?? 0
-        let xAxis = AXCategoricalDataAxisDescriptor(title: "Date", categoryOrder: dates)
-        let yAxis = AXNumericDataAxisDescriptor(
-            title: "Amount (USD)",
-            range: 0...maxVal,
-            gridlinePositions: []
-        ) { String(format: "$%.2f", $0) }
-        let revenueSeries = AXDataSeriesDescriptor(
-            name: "Revenue (teal)",
-            isContinuous: false,
-            dataPoints: report.dailyBreakdown.map { day in
-                AXDataPoint(x: day.date, y: day.revenue)
-            }
-        )
-        let cogsSeries = AXDataSeriesDescriptor(
-            name: "COGS (amber)",
-            isContinuous: false,
-            dataPoints: report.dailyBreakdown.map { day in
-                AXDataPoint(x: day.date, y: day.cogs)
-            }
-        )
-        return AXChartDescriptor(
-            title: "Expenses & Margin",
-            summary: String(format: "Stacked bar chart of daily revenue and cost of goods sold. Total revenue $%.2f, total expenses $%.2f, gross margin %.1f%%.",
-                            report.revenueDollars, report.totalDollars, report.marginPct ?? 0),
-            xAxis: xAxis,
-            yAxis: yAxis,
-            additionalAxes: [],
-            series: [revenueSeries, cogsSeries]
-        )
     }
 }
