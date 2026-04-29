@@ -35,6 +35,49 @@ public enum PosPhase {
     case receipt(PosReceiptPayload)
 }
 
+// MARK: - PosRoleGate
+
+/// §16.1 — "Not enabled for this role" card shown when the user's role lacks
+/// the `pos.access` permission. The card renders an icon, a message, and a
+/// "Contact your admin" CTA. Rendered by `PosView` when `posAccessDenied` is
+/// true (injected at init for testability; defaults to `false`).
+struct PosRoleGateCard: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase.ignoresSafeArea()
+            VStack(spacing: BrandSpacing.lg) {
+                Image(systemName: "person.crop.circle.badge.xmark")
+                    .font(.system(size: 64, weight: .regular))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                VStack(spacing: BrandSpacing.xs) {
+                    Text("POS not enabled")
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Your role doesn't include the \u{201C}pos.access\u{201D} permission. Contact your admin to get access.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, BrandSpacing.xl)
+                }
+                Link(destination: URL(string: "mailto:admin")!) {
+                    Label("Contact admin", systemImage: "envelope")
+                        .font(.brandTitleSmall())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.roleGate.contactAdmin")
+            }
+            .frame(maxWidth: 420)
+        }
+        .accessibilityIdentifier("pos.roleGate")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("POS not enabled. Your role lacks pos.access permission. Contact your admin.")
+    }
+}
+
 /// POS root screen. §16.4 wires the customer attach flow.
 /// Wave-5 phase machine drives customer gate → cart → tender → receipt.
 public struct PosView: View {
@@ -85,6 +128,8 @@ public struct PosView: View {
     @State private var showingOpenRegister: Bool = false
     @State private var showingCloseRegister: Bool = false
     @State private var showingZReport: Bool = false
+    /// §16.10 — Mid-shift cash drop sheet.
+    @State private var showingCashDrop: Bool = false
     /// Snapshot of the session that was just closed so `ZReportView` has
     /// something to render after `registerSession` has been cleared.
     @State private var lastClosedSession: CashSessionRecord?
@@ -116,10 +161,17 @@ public struct PosView: View {
     /// previews and tests receive the default `NullCashDrawer`.
     private let cashDrawerOpen: @Sendable () async throws -> Void
 
+    /// §16.1 — When `true` the POS renders `PosRoleGateCard` instead of the
+    /// normal register flow. Inject `true` from `AppState` when the active
+    /// user's role does NOT include `pos.access`. Defaults to `false` so
+    /// existing call sites and previews are unaffected.
+    private let posAccessDenied: Bool
+
     public init(
         repo: InventoryRepository? = nil,
         api: APIClient? = nil,
         customerRepo: CustomerRepository? = nil,
+        posAccessDenied: Bool = false,
         cashDrawerOpen: @escaping @Sendable () async throws -> Void = { throw CashDrawerError.notConnected }
     ) {
         if let repo {
@@ -129,12 +181,16 @@ public struct PosView: View {
         }
         self.api = api
         self.customerRepo = customerRepo
+        self.posAccessDenied = posAccessDenied
         self.cashDrawerOpen = cashDrawerOpen
     }
 
     public var body: some View {
         Group {
-            if !registerLoaded {
+            // §16.1 — role gate takes priority over everything else.
+            if posAccessDenied {
+                PosRoleGateCard()
+            } else if !registerLoaded {
                 // First-tick loading — avoid flashing the open-register
                 // sheet before the store has answered.
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -220,6 +276,17 @@ public struct PosView: View {
             if let session = registerSession ?? lastClosedSession {
                 ZReportView(session: session)
             }
+        }
+        // §16.10 — mid-shift cash drop
+        .sheet(isPresented: $showingCashDrop) {
+            PosCashDropSheet(
+                cashSessionId: registerSession?.id,
+                cashSessionRepo: api.map { CashSessionRepositoryImpl(api: $0) },
+                onDropRecorded: { dropCents in
+                    BrandHaptics.success()
+                    holdToastMessage = "\(CartMath.formatCents(dropCents)) dropped to safe."
+                }
+            )
         }
         .sheet(isPresented: $showingCustomLine) {
             PosCustomLineSheet { item in cart.add(item) }
@@ -634,6 +701,13 @@ public struct PosView: View {
             customerPhone: cart.customer?.phone,
             customerEmail: cart.customer?.email
         )
+        // §16.7 — snapshot the render model so reprints are byte-identical.
+        let renderPayload = PosReceiptPayloadBuilder.build(
+            cart: cart,
+            methodLabel: methodLabel,
+            methodAmountCents: result.totalCents
+        )
+        Task { await PosReceiptStore.shared.save(renderPayload) }
         paidAt = Date()
         phase = .receipt(payload)
     }
@@ -1331,6 +1405,15 @@ public struct PosView: View {
                     }
                     // §16.10 — Register management
                     Section("Register") {
+                        // §16.10 mid-shift cash drop
+                        Button {
+                            showingCashDrop = true
+                        } label: {
+                            Label("Cash drop to safe", systemImage: "arrow.down.to.line.circle")
+                        }
+                        .disabled(registerSession == nil)
+                        .accessibilityIdentifier("pos.toolbar.cashDrop")
+
                         Button {
                             showingCloseRegister = true
                         } label: {
@@ -1450,6 +1533,8 @@ public struct PosView: View {
             methodAmountCents: methodAmountCents,
             orderNumber: orderNumber
         )
+        // §16.7 — persist render model so reprints are byte-identical.
+        Task { await PosReceiptStore.shared.save(snapshot) }
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
         let methodLabel: String = overrideLabel ?? {

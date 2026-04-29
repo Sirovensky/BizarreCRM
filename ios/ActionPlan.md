@@ -1904,7 +1904,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Scaffold shipped — `Pos/PosView.swift` replaces the placeholder; iPhone single-column / iPad `NavigationSplitView(.balanced)` gated on `Platform.isCompact`.
 - [ ] **Architecture** — PosViewModel owning cart state (current scaffold uses `Cart` @Observable directly); PosRepository + GRDB catalog/holds caches still TBD.
 - [x] **Tab replaces**: POS tab in iPhone TabView + POS entry in iPad sidebar (wired via `RootView`).
-- [ ] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA.
+- [x] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA. `PosRoleGateCard` + `posAccessDenied: Bool` init param on `PosView`. (feat(ios §16.1): pos.access permission gate)
 - [x] **Drawer lock** — POS renders "Register closed" placeholder when no open session; `OpenRegisterSheet` via fullScreenCover on mount. Cancel dismisses to placeholder (no sales possible). "Close register" / "View Z-report" entries in overflow ⋯ toolbar. Cashier ID plumbing via `/auth/me` deferred.
 
 ### 16.2 Catalog browse (left pane)
@@ -1991,7 +1991,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient).
 - [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
 - [x] **Gift receipt** — `GiftReceiptGenerator` pure-function generator + `GiftReceiptSheet` post-sale prompt. Strips prices/tenders/customer, preserves names/SKUs/qty. Tests ≥80%. (Phase 5 §16)
-- [ ] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes.
+- [x] **Persist the render model** — `PosReceiptStore` actor (UserDefaults, JSON) snapshots `PosReceiptRenderer.Payload` at sale close; `Codable` conformances added; called from both v1 (`buildPostSaleViewModel`) and v5 (`advanceToReceipt`) paths. (feat(ios §16.7): persist receipt render model)
 
 ### 16.8 Post-sale screen
 - [x] **Glass "Sale complete" card** — `PosPostSaleView` with 600ms spinner → success. Confetti animation deferred.
@@ -2004,7 +2004,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Entry** — POS toolbar "Process return" button (⌘⇧R) → `PosReturnsView` search by order/phone.
 - [ ] **Original lookup** — show invoice detail with per-line checkbox + "Qty to return" stepper.
 - [x] **Reason required** — text field + tender picker in `PosRefundSheet`. Dropdown presets deferred.
-- [ ] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment).
+- [x] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment). `PosRefundViewModel.restockItem: Bool` + toggle UI in `PosRefundSheet`; wired into `PosReturnRequest.restock` field (added to `ReturnsEndpoints.swift`). (feat(ios §16.9): restock flag on refund)
 - [x] **Refund amount** — editable cents input in sheet. Per-line calc + restocking fee deferred.
 - [ ] **Tender** — original card (BlockChyp refund with token) / cash / store credit / gift card issuance.
 - [ ] **Manager PIN** — required above $X threshold (tenant config).
@@ -2013,7 +2013,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.10 Cash register (open/close)
 - [x] **Open shift** — `OpenRegisterSheet` presented on POS mount when no session via fullScreenCover. Opening float input (single aggregate cents, per-denomination deferred). Local-first via `CashRegisterStore`. Employee PIN + server sync deferred.
-- [ ] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature.
+- [x] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature. `PosCashDropSheet` + `PosCashDropViewModel`; posts `POST /pos/cash-out` via `CashSessionRepositoryImpl`; audit-logs `cash_drop` to `PosAuditLogStore`; wired into POS toolbar Register section. (feat(ios §16.10): mid-shift cash drop)
 - [x] **Close shift** — `CloseRegisterSheet` with counted/expected/notes + `CashVariance` band. Over/short color coded. Per-denomination count + mandatory note threshold deferred.
 - [x] **Z-report** — `ZReportView` renders tiles + variance card. Auto-print/email-to-manager deferred to §17.4 pipeline.
 - [ ] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition.
@@ -2158,7 +2158,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Discount highlight: flash discount line on apply; strike-through original → new.
 - [ ] Pending server validation: subtle shimmer on price until response finalizes.
 - [ ] Mismatch resolution: banner "Tax recomputed (+$0.03)" when server total differs.
-- [ ] A11y: screen reader announces new total on change (debounced).
+- [x] A11y: screen reader announces new total on change (debounced). `UIAccessibility.post(.announcement, "Cart total: $X.XX")` with 500ms `Task` debounce in `PosCartPanel.totalsFooter`. (feat(ios §16 a11y): debounced VoiceOver cart total announcement)
 - [ ] Sale record schema: local UUID + timestamp + lines + tenders + idempotency key.
 - [ ] Receipt printing: "OFFLINE" watermark until synced; post-sync reprint available without watermark.
 - [ ] Card tenders: BlockChyp offline capture (where supported) captures card + holds auth + settles on reconnect; manager alert on declined auth at settle; configurable max offline card amount ($100 default).

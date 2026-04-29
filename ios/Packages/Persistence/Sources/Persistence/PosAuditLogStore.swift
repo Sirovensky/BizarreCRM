@@ -105,6 +105,8 @@ public extension PosAuditEntry {
         public static let discountOverride  = "discount_override"
         public static let priceOverride     = "price_override"
         public static let deleteLine        = "delete_line"
+        /// §16.10 — Mid-shift cash removal from the drawer to the safe.
+        public static let cashDrop          = "cash_drop"
     }
 }
 

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 import Core
 import DesignSystem
 
@@ -291,6 +292,22 @@ struct PosCartPanel: View {
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
             }
+            // §16 A11y — screen reader announces the new cart total on change,
+            // debounced so rapid qty taps don't flood the VoiceOver queue.
+            // The `.accessibilityLabel` on the HStack above gives the static
+            // label; this modifier fires the live announcement as a side-effect.
+            .onChange(of: cart.totalCents) { _, newTotal in
+                let formatted = CartMath.formatCents(newTotal)
+                // Debounce: cancel any pending announcement for 0.5 s before posting.
+                totalAnnounceTask?.cancel()
+                totalAnnounceTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: "Cart total: \(formatted)"
+                    )
+                }
+            }
 
             // §40 — applied tenders
             if !cart.appliedTenders.isEmpty {
@@ -325,6 +342,9 @@ struct PosCartPanel: View {
             Divider().background(.bizarreOutline)
         }
     }
+
+    /// Cancellable task for the debounced VoiceOver announcement (§16 A11y).
+    @State private var totalAnnounceTask: Task<Void, Never>?
 
     private var taxRateLabel: String {
         // Show the effective tax rate if we can derive it from the first taxed item

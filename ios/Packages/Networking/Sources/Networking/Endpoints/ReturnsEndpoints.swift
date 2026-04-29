@@ -35,24 +35,29 @@ public struct PosReturnRequest: Encodable, Sendable {
     public let notes: String?
     public let tender: String
     public let lines: [PosReturnLineRequest]
+    /// §16.9 — Restock flag. `true` = return item to inventory (stock +=qty);
+    /// `false` = scrap (inventory unchanged). Sent to `POST /api/v1/pos/returns`.
+    public let restock: Bool
 
     public init(
         invoiceId: Int64,
         reason: String?,
         notes: String?,
         tender: String,
-        lines: [PosReturnLineRequest]
+        lines: [PosReturnLineRequest],
+        restock: Bool = true
     ) {
         self.invoiceId = invoiceId
         self.reason = reason
         self.notes = notes
         self.tender = tender
         self.lines = lines
+        self.restock = restock
     }
 
     enum CodingKeys: String, CodingKey {
         case invoiceId = "invoice_id"
-        case reason, notes, tender, lines
+        case reason, notes, tender, lines, restock
     }
 }
 

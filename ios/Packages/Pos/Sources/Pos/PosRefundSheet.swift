@@ -44,6 +44,35 @@ struct PosRefundSheet: View {
                     }
                 }
 
+                // §16.9 — restock flag: per-return disposition toggle.
+                // "Return to stock" increments inventory; "Scrap" does not.
+                Section {
+                    Toggle(isOn: $vm.restockItem) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Return to stock")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                Text(vm.restockItem
+                                     ? "Item will be re-added to inventory"
+                                     : "Item will be scrapped — inventory unchanged")
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        } icon: {
+                            Image(systemName: vm.restockItem ? "arrow.uturn.up.circle.fill" : "trash.circle")
+                                .foregroundStyle(vm.restockItem ? Color.bizarreSuccess : Color.bizarreError)
+                        }
+                    }
+                    .accessibilityIdentifier("pos.refund.restockToggle")
+                } header: {
+                    Text("Inventory disposition")
+                } footer: {
+                    Text("Sent to server as the \u{201C}restock\u{201D} field on the return request.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+
                 Section("Tender") {
                     Picker("Tender", selection: $vm.tender) {
                         ForEach(PosRefundViewModel.Tender.allCases) { tender in
@@ -156,6 +185,9 @@ final class PosRefundViewModel {
     var tender: Tender = .card
     var reason: String = ""
     var notes: String = ""
+    /// §16.9 — `true` = return item to inventory; `false` = scrap (no stock increment).
+    /// Defaults to `true` (most returns go back to stock).
+    var restockItem: Bool = true
     private(set) var status: Status = .idle
 
     @ObservationIgnored let invoice: InvoiceSummary
@@ -187,7 +219,8 @@ final class PosRefundViewModel {
             reason: trimmedReason.isEmpty ? nil : trimmedReason,
             notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
             tender: tender.wireValue,
-            lines: []
+            lines: [],
+            restock: restockItem
         )
         do {
             let resp = try await api.posReturn(request)
