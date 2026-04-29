@@ -39,6 +39,15 @@ struct PosCartPanel: View {
     /// Line-edit sheet state — the item currently being edited inline.
     @State private var editingLineItem: CartItem?
 
+    // MARK: - §16 Cart undo toast state
+
+    /// The most-recently deleted cart item. Non-nil while the undo window is open.
+    @State private var undoItem: CartItem?
+    /// Drives the visible undo snackbar (Reduce-Motion-safe opacity transition).
+    @State private var showUndoToast: Bool = false
+    /// Task that auto-dismisses the toast after 5 s.
+    @State private var undoTask: Task<Void, Never>?
+
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -76,6 +85,20 @@ struct PosCartPanel: View {
                     .animation(BrandMotion.snappy, value: editingLineItem != nil)
                     .accessibilityHidden(true)
             }
+
+            // §16 — Cart undo toast: snackbar shown for 5 s after swipe-to-remove.
+            // Pinned to the bottom of the cart panel above the totals footer.
+            if showUndoToast, let item = undoItem {
+                VStack {
+                    Spacer()
+                    cartUndoToast(item: item)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.bottom, BrandSpacing.md)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .zIndex(10)
+                }
+                .allowsHitTesting(true)
+            }
         }
         // Line-edit bottom sheet — mockup screen 4
         .sheet(item: $editingLineItem) { item in
@@ -94,6 +117,88 @@ struct PosCartPanel: View {
                 }
             )
         }
+    }
+
+    // MARK: - §16 Undo toast helpers
+
+    /// Show the undo snackbar for `item` and schedule auto-dismiss after 5 s.
+    private func showUndo(for item: CartItem) {
+        undoTask?.cancel()
+        undoItem = item
+        withAnimation(BrandMotion.snappy) { showUndoToast = true }
+        BrandHaptics.tap()
+        undoTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            dismissUndo()
+        }
+    }
+
+    /// Dismiss the undo toast without restoring the item.
+    private func dismissUndo() {
+        undoTask?.cancel()
+        undoTask = nil
+        withAnimation(BrandMotion.snappy) { showUndoToast = false }
+        // Hold onto `undoItem` briefly so the exit animation can still render
+        // the label before it disappears.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.4))
+            undoItem = nil
+        }
+    }
+
+    /// Restore the deleted item back to the cart.
+    private func performUndo(item: CartItem) {
+        cart.add(item)
+        BrandHaptics.success()
+        dismissUndo()
+    }
+
+    @ViewBuilder
+    private func cartUndoToast(item: CartItem) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "arrow.uturn.backward.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Removed")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(item.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: BrandSpacing.xs)
+            Button {
+                performUndo(item: item)
+            } label: {
+                Text("Undo")
+                    .font(.brandLabelLarge())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, BrandSpacing.xxs + 2)
+                    .background(Color.bizarreOrange.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Undo remove \(item.name)")
+            .accessibilityIdentifier("pos.cart.undoRemove")
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(
+            Color.bizarreSurface1,
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Removed \(item.name). Tap Undo to restore.")
+        .accessibilityIdentifier("pos.cart.undoToast")
     }
 
     @ViewBuilder
@@ -118,8 +223,11 @@ struct PosCartPanel: View {
                     .listRowInsets(EdgeInsets())
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
-                            BrandHaptics.tap()
+                            // §16 — capture item before removal so the undo toast
+                            // can offer to restore it within the 5-second window.
+                            let snapshot = item
                             cart.remove(id: item.id)
+                            showUndo(for: snapshot)
                         } label: {
                             Label("Void", systemImage: "trash")
                         }
@@ -137,7 +245,9 @@ struct PosCartPanel: View {
                             Label("Edit price", systemImage: "dollarsign")
                         }
                         Button(role: .destructive) {
+                            let snapshot = item
                             cart.remove(id: item.id)
+                            showUndo(for: snapshot)
                         } label: {
                             Label("Remove", systemImage: "trash")
                         }

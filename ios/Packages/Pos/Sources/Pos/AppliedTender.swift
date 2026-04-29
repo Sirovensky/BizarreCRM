@@ -22,6 +22,33 @@ public struct AppliedTender: Identifiable, Equatable, Hashable, Sendable {
     public enum Kind: String, Sendable, Equatable, Hashable {
         case giftCard
         case storeCredit
+        /// Loyalty-points redemption. Points are exchanged for a dollar-off
+        /// credit at checkout; the server converts points → cents server-side.
+        case loyaltyRedemption
+
+        // MARK: - §16 Payment method icon SF Symbols
+
+        /// SF Symbol representing this tender kind in cart totals rows,
+        /// receipts, and the applied-tender chip in `PosCartPanel`.
+        ///
+        /// Symbols are all "fill" weight to match the `TenderMethod.systemImage`
+        /// conventions used on the method-picker tiles.
+        public var systemImage: String {
+            switch self {
+            case .giftCard:         return "giftcard.fill"
+            case .storeCredit:      return "dollarsign.circle.fill"
+            case .loyaltyRedemption: return "star.circle.fill"
+            }
+        }
+
+        /// Accessible label used when the icon is the only visual indicator.
+        public var accessibilityLabel: String {
+            switch self {
+            case .giftCard:          return "Gift card"
+            case .storeCredit:       return "Store credit"
+            case .loyaltyRedemption: return "Loyalty points"
+            }
+        }
     }
 
     public let id: UUID
