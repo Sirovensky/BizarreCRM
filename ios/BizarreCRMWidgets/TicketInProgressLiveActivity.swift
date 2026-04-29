@@ -8,8 +8,8 @@ import DesignSystem
 
 /// Live Activity shown when a technician clicks "Start work" on a ticket.
 ///
-/// Shows on Lock Screen + Dynamic Island: timer, customer name, service.
-/// Ends when the ticket is marked Done.
+/// Shows on Lock Screen + Dynamic Island: timer, customer name, service, repair phase.
+/// Ends when the ticket is marked Done — lingers 12 s with "Ticket done" dismissal copy.
 ///
 /// Start from the Tickets feature ViewModel:
 /// ```swift
@@ -20,6 +20,10 @@ import DesignSystem
 ///     customerName: ticket.customerName,
 ///     service: ticket.service
 /// )
+/// // Update phase as work progresses:
+/// try await coordinator.updateTicketActivity(elapsedMinutes: 30, phase: .repairing)
+/// // End when done:
+/// await coordinator.endTicketActivity(resolved: true)
 /// ```
 struct TicketInProgressLiveActivity: Widget {
     var body: some WidgetConfiguration {
@@ -35,7 +39,7 @@ struct TicketInProgressLiveActivity: Widget {
                             .lineLimit(1)
                             .accessibilityLabel("Customer: \(context.attributes.customerName ?? context.attributes.orderId)")
                     } icon: {
-                        Image(systemName: "wrench.and.screwdriver.fill")
+                        Image(systemName: phaseIcon(context.state.phase))
                             .foregroundStyle(.tint)
                             .accessibilityHidden(true)
                     }
@@ -49,6 +53,14 @@ struct TicketInProgressLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack {
+                        // Phase badge
+                        Text(context.state.phase.rawValue)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.tint)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.tint.opacity(0.15), in: Capsule())
+                            .accessibilityLabel("Phase: \(context.state.phase.rawValue)")
                         Text(context.attributes.service ?? "#\(context.attributes.orderId)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -60,18 +72,25 @@ struct TicketInProgressLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: "wrench.and.screwdriver.fill")
+                // Compact leading: phase-specific icon for richer at-a-glance info
+                Image(systemName: phaseIcon(context.state.phase))
                     .foregroundStyle(.tint)
                     .accessibilityHidden(true)
             } compactTrailing: {
-                Text(elapsedText(minutes: context.state.elapsedMinutes))
-                    .font(.caption2.weight(.semibold))
-                    .monospacedDigit()
-                    .accessibilityLabel("Ticket time: \(elapsedText(minutes: context.state.elapsedMinutes))")
+                // Compact trailing: elapsed time + phase initial (e.g. "30m R")
+                HStack(spacing: 2) {
+                    Text(elapsedText(minutes: context.state.elapsedMinutes))
+                        .font(.caption2.weight(.semibold))
+                        .monospacedDigit()
+                    Text(phaseInitial(context.state.phase))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Ticket: \(elapsedText(minutes: context.state.elapsedMinutes)), \(context.state.phase.rawValue)")
             } minimal: {
-                Image(systemName: "wrench.and.screwdriver.fill")
+                Image(systemName: phaseIcon(context.state.phase))
                     .foregroundStyle(.tint)
-                    .accessibilityLabel("Ticket in progress")
+                    .accessibilityLabel("Ticket \(context.state.phase.rawValue)")
             }
         }
     }
@@ -83,6 +102,28 @@ struct TicketInProgressLiveActivity: Widget {
             ? String(format: "%dh %02dm", hours, mins)
             : String(format: "%dm", mins)
     }
+
+    /// SF Symbol name representing the current repair phase.
+    private func phaseIcon(_ phase: TicketPhase) -> String {
+        switch phase {
+        case .diagnosing:   return "stethoscope"
+        case .repairing:    return "wrench.and.screwdriver.fill"
+        case .testing:      return "checkmark.shield"
+        case .waitingParts: return "shippingbox"
+        case .done:         return "checkmark.circle.fill"
+        }
+    }
+
+    /// Single-character phase abbreviation for the compact-trailing slot.
+    private func phaseInitial(_ phase: TicketPhase) -> String {
+        switch phase {
+        case .diagnosing:   return "D"
+        case .repairing:    return "R"
+        case .testing:      return "T"
+        case .waitingParts: return "W"
+        case .done:         return "✓"
+        }
+    }
 }
 
 // MARK: - Lock screen view
@@ -91,24 +132,49 @@ private struct LockScreenTicketView: View {
     let context: ActivityViewContext<TicketInProgressAttributes>
 
     var body: some View {
-        HStack {
-            Image(systemName: "wrench.and.screwdriver.fill")
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            Image(systemName: phaseIcon(context.state.phase))
                 .font(.title2)
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
+                // Animate icon change when phase transitions
+                .contentTransition(.symbolEffect(.replace))
 
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                Text(context.attributes.customerName ?? "Ticket #\(context.attributes.orderId)")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .accessibilityLabel("Customer: \(context.attributes.customerName ?? context.attributes.orderId)")
+                // Row 1: Customer name + phase badge
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    Text(context.attributes.customerName ?? "Ticket #\(context.attributes.orderId)")
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .accessibilityLabel("Customer: \(context.attributes.customerName ?? context.attributes.orderId)")
 
-                Text("In progress · \(elapsedText(minutes: context.state.elapsedMinutes))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .accessibilityLabel("In progress for \(elapsedText(minutes: context.state.elapsedMinutes))")
+                    // Phase chip — hidden when done (uses icon instead)
+                    if context.state.phase != .done {
+                        Text(context.state.phase.rawValue)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.tint)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.tint.opacity(0.15), in: Capsule())
+                            .accessibilityLabel(context.state.phase.rawValue)
+                    }
+                }
+
+                // Row 2: Service + elapsed (shows "Ticket done" when finished)
+                if context.state.phase == .done {
+                    Text("Ticket done · \(elapsedText(minutes: context.state.elapsedMinutes))")
+                        .font(.caption)
+                        .foregroundStyle(.bizarreSuccess)
+                        .monospacedDigit()
+                        .accessibilityLabel("Ticket complete, total time \(elapsedText(minutes: context.state.elapsedMinutes))")
+                } else {
+                    Text("\(context.attributes.service ?? "#\(context.attributes.orderId)") · \(elapsedText(minutes: context.state.elapsedMinutes))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .accessibilityLabel("\(context.attributes.service ?? context.attributes.orderId), in progress for \(elapsedText(minutes: context.state.elapsedMinutes))")
+                }
             }
 
             Spacer()
@@ -134,5 +200,15 @@ private struct LockScreenTicketView: View {
         return hours > 0
             ? String(format: "%dh %02dm", hours, mins)
             : String(format: "%dm", mins)
+    }
+
+    private func phaseIcon(_ phase: TicketPhase) -> String {
+        switch phase {
+        case .diagnosing:   return "stethoscope"
+        case .repairing:    return "wrench.and.screwdriver.fill"
+        case .testing:      return "checkmark.shield"
+        case .waitingParts: return "shippingbox"
+        case .done:         return "checkmark.circle.fill"
+        }
     }
 }

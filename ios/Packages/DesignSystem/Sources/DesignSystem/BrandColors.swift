@@ -63,6 +63,91 @@ public extension Color {
     static let bizarreOrangeBright       = bizarreOrangeContainer
 }
 
+// MARK: - Brand Gradient Stops (§80 Tokens / brand surface ramp)
+//
+// Named LinearGradient constants so views never hard-code hex values inline.
+// Dark/light variants are composed from the BrandPalette token enum in Tokens.swift.
+//
+// Usage:
+//   myView.background(BrandGradients.heroSurface)
+//   myView.overlay(BrandGradients.glassEdgeFade)
+public enum BrandGradients {
+
+    // MARK: Hero / dashboard
+
+    /// Full-bleed page background gradient — warm zinc ramp top → bottom.
+    /// Dark mode: `bgDeep` → `bg`; blends from #050403 to #0C0B09.
+    /// Light mode: `bgDeepLight` → `bgLight`; #FAF8F5 → #F5F2ED.
+    public static let heroSurface = LinearGradient(
+        stops: [
+            .init(color: Color("SurfaceBase",  bundle: .main), location: 0.00),
+            .init(color: Color("Surface1",     bundle: .main), location: 1.00)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    // MARK: Brand primary (cream) ramp
+
+    /// Cream-to-orange primary gradient — used on branded CTAs and hero chips.
+    /// Mimics the bizarreelectronics.com cream wave ramp (§16.27).
+    public static let primaryRamp = LinearGradient(
+        stops: [
+            .init(color: Color("BrandPrimary",          bundle: .main), location: 0.00),
+            .init(color: Color("BrandOrange",           bundle: .main), location: 1.00)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    // MARK: Glass edge fade
+
+    /// Vertical alpha-fade used at the top and bottom edges of scrollable glass
+    /// cards to hint overscroll content (opacity 0.72 → 0).
+    public static let glassEdgeFadeTop = LinearGradient(
+        stops: [
+            .init(color: Color("GlassTintDark", bundle: .main).opacity(0.72), location: 0.00),
+            .init(color: Color("GlassTintDark", bundle: .main).opacity(0.00), location: 1.00)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// Mirror of `glassEdgeFadeTop` — apply at the bottom of scrollable regions.
+    public static let glassEdgeFadeBottom = LinearGradient(
+        stops: [
+            .init(color: Color("GlassTintDark", bundle: .main).opacity(0.00), location: 0.00),
+            .init(color: Color("GlassTintDark", bundle: .main).opacity(0.72), location: 1.00)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    // MARK: Status / semantic
+
+    /// Success celebration gradient — teal left to cream right.
+    /// Use on payment-success or achievement hero banners.
+    public static let successCelebration = LinearGradient(
+        stops: [
+            .init(color: Color("BrandTeal",    bundle: .main), location: 0.00),
+            .init(color: Color("BrandPrimary", bundle: .main), location: 1.00)
+        ],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
+    /// Danger / alert gradient — rose left to orange right.
+    /// Use on error banners or overdue indicators.
+    public static let dangerAlert = LinearGradient(
+        stops: [
+            .init(color: Color("ErrorRose",  bundle: .main), location: 0.00),
+            .init(color: Color("BrandOrange", bundle: .main), location: 1.00)
+        ],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+}
+
 // Mirror the brand colors onto ShapeStyle so dot-syntax works at call
 // sites like `.foregroundStyle(.bizarreOrange)` and `.fill(.bizarreTeal)`.
 public extension ShapeStyle where Self == Color {

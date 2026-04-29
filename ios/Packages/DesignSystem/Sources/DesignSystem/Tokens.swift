@@ -41,14 +41,75 @@ public enum DesignTokens {
         public static let capsule: CGFloat = 999
     }
 
-    // MARK: - Density mode (§30.2)
+    // MARK: - Density mode tokens (§30.2 / §80 — §571)
+    //
+    // Three named density levels feed the spacing rhythm throughout the app.
+    // Views read `@Environment(\.densityMode)` and multiply spacing tokens
+    // with `Density.spacing(base:)` so a single env change reflows the whole UI.
+    //
+    // Orthogonal to Reduce Motion — density controls spatial rhythm, not
+    // animation presence.
+    //
+    // Usage:
+    //   @Environment(\.densityMode) private var density
+    //   let pad = DesignTokens.Density.spacing(base: DesignTokens.Spacing.md, mode: density)
     public enum Density {
-        /// Compact multiplier — multiply all spacing tokens by this in compact mode.
-        public static let compactMultiplier: CGFloat = 0.85
-        /// Returns `value × compactMultiplier` when `isCompact` is true, else `value`.
-        public static func scaled(_ value: CGFloat, compact isCompact: Bool) -> CGFloat {
-            isCompact ? value * compactMultiplier : value
+        // MARK: Named levels
+
+        /// Three supported density levels — stored in UserDefaults via DensityModeKey.
+        public enum Mode: String, CaseIterable, Sendable {
+            /// Relaxed layout — 15% more breathing room than default.
+            case comfortable
+            /// Standard iOS HIG baseline (default).
+            case `default`
+            /// 15% tighter — useful on small screens or information-dense contexts.
+            case compact
         }
+
+        // MARK: Multipliers
+
+        /// Scale factor to apply to all spacing tokens at this density level.
+        public static func multiplier(for mode: Mode) -> CGFloat {
+            switch mode {
+            case .comfortable: return 1.15
+            case .default:     return 1.00
+            case .compact:     return 0.85
+            }
+        }
+
+        // MARK: Token helpers
+
+        /// Returns `base` scaled for the given density `mode`.
+        public static func spacing(base: CGFloat, mode: Mode) -> CGFloat {
+            (base * multiplier(for: mode)).rounded()
+        }
+
+        /// Returns `base` scaled for the compact legacy flag (backwards compat).
+        ///
+        /// Prefer `spacing(base:mode:)` for new call-sites.
+        public static func scaled(_ value: CGFloat, compact isCompact: Bool) -> CGFloat {
+            spacing(base: value, mode: isCompact ? .compact : .default)
+        }
+
+        // MARK: Compact multiplier (legacy alias — kept for existing call-sites)
+
+        /// Compact multiplier — multiply all spacing tokens by this in compact mode.
+        ///
+        /// Prefer `multiplier(for:)` for new call-sites.
+        public static let compactMultiplier: CGFloat = 0.85
+    }
+
+    // MARK: - DensityMode environment key (§30.2)
+    //
+    // Views inject `.densityMode` from the app root once the user preference
+    // is loaded. Child views that need density-aware spacing read this env key.
+    //
+    // Root injection (AppRootView):
+    //   .environment(\.densityMode, userDensity)
+
+    /// SwiftUI environment key for the active density mode.
+    public struct DensityModeKey: EnvironmentKey {
+        public static let defaultValue: Density.Mode = .default
     }
 
     // MARK: - Shadow (§80.3)
@@ -269,5 +330,18 @@ public enum DesignTokens {
         public static let baseFallbackLight     = Color(white: 0.88)
         public static let highlightFallbackDark = Color(white: 0.24)
         public static let highlightFallbackLight = Color(white: 0.94)
+    }
+}
+
+// MARK: - EnvironmentValues — density mode
+
+public extension EnvironmentValues {
+    /// The active density mode for the current view subtree.
+    ///
+    /// Default: `.default`. Inject from the app root after reading
+    /// the user's Settings → Appearance → Dashboard density preference.
+    var densityMode: DesignTokens.Density.Mode {
+        get { self[DesignTokens.DensityModeKey.self] }
+        set { self[DesignTokens.DensityModeKey.self] = newValue }
     }
 }

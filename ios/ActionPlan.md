@@ -3839,12 +3839,12 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Inline** — single-line ticket count via `.accessoryInline`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.3 Live Activities (ActivityKit)
-- [x] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done. Commit `baa1cbb6`.
-- [x] **POS charge pending** — `SaleInProgressLiveActivity` + `POSSaleActivityAttributes`; Dynamic Island compact/expanded; ends on `endSaleActivity()`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done. Commit `baa1cbb6`. Layout enhanced: `TicketPhase` enum (diagnosing/repairing/testing/waitingParts/done), phase badge chip + phase SF Symbol with `symbolEffect(.replace)`, "Ticket done" dismissal copy (12 s linger). `feat(§24.3): ticket LA layout + dismissal copy`
+- [x] **POS charge pending** — `SaleInProgressLiveActivity` + `POSSaleActivityAttributes`; Dynamic Island compact/expanded; ends on `endSaleActivity()`. Sale-progress activity enhanced: `progressPercent: Double` in `ContentState`; lock-screen `ProgressView` + phase-aware title ("Sale in Progress" → "Sale Complete"); `endSaleActivity(completed:)` lingers 8 s on completion. `feat(§24.3): sale-progress activity`
 - [x] **Clock-in timer** — `ClockInOutLiveActivity` + `ShiftActivityAttributes`; Dynamic Island "8h 14m"; tap → timeclock deep-link; updated via `updateShiftActivity(durationMinutes:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Appointment countdown** — 15 min before appointment → live activity on Lock Screen. (`BizarreCRMWidgets/AppointmentCountdownLiveActivity.swift`; `AppointmentCountdownAttributes` + Dynamic Island compact/expanded/minimal + Lock Screen; `LiveActivityCoordinator` ext; 8837c7f6)
-- [x] **Dynamic Island compact / expanded** layouts — content + trailing icon + leading label; both activities. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
-- [ ] **Push-to-start** — server triggers Live Activity via push token (iOS 17.2+).
+- [x] **Dynamic Island compact / expanded** layouts — content + trailing icon + leading label; both activities. Compact view improved: ticket compact-trailing shows elapsed + phase initial ("30m R"); sale compact-leading shows phase icon (cart→card→checkmark) with `symbolEffect(.replace)`; sale compact-trailing shows "✓" badge when payment complete. `feat(§24.3): Dynamic Island compact view`
+- [x] **Push-to-update token registration** — `LiveActivityPushTokenService` (iOS 17.2+) starts ticket/sale activities with `pushType: .token`, awaits first `pushTokenUpdates` emission, uploads hex token + `activityId` to `POST /api/v1/live-activities/register` via `APIClient.registerLiveActivityPushToken(_:)`. `feat(§24.3): push-to-update token reg`
 - [x] **Rate limits** — guard `shiftActivity == nil` / `saleActivity == nil`; `areActivitiesEnabled` check before request. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.4 App Intents (Shortcuts + Siri)
@@ -6976,6 +6976,21 @@ Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor)
 
 ### 80.9 Semantic colors
 - [x] Semantic tokens: `DesignTokens.SemanticColor.accent/danger/warning/success/info`, surface, text, border aliases — all pointing to existing asset-catalog colors. (`DesignTokens.SemanticColor` namespace in `Tokens.swift`. feat(§80.9): 9c4e4c90)
+
+### 80.10 Density mode tokens
+- [x] `DesignTokens.Density.Mode` — three named levels (`comfortable` ×1.15, `default` ×1.00, `compact` ×0.85); `spacing(base:mode:)` helper; `DensityModeKey` SwiftUI `EnvironmentKey`; `EnvironmentValues.densityMode` extension. Feeds spacing rhythm per §571; orthogonal to Reduce Motion. (`Tokens.swift`. feat(§80.10): current)
+
+### 80.11 Brand gradient stops
+- [x] `BrandGradients` enum — five named `LinearGradient` constants: `heroSurface`, `primaryRamp` (cream→orange), `glassEdgeFadeTop`, `glassEdgeFadeBottom`, `successCelebration`, `dangerAlert`. All stops reference asset-catalog entries; no inline hex values. (`BrandColors.swift`. feat(§80.11): current)
+
+### 80.12 Glass blur ladder
+- [x] `GlassBlur` enum — seven named blur steps: `hairline` (2pt), `subtle` (6pt), `card` (12pt), `sheet` (20pt), `chrome` (32pt), `hero` (48pt), `immersive` (72pt). Each step carries `radius` + `solidOpacity` (Reduce Transparency fallback). `blurStep(_ step:)` view modifier gates `.blur(radius:)` vs solid fill on `accessibilityReduceTransparency`. (`GlassKit.swift`. feat(§80.12): current)
+
+### 80.13 Motion curve aliases
+- [x] `MotionCurveAlias` — semantic alias table composing `BrandCurve` + `MotionEasingSpec` + `MotionDurationSpec`. Covers: `enter`, `exit`, `pageEnter`, `heroTransition`, `celebrate`, `confirm`, `ambient`, `standard`, `expand`, `collapse`; Reduce Motion variants for `enter`, `celebrate`, `heroTransition`. `enterAnimation(value:)` + `celebrateAnimation(value:)` view modifiers. (`Motion/MotionCurveAliases.swift`. feat(§80.13): current)
+
+### 80.14 Asset color migration audit (warn-only lint)
+- [x] `ColorMigrationAudit` — DEBUG-only warn-only audit helpers: `warn(inlineColor:suggestedToken:file:line:)`, `warnGray(white:suggestedToken:file:line:)`, `warningCount` counter for snapshot-test assertions, `resetCounter()`. `@InlinedColor` property wrapper for intentional design-exceptions. `View.assertNoInlineColor()` snapshot-test helper. SwiftLint `forbid_inline_design_values` custom rule documented inline (regex targets `Color(red:|green:|blue:|white:|hue:|saturation:|brightness:)`). Migration guidance table maps common inline literals → recommended tokens. (`ColorMigrationLint.swift`. feat(§80.14): current)
 - Surface: `.surfaceBase`, `.surfaceRaised`, `.surfaceInset`, `.surfaceGlass`.
 - Text: `.textPrimary`, `.textSecondary`, `.textMuted`, `.textInverse`.
 - Border: `.borderSubtle`, `.borderStrong`, `.borderAccent`.
