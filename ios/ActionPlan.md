@@ -4617,9 +4617,12 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Three types: Toast (transient, non-blocking, 2s auto-dismiss, success/info); Banner (persistent until dismissed, offline/sync pending/error); Snackbar (transient with action, undo-window after destructive)
 - [ ] Position: top on iPad (doesn't block bottom content); bottom on iPhone (thumb zone); avoid covering nav/toolbars
 - [ ] Style: glass surface, small icon, 1-line message; color by severity (success green, info default, warning amber, danger red); never stack >2 visible
-- [ ] `ToastQueue` singleton: FIFO with dedup — don't show same toast twice within 3s
-- [ ] A11y: `accessibilityPriority(.high)` for VoiceOver; `announcement` on show
-- [ ] Haptics: success=`.success`; warning=`.warning`; danger=`.error`
+- [x] `ToastQueue` singleton: FIFO with dedup — don't show same toast twice within 3s <!-- ToastQueue.swift — @MainActor FIFO singleton with 3s dedup window, auto-promotes pending. -->
+
+- [x] A11y: `accessibilityPriority(.high)` for VoiceOver; `announcement` on show <!-- BrandToastA11y.swift — accessibilitySortPriority(100) + UIAccessibility.post announcement, hooked into BrandToast.body. -->
+
+- [x] Haptics: success=`.success`; warning=`.warning`; danger=`.error` <!-- BrandToast.Haptics.fire(for:) routes kind to BrandHaptics.success/warning/error; info silent. Called from BrandToast.onAppear. -->
+
 - [ ] Dismissal: swipe up (top) or down (bottom) to dismiss early; tap action area triggers callback
 - [ ] Persistence: toast outlives push-navigation; dismissed only on user action or timeout
 - [ ] Required when: destructive (delete/refund/cancel subscription); irreversible (void invoice/reset PIN); high-value (>threshold discount, large refund); role-privileged (admin override)
@@ -4692,11 +4695,13 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Shimmer: diagonal gradient sweep L→R every 1.5s; Reduce Motion → static gray (no sweep).
 - [ ] Shown on first load only; background refresh keeps cached content + subtle top indicator.
 - [ ] Error transition: skeleton → error state with same layout footprint.
-- [ ] Count: 3-6 skeleton rows typically; list-specific counts tuned to viewport.
+- [x] Count: 3-6 skeleton rows typically; list-specific counts tuned to viewport. <!-- SkeletonRowCount enum (compact 3 / list 5 / dense 6 / grid 8) + forViewportHeight(_:) helper. -->
+
 - [x] Tokens: `Surface.skeletonBase`, `Surface.skeletonHighlight` (dark/light variants). (`DesignTokens.Skeleton.base` + `.highlight` in `DesignSystem/Tokens.swift`; asset-catalog backed + dark/light fallbacks. feat(§30.9): 6f177c96)
 - [ ] Reusable components: `SkeletonRow(.ticket)`, `SkeletonRow(.customer)`, centralized.
 - [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
-- [ ] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5).
+- [x] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5). <!-- BrandCurve enum in Motion/BrandCurve.swift — animation(duration:) factory + natural-response default per case. -->
+
 - [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
 - [x] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers. (`inline_animation_duration` WARNING rule in `ios/.swiftlint.yml` — regex catches `withAnimation(.easeInOut(duration: <digit>`. feat(§67): b12)
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.

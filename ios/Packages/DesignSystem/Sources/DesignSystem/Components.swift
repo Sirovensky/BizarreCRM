@@ -516,6 +516,14 @@ public struct BrandToast: View {
         .reduceTransparencyFallback(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .accessibilityLabel(message)
         .accessibilityAddTraits(.isStaticText)
+        // §30.13 — pull toast to the top of the VoiceOver focus order so a
+        // transient notice isn't read after surrounding decorative content.
+        .accessibilitySortPriority(BrandToastA11y.priority)
+        // §30.13 — announce on appearance + fire matching kind-keyed haptic.
+        .onAppear {
+            BrandToastA11y.announce(message)
+            BrandToast.Haptics.fire(for: kind)
+        }
     }
 
     private var iconName: String {
