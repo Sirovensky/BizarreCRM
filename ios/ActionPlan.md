@@ -3166,9 +3166,9 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.9 Payment (BlockChyp + methods)
 - [x] **BlockChyp API key** + terminal pairing. (`Settings/Pages/PaymentMethodsPage.swift`; `PUT /settings/payment`.)
-- [ ] **Surcharge rules** — card surcharge on/off.
-- [ ] **Tipping** — enabled / presets (10/15/20) / custom allowed / hide.
-- [ ] **Manual-keyed card** allowed toggle.
+- [x] **Surcharge rules** — card surcharge on/off. (`PaymentMethodsPage` "Card rules" section; `cardSurchargeEnabled` field in `PaymentMethodSettings` + `PaymentSettingsDTO`.)
+- [x] **Tipping** — enabled / presets (10/15/20) / custom allowed / hide. (`PaymentMethodsPage` "Tipping" section; `tippingEnabled` + `tipPresets` toggle-chip UI; persisted via `PUT /settings/payment`.)
+- [x] **Manual-keyed card** allowed toggle. (`PaymentMethodsPage` "Card rules" section; `manualKeyedCardAllowed` field.)
 - [x] **Gift cards** on/off toggle. (`PaymentMethodsPage.swift`)
 - [x] **Store credit** on/off toggle. (`PaymentMethodsPage.swift`)
 - [ ] **Refund policy** — max days since sale; require manager above $X.
@@ -3182,7 +3182,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Test send** to current user's phone. (`SmsProviderPage.swift`)
 - [ ] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START).
 - [ ] **Compliance** — opt-out keywords, carrier-required footers.
-- [ ] **MMS** toggle if plan supports.
+- [x] **MMS** toggle if plan supports. (`SmsProviderPage` "Messaging capabilities" section; `mmsEnabled` in `SmsProviderViewModel` + `SmsSettingsDTO`; persisted via `PUT /settings/sms`.)
 
 ### 19.11 Automations
 - [ ] **Rule builder** — When [event] Then [action]; events: ticket-created, status-changed, payment-received, etc.; actions: send SMS, send email, assign, add note, create task.
@@ -3257,7 +3257,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [x] **Sync queue inspector** — pending writes + retry age + dead-letter (tap to retry / drop). (`Settings/SyncDiagnosticsView.swift` with per-row Retry / Discard backed by `SyncQueueStore`.)
 - [ ] **Clear cache** — images + catalog (not queued writes).
 - [ ] **Reset GRDB** — nuclear option (sign out + wipe).
-- [ ] **Disk usage** — breakdown: images X MB, GRDB Y MB, logs Z MB.
+- [x] **Disk usage** — breakdown: images X MB, GRDB Y MB, logs Z MB. (`SyncDiagnosticsView` "Disk usage" section; `SyncDiagnosticsViewModel.refreshDiskUsage()` walks Documents + Caches + Library/Logs with `ByteCountFormatter`.)
 - [ ] **Export DB** (dev build only) — share sheet → `.sqlite` file.
 
 ### 19.24 About

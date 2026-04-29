@@ -77,14 +77,27 @@ public struct PaymentSettingsDTO: Codable, Sendable {
     public var checkEnabled: Bool?
     public var blockChypApiKey: String?
     public var blockChypTerminalName: String?
+    // §19.9 — surcharge, tipping, manual-keyed card
+    public var cardSurchargeEnabled: Bool?
+    public var tippingEnabled: Bool?
+    public var tipPresets: [Int]?
+    public var manualKeyedCardAllowed: Bool?
 
     public init(cashEnabled: Bool?, cardEnabled: Bool?, giftCardEnabled: Bool?,
                 storeCreditEnabled: Bool?, checkEnabled: Bool?,
-                blockChypApiKey: String?, blockChypTerminalName: String?) {
+                blockChypApiKey: String?, blockChypTerminalName: String?,
+                cardSurchargeEnabled: Bool? = nil,
+                tippingEnabled: Bool? = nil,
+                tipPresets: [Int]? = nil,
+                manualKeyedCardAllowed: Bool? = nil) {
         self.cashEnabled = cashEnabled; self.cardEnabled = cardEnabled
         self.giftCardEnabled = giftCardEnabled; self.storeCreditEnabled = storeCreditEnabled
         self.checkEnabled = checkEnabled; self.blockChypApiKey = blockChypApiKey
         self.blockChypTerminalName = blockChypTerminalName
+        self.cardSurchargeEnabled = cardSurchargeEnabled
+        self.tippingEnabled = tippingEnabled
+        self.tipPresets = tipPresets
+        self.manualKeyedCardAllowed = manualKeyedCardAllowed
     }
 }
 
@@ -96,12 +109,16 @@ public struct SmsSettingsDTO: Codable, Sendable {
     public var twilioAccountSid: String?
     public var twilioAuthToken: String?
     public var a2pStatus: String?
+    // §19.10 — MMS support toggle
+    public var mmsEnabled: Bool?
 
     public init(provider: String?, fromNumber: String?, twilioAccountSid: String?,
-                twilioAuthToken: String?, a2pStatus: String?) {
+                twilioAuthToken: String?, a2pStatus: String?,
+                mmsEnabled: Bool? = nil) {
         self.provider = provider; self.fromNumber = fromNumber
         self.twilioAccountSid = twilioAccountSid; self.twilioAuthToken = twilioAuthToken
         self.a2pStatus = a2pStatus
+        self.mmsEnabled = mmsEnabled
     }
 }
 
