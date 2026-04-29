@@ -3642,7 +3642,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 
 ### 22.2 Interactions
 - [x] **`.hoverEffect(.highlight)`** on all tappable rows / buttons / cards. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
-- [ ] **Pointer customization** — custom cursors (link vs default) per semantic element.
+- [x] **Pointer customization** — custom cursors (link vs default) per semantic element. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [x] **`.contextMenu`** on rows — Open / Copy ID / Copy phone / Archive / Delete / Share / Open in new window. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] **Drag-and-drop** — drag inventory → ticket services, drag ticket → calendar slot, drag customer → SMS compose.
 - [ ] **Multi-select** — long-press or ⌘-click batch actions; Edit mode in list toolbar.
@@ -3650,7 +3650,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 
 ### 22.3 Keyboard-first
 - [ ] **Shortcuts**: ⌘N / ⌘F / ⌘R / ⌘, / ⌘D / ⌘1–⌘9 / ⌘⇧F / ⌘⇧N / ⌘K (command palette) / ⌘P (print) / ⌘/ (help) / ⎋ (dismiss sheet) / ⌥↑↓ (row move) / Space (preview).
-- [ ] **Focus ring** — visible keyboard focus on buttons/links; `.focusable()`.
+- [x] **Focus ring** — visible keyboard focus on buttons/links; `.focusable()`. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] **Tab order** — forms tabbable in logical order.
 - [ ] **Menu bar** — iPad-specific `.commands` with grouped menu items (File / Edit / View / Actions / Window / Help).
 
@@ -3664,7 +3664,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.5 Data presentation
 - [ ] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs.
 - [ ] **Column chooser** — reorder / hide columns; persisted.
-- [ ] **Sort indicator** arrows on column headers.
+- [x] **Sort indicator** arrows on column headers. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 
 ### 22.6 Magic Keyboard / trackpad
 - [ ] **Swipe gestures** translated to trackpad (2-finger).
@@ -3683,7 +3683,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels
 - [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
 - [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
-- [ ] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry
+- [x] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] External barcode scanner (USB/BT wedge): detect rapid keystrokes ending in Enter; route to scan handler not textfield; configurable via Settings → Hardware
 - [ ] Support Dvorak/custom layouts automatically — never hardcode layouts
 - [ ] Keyboard show/hide: `.keyboardAvoidance` adjusts insets; bottom-anchored primary buttons stay visible via `safeAreaInset(edge: .bottom)`
@@ -3699,7 +3699,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Mac Designed-for-iPad: sidebar persistent, min 260pt
 - [ ] Drag-to-resize: iPad 13" Pro supports resize via split-view divider; inner sidebar also resizable 260–400pt
 - [ ] Persistence: width saved per-scene in `UserDefaults`
-- [ ] Overflow: if label truncates, icon-only mode kicks in automatically at <100pt
+- [x] Overflow: if label truncates, icon-only mode kicks in automatically at <100pt (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] Tandem OLED: optional HDR content for hero dashboard images (brand gradients); verify blacks on real OLED (no gray haze)
 - [x] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] Magic Keyboard 2024: surface function row; map custom actions (F1=new ticket, F2=POS, F3=inventory)
