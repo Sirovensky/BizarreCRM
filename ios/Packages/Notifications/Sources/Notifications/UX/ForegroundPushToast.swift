@@ -39,13 +39,40 @@ public struct ForegroundPushToastItem: Identifiable, Sendable {
 
 /// Thread-safe coordinator. App delegates call `show(...)` from the
 /// `UNUserNotificationCenter willPresent` callback.
+///
+/// ## In-app banner queue (§13.3)
+///
+/// When multiple pushes arrive in quick succession the coordinator queues them
+/// instead of discarding all but the last.  Each toast displays for
+/// `displayDuration` seconds (default 4 s), then the next item in the queue
+/// advances automatically.  The queue is capped at `maxQueueDepth` items
+/// (default 5) to prevent unbounded accumulation; oldest items are dropped
+/// when the cap is exceeded.
+///
+/// Usage is unchanged — keep calling `show(_:)` from wherever pushes arrive.
 @MainActor
 @Observable
 public final class ForegroundPushToastCoordinator {
 
     public static let shared = ForegroundPushToastCoordinator()
 
+    // MARK: - Configuration
+
+    /// How long each banner stays visible before advancing to the next queued item.
+    public var displayDuration: TimeInterval = 4.0
+
+    /// Maximum number of pending banners held in the queue (excluding the one
+    /// currently on screen).  Excess items are dropped (oldest first).
+    public var maxQueueDepth: Int = 5
+
+    // MARK: - Observable state
+
     public private(set) var currentToast: ForegroundPushToastItem?
+
+    // MARK: - Private
+
+    /// Pending items waiting to be shown after the current one dismisses.
+    private var queue: [ForegroundPushToastItem] = []
     private var dismissTask: Task<Void, Never>?
 
     // MARK: §70.3 — source-screen suppression
@@ -60,10 +87,15 @@ public final class ForegroundPushToastCoordinator {
 
     public init() {}
 
-    /// Present a foreground toast. Replaces any existing one.
+    /// Enqueue a foreground toast.
     ///
-    /// Suppressed when the `item.deepLinkPath` matches `activeScreenPath`
-    /// (§70.3 — user is already looking at the source screen).
+    /// - If no toast is currently visible the item is shown immediately.
+    /// - If a toast is already visible the item is appended to the queue and
+    ///   will appear automatically after the current one dismisses.
+    /// - Suppressed when `item.deepLinkPath` matches `activeScreenPath`
+    ///   (§70.3 — user is already looking at the source screen).
+    /// - Duplicate paths already present in the queue or currently shown are
+    ///   collapsed to avoid redundant alerts.
     public func show(_ item: ForegroundPushToastItem) {
         // §70.3 — suppress if user is already on the source screen.
         if let deepLinkPath = item.deepLinkPath,
@@ -73,15 +105,28 @@ public final class ForegroundPushToastCoordinator {
             return
         }
 
-        dismissTask?.cancel()
-        withAnimation(BrandMotion.snappy) {
-            currentToast = item
+        // Deduplicate: skip if same path is already showing or queued.
+        if let deepLinkPath = item.deepLinkPath {
+            let alreadyShowing = currentToast?.deepLinkPath.map { pathsMatch($0, deepLinkPath) } ?? false
+            let alreadyQueued  = queue.contains { $0.deepLinkPath.map { pathsMatch($0, deepLinkPath) } ?? false }
+            if alreadyShowing || alreadyQueued {
+                AppLog.ui.debug("ForegroundPushToast: deduplicated \(deepLinkPath, privacy: .public)")
+                return
+            }
         }
-        BrandHaptics.selection()
-        dismissTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled else { return }
-            dismiss()
+
+        if currentToast == nil {
+            // Nothing on screen — show immediately.
+            display(item)
+        } else {
+            // Something already on screen — enqueue.
+            if queue.count >= maxQueueDepth {
+                // Drop the oldest pending item to respect the cap.
+                queue.removeFirst()
+                AppLog.ui.debug("ForegroundPushToast: queue cap reached, dropped oldest pending item")
+            }
+            queue.append(item)
+            AppLog.ui.debug("ForegroundPushToast: queued (depth=\(self.queue.count, privacy: .public))")
         }
     }
 
@@ -95,7 +140,39 @@ public final class ForegroundPushToastCoordinator {
         show(item)
     }
 
+    /// Dismiss the current toast and advance to the next queued item (if any).
+    public func dismiss() {
+        dismissTask?.cancel()
+        withAnimation(BrandMotion.snappy) {
+            currentToast = nil
+        }
+        // Advance to the next queued item after a short gap so the animation
+        // completes before the next banner slides in.
+        guard !queue.isEmpty else { return }
+        let next = queue.removeFirst()
+        dismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 s gap
+            guard !Task.isCancelled else { return }
+            display(next)
+        }
+    }
+
     // MARK: - Private
+
+    /// Put `item` on screen and schedule its auto-dismiss.
+    private func display(_ item: ForegroundPushToastItem) {
+        dismissTask?.cancel()
+        withAnimation(BrandMotion.snappy) {
+            currentToast = item
+        }
+        BrandHaptics.selection()
+        let nanoseconds = UInt64(displayDuration * 1_000_000_000)
+        dismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else { return }
+            dismiss()
+        }
+    }
 
     /// Normalise and compare two deep-link path strings for suppression.
     /// Strips leading `bizarrecrm://` scheme if present, then compares the
@@ -109,13 +186,6 @@ public final class ForegroundPushToastCoordinator {
             return result.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
         return normalise(a) == normalise(b)
-    }
-
-    public func dismiss() {
-        dismissTask?.cancel()
-        withAnimation(BrandMotion.snappy) {
-            currentToast = nil
-        }
     }
 }
 
