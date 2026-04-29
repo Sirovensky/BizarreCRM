@@ -575,10 +575,23 @@ public struct PosView: View {
             tenderErrorMessage = "Repair check-in unavailable: no server connection."
             return
         }
-        let customerId = cart.customer?.id ?? 0
+        // Walk-in customers don't have a server-side id (the cart attaches
+        // a synthetic `Customer.walkIn` with id 0). The repair pipeline
+        // hits `/api/v1/customers/:id/...` endpoints whose validateId
+        // middleware rejects 0 with "Invalid customer id: must be positive
+        // integer", which surfaces as a red banner + a blank items column.
+        // Block the flow up-front instead and prompt to attach a real
+        // customer.
+        guard let customer = cart.customer, !customer.isWalkIn, let customerId = customer.id, customerId > 0 else {
+            tenderErrorMessage = "Repairs need a real customer record. Pick or create one before starting check-in."
+            // Fall back to the customer gate so the cashier can choose.
+            pathChoice = .undecided
+            phase = .gate
+            return
+        }
         let coordinator = PosRepairRouter.makeCoordinator(
             customerId: customerId,
-            customerDisplayName: cart.customer?.displayName,
+            customerDisplayName: customer.displayName,
             api: api,
             onCancel: {
                 pathChoice = .undecided

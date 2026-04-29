@@ -29,7 +29,7 @@ public struct CustomerQuickActionRow: View {
                 // — SMS
                 if let phone = primaryPhone {
                     actionChip("SMS", icon: "message.fill", tint: .bizarreTeal) {
-                        openURL("sms:\(phone.filter(\.isNumber))")
+                        SMSLauncher.open(phone: phone)
                     }
                 }
                 // — Email

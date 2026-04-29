@@ -255,11 +255,12 @@ private struct QuickActions: View {
                         actionLabel("Call", icon: "phone.fill", tint: .bizarreOrange)
                     }
                 }
-                if let smsURL = URL(string: "sms:\(digits)") {
-                    Link(destination: smsURL) {
-                        actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
-                    }
+                Button {
+                    SMSLauncher.open(phone: digits)
+                } label: {
+                    actionLabel("SMS", icon: "message.fill", tint: .bizarreTeal)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -456,12 +457,10 @@ private struct RecommendationBanner: View {
     let text: String
     let detail: CustomerDetail
 
-    private var smsURL: URL? {
-        let digits = [detail.mobile, detail.phone]
+    private var smsDigits: String? {
+        [detail.mobile, detail.phone]
             .compactMap { $0?.filter(\.isNumber) }
             .first { !$0.isEmpty }
-        guard let digits else { return nil }
-        return URL(string: "sms:\(digits)")
     }
 
     var body: some View {
@@ -478,8 +477,10 @@ private struct RecommendationBanner: View {
 
             Spacer(minLength: 0)
 
-            if let url = smsURL {
-                Link(destination: url) {
+            if let digits = smsDigits {
+                Button {
+                    SMSLauncher.open(phone: digits)
+                } label: {
                     Text("Send follow-up")
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreTeal)
@@ -487,6 +488,7 @@ private struct RecommendationBanner: View {
                         .padding(.vertical, BrandSpacing.xs)
                         .background(Color.bizarreTeal.opacity(0.12), in: Capsule())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Send follow-up SMS to \(detail.displayName)")
             }
         }

@@ -200,6 +200,29 @@ public struct PreferencesPage: View {
                     .accessibilityIdentifier("preferences.notificationDesktop")
             }
 
+            // Messaging — flip "SMS this customer" buttons between in-app
+            // Communications and the system Messages app. iPad/iPhone can
+            // never become the default SMS app, so the device branch hands
+            // off via `sms:` URL. Flipping to device mode also hides the
+            // SMS destination from the rail because Communications stops
+            // owning conversation history.
+            Section("Messaging") {
+                Toggle(isOn: Binding(
+                    get: { MessagingPreference.mode == .device },
+                    set: { useDevice in
+                        MessagingPreference.mode = useDevice ? .device : .inApp
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use device's Messages app")
+                        Text("Hands off to iOS Messages instead of in-app SMS. Disables Communications.")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .accessibilityIdentifier("preferences.useDeviceSMS")
+            }
+
             // Locale overrides
             Section("Locale") {
                 TextField("Timezone override (optional)", text: $vm.timezone)

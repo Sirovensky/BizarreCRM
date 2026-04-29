@@ -4,11 +4,21 @@ import SwiftUI
 
 public enum RailCatalog {
 
-    /// The canonical ordered list of primary rail items.
-    ///
+    /// The canonical ordered list of primary rail items, filtered for the
+    /// current `MessagingPreference`. When the user has flipped messaging
+    /// to `.device` the SMS destination is hidden — Communications is
+    /// disabled in that mode and the rail row would dead-end.
+    public static var primary: [RailItem] {
+        var items = primaryAll
+        if MessagingPreference.mode == .device {
+            items.removeAll { $0.destination == .sms }
+        }
+        return items
+    }
+
     /// Order matches the iPad mockup rail (top → bottom): Dashboard,
     /// Tickets, Customers, POS, Inventory, SMS, Reports, Settings.
-    public static let primary: [RailItem] = [
+    private static let primaryAll: [RailItem] = [
         RailItem(
             id: "dashboard",
             title: "Dashboard",

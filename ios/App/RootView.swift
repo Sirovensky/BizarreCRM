@@ -359,6 +359,12 @@ private struct iPadShell: View {
     @Binding var destination: RailDestination
     var onSignOut: (() -> Void)? = nil
 
+    /// Pending phone number to push into the SMS tab when the user taps an
+    /// in-app "SMS this customer" affordance from elsewhere (Customers,
+    /// Tickets, Leads, Appointments, Marketing). Cleared once the SMS view
+    /// reads + consumes it.
+    @State private var pendingSMSPhone: String? = nil
+
     var body: some View {
         ShellLayout(selection: $destination) { dest in
             detailView(for: dest)
@@ -370,6 +376,15 @@ private struct iPadShell: View {
                 selection: .constant(.dashboard),
                 onSignOut: onSignOut
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openInAppSMSThread)) { note in
+            // Posted by `SMSLauncher.open(phone:)` when
+            // `MessagingPreference.mode == .inApp` (the default). Switch the
+            // rail to the SMS destination and stash the phone so SmsListView
+            // can push the matching thread on its next render.
+            guard let phone = note.object as? String, !phone.isEmpty else { return }
+            pendingSMSPhone = phone
+            destination = .sms
         }
     }
 

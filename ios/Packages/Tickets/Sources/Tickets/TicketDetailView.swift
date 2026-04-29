@@ -77,9 +77,8 @@ public struct TicketDetailView: View {
                     .accessibilityLabel("Assign ticket")
                 Button(action: {
                     if case .loaded(let detail) = vm.state,
-                       let phone = detail.customer?.phone,
-                       let url = URL(string: "sms:\(phone.filter { $0.isNumber })") {
-                        UIApplication.shared.open(url)
+                       let phone = detail.customer?.phone {
+                        SMSLauncher.open(phone: phone)
                     }
                 }) { EmptyView() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
@@ -794,8 +793,8 @@ private struct CustomerQuickActionsRow: View {
                     if let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
                         quickChip("Call", icon: "phone.fill", color: .bizarreTeal, url: url)
                     }
-                    if let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
-                        quickChip("SMS", icon: "message.fill", color: .bizarreTeal, url: url)
+                    quickChipAction("SMS", icon: "message.fill", color: .bizarreTeal) {
+                        SMSLauncher.open(phone: phone)
                     }
                     if let url = URL(string: "facetime:\(phone.filter(\.isNumber))") {
                         quickChip("FaceTime", icon: "video.fill", color: .bizarreTeal, url: url)
@@ -825,6 +824,24 @@ private struct CustomerQuickActionsRow: View {
             .padding(.vertical, BrandSpacing.sm)
             .background(color.opacity(0.12), in: Capsule())
         }
+        .accessibilityLabel(label)
+    }
+
+    /// Same chrome as `quickChip` but driven by an action closure rather
+    /// than a `URL`. Used for SMS where the launcher decides between in-app
+    /// thread and the system Messages app via `MessagingPreference`.
+    private func quickChipAction(_ label: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Text(label).font(.brandLabelLarge())
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(color.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
 }

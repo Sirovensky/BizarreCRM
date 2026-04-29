@@ -27,6 +27,17 @@ public struct SmsListView: View {
                 regularBody
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openInAppSMSThread)) { note in
+            // `SMSLauncher.open(phone:)` posts this when the user taps an
+            // SMS affordance from another module (Customers, Tickets, etc.)
+            // and `MessagingPreference.mode == .inApp`. Push the thread.
+            guard let phone = note.object as? String, !phone.isEmpty else { return }
+            if Platform.isCompact {
+                path.append(phone)
+            } else {
+                selectedPhone = phone
+            }
+        }
     }
 
     // MARK: - iPhone layout

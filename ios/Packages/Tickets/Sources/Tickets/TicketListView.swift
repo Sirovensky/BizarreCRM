@@ -50,13 +50,13 @@ public struct TicketListView: View {
                 guard let vm else { return }
                 Task { await vm.delete(ticket: ticket) }
             },
-            // §4.1: SMS customer — open Messages.app via sms: URL scheme
+            // §4.1: SMS customer — defaults to in-app Communications thread.
+            // User can flip `MessagingPreference.mode = .device` to hand off
+            // to the system Messages app instead.
             onSMSCustomer: { ticket in
-                let phone = ticket.customer?.mobile ?? ticket.customer?.phone ?? ""
-                let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-                guard !cleaned.isEmpty, let url = URL(string: "sms:\(cleaned)") else { return }
+                let phone = ticket.customer?.mobile ?? ticket.customer?.phone
                 Task { @MainActor in
-                    UIApplication.shared.open(url)
+                    SMSLauncher.open(phone: phone)
                 }
             },
             // §4.1: Call customer — open Phone.app via tel: URL scheme

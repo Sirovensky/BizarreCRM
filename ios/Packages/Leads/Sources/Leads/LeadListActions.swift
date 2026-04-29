@@ -62,12 +62,7 @@ extension LeadListView {
             .accessibilityLabel("Call \(lead.displayName)")
 
             Button {
-                let digits = phone.filter { $0.isNumber || $0 == "+" }
-                if let url = URL(string: "sms:\(digits)") {
-                    #if canImport(UIKit)
-                    UIApplication.shared.open(url)
-                    #endif
-                }
+                SMSLauncher.open(phone: phone)
             } label: {
                 Label("SMS", systemImage: "message.fill")
             }

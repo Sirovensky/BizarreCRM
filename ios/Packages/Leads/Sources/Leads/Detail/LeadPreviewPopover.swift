@@ -113,11 +113,7 @@ public struct LeadPreviewPopover: View {
             }
             if let phone = lead.phone, !phone.isEmpty {
                 quickActionChip(icon: "message.fill", label: "SMS") {
-                    if let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
-                        #if canImport(UIKit)
-                        UIApplication.shared.open(url)
-                        #endif
-                    }
+                    SMSLauncher.open(phone: phone)
                 }
             }
             Spacer(minLength: 0)

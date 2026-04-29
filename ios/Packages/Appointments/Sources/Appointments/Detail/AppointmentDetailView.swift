@@ -334,7 +334,9 @@ public struct AppointmentDetailView: View {
                         }
                         .accessibilityLabel("Call customer: \(phone)")
 
-                        Link(destination: URL(string: "sms:\(phone.filter { !$0.isWhitespace })")!) {
+                        Button {
+                            SMSLauncher.open(phone: phone)
+                        } label: {
                             Label("SMS", systemImage: "message.fill")
                                 .font(.brandLabelLarge())
                                 .foregroundStyle(.white)
@@ -342,6 +344,7 @@ public struct AppointmentDetailView: View {
                                 .padding(.vertical, BrandSpacing.sm)
                                 .background(Color.bizarreOrange, in: Capsule())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Send SMS to customer: \(phone)")
                     }
                     if let email {

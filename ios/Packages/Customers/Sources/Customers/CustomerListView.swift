@@ -550,7 +550,7 @@ public struct CustomerListView: View {
             .tint(.bizarreOrange)
 
             Button {
-                if let url = URL(string: "sms:\(digits)") { UIApplication.shared.open(url) }
+                SMSLauncher.open(phone: digits)
             } label: {
                 Label("SMS", systemImage: "message.fill")
             }
@@ -605,7 +605,7 @@ public struct CustomerListView: View {
             .accessibilityLabel("Call \(customer.displayName)")
 
             Button {
-                if let url = URL(string: "sms:\(digits)") { UIApplication.shared.open(url) }
+                SMSLauncher.open(phone: digits)
             } label: {
                 Label("SMS", systemImage: "message")
             }
