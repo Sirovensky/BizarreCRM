@@ -98,8 +98,26 @@ struct PosRefundSheet: View {
                     .accessibilityIdentifier("pos.refund.reasonPreset")
 
                     if vm.reasonPreset == .other {
-                        TextField("Reason (required)", text: $vm.reason)
-                            .accessibilityIdentifier("pos.refund.reason")
+                        // §16.9 — custom reason: max 200 chars with live counter.
+                        VStack(alignment: .trailing, spacing: 4) {
+                            TextField("Reason (required)", text: $vm.reason, axis: .vertical)
+                                .lineLimit(2...4)
+                                .onChange(of: vm.reason) { _, new in
+                                    if new.count > PosRefundViewModel.maxReasonLength {
+                                        vm.reason = String(new.prefix(PosRefundViewModel.maxReasonLength))
+                                    }
+                                }
+                                .accessibilityIdentifier("pos.refund.reason")
+                            Text("\(vm.reason.count) / \(PosRefundViewModel.maxReasonLength)")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(
+                                    vm.reason.count >= PosRefundViewModel.maxReasonLength
+                                    ? Color.bizarreError
+                                    : Color.bizarreOnSurfaceMuted
+                                )
+                                .monospacedDigit()
+                                .accessibilityLabel("Character count: \(vm.reason.count) of \(PosRefundViewModel.maxReasonLength)")
+                        }
                     }
                     TextField("Notes", text: $vm.notes, axis: .vertical)
                         .lineLimit(2...4)
@@ -231,6 +249,9 @@ final class PosRefundViewModel {
         }
         var wireValue: String { rawValue }
     }
+
+    /// §16.9 — maximum character length for the custom "Other" reason field.
+    static let maxReasonLength: Int = 200
 
     var fullRefund: Bool = true
     var tender: Tender = .card

@@ -80,6 +80,65 @@ struct PosGiftCardSheet: View {
                 .disabled(viewModel.codeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLookingUp)
                 .accessibilityIdentifier("pos.giftCard.lookup")
             }
+
+            // §16.6 — "Check balance only" — lets cashier (or customer) verify
+            // remaining balance without committing the card to a tender leg.
+            // Only shown when a valid active card is loaded and no apply is in
+            // progress, so it doesn't clutter the idle state.
+            if let card = viewModel.card, viewModel.balanceCheckResult == nil {
+                Button {
+                    viewModel.checkBalanceOnly(card: card)
+                    BrandHaptics.tap()
+                } label: {
+                    Label("Check balance only", systemImage: "creditcard.and.123")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pos.giftCard.checkBalance")
+            }
+
+            // Balance-check result pill — dismisses on next lookup or code change.
+            if let result = viewModel.balanceCheckResult {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: result.active ? "checkmark.seal.fill" : "xmark.seal.fill")
+                        .foregroundStyle(result.active ? Color.bizarreSuccess : Color.bizarreError)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Balance: \(CartMath.formatCents(result.balanceCents))")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .monospacedDigit()
+                        if let expiry = PosGiftCardSheetViewModel.formattedExpiry(result.expiresAt) {
+                            Text(result.active ? "Expires \(expiry)" : "Expired \(expiry)")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        } else {
+                            Text(result.active ? "Active" : "Inactive")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(result.active ? Color.bizarreSuccess : Color.bizarreError)
+                        }
+                    }
+                    Spacer()
+                    Button {
+                        viewModel.dismissBalanceCheck()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss balance result")
+                }
+                .padding(BrandSpacing.sm)
+                .background(
+                    result.active ? Color.bizarreSuccess.opacity(0.10) : Color.bizarreError.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Gift card balance \(CartMath.formatCents(result.balanceCents)). \(result.active ? "Active" : "Inactive").")
+                .accessibilityIdentifier("pos.giftCard.balanceResult")
+            }
+
             if let card = viewModel.card {
                 giftCardBody(card: card)
             }

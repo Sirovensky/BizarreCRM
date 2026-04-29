@@ -32,6 +32,10 @@ struct PosCartDiscountSheet: View {
     private let percentPresets: [Double] = [0.05, 0.10, 0.15, 0.20]
     private let dollarPresetsCents: [Int] = [500, 1000, 2000]
 
+    /// §16.3 — tracks the active preset chip so it renders in a selected state.
+    @State private var activePresetPercent: Double? = nil
+    @State private var activePresetCents: Int? = nil
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -65,7 +69,7 @@ struct PosCartDiscountSheet: View {
                         .accessibilityIdentifier("pos.cartDiscount.apply")
                 }
             }
-            .onChange(of: mode) { _, _ in rawInput = "" }
+            .onChange(of: mode) { _, _ in rawInput = ""; activePresetPercent = nil; activePresetCents = nil }
         }
         .presentationDetents(Platform.isCompact ? [.medium, .large] : [.medium])
         .presentationDragIndicator(.visible)
@@ -96,15 +100,23 @@ struct PosCartDiscountSheet: View {
             HStack(spacing: BrandSpacing.sm) {
                 if mode == .percent {
                     ForEach(percentPresets, id: \.self) { p in
-                        presetChip(label: "\(Int(p * 100))%") {
+                        let isSelected = activePresetPercent == p
+                        presetChip(label: "\(Int(p * 100))%", selected: isSelected) {
+                            BrandHaptics.tap()
                             rawInput = "\(Int(p * 100))"
+                            activePresetPercent = p
+                            activePresetCents = nil
                         }
                     }
                 } else {
                     ForEach(dollarPresetsCents, id: \.self) { cents in
                         let dollars = cents / 100
-                        presetChip(label: "$\(dollars)") {
+                        let isSelected = activePresetCents == cents
+                        presetChip(label: "$\(dollars)", selected: isSelected) {
+                            BrandHaptics.tap()
                             rawInput = "\(dollars)"
+                            activePresetCents = cents
+                            activePresetPercent = nil
                         }
                     }
                 }
@@ -113,17 +125,29 @@ struct PosCartDiscountSheet: View {
         }
     }
 
-    private func presetChip(label: String, action: @escaping () -> Void) -> some View {
+    private func presetChip(label: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
                 .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOrange)
+                .foregroundStyle(selected ? Color.white : Color.bizarreOrange)
                 .padding(.horizontal, BrandSpacing.md)
                 .padding(.vertical, BrandSpacing.sm)
-                .background(Color.bizarreOrangeContainer, in: Capsule())
+                .background(
+                    selected ? Color.bizarreOrange : Color.bizarreOrangeContainer,
+                    in: Capsule()
+                )
+                .scaleEffect(selected ? 1.06 : 1.0)
+                .animation(BrandMotion.snappy, value: selected)
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Clear active preset selection whenever the raw text field is edited directly.
+    private func clearPresetIfCustomInput() {
+        activePresetPercent = nil
+        activePresetCents = nil
     }
 
     private var inputRow: some View {
@@ -137,6 +161,7 @@ struct PosCartDiscountSheet: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .focused($isInputFocused)
                 .monospacedDigit()
+                .onChange(of: rawInput) { _, _ in clearPresetIfCustomInput() }
                 .accessibilityIdentifier("pos.cartDiscount.input")
         }
         .padding(BrandSpacing.md)

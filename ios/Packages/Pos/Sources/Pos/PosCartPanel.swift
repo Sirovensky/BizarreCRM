@@ -60,6 +60,19 @@ struct PosCartPanel: View {
                         onChange: onChangeCustomer,
                         onRemove: onRemoveCustomer
                     )
+
+                    // §16.15 — Loyalty-points balance chip. Shown whenever the
+                    // attached customer has a known loyalty balance, giving the
+                    // cashier an immediate at-a-glance view of redeemable points
+                    // without scrolling to the context banners below.
+                    if let balance = customerContext.loyaltyPointsBalance {
+                        PosLoyaltyBalanceChip(pointsBalance: balance, earnedPoints: loyaltyEarnedPoints)
+                            .padding(.horizontal, BrandSpacing.base)
+                            .padding(.bottom, BrandSpacing.xs)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            .animation(BrandMotion.snappy, value: balance)
+                    }
+
                     // §16.4 — Customer context banners (tax-exempt, group discount, loyalty).
                     if customerContext != .empty {
                         PosCustomerContextBanners(
@@ -964,6 +977,68 @@ struct PosChargeButton: View {
         .keyboardShortcut(.return, modifiers: .command)
         .accessibilityLabel("\(isComplete ? "Complete" : "Charge") total \(CartMath.formatCents(totalCents))")
         .accessibilityIdentifier("pos.chargeButton")
+    }
+}
+
+// MARK: - PosLoyaltyBalanceChip
+
+/// §16.15 — Compact loyalty-points display chip shown below the customer strip
+/// when an attached customer has a known loyalty balance. Renders two states:
+///   • Balance-only: "★ 420 pts" (muted, balance visible but not earned this sale)
+///   • Earn preview: "★ 420 pts  +75 this sale" — when `earnedPoints` is set
+///
+/// Distinct from the `PosCustomerContextBanners` loyalty banner which blends
+/// in with tax-exempt / group-discount info. This chip is visually prominent
+/// and pinned directly below the customer strip so cashiers see points at a
+/// glance without expanding the banners section.
+struct PosLoyaltyBalanceChip: View {
+    let pointsBalance: Int
+    /// If non-nil, a "+N this sale" earn-preview suffix is appended.
+    var earnedPoints: Int?
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: 0x4DB8C9))
+                .accessibilityHidden(true)
+
+            Text("\(pointsBalance) pt\(pointsBalance == 1 ? "" : "s")")
+                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                .foregroundStyle(.bizarreOnSurface)
+
+            if let earned = earnedPoints, earned > 0 {
+                Text("· +\(earned) this sale")
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Color(hex: 0x4DB8C9))
+            }
+
+            Spacer(minLength: 0)
+
+            Text("LOYALTY")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Color(hex: 0x4DB8C9).opacity(0.75))
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(Color(hex: 0x4DB8C9).opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color(hex: 0x4DB8C9).opacity(0.25), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityIdentifier("pos.loyaltyBalanceChip")
+    }
+
+    private var accessibilityText: String {
+        let base = "\(pointsBalance) loyalty point\(pointsBalance == 1 ? "" : "s")"
+        if let earned = earnedPoints, earned > 0 {
+            return "\(base). Earning \(earned) point\(earned == 1 ? "" : "s") on this sale."
+        }
+        return base
     }
 }
 
