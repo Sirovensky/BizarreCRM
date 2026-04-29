@@ -16,6 +16,9 @@ public struct ReportsView: View {
     @State private var vm: ReportsViewModel
     private let exportService: ReportExportService
 
+    // Sub-tab (Sales vs Inventory) — gates which cards are visible
+    @State private var selectedSubTab: ReportsSubTab = .sales
+
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
     @State private var showCSATDetail = false
@@ -198,6 +201,15 @@ public struct ReportsView: View {
 
     private var dateRangePicker: some View {
         VStack(spacing: BrandSpacing.sm) {
+            // Sub-tab selector: Sales vs Inventory (§91.4 item 4)
+            Picker("Report Section", selection: $selectedSubTab) {
+                ForEach(ReportsSubTab.allCases) { tab in
+                    Text(tab.displayLabel).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Select report section: Sales or Inventory")
+
             Picker("Date Range", selection: $vm.selectedPreset) {
                 ForEach(DateRangePreset.allCases) { preset in
                     Text(preset.displayLabel).tag(preset)
@@ -307,11 +319,22 @@ public struct ReportsView: View {
 
     // MARK: - Card items (shared between phone/iPad)
 
+    /// Minimum card height applied to inventory cards so they align uniformly
+    /// inside the iPad LazyVGrid where row heights are set by the tallest cell.
+    private static let inventoryCardMinHeight: CGFloat = 240
+
     @ViewBuilder
     private var cardItems: some View {
         // §15.2 Revenue chart — line + bar via /reports/sales
-        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-            drillContext = .revenue(date: pt.date)
+        // Gated: hide on Inventory sub-tab; surface inventory KPIs instead (§91.4 item 4).
+        if selectedSubTab != .inventory {
+            RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
+                drillContext = .revenue(date: pt.date)
+            }
+        } else {
+            // Inventory sub-tab: show retail-value KPI card in place of revenue
+            InventoryRetailValueCard(report: vm.inventoryReport)
+                .frame(minHeight: Self.inventoryCardMinHeight, alignment: .top)
         }
 
         // §15.9 Expenses chart — bar via /reports/dashboard-kpis
@@ -319,6 +342,7 @@ public struct ReportsView: View {
 
         // §15.5 Inventory movement chart — bar via /reports/inventory
         InventoryMovementCard(report: vm.inventoryReport)
+            .frame(minHeight: Self.inventoryCardMinHeight, alignment: .top)
 
         // §15.3 Tickets by status
         TicketsByStatusCard(points: vm.ticketsByStatus)
@@ -329,8 +353,9 @@ public struct ReportsView: View {
         // §15.4 Employee performance
         TopEmployeesCard(employees: vm.employeePerf)
 
-        // §15.5 Inventory turnover (category table)
+        // §15.5 Inventory turnover (category table) — uniform height with movement card
         InventoryTurnoverCard(rows: vm.inventoryTurnover)
+            .frame(minHeight: Self.inventoryCardMinHeight, alignment: .top)
 
         // §15.7 CSAT + NPS
         CSATScoreCard(score: vm.csatScore) {
@@ -442,5 +467,115 @@ private extension View {
 
 extension DrillThroughContext: Identifiable {
     public var id: String { "\(metric)-\(date)" }
+}
+
+// MARK: - ReportsSubTab
+
+/// Controls which category of cards is shown in the Reports dashboard.
+/// Gating the Revenue card on `.inventory` fixes the wrong-data smell (§91.4 item 4).
+public enum ReportsSubTab: String, CaseIterable, Identifiable {
+    case sales     = "Sales"
+    case inventory = "Inventory"
+
+    public var id: String { rawValue }
+    public var displayLabel: String { rawValue }
+}
+
+// MARK: - InventoryRetailValueCard
+
+/// Inventory-specific KPI card surfaced on the Inventory sub-tab in place of
+/// the Sales Revenue chart (§91.4 item 4 + item 5).
+///
+/// Shows total retail value, cost value, and a `ContentUnavailableView` when
+/// all values are $0 so the "$0 Y-axis / no bars" empty chart is never shown.
+private struct InventoryRetailValueCard: View {
+    let report: InventoryReport?
+
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            // Header
+            HStack {
+                Image(systemName: "dollarsign.circle.fill")
+                    .foregroundStyle(.bizarreTeal)
+                    .accessibilityHidden(true)
+                Text("Retail Value ($K)")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                Spacer()
+            }
+            .accessibilityAddTraits(.isHeader)
+
+            // Content
+            if let r = report, hasPositiveValues(r) {
+                kpiGrid(r)
+            } else {
+                // §91.4 item 5: ContentUnavailableView when no positive values
+                ContentUnavailableView(
+                    "No Inventory Value",
+                    systemImage: "shippingbox",
+                    description: Text("Add inventory items with retail prices to see value data.")
+                )
+            }
+        }
+        .padding(BrandSpacing.base)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    private func hasPositiveValues(_ r: InventoryReport) -> Bool {
+        r.valueSummary.contains { $0.totalRetailValue > 0 || $0.totalCostValue > 0 }
+    }
+
+    @ViewBuilder
+    private func kpiGrid(_ r: InventoryReport) -> some View {
+        let totalRetail = r.valueSummary.reduce(0.0) { $0 + $1.totalRetailValue }
+        let totalCost   = r.valueSummary.reduce(0.0) { $0 + $1.totalCostValue }
+        let totalUnits  = r.valueSummary.reduce(0) { $0 + $1.totalUnits }
+        let margin = totalRetail > 0 ? ((totalRetail - totalCost) / totalRetail) * 100.0 : 0.0
+
+        LazyVGrid(
+            columns: [GridItem(.flexible()), GridItem(.flexible())],
+            alignment: .leading,
+            spacing: BrandSpacing.sm
+        ) {
+            kpiCell(label: "Retail Value",
+                    value: String(format: "$%.1fK", totalRetail / 1000.0),
+                    color: .bizarreTeal)
+            kpiCell(label: "Cost Value",
+                    value: String(format: "$%.1fK", totalCost / 1000.0),
+                    color: .bizarreOnSurfaceMuted)
+            kpiCell(label: "Total Units",
+                    value: "\(totalUnits)",
+                    color: .bizarreOnSurface)
+            kpiCell(label: "Margin",
+                    value: String(format: "%.1f%%", margin),
+                    color: margin >= 30 ? .bizarreSuccess : .bizarreWarning)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            String(format: "Inventory retail value $%.0f, cost $%.0f, %d total units, %.1f%% margin.",
+                   totalRetail, totalCost, totalUnits, margin)
+        )
+    }
+
+    private func kpiCell(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            Text(label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text(value)
+                .font(.brandTitleSmall())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+    }
 }
 
