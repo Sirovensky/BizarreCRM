@@ -6,12 +6,22 @@ import DesignSystem
 // §22 + §4 — ViewModifier adding leading and trailing swipe actions to
 // ticket list rows.
 //
+// §4.13 spec:
+//   right swipe (trailing): state-dependent "Start/Mark Ready" (first forward transition)
+//                            Archive (full-swipe, role: .destructive = iOS confirmation)
+//   left swipe (leading):   Assign-to-me / SMS customer
+//   long-swipe destructive: Delete requires alert confirmation (role: .destructive)
+//
 // Usage:
 //   ticketRow
-//       .modifier(TicketRowSwipeActions(ticket: ticket, handlers: handlers))
+//       .modifier(TicketRowSwipeActions(ticket: ticket, currentStatus: status, handlers: handlers))
 
-/// Adds `.swipeActions(edge: .trailing)` (Archive + Delete) and
-/// `.swipeActions(edge: .leading)` (Advance Status + Assign) to any view.
+/// Adds `.swipeActions(edge: .trailing)` (Mark Ready + Archive) and
+/// `.swipeActions(edge: .leading)` (Assign-to-me + SMS) to any view.
+///
+/// Full-swipe on the Archive button triggers the destructive-confirm role so iOS
+/// shows a "Confirm?" prompt before executing — matching §4.13 "long-swipe destructive
+/// requires alert confirm".
 ///
 /// §4 permission gates:
 ///   • Delete (trailing, destructive) — admin only.
@@ -47,36 +57,42 @@ public struct TicketRowSwipeActions: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            // Trailing: Mark complete + Archive
-            // §4.1 spec: trailing = Archive / Mark complete
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
+            // Trailing: state-dependent "Start / Mark Ready" + Archive (full-swipe)
+            // §4.13: right swipe = Start / Mark Ready (state-dependent)
+            // §4.13: long-swipe destructive requires alert confirm (role: .destructive)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                // Archive — full-swipe allowed; role: .destructive triggers system confirmation
+                Button(role: .destructive) {
                     handlers.onArchive(ticket)
                 } label: {
                     Label("Archive", systemImage: "archivebox")
                 }
-                .tint(Color.bizarreWarning)
                 .accessibilityLabel("Archive ticket")
 
-                // Mark complete: advance to the first "closed"-like transition if available.
+                // State-dependent forward action: "Mark Ready" / "Mark Complete" / advance step
                 if let status = currentStatus {
-                    let closingTransition = TicketStateMachine.allowedTransitions(from: status).first(where: {
+                    // §4.13: prefer a "ready" or "start" transition; fall back to forward move
+                    let forwardTransition = TicketStateMachine.allowedTransitions(from: status).first(where: {
+                        let n = $0.displayName.lowercased()
+                        return n.contains("ready") || n.contains("start") || n.contains("begin")
+                    }) ?? TicketStateMachine.allowedTransitions(from: status).first(where: {
                         let n = $0.displayName.lowercased()
                         return n.contains("complete") || n.contains("done") || n.contains("finish")
                     }) ?? TicketStateMachine.allowedTransitions(from: status).last
-                    if let t = closingTransition {
+
+                    if let t = forwardTransition {
                         Button {
                             handlers.onAdvanceStatus(ticket, t)
                         } label: {
-                            Label("Mark Complete", systemImage: "checkmark.circle")
+                            Label(t.displayName, systemImage: "arrow.right.circle.fill")
                         }
                         .tint(.green)
-                        .accessibilityLabel("Mark ticket as \(t.displayName)")
+                        .accessibilityLabel("Advance ticket: \(t.displayName)")
                     }
                 }
             }
             // Leading: Assign-to-me / SMS customer
-            // §4.1 spec: leading = Assign-to-me / SMS customer
+            // §4.1 + §4.13 spec: leading = Assign-to-me / SMS customer
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
                 Button {
                     handlers.onAssignToMe(ticket)
