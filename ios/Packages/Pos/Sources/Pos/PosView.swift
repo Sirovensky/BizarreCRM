@@ -292,6 +292,11 @@ public struct PosView: View {
                 vm: vm,
                 onCompleted: { result in
                     cashTenderVM = nil
+                    // §16.8 — kick the cash drawer on every cash tender so
+                    // the cashier doesn't need to remember a manual no-sale.
+                    // Wrapped in `openDrawer()`'s existing try/catch so a
+                    // missing printer never blocks the post-sale screen.
+                    openDrawer()
                     postSale = buildPostSaleViewModel(
                         methodLabel: result.methodLabel,
                         methodAmountCents: result.receivedCents,

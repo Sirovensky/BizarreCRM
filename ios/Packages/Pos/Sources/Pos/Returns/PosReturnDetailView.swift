@@ -472,18 +472,16 @@ struct InvoiceDetailWithLines: Decodable, Sendable {
     }
 }
 
-// MARK: - PosTenantLimits extension (refund threshold)
+// MARK: - PosTenantLimits convenience for return-detail view
+//
+// `refundManagerPinThresholdCents` is now a first-class field on
+// `PosTenantLimits` (added with §16.9 dropdown presets + manager PIN gate).
+// We keep the static `shared` accessor here so the existing call sites in
+// this file don't have to adopt `PosTenantLimits.current()` ahead of a
+// dedicated cleanup pass.
 
 private extension PosTenantLimits {
-    static let shared = PosTenantLimits(
-        maxCashierDiscountPercent: 0,
-        maxCashierDiscountCents: 0,
-        priceOverrideThresholdCents: 0,
-        voidRequiresManager: false,
-        noSaleRequiresManager: false
-    )
-    /// Manager PIN required for refunds above this amount. Default $50 = 5,000 cents.
-    var refundManagerPinThresholdCents: Int { 5_000 }
+    static var shared: PosTenantLimits { .current() }
 }
 
 // MARK: - Preview

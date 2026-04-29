@@ -164,6 +164,25 @@ struct PosPostSaleView: View {
                     .accessibilityIdentifier("pos.postSale.banner")
             }
 
+            // §16.8 — visible auto-dismiss countdown. Hidden once the
+            // cashier interacts with any control (which sets
+            // `userInteracted` via `cancelAutoDismiss`). Tapping the row
+            // itself cancels the timer too.
+            if !userInteracted, vm.phase == .completed, autoDismissCountdown > 0 {
+                Button {
+                    cancelAutoDismiss()
+                } label: {
+                    Text("Starting new sale in \(autoDismissCountdown)s · tap to cancel")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.xs)
+                        .accessibilityIdentifier("pos.postSale.autoDismissCountdown")
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Cancel automatic dismissal")
+            }
+
             HStack(spacing: BrandSpacing.sm) {
                 receiptActionButton(
                     label: "Email",
@@ -203,6 +222,7 @@ struct PosPostSaleView: View {
 
             Button {
                 BrandHaptics.success()
+                cancelAutoDismiss()
                 vm.triggerNextSale()
                 dismiss()
             } label: {
