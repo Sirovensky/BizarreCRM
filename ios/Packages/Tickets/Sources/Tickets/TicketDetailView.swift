@@ -504,9 +504,18 @@ public struct TicketDetailView: View {
                         .accessibilityIdentifier("ticket.signoff")
                     }
 
-                    // §4.2: Copy link to ticket — Universal Link
+                    // §4.2 Header — ticket order ID copyable + Universal Link
                     if case .loaded(let detail) = vm.state {
                         Divider()
+                        // §4.2: Copy order ID — shown in header per spec
+                        Button {
+                            UIPasteboard.general.string = detail.orderId
+                        } label: {
+                            Label("Copy Order ID (\(detail.orderId))", systemImage: "doc.on.doc")
+                        }
+                        .accessibilityIdentifier("ticket.copyOrderId")
+                        .accessibilityLabel("Copy order ID \(detail.orderId) to clipboard")
+
                         Button {
                             let urlString = "https://app.bizarrecrm.com/tickets/\(detail.id)"
                             UIPasteboard.general.string = urlString

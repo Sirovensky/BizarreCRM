@@ -592,7 +592,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
 - [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
 - [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
-- [ ] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete.
+- [x] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete. `TicketRowSwipeActions` modifier added state-dependent forward button (§4.13 spec) + `role: .destructive` + `allowsFullSwipe: true` on Archive. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [ ] **Context menu** — Open, Copy order ID (`.textSelection(.enabled)` preview), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF.
 - [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
@@ -606,14 +606,14 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
-- [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
+- [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `SLABadge` (icon + color from `slaStatus`: breached=red/xmark, warning=amber/exclaim, ok=gray) + `DueDateBadge` (days countdown: red overdue, amber &lt;24h, yellow &lt;3d, gray safe). Both shown inline on `TicketRow`. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [x] **Empty state** — db339de3 — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
 - [ ] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder.
-- [ ] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee.
+- [~] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee. Partial: "Copy Order ID (XXXX)" menu button added to toolbar actions menu — copies `orderId` to pasteboard. Full urgency chip + inline-tap status pending full tab layout. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
 - [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
 - [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `.textSelection(.enabled)` on each; copyable grand total.
@@ -752,8 +752,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Visual: tenant-configured color per state; state pill on every list row + detail header.
 - [ ] Funnel chart in §15 Reports: count per state + avg time-in-state; bottleneck highlight if avg > tenant benchmark.
 - [ ] Context menu (long-press on list row): Open / Copy ID / Share PDF / Call customer / Text customer / Print receipt / Mark Ready / Mark In Repair / Assign to me / Archive / Delete (admin only)
-- [ ] Swipe actions (iOS native): right swipe = Start/Mark Ready (state-dependent); left swipe = Archive; long-swipe destructive requires alert confirm
-- [x] iPad Magic Keyboard shortcuts: ⌘D mark done; ⌘⇧A assign; ⌘⇧S send SMS update; ⌘P print; ⌘⌫ delete (admin only). Background Button overlays with `.keyboardShortcut` in `TicketDetailView`; ⌘P wired to `TicketAirPrintButton`. (agent-3-b10 de77283a)
+- [x] Swipe actions (iOS native): right swipe = Start/Mark Ready (state-dependent); left swipe = Archive; long-swipe destructive requires alert confirm. `TicketRowSwipeActions` updated: trailing `allowsFullSwipe: true` with `role: .destructive` on Archive (triggers iOS system confirm on full-swipe), state-machine-driven forward action prefers "ready/start" transitions. Commit `feat(ios §4-batch-d7f2a91c)`.
+- [x] iPad Magic Keyboard shortcuts: ⌘D mark done; ⌘⇧A assign; ⌘⇧S send SMS update; ⌘P print; ⌘⌫ delete (admin only). Background Button overlays with `.keyboardShortcut` in `TicketDetailView`; ⌘P wired to `TicketAirPrintButton`. (agent-3-b10 de77283a) Extended in `TicketKeyboardShortcutRegistry` + `TicketKeyboardShortcuts` list-view modifier with `isRowSelected` guard — all 8 shortcuts now in registry. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [ ] Drag-and-drop: drag ticket row to "Assign" sidebar target (iPad) to reassign; drag to status column in Kanban (§18.6 if built)
 - [ ] Batch actions: multi-select in list (§63); batch context menu Assign/Status/Archive/Export
 - [ ] Smart defaults: show most-recently-used action first per user; adapts over time
