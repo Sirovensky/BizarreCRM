@@ -61,7 +61,7 @@ internal fun TabletComposeBar(
     customerPhone: String?,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
-    var kind by rememberSaveable { mutableStateOf(KIND_INTERNAL) }
+    var kind by rememberSaveable { mutableStateOf(KIND_NOTE) }
 
     val canSend = remember(draft, kind, customerPhone) {
         draft.isNotBlank() && when (kind) {
@@ -122,8 +122,8 @@ internal fun TabletComposeBar(
                 placeholder = {
                     Text(
                         when (kind) {
+                            KIND_NOTE -> "Write a note…"
                             KIND_INTERNAL -> "Write an internal note…"
-                            KIND_DIAGNOSTIC -> "Write a diagnostic note…"
                             KIND_SMS -> "Tap send to open SMS thread for the customer"
                             else -> "Write a message…"
                         },
@@ -149,8 +149,8 @@ internal fun TabletComposeBar(
                     if (!canSend) return@onSend
                     val text = draft.trim()
                     when (kind) {
+                        KIND_NOTE -> onAddNote(text, "diagnostic")
                         KIND_INTERNAL -> onAddNote(text, "internal")
-                        KIND_DIAGNOSTIC -> onAddNote(text, "diagnostic")
                         KIND_SMS -> customerPhone?.let { onNavigateToSms?.invoke(it) }
                     }
                     draft = ""
@@ -173,14 +173,14 @@ internal fun TabletComposeBar(
     }
 }
 
+private const val KIND_NOTE = "note"
 private const val KIND_INTERNAL = "int"
-private const val KIND_DIAGNOSTIC = "diag"
 private const val KIND_SMS = "sms"
 
 private data class KindOption(val id: String, val label: String)
 
 private val KIND_OPTIONS = listOf(
-    KindOption(KIND_INTERNAL, "Note"),
-    KindOption(KIND_DIAGNOSTIC, "Diagnostic"),
+    KindOption(KIND_NOTE, "Note"),
     KindOption(KIND_SMS, "SMS"),
+    KindOption(KIND_INTERNAL, "Internal"),
 )

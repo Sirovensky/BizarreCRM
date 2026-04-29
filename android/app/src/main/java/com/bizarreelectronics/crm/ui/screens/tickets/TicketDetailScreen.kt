@@ -2221,6 +2221,13 @@ fun TicketDetailScreen(
                                         Icon(Icons.Default.Print, contentDescription = "Print")
                                     }
                                 }
+                                // 1px divider between primary (Print) and tertiary (Pin / ⋮) actions.
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 6.dp)
+                                        .size(width = 1.dp, height = 24.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                )
                                 IconButton(onClick = { viewModel.togglePin() }) {
                                     Icon(
                                         Icons.Default.PushPin,
