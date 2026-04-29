@@ -8,6 +8,147 @@ import Timeclock
 import UIKit
 #endif
 
+// MARK: - DashboardTileID
+
+/// Stable identifier for each secondary KPI tile. Used by the customization
+/// store to track visibility + order across launches.
+enum DashboardTileID: String, CaseIterable, Identifiable, Codable {
+    case revenue     = "revenue"
+    case closed      = "closed"
+    case appointments = "appointments"
+    case inventory   = "inventory"
+
+    var id: String { rawValue }
+}
+
+// MARK: - DashboardCustomizationStore
+
+/// Persists hidden tile IDs and tile order to `UserDefaults` (§3.1 Customization).
+///
+/// Tile order is stored as an ordered array of raw IDs. Hidden tiles are a
+/// separate set so the user can always un-hide them later from the sheet.
+final class DashboardCustomizationStore: ObservableObject {
+    static let shared = DashboardCustomizationStore()
+
+    private static let hiddenKey = "dashboard.hiddenTileIDs"
+    private static let orderKey  = "dashboard.tileOrder"
+
+    @Published private(set) var hiddenIDs: Set<DashboardTileID>
+    @Published private(set) var order: [DashboardTileID]
+
+    private init() {
+        let rawHidden = UserDefaults.standard.stringArray(forKey: Self.hiddenKey) ?? []
+        hiddenIDs = Set(rawHidden.compactMap(DashboardTileID.init(rawValue:)))
+
+        let rawOrder = UserDefaults.standard.stringArray(forKey: Self.orderKey) ?? []
+        let stored   = rawOrder.compactMap(DashboardTileID.init(rawValue:))
+        // Fill in any tiles not yet in the stored order (e.g. newly added).
+        let all = DashboardTileID.allCases
+        order = stored + all.filter { !stored.contains($0) }
+    }
+
+    /// Hides `id` and persists the change immediately.
+    func hide(_ id: DashboardTileID) {
+        hiddenIDs.insert(id)
+        persist()
+    }
+
+    /// Un-hides `id`.
+    func show(_ id: DashboardTileID) {
+        hiddenIDs.remove(id)
+        persist()
+    }
+
+    /// Moves tile at `source` offsets to `destination` (called by `onMove`).
+    func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        order.move(fromOffsets: source, toOffset: destination)
+        persist()
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(hiddenIDs.map(\.rawValue), forKey: Self.hiddenKey)
+        UserDefaults.standard.set(order.map(\.rawValue), forKey: Self.orderKey)
+    }
+}
+
+// MARK: - DashboardCustomizationSheet
+
+/// Presented by long-pressing any secondary KPI tile.
+/// Lets the user hide individual tiles and drag to reorder.
+struct DashboardCustomizationSheet: View {
+    @ObservedObject var store: DashboardCustomizationStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(store.order) { tileID in
+                        HStack {
+                            Image(systemName: store.hiddenIDs.contains(tileID) ? "eye.slash" : "eye")
+                                .foregroundStyle(store.hiddenIDs.contains(tileID)
+                                    ? Color.bizarreOnSurfaceMuted
+                                    : Color.bizarreSuccess)
+                                .accessibilityHidden(true)
+
+                            Text(tileID.displayName)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+
+                            Spacer()
+
+                            Button {
+                                if store.hiddenIDs.contains(tileID) {
+                                    store.show(tileID)
+                                } else {
+                                    store.hide(tileID)
+                                }
+                            } label: {
+                                Text(store.hiddenIDs.contains(tileID) ? "Show" : "Hide")
+                                    .font(.brandLabelSmall())
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(store.hiddenIDs.contains(tileID) ? .bizarreOrange : .secondary)
+                        }
+                        .padding(.vertical, BrandSpacing.xs)
+                    }
+                    .onMove { store.move(fromOffsets: $0, toOffset: $1) }
+                } header: {
+                    Text("Tiles")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                } footer: {
+                    Text("Long-press any tile to open this sheet. Drag rows to reorder.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+            .navigationTitle("Customize Dashboard")
+            #if canImport(UIKit)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .font(.brandBodyMedium())
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+        }
+    }
+}
+
+private extension DashboardTileID {
+    var displayName: String {
+        switch self {
+        case .revenue:      return "Revenue"
+        case .closed:       return "Closed"
+        case .appointments: return "Appointments"
+        case .inventory:    return "Inventory"
+        }
+    }
+}
+
 public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
@@ -64,7 +205,7 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot, clockVM: clockVM)
+            LoadedBody(snapshot: snapshot, clockVM: clockVM, lastSyncedAt: vm.lastSyncedAt)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
@@ -75,6 +216,11 @@ public struct DashboardView: View {
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
+    /// Passed from the outer view so the footer can display "Synced N min ago".
+    var lastSyncedAt: Date?
+
+    @StateObject private var customizationStore = DashboardCustomizationStore.shared
+    @State private var showingCustomizationSheet = false
 
     var body: some View {
         ScrollView {
@@ -84,6 +230,7 @@ private struct LoadedBody: View {
                 heroCard
                 secondaryGrid
                 attentionCard
+                lastSyncFooter
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.sm)
@@ -91,12 +238,15 @@ private struct LoadedBody: View {
             .frame(maxWidth: 1200, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .sheet(isPresented: $showingCustomizationSheet) {
+            DashboardCustomizationSheet(store: customizationStore)
+        }
     }
 
-    /// §3.9 — dynamic greeting by hour. Reads the current locale's first
-    /// day-part name, falls back to "Hello" if the clock lies. No server
-    /// round trip; the user's first name would need `/auth/me` which is
-    /// still TBD, so for now we keep it impersonal.
+    /// §3.9 — dynamic greeting by hour + day-of-week context.
+    /// Reads the current locale's time-of-day bucket and optionally prepends
+    /// a weekend or end-of-week variant for a friendlier feel.
+    /// No server round trip; first name needs `/auth/me` (still TBD).
     private var greeting: some View {
         Text(dashboardGreeting(for: Date()))
             .font(.brandTitleLarge())
@@ -105,6 +255,20 @@ private struct LoadedBody: View {
     }
 
     // greetingText extracted to module-level `dashboardGreeting(for:)` for testability.
+
+    /// §3.10 — last-sync footer beneath all dashboard content.
+    /// Shows a muted pill: "Synced just now" / "Synced 3 min ago" / "Never synced".
+    @ViewBuilder
+    private var lastSyncFooter: some View {
+        HStack {
+            Spacer()
+            StalenessIndicator(lastSyncedAt: lastSyncedAt)
+                .font(.brandLabelSmall())
+            Spacer()
+        }
+        .padding(.top, BrandSpacing.sm)
+        .accessibilityElement(children: .combine)
+    }
 
     // Hero = the one primary focus. On a repair-shop dashboard that's
     // "open tickets right now". Larger, more visual weight than the rest.
@@ -120,14 +284,20 @@ private struct LoadedBody: View {
     // Compact stat tiles — muted hierarchy.
     // iPhone: 2-column grid (adaptive minimum 140 pt).
     // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §3.1 — long-press any tile to open the customization sheet.
     private var secondaryGrid: some View {
         let s = snapshot.summary
-        let tiles: [StatTile] = [
-            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
+        let allTiles: [DashboardTileID: StatTile] = [
+            .revenue:      .init(id: .revenue,      label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
+            .closed:       .init(id: .closed,       label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
+            .appointments: .init(id: .appointments, label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
+            .inventory:    .init(id: .inventory,    label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
         ]
+
+        // Honour user-defined order and filter out hidden tiles.
+        let visibleTiles: [StatTile] = customizationStore.order
+            .filter { !customizationStore.hiddenIDs.contains($0) }
+            .compactMap { allTiles[$0] }
 
         let columns: [GridItem] = Platform.isCompact
             ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
@@ -138,8 +308,15 @@ private struct LoadedBody: View {
               ]
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
-            ForEach(tiles) { tile in
+            ForEach(visibleTiles) { tile in
                 StatTileCard(tile: tile)
+                    .onLongPressGesture {
+                        Task { await HapticCatalog.play(.longPressMenu) }
+                        showingCustomizationSheet = true
+                    }
+                    .accessibilityAction(named: "Customize tiles") {
+                        showingCustomizationSheet = true
+                    }
             }
         }
     }
@@ -194,12 +371,17 @@ private struct HeroMetricCard: View {
                 .monospacedDigit()
         }
         .padding(BrandSpacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // §3.1 tap-target audit — hero card must be at least 44 pt tall so
+        // the entire surface area is HIG-compliant for tap targets.
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
         )
+        // Expand the hit-test area to the full card so any tap within the
+        // rounded-rect surface registers — not just text glyphs.
+        .contentShape(RoundedRectangle(cornerRadius: 20))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue("\(value). \(supporting).")
@@ -210,7 +392,7 @@ private struct HeroMetricCard: View {
 // MARK: - Stat tile
 
 private struct StatTile: Identifiable {
-    let id = UUID()
+    let id: DashboardTileID
     let label: String
     let value: String
     let icon: String
@@ -236,12 +418,17 @@ private struct StatTileCard: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .padding(BrandSpacing.md)
+        // §3.1 tap-target audit — minHeight 92 pt satisfies HIG 44 pt minimum with room
+        // for icon + value + label; the full rounded-rect surface is the hit target.
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
         )
+        // Ensures long-press activates anywhere within the card boundary, not
+        // just on the text/icon glyphs.
+        .contentShape(RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tile.label)
         .accessibilityValue(tile.value)
@@ -350,14 +537,36 @@ struct AttentionItemModel: Equatable {
 }
 
 /// Returns the time-of-day greeting string for the given date.
+///
+/// §3.9 extended variants:
+/// - Pre-dawn (0–4)  → "Working late"
+/// - Dawn (5–8)      → "Good morning" on weekdays / "Enjoy your morning off" on weekends
+/// - Morning (9–11)  → "Good morning"
+/// - Noon (12)       → "Good afternoon"
+/// - Afternoon (13–16) → "Good afternoon" on weekdays / "Happy weekend" on Sat/Sun
+/// - Evening (17–21) → "Good evening"  on weekdays / "Enjoy your evening" on weekends
+/// - Night (22–23)   → "Working late"
+///
 /// Extracted from `LoadedBody` so tests can reach it without UIKit.
-func dashboardGreeting(for date: Date) -> String {
-    let hour = Calendar.current.component(.hour, from: date)
+func dashboardGreeting(for date: Date, calendar: Calendar = .current) -> String {
+    let comps    = calendar.dateComponents([.hour, .weekday], from: date)
+    let hour     = comps.hour ?? 0
+    let weekday  = comps.weekday ?? 1          // 1 = Sunday, 7 = Saturday
+    let isWeekend = weekday == 1 || weekday == 7
+
     switch hour {
-    case 5..<12:  return "Good morning"
-    case 12..<17: return "Good afternoon"
-    case 17..<22: return "Good evening"
-    default:      return "Working late"
+    case 5..<9:
+        return isWeekend ? "Enjoy your morning off" : "Good morning"
+    case 9..<12:
+        return "Good morning"
+    case 12..<13:
+        return "Good afternoon"
+    case 13..<17:
+        return isWeekend ? "Happy weekend" : "Good afternoon"
+    case 17..<22:
+        return isWeekend ? "Enjoy your evening" : "Good evening"
+    default:
+        return "Working late"
     }
 }
 

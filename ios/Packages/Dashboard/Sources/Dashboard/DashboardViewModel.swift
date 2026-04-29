@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import Core
 import Networking
+import DesignSystem
 
 @MainActor
 @Observable
@@ -50,6 +51,8 @@ public final class DashboardViewModel {
     }
 
     /// Called by `.refreshable` — always fetches fresh data when cache-aware.
+    /// Fires a `.pullToRefresh` haptic (§3.1) at the moment data lands so the
+    /// user gets tactile confirmation the content actually updated.
     public func forceRefresh() async {
         if let cached = cachedRepo {
             if case .loaded = state {
@@ -61,6 +64,8 @@ public final class DashboardViewModel {
                 let snapshot = try await cached.forceRefresh()
                 state = .loaded(snapshot)
                 lastSyncedAt = await cached.lastSyncedAt
+                // §3.1 — haptic acknowledges that fresh data has arrived.
+                await HapticCatalog.play(.pullToRefresh)
             } catch {
                 AppLog.ui.error("Dashboard force-refresh failed: \(error.localizedDescription, privacy: .public)")
                 state = .failed(error.localizedDescription)
