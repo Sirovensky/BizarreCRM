@@ -4819,6 +4819,13 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] See §28 for the full list.
 - [ ] See §22 for the full list.
 
+### 30.14 Forms / Inputs / Validation
+- [x] **Form section title token** — `FormSectionTitle` view + `.formSectionTitle()` modifier; League Spartan SemiBold 13 pt, `.bizarreTextSecondary`, UPPERCASE, 0.6 pt kerning. `DesignSystem/Forms/FormSectionTitleToken.swift`. (feat(§53): form section title token)
+- [x] **Error message animation** — `FormErrorMessage(String?)` + `.formError(_:)` modifier; slide-down + fade-in via `.push(from: .top).combined(with: .opacity)`; `BrandMotion.errorReveal` 240 ms spring; reduces to instant on Reduce Motion; VoiceOver live-region. `DesignSystem/Forms/FormErrorMessageAnimation.swift`. (feat(§53): error message animation)
+- [x] **Dirty-state diff helper** — `FormDirtyState<Key>` `@MainActor ObservableObject`; `mark(_:changed:)` / `reset()` / `isFieldDirty(_:)` API; `formDiff(original:draft:keyPaths:)` free function for value-based struct comparison. `DesignSystem/Forms/FormDirtyStateDiff.swift`. (feat(§53): dirty-state diff helper)
+- [x] **Form-field focus-next chain** — `FormFocusField` protocol (RawRepresentable<Int> + CaseIterable); `FormFocusChain<Field>` observable; `focus(_:)` / `advance(from:)` / `retreat(from:)` / `clear()`; `.formFocusChain(_:field:isLast:onDone:)` modifier wires FocusState + submitLabel + onSubmit automatically. `DesignSystem/Forms/FormFocusNextChain.swift`. (feat(§53): form-field focus-next chain)
+- [x] **Optional-field copy** — `FormOptionalFieldLabel` view + `.formOptionalLabel(_:)` modifier; localised `(optional)` suffix via `NSLocalizedString("form.field.optional_suffix")`; label in Roboto Medium 15 pt, suffix in Roboto Regular 12 pt `.bizarreTextSecondary`. `DesignSystem/Forms/FormOptionalFieldCopy.swift`. (feat(§53): optional-field copy)
+
 ---
 ## §31. Testing Strategy
 
