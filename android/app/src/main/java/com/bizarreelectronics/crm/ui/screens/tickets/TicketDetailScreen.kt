@@ -2063,6 +2063,10 @@ fun TicketDetailScreen(
                                     fallbackCustomerPhone = ticket.customerPhone,
                                     ticketDetail = state.ticketDetail,
                                     devices = state.devices,
+                                    photos = state.photos,
+                                    serverUrl = viewModel.serverUrl,
+                                    isBenchTimerRunning = state.isBenchTimerRunning,
+                                    techName = state.ticketDetail?.assignedUser?.fullName,
                                     onCustomerClick = ticket.customerId
                                         ?.takeIf { it > 0 }
                                         ?.let { id -> { onNavigateToCustomer(id) } },
@@ -2090,6 +2094,14 @@ fun TicketDetailScreen(
                                             cb(ticketId, dueAmount, displayName)
                                         }
                                     },
+                                    onAddPhoto = onAddPhotos?.let { cb ->
+                                        {
+                                            firstDevice?.id?.let { deviceId -> cb(ticketId, deviceId) }
+                                        }
+                                    },
+                                    onOpenPhoto = null, // wired with viewer integration in a follow-up commit.
+                                    onBenchStart = { viewModel.startBenchTimer() },
+                                    onBenchStop = { viewModel.stopBenchTimer() },
                                 )
                             },
                             // T-C3 — right pane placeholder until T-C8 (Activity

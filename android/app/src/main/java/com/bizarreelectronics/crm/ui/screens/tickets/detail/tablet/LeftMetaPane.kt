@@ -15,8 +15,11 @@ import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
+import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
+import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.BenchTimerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.CustomerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.DeviceCard
+import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.PhotosCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.QuoteCard
 
 /**
@@ -50,11 +53,19 @@ internal fun LeftMetaPane(
     fallbackCustomerPhone: String?,
     ticketDetail: TicketDetail?,
     devices: List<TicketDevice>,
+    photos: List<TicketPhoto>,
+    serverUrl: String,
+    isBenchTimerRunning: Boolean,
+    techName: String?,
     onCustomerClick: (() -> Unit)? = null,
     onCall: (() -> Unit)? = null,
     onSms: (() -> Unit)? = null,
     onEditDevice: () -> Unit = {},
     onCheckout: ((dueAmount: Double) -> Unit)? = null,
+    onAddPhoto: (() -> Unit)? = null,
+    onOpenPhoto: ((photoId: Long) -> Unit)? = null,
+    onBenchStart: () -> Unit = {},
+    onBenchStop: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -85,6 +96,22 @@ internal fun LeftMetaPane(
                 onCheckout = onCheckout,
             )
         }
+        item {
+            PhotosCard(
+                photos = photos,
+                serverUrl = serverUrl,
+                onOpenPhoto = onOpenPhoto,
+                onAddPhoto = onAddPhoto,
+            )
+        }
+        item {
+            BenchTimerCard(
+                isRunning = isBenchTimerRunning,
+                techName = techName,
+                onStart = onBenchStart,
+                onStop = onBenchStop,
+            )
+        }
         items(BUILD_OUT_PLACEHOLDERS) { placeholder ->
             CardPlaceholder(label = placeholder)
         }
@@ -94,8 +121,6 @@ internal fun LeftMetaPane(
 /** Build-out placeholders shown until each phase lands. */
 private val BUILD_OUT_PLACEHOLDERS: List<String> = listOf(
     "Quote add-row typeahead · lands in T-C6",
-    "Photos · lands in T-C7",
-    "Bench Timer · lands in T-C7",
 )
 
 @Composable
