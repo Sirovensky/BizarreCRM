@@ -3944,7 +3944,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] Parameter disambiguation: ambiguous customer → Siri "Which John?"; `parameterSummary` on `CreateNewTicketIntent` + `SendSMSToCustomerIntent`; `CustomerNameOptionsProvider: DynamicOptionsProvider` reads `suggestions.recentCustomerNames` from App Group; `IntentAppError.ambiguousParameter` for unresolved cases. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
 - [x] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output. (`IntentConfirmationCard` — symbol + tint + title + body; `.regularMaterial` bg + `RoundedRectangle`; used in all 3 §64 intents; `App/Intents/ShortcutsIntents.swift`; feat(§64))
 - [x] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32). Intent errors are user-facing only via `IntentAppError: CustomLocalizedStringResourceConvertible` (`.smsBlocked`, `.customerNotFound`, `.datastoreUnavailable`, `.ambiguousParameter`); `IntentErrorCard` + `IntentResultCard` snippet views; no data leaves the tenant boundary. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
-- [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
+- [x] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice). (`App/Intents/IntentAutomation.swift`; `BizarreCRMAssistantSchema` enum + `ShopManagementSchemaIntent` protocol on `CreateNewTicketIntent`/`SendSMSToCustomerIntent`/`RecordExpenseIntent` + `AssistantSchemaRegistrar.register()` writes `assistant.shopManagement.entities` to App Group; feat(§24))
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 - [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
 - [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory). (feat(ios phase-6 §24))
@@ -3957,10 +3957,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
-- [ ] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution.
-- [ ] Siri learns to invoke by donated phrases.
-- [ ] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it.
+- [x] Automation support so tenants can wire Arrive at work → Clock in style triggers. (`App/Intents/IntentAutomation.swift`; `IntentAutomationCenter` CLLocationManager + `CLCircularRegion` 80m geofence around `automation.shop.lat`/`lon`; opt-in `automation.arriveClockIn.enabled`; `bootIfEnabled()` + `didEnterRegion` → `bizarrecrm://timeclock?action=clockin&automation=arrive`; feat(§24))
+- [x] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution. (`App/Intents/IntentAutomation.swift`; `WidgetShortcutBridge<Wrapped>: AppIntent` reads `widget.shortcut.<key>` payload from App Group + dispatches deepLink; `WidgetShortcutPublisher.publish(key:deepLink:)` writes + reloads timelines; feat(§24))
+- [x] Siri learns to invoke by donated phrases. (`App/Intents/IntentAutomation.swift`; `SiriRelevanceDonor.donateRelevantShortcuts()` builds `INRelevantShortcut`s with `INDateRelevanceProvider` (revenue 5–8pm, ticket 9–7) + `INLocationRelevanceProvider` (POS at shop fence) → `INRelevantShortcutStore.default.setRelevantShortcuts`; `suggestedInvocationPhrase` per intent; feat(§24))
+- [x] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it. (`App/Intents/IntentAutomation.swift`; `IntentSovereigntyGuard.isAllowed(_:)` allows `bizarrecrm://` always + tenant `serverHost` + opt-in `automation.allowedExternalHosts` allowlist with subdomain match; `sanctioned(_:)` wrapper for intent URL follows; feat(§24))
 
 ---
 ## §25. Spotlight, Handoff, Universal Clipboard, Share Sheet
