@@ -235,7 +235,20 @@ sealed class Screen(val route: String) {
     // §SCAN-478 — Recurring invoice templates list
     data object RecurringInvoices : Screen("recurring-invoices")
     data object Pos : Screen("pos")
-    data object PosCart : Screen("pos/cart")
+    /**
+     * POS cart screen.
+     *
+     * Base [route] stays `pos/cart` so existing `currentRoute.startsWith(...)`
+     * checks and the deep-link uriPattern continue to work. Callers that want
+     * to hydrate the cart from a ticket pass [routeWithTicket]:
+     *   `Screen.PosCart.routeWithTicket(123L)` -> `"pos/cart?ticketId=123"`
+     * The composable parses the optional `ticketId` query arg and forwards it
+     * to PosCartViewModel.hydrateFromTicket() on first load.
+     */
+    data object PosCart : Screen("pos/cart") {
+        const val routePattern = "pos/cart?ticketId={ticketId}"
+        fun routeWithTicket(ticketId: Long): String = "pos/cart?ticketId=$ticketId"
+    }
     data object PosTender : Screen("pos/tender")
     // TASK-6: split cart stub
     data object PosSplitCart : Screen("pos/split-cart")
@@ -1019,7 +1032,9 @@ fun AppNavGraph(
             route == base || route.startsWith("$base/") || route.startsWith("$base?")
         } ||
         // POS detail routes don't share a common prefix with the Pos tab base.
-        route == Screen.PosCart.route ||
+        // PosCart base route is "pos/cart" but the registered route pattern
+        // is "pos/cart?ticketId={ticketId}" so use startsWith.
+        route?.startsWith("pos/cart") == true ||
         route == Screen.PosTender.route ||
         route == Screen.PosSplitCart.route ||
         route?.startsWith("pos/receipt/") == true ||
@@ -1099,7 +1114,9 @@ fun AppNavGraph(
             currentRoute != Screen.Scanner.route &&
             // POS-AUDIT-032: Cart, Tender, Receipt, and StoreCreditPayment are
             // full-screen POS flows; bottom nav must not show on any of them.
-            currentRoute != Screen.PosCart.route &&
+            // PosCart routePattern carries an optional ?ticketId arg now (T-C10),
+            // so prefix-match instead of equality.
+            !currentRoute.startsWith("pos/cart") &&
             currentRoute != Screen.PosTender.route &&
             currentRoute != Screen.PosSplitCart.route &&
             !currentRoute.startsWith("pos/receipt/") &&
@@ -1215,11 +1232,11 @@ fun AppNavGraph(
                                         restoreState = false
                                     }
                                 } else if (item.screen == Screen.Pos &&
-                                    currentRoute in setOf(
-                                        Screen.PosCart.route,
-                                        Screen.PosTender.route,
-                                        Screen.PosSplitCart.route,
-                                        Screen.Scanner.route,
+                                    (
+                                        currentRoute?.startsWith("pos/cart") == true ||
+                                            currentRoute == Screen.PosTender.route ||
+                                            currentRoute == Screen.PosSplitCart.route ||
+                                            currentRoute == Screen.Scanner.route
                                     )
                                 ) {
                                     // Already deep in POS sub-flow — surface
@@ -1693,8 +1710,16 @@ fun AppNavGraph(
                     onAddPhotos = { id, deviceId ->
                         navController.navigate(Screen.TicketPhotos.createRoute(id, deviceId))
                     },
-                    // POS-AUDIT-041: Screen.Checkout (stub) deleted; onCheckout omitted
-                    // so the top-bar Checkout icon auto-hides (null guard in TicketDetailScreen).
+                    // T-C10 — tablet QuoteCard "Checkout · $X" CTA deep-links into
+                    // PosCart with ?ticketId=… ; PosCartViewModel.hydrateFromTicket
+                    // sets the linked-ticket context so the existing tender flow
+                    // attaches the resulting payment to this ticket. The phone
+                    // top-bar Checkout icon also reuses this; total + customer
+                    // name args are unused on the receiving side for v1
+                    // (cart hydrates from server, not from the call args).
+                    onCheckout = { id, _, _ ->
+                        navController.navigate(Screen.PosCart.routeWithTicket(id))
+                    },
                 )
             }
             composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
@@ -1896,16 +1921,25 @@ fun AppNavGraph(
                 )
             }
             // §68.2 — deep link: bizarrecrm://pos/cart opens the active cart.
-            // Note: the ActionPlan specifies bizarrecrm://pos/cart/:id but PosCart
-            // has no session-id route argument. The bare bizarrecrm://pos/cart URI
-            // is wired here; the :id variant requires a PosCart route refactor to
-            // accept a cartId arg, which is tracked as a separate follow-up.
+            // T-C10: optional ?ticketId={id} arg lets a Checkout CTA from the
+            // tablet ticket-detail QuoteCard hand the cart a ticket id so it
+            // can hydrate its lines from /tickets/:id. Bare URI keeps working;
+            // the arg is nullable + default-null on the navArgument so older
+            // call sites do not need to change.
             composable(
-                route = Screen.PosCart.route,
+                route = Screen.PosCart.routePattern,
+                arguments = listOf(
+                    navArgument("ticketId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
                 deepLinks = listOf(
                     navDeepLink { uriPattern = "bizarrecrm://pos/cart" },
                 ),
             ) { backStack ->
+                val ticketIdArg = backStack.arguments?.getString("ticketId")?.toLongOrNull()
                 // Scanner screen hands the result back via this entry's
                 // savedStateHandle["scanned_barcode"]. Expose it as a Flow
                 // the cart screen consumes + clears after adding to cart.
@@ -1922,6 +1956,10 @@ fun AppNavGraph(
                     },
                     // TASK-3: pass authPreferences so CartLineBottomSheet can gate price editing
                     authPreferences = authPreferences,
+                    // T-C10: hydrate-from-ticket signal. PosCartScreen owns the
+                    // VM lookup + line population so this composable stays as a
+                    // thin nav-route binding.
+                    hydrateFromTicketId = ticketIdArg,
                 )
             }
             composable(Screen.PosTender.route) {

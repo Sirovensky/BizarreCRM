@@ -330,6 +330,19 @@ class PosCartViewModel @Inject constructor(
         }
     }
 
+    /**
+     * T-C10 — hydrate cart from a ticket id (Checkout deep link from
+     * tablet ticket detail). Sets the linked ticket so existing tender
+     * flows pick it up; full line-population from /tickets/:id is
+     * server-wiring deferred per TODO.md (T-C10 follow-up).
+     */
+    fun hydrateFromTicket(ticketId: Long) {
+        viewModelScope.launch {
+            coordinator.setLinkedTicket(ticketId)
+            _uiState.update { it.copy(scanMessage = "Linked to ticket #$ticketId — add lines to checkout") }
+        }
+    }
+
     // ── TASK-3: unit-price override ───────────────────────────────────────────
 
     /**

@@ -73,8 +73,22 @@ fun PosCartScreen(
     viewModel: PosCartViewModel = hiltViewModel(),
     // TASK-3: injected by NavGraph caller so screen doesn't need Hilt directly
     authPreferences: AuthPreferences? = null,
+    /**
+     * T-C10 — when non-null, the screen calls
+     * [PosCartViewModel.hydrateFromTicket] on first composition so the cart
+     * is pre-populated with the lines from this ticket. Tablet ticket-detail
+     * Checkout CTA passes the current ticket id; the bare deep-link path
+     * (`bizarrecrm://pos/cart`) leaves it null so behaviour is unchanged.
+     */
+    hydrateFromTicketId: Long? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    // Hydrate-from-ticket trigger. Fires once per non-null id so revisiting
+    // the same cart doesn't re-clobber edits the user made after hydration.
+    LaunchedEffect(hydrateFromTicketId) {
+        hydrateFromTicketId?.let { viewModel.hydrateFromTicket(it) }
+    }
     // TASK-3: admin / manager can override unit prices
     val canEditPrice = remember(authPreferences) {
         val role = authPreferences?.userRole?.lowercase()
