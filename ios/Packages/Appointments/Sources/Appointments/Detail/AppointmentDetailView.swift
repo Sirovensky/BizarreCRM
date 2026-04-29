@@ -76,6 +76,8 @@ public struct AppointmentDetailView: View {
     @State private var showCancel = false
     @State private var showNoShowConfirm = false
     @State private var showCompletedConfirm = false
+    @State private var showCalendarReprompt = false
+    @State private var calendarExportError: String?
 
     private let api: APIClient
     private let onDismissAction: (() -> Void)?
@@ -122,6 +124,17 @@ public struct AppointmentDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(vm.errorMessage ?? "")
+        }
+        .sheet(isPresented: $showCalendarReprompt) {
+            CalendarPermissionRepromptView()
+        }
+        .alert("Calendar Export Failed", isPresented: Binding(
+            get: { calendarExportError != nil },
+            set: { if !$0 { calendarExportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(calendarExportError ?? "")
         }
     }
 
@@ -243,6 +256,30 @@ public struct AppointmentDetailView: View {
                            isDestructive: true) {
                     showCancel = true
                 }
+
+                actionChip(icon: "calendar.badge.plus", label: "Add to Calendar", color: .bizarreOrange) {
+                    // If calendar access is denied, show the re-prompt sheet
+                    // instead of silently failing.
+                    let status = CalendarPermissionHelper.currentStatus()
+                    if status == .denied || status == .restricted {
+                        showCalendarReprompt = true
+                    } else {
+                        let exportService = CalendarExportService(api: api)
+                        Task {
+                            do {
+                                try await exportService.exportToCalendar(appointmentId: vm.appointment.id)
+                            } catch CalendarExportError.notAuthorized {
+                                // Permission was notDetermined and user denied the prompt.
+                                await MainActor.run { showCalendarReprompt = true }
+                            } catch {
+                                await MainActor.run {
+                                    calendarExportError = error.localizedDescription
+                                }
+                            }
+                        }
+                    }
+                }
+                .accessibilityLabel("Add appointment to Calendar app")
             }
         }
     }

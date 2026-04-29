@@ -1408,11 +1408,11 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Base list — shipped. Rows parse ISO-8601 / SQL datetimes and render 'Today' / 'Tomorrow' / 'Yesterday' / 'MMM d' + short time; single-utterance accessibilityLabel combining date, title, customer, assignee, status.
 - [x] **CachedRepository + offline** — `AppointmentCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Segmented control** — Agenda / Day / Week / Month.
-- [ ] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda.
+- [x] **Month** — `AppointmentMonthView`: 6×7 grid with dot-badges (up to 3) per day; tap day → `DayAgendaSheet` bottom sheet; **"Today" button** in header animates in/out when off current month (`⌘T`); `jumpToToday()` snaps `displayMonth`; `isShowingCurrentMonth` computed for hide logic. (`AppointmentMonthView.swift`)
 - [ ] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin.
 - [ ] **Day** — agenda list grouped by time-block (morning / afternoon / evening).
 - [ ] **Time-block Kanban** (iPad) — columns = employees, rows = time slots (drag-drop reschedule).
-- [ ] **Today** button in toolbar; `⌘T` shortcut.
+- [x] **Today** button in toolbar; `⌘T` shortcut. — Month view: `AppointmentMonthView.jumpToToday()`; week grid: `AppointmentCalendarGridViewModel.goToToday()` already present.
 - [ ] **Filter** — employee / location / type / status.
 
 ### 10.2 Detail
@@ -1427,6 +1427,10 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom), notes. `AppointmentCreateFullView` + `AppointmentCreateFullViewModel` + `AppointmentRepeatRuleSheet` + `AppointmentConflictResolver`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [x] **EventKit mirror** — `CalendarExportService` (actor) + `CalendarPermissionHelper`; `NSCalendarsFullAccessUsageDescription` in `scripts/write-info-plist.sh`. (`CalendarIntegration/` — feat(ios post-phase §10))
 - [x] **Conflict detection UX** — `AppointmentConflictAlertView` (Liquid Glass): change-tech, pick-slot (`AvailableSlotFinder` pure, 12 tests), admin-PIN override. (`ConflictResolver/` — feat(ios post-phase §10))
+- [x] **Conflict-warning toast** — `AppointmentConflictToast` (slides from top, `.ultraThinMaterial`, auto-dismisses after 6 s, "Fix" CTA opens resolver sheet). `.appointmentConflictToast(isVisible:onResolve:)` view-modifier convenience. Wired into `AppointmentCreateFullView` via `onChange(of: vm.conflictWarning)`. (`ConflictResolver/AppointmentConflictToast.swift`)
+- [x] **Week-view all-day section** — horizontal strip pinned above the timed grid in `AppointmentCalendarGridView`; `AppointmentCalendarGridViewModel.allDayAppointments(on:)` detects midnight-start and nil-time appointments; strip hidden when empty; per-chip a11y includes full date + "All day" + title + customer + status. (`iPad/AppointmentCalendarGridView.swift`)
+- [x] **Time-slot a11y label** — `chipA11y(for:)` in `AppointmentCalendarGridView` expanded to full VoiceOver utterance: weekday+date, time, duration (derived from `endTime`), title, customer, assignee, status. (`iPad/AppointmentCalendarGridView.swift`)
+- [x] **Calendar permission re-prompt copy** — `CalendarPermissionRepromptView`: neutral explanatory copy, step-by-step Settings path hint ("Settings › Privacy & Security › Calendars › BizarreCRM"), "Open Settings" primary CTA + "Not Now" dismiss. Wired into `AppointmentDetailView` "Add to Calendar" chip; shown on `.denied`/`.restricted` status or `CalendarExportError.notAuthorized`. (`CalendarIntegration/CalendarPermissionRepromptView.swift`)
 - [ ] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
