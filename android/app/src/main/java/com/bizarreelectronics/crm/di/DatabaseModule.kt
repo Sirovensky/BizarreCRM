@@ -104,13 +104,20 @@ object DatabaseModule {
             // Downgrade detection is handled by DatabaseGuard.checkForwardOnly
             // (exitProcess(2)) before Room ever opens the file.
             .addMigrations(*MigrationRegistry.allMigrations(dao = null))
-            // Enable SQLite foreign key enforcement on every connection.
-            // Without this, our @ForeignKey annotations are decorative only.
+            // 2026-04-28 — FK enforcement DISABLED.
+            // RemoteMediator can fetch tickets before customers (pages arrive
+            // out of order across endpoints), causing FOREIGN KEY constraint
+            // failed (code 787) on the tickets.customer_id → customers.id link.
+            // The same data shape works fine on web + iOS, neither of which
+            // enforces the FK. Treat the @ForeignKey annotations as schema
+            // documentation only; the server is the source of truth for
+            // referential integrity. Orphaned customer_id values are already
+            // handled (column is Long?, UI shows "(no customer)").
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
-                    db.setForeignKeyConstraintsEnabled(true)
-                    Log.d(TAG, "Foreign key enforcement enabled on DB connection")
+                    db.setForeignKeyConstraintsEnabled(false)
+                    Log.d(TAG, "Foreign key enforcement disabled (server-authoritative)")
                 }
 
                 override fun onCreate(db: SupportSQLiteDatabase) {
