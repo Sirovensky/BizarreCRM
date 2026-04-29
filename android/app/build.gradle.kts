@@ -61,7 +61,7 @@ android {
         // number instead (e.g. GitHub Actions: -PversionCode=${{ github.run_number }}).
         versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
             ?: (System.currentTimeMillis() / 1000L / 60L).toInt()
-        versionName = "0.4.0"
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
