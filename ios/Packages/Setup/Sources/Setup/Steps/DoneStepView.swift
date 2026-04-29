@@ -66,13 +66,20 @@ private struct OnboardingConfettiView: View {
 @MainActor
 public struct DoneStepView: View {
     let completedSteps: Set<Int>
+    /// §36.3 — Steps still required to unlock POS (0 = MVP complete, POS unlocked).
+    let mvpStepsRemaining: Int
     let onOpenDashboard: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showSparkles: Bool = false
 
-    public init(completedSteps: Set<Int>, onOpenDashboard: @escaping () -> Void) {
+    public init(
+        completedSteps: Set<Int>,
+        mvpStepsRemaining: Int = 0,
+        onOpenDashboard: @escaping () -> Void
+    ) {
         self.completedSteps = completedSteps
+        self.mvpStepsRemaining = mvpStepsRemaining
         self.onOpenDashboard = onOpenDashboard
     }
 
@@ -85,6 +92,11 @@ public struct DoneStepView: View {
                     celebrationIcon
 
                     headlineSection
+
+                    // §36.3 MVP gate — warn when core steps are missing.
+                    if mvpStepsRemaining > 0 {
+                        mvpGateBanner
+                    }
 
                     completionChecklist
 
@@ -180,6 +192,47 @@ public struct DoneStepView: View {
             Spacer()
         }
         .accessibilityLabel("\(step.title) — completed")
+    }
+
+    // MARK: §36.3 MVP gate banner
+
+    /// Shown when required POS-unlock steps (1–7 + 13) are not yet complete.
+    private var mvpGateBanner: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(Color.bizarreWarning)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("POS not yet unlocked")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(Color.bizarreOnSurface)
+
+                Text(mvpStepsRemaining == 1
+                     ? "1 required step is still missing. Complete it in Settings to take payments."
+                     : "\(mvpStepsRemaining) required steps are still missing. Complete them in Settings to take payments.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.bizarreWarning.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            mvpStepsRemaining == 1
+            ? "POS not unlocked. 1 required step is still missing."
+            : "POS not unlocked. \(mvpStepsRemaining) required steps are still missing."
+        )
     }
 
     private var dashboardCTA: some View {

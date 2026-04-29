@@ -63,6 +63,9 @@ final class BusinessHoursViewModel {
 @MainActor
 public struct BusinessHoursStepView: View {
     let onValidityChanged: (Bool) -> Void
+    /// Called every time the hours change so the wizard can persist the draft
+    /// even when the user skips or navigates back without tapping Next.
+    let onDaysChanged: (([BusinessDay]) -> Void)?
     let onNext: ([BusinessDay]) -> Void
 
     @State private var vm = BusinessHoursViewModel()
@@ -70,9 +73,11 @@ public struct BusinessHoursStepView: View {
 
     public init(
         onValidityChanged: @escaping (Bool) -> Void,
+        onDaysChanged: (([BusinessDay]) -> Void)? = nil,
         onNext: @escaping ([BusinessDay]) -> Void
     ) {
         self.onValidityChanged = onValidityChanged
+        self.onDaysChanged = onDaysChanged
         self.onNext = onNext
     }
 
@@ -142,6 +147,11 @@ public struct BusinessHoursStepView: View {
         .scrollBounceBehavior(.basedOnSize)
         .onChange(of: vm.isNextEnabled) { _, valid in
             onValidityChanged(valid)
+        }
+        .onChange(of: vm.days) { _, days in
+            // Persist draft hours into wizardPayload immediately on any edit.
+            // This way the hours survive a Skip or Back without tapping Next.
+            onDaysChanged?(days)
         }
         .onAppear {
             onValidityChanged(vm.isNextEnabled)

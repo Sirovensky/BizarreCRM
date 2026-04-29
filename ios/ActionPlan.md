@@ -543,7 +543,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default (hardware-not-required mode)
 - [ ] Reports empty: placeholder chart with "Come back after your first sale"
 - [ ] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard
-- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear
+- [x] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear — `SampleDataOptInStepView` (opt-in step 14) + Settings → Tenant Admin → Onboarding → "Remove Sample Data" button (`TenantAdminView.onboardingSection`, `TenantAdminViewModel.removeSampleData`, `DELETE /api/v1/onboarding/sample-data`). agent worktree-agent-af62694d19f10fb9c
 - [ ] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist
 - [ ] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS
 - [ ] Hardware ping: ping each configured device (printer, terminal) with 2s timeout; green check or red cross per device; tap red → diagnostic page
@@ -5238,13 +5238,13 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 ### 36.2 Steps
 - [x] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
 - [x] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §16.7 so tax engine seeds correctly.
-- [x] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19).
+- [x] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19). Real API upload wired: `SetupRepositoryLive.uploadLogo` → `POST /api/v1/setup/logo` (base64 JSON via `APIClient.uploadSetupLogo`); stub removed. agent worktree-agent-af62694d19f10fb9c
 - [x] **4. Timezone + currency + locale** — default from device but user-confirmable.
-- [x] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
+- [x] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper. Draft persistence added: `BusinessHoursStepView.onDaysChanged` fires on every edit so hours are written to `wizardPayload.hours` immediately, surviving Skip/Back without Next. agent worktree-agent-af62694d19f10fb9c
 - [x] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
 - [x] **7. Payment methods** — enable cash, card (BlockChyp link), gift card, store credit, check.
 - [x] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
-- [x] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
+- [x] **9. Invite teammates / First Employee** — email list + role per; SMS invite option; defaults to manager role for the first invitee. `FirstEmployeeStepView` adds `sendSMSInvite` toggle (shown once user starts filling form); `FirstEmployeePayload.sendSMSInvite` → `first_employee_payload["send_sms_invite"]`; `SetupPayload.firstEmployeeSendSMS` stored in wizard draft. agent worktree-agent-af62694d19f10fb9c
 - [x] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
 - [x] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§43).
 - [x] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§48).
@@ -5255,7 +5255,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard. (ecb07902 — SetupResumeCard.swift)
 - [x] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking). (ecb07902 — SetupResumeCard.swift + SetupWizardViewModel.deferWizard existing)
 - [x] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step. (ecb07902 — SetupCrossDeviceResumer.swift)
-- [ ] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged.
+- [x] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged. `SetupWizardViewModel.isMVPComplete` / `mvpStepsRemaining`; `DoneStepView` shows `mvpGateBanner` (lock icon + count of missing steps) when MVP is incomplete. agent worktree-agent-af62694d19f10fb9c
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
 - [x] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address. (`SetupMetrics.swift` + wired into `SetupWizardView` via `.onChange(of: vm.currentStep)` + `.onChange(of: vm.isDismissed)`; agent-8-b4)

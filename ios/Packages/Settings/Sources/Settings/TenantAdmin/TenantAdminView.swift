@@ -12,6 +12,7 @@ public struct TenantAdminView: View {
 
     @State private var vm: TenantAdminViewModel
     @State private var showImpersonateSheet: Bool = false
+    @State private var showRemoveSampleDataConfirm: Bool = false
 
     // Stub user list for impersonation picker (real app fetches from `/users`)
     private let stubUsers: [UserRow] = [
@@ -32,6 +33,7 @@ public struct TenantAdminView: View {
                 tenantInfoSection
                 subscriptionSection
                 usageSection
+                onboardingSection
                 actionsSection
             }
             .padding(.horizontal, BrandSpacing.base)
@@ -39,6 +41,18 @@ public struct TenantAdminView: View {
         }
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         .navigationTitle("Tenant Admin")
+        .confirmationDialog(
+            "Remove Sample Data?",
+            isPresented: $showRemoveSampleDataConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                Task { await vm.removeSampleData() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes all demo customers, tickets, and invoices that were loaded during setup. Real data is not affected.")
+        }
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.large)
         #endif
@@ -165,6 +179,59 @@ public struct TenantAdminView: View {
                         .font(.caption)
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .groupBoxStyle(.brand)
+    }
+
+    // MARK: - §36 Onboarding — sample data management
+
+    /// Lets a tenant admin remove the demo data seeded during the setup wizard
+    /// opt-in step. Referenced in SampleDataOptInStepView hint:
+    /// "You can remove it any time from Settings → Onboarding".
+    private var onboardingSection: some View {
+        GroupBox("Onboarding") {
+            VStack(spacing: BrandSpacing.sm) {
+                if vm.sampleDataDeleted {
+                    Label("Sample data removed.", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.bizarreSuccess)
+                        .font(.brandBodyMedium())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("Sample data has been removed successfully.")
+                } else {
+                    VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                        Button(role: .destructive) {
+                            showRemoveSampleDataConfirm = true
+                        } label: {
+                            if vm.isDeletingSampleData {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Removing…")
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                Label("Remove Sample Data", systemImage: "trash.fill")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .buttonStyle(.brand)
+                        .disabled(vm.isDeletingSampleData)
+                        .accessibilityLabel("Remove sample data loaded during setup")
+                        .accessibilityHint("Permanently deletes demo customers, tickets, and invoices. Real data is not affected.")
+                        .accessibilityIdentifier("tenantAdmin.removeSampleData")
+
+                        Text("Removes demo customers, tickets, and invoices loaded during setup. Real data is not affected.")
+                            .font(.caption)
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+
+                    if let err = vm.sampleDataError {
+                        Label(err, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.bizarreError)
+                    }
                 }
             }
         }

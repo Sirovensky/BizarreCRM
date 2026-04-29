@@ -43,6 +43,21 @@ private struct StringCodingKey: CodingKey {
     init?(intValue: Int) { return nil }
 }
 
+// MARK: - Logo upload wire types
+
+private struct SetupLogoBody: Encodable, Sendable {
+    let imageBase64: String
+    let mimeType: String
+    enum CodingKeys: String, CodingKey {
+        case imageBase64 = "image_base64"
+        case mimeType    = "mime_type"
+    }
+}
+
+public struct SetupLogoResponse: Decodable, Sendable {
+    public let url: String?
+}
+
 // MARK: - APIClient extension
 
 public extension APIClient {
@@ -56,5 +71,12 @@ public extension APIClient {
 
     func completeSetup() async throws -> SetupCompleteResponse {
         try await post("setup/complete", body: SetupStepPayload(data: [:]), as: SetupCompleteResponse.self)
+    }
+
+    /// Uploads the tenant logo as base64 JSON to `POST /api/v1/setup/logo`.
+    /// Returns the CDN URL of the persisted logo.
+    func uploadSetupLogo(_ imageData: Data, mimeType: String = "image/jpeg") async throws -> SetupLogoResponse {
+        let body = SetupLogoBody(imageBase64: imageData.base64EncodedString(), mimeType: mimeType)
+        return try await post("setup/logo", body: body, as: SetupLogoResponse.self)
     }
 }
