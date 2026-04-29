@@ -13,6 +13,12 @@ public struct TicketCreateView: View {
     @State private var pendingBanner: String?
     private let customerRepo: CustomerRepository
 
+    // §22.3 — Tab order: logical field sequence for hardware keyboard / Tab key
+    @FocusState private var focus: FormField?
+    private enum FormField: Hashable {
+        case device, imei, serial, price, notes
+    }
+
     public init(api: APIClient, customerRepo: CustomerRepository) {
         self.customerRepo = customerRepo
         _vm = State(wrappedValue: TicketCreateViewModel(api: api))
@@ -58,10 +64,16 @@ public struct TicketCreateView: View {
 
                     Section("Device") {
                         TextField("Device (e.g. iPhone 14 Pro)", text: $vm.deviceName)
+                            .focused($focus, equals: .device)
+                            .submitLabel(.next)
+                            .onSubmit { focus = .imei }
                             .onChange(of: vm.deviceName) { _, _ in vm.scheduleAutoSave() }
                         HStack(spacing: BrandSpacing.sm) {
                             TextField("IMEI", text: $vm.imei)
                                 .keyboardType(.numbersAndPunctuation)
+                                .focused($focus, equals: .imei)
+                                .submitLabel(.next)
+                                .onSubmit { focus = .serial }
                                 .onChange(of: vm.imei) { _, _ in vm.scheduleAutoSave() }
                             Button {
                                 showingIMEIScanner = true
@@ -74,15 +86,24 @@ public struct TicketCreateView: View {
                         }
                         TextField("Serial", text: $vm.serial)
                             .autocorrectionDisabled()
+                            .focused($focus, equals: .serial)
+                            .submitLabel(.next)
+                            .onSubmit { focus = .price }
                             .onChange(of: vm.serial) { _, _ in vm.scheduleAutoSave() }
                         TextField("Price (USD)", text: $vm.priceText)
                             .keyboardType(.decimalPad)
+                            .focused($focus, equals: .price)
+                            .submitLabel(.next)
+                            .onSubmit { focus = .notes }
                             .onChange(of: vm.priceText) { _, _ in vm.scheduleAutoSave() }
                     }
 
                     Section("Notes") {
                         TextField("What's wrong / customer said…", text: $vm.additionalNotes, axis: .vertical)
                             .lineLimit(3...6)
+                            .focused($focus, equals: .notes)
+                            .submitLabel(.done)
+                            .onSubmit { focus = nil }
                             .onChange(of: vm.additionalNotes) { _, _ in vm.scheduleAutoSave() }
                     }
 
@@ -94,6 +115,13 @@ public struct TicketCreateView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            // §22.7 — Safe area: Form scroll behaviour already avoids the
+            // keyboard automatically (SwiftUI default). Do NOT add
+            // .ignoresSafeArea(.keyboard) to this container — that modifier
+            // would pin the form's bottom edge under the keyboard frame,
+            // making the last fields unreachable. Views with floating
+            // bottom-anchored buttons (outside this Form) should use
+            // .keyboardSafeBottomAction { } from DesignSystem instead.
             .navigationTitle("New ticket")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
