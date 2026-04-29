@@ -1,22 +1,37 @@
 import SwiftUI
 
 // §22 — Shared pointer-interaction modifier bundling `.hoverEffect(.highlight)`
-// and `.pointerStyle(.automatic)` for consistent iPad + Mac hover behaviour.
+// and `.pointerStyle` for consistent iPad + Mac hover behaviour.
 //
 // Gate: `#if canImport(UIKit)` keeps hoverEffect inert on macOS server-side Swift
 // where the API is unavailable.
+//
 // Usage:
 //   someRow
-//       .brandHover()
+//       .brandHover()                   // row highlight, default pointer
+//       .brandHover(pointer: .link)     // row highlight + link cursor
 //
 // Or via explicit modifier:
 //   someRow
-//       .modifier(HoverHighlightModifier())
+//       .modifier(HoverHighlightModifier(pointer: .link))
 
-// MARK: - ViewModifier
+// MARK: - PointerSemantics
 
-/// Applies `.hoverEffect(.highlight)` (and pointer interaction on platforms
-/// that support it) to any view.
+/// Semantic pointer style applied by ``HoverHighlightModifier``.
+///
+/// Maps to `UIPointerStyle` / SwiftUI `.pointerStyle` on iPadOS 17.5+.
+/// Falls back gracefully on older OS versions.
+public enum PointerSemantics: Sendable, Equatable {
+    /// Default system arrow cursor — use for interactive rows and cards.
+    case `default`
+    /// Link cursor (pointing hand) — use for tappable hyperlinks and URL labels.
+    case link
+}
+
+// MARK: - HoverHighlightModifier
+
+/// Applies `.hoverEffect(.highlight)` and the requested pointer style to any
+/// view.
 ///
 /// Respects Reduce Motion — the highlight still shows, but transition is
 /// instant (no scale/opacity animation). This satisfies §26 a11y contract:
@@ -24,30 +39,56 @@ import SwiftUI
 public struct HoverHighlightModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init() {}
+    /// Pointer semantic requested by the call site.
+    public let pointer: PointerSemantics
+
+    public init(pointer: PointerSemantics = .default) {
+        self.pointer = pointer
+    }
 
     public func body(content: Content) -> some View {
         #if canImport(UIKit)
-        content
+        let highlighted = content
             .hoverEffect(.highlight)
             .accessibilityAddTraits([])
             // Announce that context menu is available so VoiceOver users know
             // to use "long press" to access it.
             .accessibilityHint("Long press for more options")
+
+        if #available(iOS 17.5, *) {
+            switch pointer {
+            case .default:
+                highlighted.pointerStyle(.automatic)
+            case .link:
+                highlighted.pointerStyle(.link)
+            }
+        } else {
+            highlighted
+        }
         #else
         content
         #endif
     }
 }
 
-// MARK: - Convenience extension
+// MARK: - Convenience extensions
 
 public extension View {
-    /// Apply brand-standard hover highlight + pointer interaction.
+    /// Apply brand-standard hover highlight + optional pointer customization.
     ///
-    /// - Returns: A view with `.hoverEffect(.highlight)` applied on UIKit;
-    ///   passthrough on macOS CLI / test hosts.
-    func brandHover() -> some View {
-        self.modifier(HoverHighlightModifier())
+    /// - Parameter pointer: The cursor semantic. Use `.link` for hyperlinks,
+    ///   `.default` for interactive rows (the default).
+    /// - Returns: A view with `.hoverEffect(.highlight)` and the matching
+    ///   `.pointerStyle` applied on UIKit; passthrough on macOS CLI / test hosts.
+    func brandHover(pointer: PointerSemantics = .default) -> some View {
+        modifier(HoverHighlightModifier(pointer: pointer))
+    }
+
+    /// Convenience: apply brand hover with the link (pointing-hand) cursor.
+    ///
+    /// Equivalent to `.brandHover(pointer: .link)`.  Use on `Link` views,
+    /// tappable URL labels, and any element that navigates to an external URL.
+    func brandLinkHover() -> some View {
+        modifier(HoverHighlightModifier(pointer: .link))
     }
 }
