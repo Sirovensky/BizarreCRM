@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Hindi (hi) — Phase-2 locale stub (§27.2).
+
+    TRANSLATION STATUS: STUB ONLY — no translated strings present.
+    All strings fall through to values/ (English) until a human translator
+    populates this file.
+
+    Plural rules for Hindi follow CLDR "one / other":
+      quantity="one"  → exactly 1
+      quantity="other" → everything else
+
+    Note: Hindi uses Devanagari script. Ensure font coverage before shipping.
+    The app's custom font (res/font/) must include Devanagari glyphs, or fall
+    back to the system font for this locale.
+-->
+<resources>
+    <!-- App name — keep untranslated; brand identity must not change. -->
+    <string name="app_name">Bizarre CRM</string>
+
+    <!--
+        TODO (Phase-2): add translated strings here.
+        Priority order: nav_* > error_* > action_* > tickets_* > customers_* > settings_* > plurals
+        Also review font file for Devanagari glyph coverage before shipping hi-IN.
+    -->
+</resources>

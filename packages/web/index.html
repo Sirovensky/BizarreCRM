@@ -82,13 +82,13 @@
             // frame before Tailwind's dark:bg-surface-950 CSS applies is
             // already dark. This is the gap that kept the cold-boot flash
             // visible even with the dark class on <html>.
-            document.documentElement.style.backgroundColor = '#0a0a0a';
+            document.documentElement.style.backgroundColor = '#1C1917';
           }
         } catch (_) { /* storage disabled — fall through to light */ }
       })();
     </script>
   </head>
-  <body class="bg-white dark:bg-surface-950 text-surface-900 dark:text-surface-100">
+  <body class="bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>

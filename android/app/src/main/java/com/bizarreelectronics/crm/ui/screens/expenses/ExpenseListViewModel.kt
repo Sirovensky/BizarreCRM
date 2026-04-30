@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseApprovalFilter
+import com.bizarreelectronics.crm.ui.screens.expenses.components.EmployeeOption
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterState
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -41,9 +44,18 @@ class ExpenseListViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = _state.value.expenses.isEmpty(), error = null)
             val query = _state.value.searchQuery.trim()
             val categoryFilter = _state.value.selectedCategory
+            val advFilter = _state.value.advancedFilter
 
+            // Choose the narrowest Room flow given active filters.
+            // Priority: search query > date range > employee > approval status > category.
             val flow = when {
                 query.isNotEmpty() -> expenseRepository.searchExpenses(query)
+                advFilter.fromDate.isNotEmpty() || advFilter.toDate.isNotEmpty() ->
+                    expenseRepository.getByDateRange(advFilter.fromDate, advFilter.toDate)
+                advFilter.selectedEmployeeId != null ->
+                    expenseRepository.getByEmployee(advFilter.selectedEmployeeId)
+                advFilter.approvalFilter != ExpenseApprovalFilter.ALL ->
+                    expenseRepository.getByApprovalStatus(advFilter.approvalFilter.apiValue!!)
                 categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL ->
                     expenseRepository.getByCategory(categoryFilter)
                 else -> expenseRepository.getExpenses()
@@ -52,14 +64,36 @@ class ExpenseListViewModel @Inject constructor(
             flow
                 .map { expenses ->
                     var result = expenses
-                    // Narrow by category if both search + category active
+
+                    // Apply category cross-filter when search + category are both active
                     if (query.isNotEmpty() && categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL) {
                         result = result.filter { it.category.equals(categoryFilter, ignoreCase = true) }
                     }
-                    // Pending approval filter: stub — no status column in entity yet,
-                    // so we show all for now (placeholder for when status is wired)
-                    // This keeps the tab visible without crashing.
-                    result
+
+                    // Pending approval category tab: filter by status == pending
+                    if (categoryFilter == FILTER_PENDING_APPROVAL) {
+                        result = result.filter { it.approvalStatus == "pending" }
+                    }
+
+                    // When date range is active alongside a category filter, narrow further
+                    if ((advFilter.fromDate.isNotEmpty() || advFilter.toDate.isNotEmpty()) &&
+                        categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL
+                    ) {
+                        result = result.filter { it.category.equals(categoryFilter, ignoreCase = true) }
+                    }
+
+                    // When employee filter is active via advanced sheet, also apply category
+                    if (advFilter.selectedEmployeeId != null &&
+                        categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL
+                    ) {
+                        result = result.filter { it.category.equals(categoryFilter, ignoreCase = true) }
+                    }
+
+                    // Derive the employee chip options from the loaded list so the sheet
+                    // always shows employees that actually have expenses.
+                    val employeeOptions = buildEmployeeOptions(result)
+
+                    result to employeeOptions
                 }
                 .catch {
                     _state.value = _state.value.copy(
@@ -68,13 +102,16 @@ class ExpenseListViewModel @Inject constructor(
                         error = "Failed to load expenses. Check your connection and try again.",
                     )
                 }
-                .collectLatest { expenses ->
+                .collectLatest { (expenses, employeeOptions) ->
                     val sorted = sortExpenses(expenses, _state.value.currentSort)
                     _state.value = _state.value.copy(
                         expenses = sorted,
                         totalAmount = sorted.sumOf { it.amount },
                         categorySlices = buildCategorySlices(sorted),
-                        reimbursablePendingAmount = 0L, // stub: no reimbursable column yet
+                        reimbursablePendingAmount = sorted
+                            .filter { it.approvalStatus == "pending" }
+                            .sumOf { it.amount },
+                        employeeOptions = employeeOptions,
                         isLoading = false,
                         isRefreshing = false,
                     )
@@ -104,6 +141,12 @@ class ExpenseListViewModel @Inject constructor(
     fun onSortChanged(sort: ExpenseSort) {
         val sorted = sortExpenses(_state.value.expenses, sort)
         _state.value = _state.value.copy(currentSort = sort, expenses = sorted)
+    }
+
+    /** Called from [ExpenseFilterSheet] when the user taps "Apply". */
+    fun onAdvancedFilterChanged(filter: ExpenseFilterState) {
+        _state.value = _state.value.copy(advancedFilter = filter)
+        loadExpenses()
     }
 
     fun deleteExpense(id: Long) {
@@ -136,23 +179,23 @@ class ExpenseListViewModel @Inject constructor(
 
     /**
      * Builds CSV content from the current expense list.
-     * Columns: id, category, amount_dollars, date, description, recorded_by
+     * Columns: id, category, amount_dollars, date, description, recorded_by, status
      */
     fun buildCsvContent(): String {
         val sb = StringBuilder()
-        sb.appendLine("id,category,amount,date,description,recorded_by")
+        sb.appendLine("id,category,amount,date,description,recorded_by,status")
         _state.value.expenses.forEach { e ->
             val amountDollars = "%.2f".format(e.amount / 100.0)
             val desc = (e.description ?: "").replace("\"", "\"\"")
             val user = (e.userName ?: "").replace("\"", "\"\"")
             sb.appendLine(
-                "${e.id},${e.category},$amountDollars,${e.date.take(10)},\"$desc\",\"$user\"",
+                "${e.id},${e.category},$amountDollars,${e.date.take(10)},\"$desc\",\"$user\",${e.approvalStatus}",
             )
         }
         return sb.toString()
     }
 
-    // ── Private helpers ───────────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private fun sortExpenses(list: List<ExpenseEntity>, sort: ExpenseSort): List<ExpenseEntity> =
         when (sort) {
@@ -160,4 +203,22 @@ class ExpenseListViewModel @Inject constructor(
             ExpenseSort.AMOUNT -> list.sortedByDescending { it.amount }
             ExpenseSort.CATEGORY -> list.sortedBy { it.category }
         }
+
+    /**
+     * Derive employee options from the current loaded list.
+     * Always includes an "All employees" sentinel (userId = null) as the first entry.
+     * Deduplicates by userId; unknown employee rows (userId=null) are excluded from
+     * named entries to avoid a "Unknown" chip clutter.
+     */
+    private fun buildEmployeeOptions(expenses: List<ExpenseEntity>): List<EmployeeOption> {
+        val seen = linkedMapOf<Long, String>()
+        expenses.forEach { e ->
+            if (e.userId != null && !seen.containsKey(e.userId)) {
+                seen[e.userId] = e.userName ?: "Employee #${e.userId}"
+            }
+        }
+        val namedOptions = seen.map { (id, name) -> EmployeeOption(userId = id, displayName = name) }
+        return if (namedOptions.isEmpty()) emptyList()
+        else listOf(EmployeeOption(userId = null, displayName = "All employees")) + namedOptions
+    }
 }

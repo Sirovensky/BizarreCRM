@@ -88,7 +88,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
         </button>
 
         <div className="rounded-xl bg-white dark:bg-surface-800 shadow-sm border border-surface-200 dark:border-surface-700 p-6">
-          <h2 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-1">Create Account</h2>
+          <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-1">Create Account</h1>
           <p className="text-sm text-surface-500 dark:text-surface-400 mb-5">
             {step === 'phone' && 'Enter the phone number on file for your repairs.'}
             {step === 'code' && 'Enter the 6-digit code we just sent to your phone.'}
@@ -116,7 +116,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            <div role="alert" aria-live="polite" className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
@@ -138,7 +138,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
               >
                 {loading ? 'Sending...' : 'Send Verification Code'}
               </button>
@@ -212,7 +212,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
               >
                 {loading ? 'Creating account...' : 'Create Account'}
               </button>

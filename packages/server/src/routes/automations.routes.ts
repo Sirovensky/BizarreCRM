@@ -157,6 +157,28 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// GET /:id – Get single automation rule
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    const automation = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
+    if (!automation) throw new AppError('Automation not found', 404);
+    res.json({
+      success: true,
+      data: {
+        ...automation,
+        trigger_config: safeParseJson(automation.trigger_config, {}),
+        action_config: safeParseJson(automation.action_config, {}),
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // PUT /:id – Update automation rule
 // ---------------------------------------------------------------------------
 router.put(

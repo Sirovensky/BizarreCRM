@@ -362,7 +362,7 @@ export function CustomerDetailPage() {
                     onClick={() => mintReferralMutation.mutate()}
                     disabled={mintReferralMutation.isPending}
                     title="Mint or copy this customer's referral code"
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-60 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 transition-colors"
                   >
                     {mintReferralMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -377,7 +377,7 @@ export function CustomerDetailPage() {
                     onClick={handleOpenWalletPass}
                     disabled={walletPassLoading}
                     title="Open this customer's wallet pass in a new tab"
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-sky-500/30 dark:text-sky-300 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 transition-colors"
                   >
                     {walletPassLoading ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -413,7 +413,7 @@ export function CustomerDetailPage() {
           <button
             onClick={handleExportData}
             disabled={exporting}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export Data
@@ -430,7 +430,7 @@ export function CustomerDetailPage() {
             <button
               onClick={() => setShowEraseConfirm(true)}
               disabled={erasePiiMutation.isPending}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <Eraser className="h-4 w-4" />
               Erase PII (GDPR)
@@ -564,8 +564,8 @@ function CustomerMergeModal({
 
   const searchResults: MergeSearchResult[] = (() => {
     const d = searchData?.data?.data;
-    const list: MergeSearchResult[] = Array.isArray(d) ? d : d?.customers || [];
-    // Exclude the current customer from results
+    // /customers/search always returns a bare array — not { customers: [] }
+    const list: MergeSearchResult[] = Array.isArray(d) ? d : [];
     return list.filter((c) => c.id !== keepCustomer.id);
   })();
 
@@ -757,7 +757,7 @@ function CustomerMergeModal({
             <button
               onClick={() => mergeMutation.mutate()}
               disabled={mergeMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {mergeMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1036,7 +1036,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Plus className="h-4 w-4" />
             Enroll in Membership
@@ -1074,7 +1074,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <button
               onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
               disabled={!selectedTier || subscribeMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership
@@ -1159,7 +1159,10 @@ function InfoTab({
     onError: () => toast.error('Failed to update customer'),
   });
 
-  const updateField = (key: string, value: any) => {
+  // WEB-FB-012: `value` is typed broadly because the form mixes string and
+  // boolean fields; narrower overloads would require a discriminated union per
+  // field — disproportionate complexity for a pure-local form helper.
+  const updateField = (key: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -1299,7 +1302,7 @@ function InfoTab({
                   Additional Phones
                 </label>
                 <div className="space-y-1">
-                  {customer.phones.map((p: any) => (
+                  {(customer.phones as CustomerPhone[]).map((p) => (
                     <div
                       key={p.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1326,7 +1329,7 @@ function InfoTab({
                   Additional Emails
                 </label>
                 <div className="space-y-1">
-                  {customer.emails.map((em: any) => (
+                  {(customer.emails as CustomerEmail[]).map((em) => (
                     <div
                       key={em.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1473,7 +1476,7 @@ function InfoTab({
         <button
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {updateMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1487,6 +1490,59 @@ function InfoTab({
   );
 }
 
+// ==================== Typed shapes for tabs (WEB-FB-012) ====================
+// Local interfaces so a server field rename trips the TypeScript build instead
+// of silently producing stale/empty values in the rendered tab.
+
+interface CustomerTicketRow {
+  id: number;
+  // Server `GET /customers/:id/tickets` spreads `t.*` from `tickets`, so the
+  // raw column names land on the row. Both order_id (display ID) and total
+  // are surfaced in the UI.
+  order_id?: string | number | null;
+  total?: number | string | null;
+  created_at: string;
+  status?: { color?: string; name?: string };
+  devices?: Array<{ device_name?: string; service_name?: string; issue?: string }>;
+}
+
+interface CustomerInvoiceRow {
+  id: number;
+  order_id?: number | string;
+  status: string;
+  total?: number;
+  amount_paid?: number;
+  created_at: string;
+}
+
+interface CustomerCommunicationRow {
+  id?: number | string;
+  direction?: string;
+  comm_type?: string;
+  subject?: string;
+  body?: string;
+  // Server unifies SMS/call/email rows with `content` (sms.message,
+  // calls.transcription, emails.body) — see customers.routes.ts:1727.
+  // Keep `message` too so callers that read the legacy raw column also typecheck.
+  content?: string | null;
+  message?: string | null;
+  created_at?: string;
+}
+
+interface CustomerPhone {
+  id: number;
+  phone: string;
+  label?: string;
+  is_primary?: boolean;
+}
+
+interface CustomerEmail {
+  id: number;
+  email: string;
+  label?: string;
+  is_primary?: boolean;
+}
+
 // ==================== Tickets Tab ====================
 
 function TicketsTab({ customerId }: { customerId: number }) {
@@ -1496,7 +1552,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getTickets(customerId),
   });
 
-  const tickets = data?.data?.data?.tickets || [];
+  const tickets: CustomerTicketRow[] = data?.data?.data?.tickets || [];
 
   if (isLoading) {
     return <TabSkeleton />;
@@ -1513,7 +1569,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
   }
 
   // Sort by created_at descending (newest first)
-  const sorted = [...tickets].sort((a: any, b: any) =>
+  const sorted = [...tickets].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
@@ -1528,7 +1584,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
         <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
 
         <div className="space-y-0">
-          {sorted.map((ticket: any, idx: number) => {
+          {sorted.map((ticket, idx) => {
             const statusColor = ticket.status?.color || '#6b7280';
             const deviceName = ticket.devices?.[0]?.device_name || 'Unknown device';
             const serviceName = ticket.devices?.[0]?.service_name || ticket.devices?.[0]?.issue || '';
@@ -1604,7 +1660,7 @@ function InvoicesTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getInvoices(customerId),
   });
 
-  const invoices = data?.data?.data?.invoices || [];
+  const invoices: CustomerInvoiceRow[] = data?.data?.data?.invoices || [];
 
   if (isLoading) {
     return <TabSkeleton />;
@@ -1645,7 +1701,7 @@ function InvoicesTab({ customerId }: { customerId: number }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
-            {invoices.map((inv: any) => (
+            {invoices.map((inv) => (
               <tr
                 key={inv.id}
                 className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
@@ -1689,7 +1745,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getCommunications(customerId),
     enabled: !!customerId,
   });
-  const communications: any[] = data?.data?.data?.communications || [];
+  const communications: CustomerCommunicationRow[] = data?.data?.data?.communications || [];
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400" /></div>;
@@ -1703,7 +1759,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
 
   return (
     <div className="space-y-2 max-h-96 overflow-y-auto">
-      {communications.map((msg: any, i: number) => (
+      {communications.map((msg, i) => (
         <div key={msg.id || i} className={cn('flex', msg.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',
@@ -1976,7 +2032,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             <button
               onClick={handleSubmitAsset}
               disabled={addMutation.isPending || updateAssetMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {(addMutation.isPending || updateAssetMutation.isPending) && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

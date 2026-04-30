@@ -149,6 +149,7 @@ class DraftStore @Inject constructor(
         CUSTOMER("customer"),
         SMS("sms"),
         EXPENSE("expense"),
+        INVOICE("invoice"),
     }
 
     // ------------------------------------------------------------------

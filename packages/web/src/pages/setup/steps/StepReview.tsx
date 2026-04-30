@@ -1,5 +1,6 @@
-import { CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Loader2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import type { PendingWrites, ExtraCardId } from '../wizardTypes';
+import { checkMandatoryFields } from '@/services/validationService';
 
 const SENSITIVE_KEYS = new Set<keyof PendingWrites>([
   'sms_twilio_auth_token',
@@ -23,6 +24,10 @@ interface StepReviewProps {
 /**
  * Final step — review + commit.
  *
+ * Calls checkMandatoryFields before render. If any required fields are
+ * missing or invalid, shows a prominent banner and blocks the Complete
+ * button. The Skip button remains available so the user can still bail.
+ *
  * Shows a summary of what was collected across the wizard (mandatory fields +
  * any extras the user configured), masking sensitive credentials. Two CTAs:
  *   "Complete Setup" flushes everything with wizard_completed='true'
@@ -31,6 +36,10 @@ interface StepReviewProps {
  *     the hub extras — their data is still saved)
  */
 export function StepReview({ pending, completedCards, onBack, onComplete, onSkip, saving, error }: StepReviewProps) {
+  // Run mandatory-field check before rendering CTAs
+  const missingFields = checkMandatoryFields(pending);
+  const isBlocked = missingFields.length > 0;
+
   const mandatoryRows: Array<[string, string]> = [];
   if (pending.store_name) mandatoryRows.push(['Store name', pending.store_name]);
   if (pending.theme) mandatoryRows.push(['Theme', pending.theme]);
@@ -53,18 +62,50 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 text-center">
-        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-100 dark:bg-green-500/10">
-          <CheckCircle2 className="h-7 w-7 text-green-600 dark:text-green-400" />
+        <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl ${isBlocked ? 'bg-amber-100 dark:bg-amber-500/10' : 'bg-green-100 dark:bg-green-500/10'}`}>
+          {isBlocked
+            ? <AlertTriangle className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+            : <CheckCircle2 className="h-7 w-7 text-green-600 dark:text-green-400" />
+          }
         </div>
         <h2 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">
-          Ready to go
+          {isBlocked ? 'Almost there' : 'Ready to go'}
         </h2>
         <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
-          Review what you've configured. Click <strong>Complete Setup</strong> to save and enter your dashboard.
+          {isBlocked
+            ? 'Fix the issues below, then click Complete Setup.'
+            : <>Review what you've configured. Click <strong>Complete Setup</strong> to save and enter your dashboard.</>
+          }
         </p>
       </div>
 
       <div className="space-y-5 rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
+
+        {/* Missing-field banner — shown when mandatory fields are invalid */}
+        {isBlocked && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              Cannot complete setup. Missing or invalid:
+            </div>
+            <ul className="space-y-1 pl-6">
+              {missingFields.map(({ label, error: fieldError }) => (
+                <li key={label} className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
+                  <span className="font-medium">{label}:</span>
+                  <span>{fieldError}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={onBack}
+              className="mt-3 text-sm font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-200"
+            >
+              Go back and fix these fields
+            </button>
+          </div>
+        )}
+
         {/* Mandatory info */}
         <section>
           <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-surface-500 dark:text-surface-400">
@@ -135,8 +176,9 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
             <button
               type="button"
               onClick={onComplete}
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50"
+              disabled={saving || isBlocked}
+              title={isBlocked ? 'Fix missing fields before completing setup' : undefined}
+              className="flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
               Complete Setup

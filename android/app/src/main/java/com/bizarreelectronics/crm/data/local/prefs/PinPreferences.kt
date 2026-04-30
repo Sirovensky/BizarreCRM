@@ -245,6 +245,13 @@ class PinPreferences @Inject constructor(
     }
 
     /**
+     * True when an Argon2id hash mirror is cached on this device.
+     * Used by [PinRepository.verify] to disambiguate "wrong PIN" from
+     * "no offline credential available" when the server is unreachable.
+     */
+    fun hasMirror(): Boolean = pinHashMirror != null
+
+    /**
      * Epoch millis of the last successful PIN change.
      * 0L when the PIN has never been explicitly changed on this device.
      */

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
@@ -131,6 +132,7 @@ class SlaHeatmapViewModel @Inject constructor(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SlaHeatmapScreen(
+    onBack: () -> Unit,
     onTicketClick: (ticketId: Long) -> Unit,
     reduceMotion: Boolean = false,
     viewModel: SlaHeatmapViewModel = hiltViewModel(),
@@ -141,6 +143,14 @@ fun SlaHeatmapScreen(
         topBar = {
             TopAppBar(
                 title = { Text("SLA Heatmap") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = viewModel::toggleSort) {
                         Icon(

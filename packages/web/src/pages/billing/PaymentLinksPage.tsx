@@ -248,7 +248,7 @@ export function PaymentLinksPage() {
             />
           </div>
           <button type="button"
-            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             disabled={createMutation.isPending}
             onClick={handleCreate}
           >
@@ -308,7 +308,7 @@ export function PaymentLinksPage() {
                     </button>
                     {canManagePaymentLinks && row.status === 'active' ? (
                       <button type="button"
-                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                         onClick={() => cancelMutation.mutate(row.id)}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
                         aria-label={`Cancel payment request ${row.token.slice(0, 8)}`}

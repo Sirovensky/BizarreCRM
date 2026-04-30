@@ -288,14 +288,14 @@ function TemplateCard({
               <button
                 onClick={() => moveCheck(check.id, 'up')}
                 disabled={idx === 0}
-                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 <ChevronUp className="h-3 w-3" />
               </button>
               <button
                 onClick={() => moveCheck(check.id, 'down')}
                 disabled={idx === sortedChecks.length - 1}
-                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 <ChevronDown className="h-3 w-3" />
               </button>

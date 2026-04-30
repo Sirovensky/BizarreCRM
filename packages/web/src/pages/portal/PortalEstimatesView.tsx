@@ -51,9 +51,20 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   }
 
   if (loading) {
+    // WEB-S4-024: skeleton instead of spinner
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-900">
-        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
+        <div className="bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 px-4 py-4">
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <div className="animate-pulse bg-surface-200 dark:bg-surface-700 h-5 w-5 rounded" />
+            <div className="animate-pulse bg-surface-200 dark:bg-surface-700 h-5 w-32 rounded" />
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+          {[1, 2].map(i => (
+            <div key={i} className="animate-pulse bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl h-32" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -122,7 +133,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                   <button
                     onClick={() => handleApprove(est.id)}
                     disabled={approvingId === est.id}
-                    className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                   >
                     {approvingId === est.id ? 'Approving...' : 'Approve Estimate'}
                   </button>

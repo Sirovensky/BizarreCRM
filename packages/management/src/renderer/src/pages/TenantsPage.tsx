@@ -49,6 +49,11 @@ export function TenantsPage() {
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
+  // DASH-ELEC-241: track in-flight requests separately so a fetch that errors
+  // before setting detailCache doesn't leave the row permanently stuck as
+  // 'loading'.  The Set is a ref (not state) because updates don't need a
+  // re-render themselves — detailCache updates drive re-renders.
+  const detailInFlight = useRef<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [planFilter, setPlanFilter] = useState<string>('');
 
@@ -81,6 +86,9 @@ export function TenantsPage() {
   // — without this, once detailCache[slug]==='error' the toggleExpand short-
   // circuit (line below) means re-clicking the row never re-fetches.
   async function loadDetail(slug: string) {
+    // DASH-ELEC-241: guard against duplicate in-flight requests.
+    if (detailInFlight.current.has(slug)) return;
+    detailInFlight.current.add(slug);
     setDetailCache((c) => ({ ...c, [slug]: 'loading' }));
     try {
       const res = await getAPI().superAdmin.getTenant(slug);
@@ -103,6 +111,8 @@ export function TenantsPage() {
       }
     } catch {
       setDetailCache((c) => ({ ...c, [slug]: 'error' }));
+    } finally {
+      detailInFlight.current.delete(slug);
     }
   }
 
@@ -112,7 +122,13 @@ export function TenantsPage() {
       return;
     }
     setExpandedSlug(slug);
-    if (detailCache[slug] && detailCache[slug] !== 'error') return;
+    // Skip re-fetch if we have a good cache entry (not 'error').
+    // DASH-ELEC-241: also skip if already in-flight (tracked by ref).
+    if (
+      detailCache[slug] &&
+      detailCache[slug] !== 'error' &&
+      !detailInFlight.current.has(slug)
+    ) return;
     await loadDetail(slug);
   }
 

@@ -18,6 +18,11 @@ import toast from 'react-hot-toast';
 import { deviceTemplateApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 
+// WEB-FD-012 (Fixer-426B 2026-04-26): typed response for applyToTicket.
+interface ApplyTemplateResponse {
+  inserted_parts?: number;
+}
+
 interface DeviceTemplatePickerProps {
   ticketId: number;
   ticketDeviceId?: number;
@@ -85,7 +90,7 @@ export function DeviceTemplatePicker({
   const applyMut = useMutation({
     mutationFn: (templateId: number) =>
       deviceTemplateApi.applyToTicket(templateId, ticketId, ticketDeviceId),
-    onSuccess: (res: any) => {
+    onSuccess: (res: { data?: { data?: ApplyTemplateResponse } }) => {
       const inserted = res?.data?.data?.inserted_parts ?? 0;
       toast.success(`Template applied — ${inserted} part(s) added`);
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
@@ -170,7 +175,7 @@ export function DeviceTemplatePicker({
                     <button
                       onClick={() => applyMut.mutate(t.id)}
                       disabled={applyMut.isPending}
-                      className="flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Check className="h-3 w-3" /> Apply
                     </button>

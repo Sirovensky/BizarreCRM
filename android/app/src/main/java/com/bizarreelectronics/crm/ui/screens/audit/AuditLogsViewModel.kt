@@ -1,5 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.audit
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,11 +9,13 @@ import com.bizarreelectronics.crm.data.remote.api.AuditApi
 import com.bizarreelectronics.crm.data.remote.api.AuditEntry
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import javax.inject.Inject
 
@@ -62,6 +66,18 @@ class AuditLogsViewModel @Inject constructor(
     /** Entry selected for full-diff dialog; null = dialog closed. */
     private val _selectedEntry = MutableStateFlow<AuditEntry?>(null)
     val selectedEntry: StateFlow<AuditEntry?> = _selectedEntry.asStateFlow()
+
+    // ─── §52.4 CSV export state ──────────────────────────────────────────────
+
+    sealed interface ExportState {
+        data object Idle : ExportState
+        data object InProgress : ExportState
+        data class Success(val rowCount: Int) : ExportState
+        data class Error(val message: String) : ExportState
+    }
+
+    private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
+    val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
 
     // ─── Pagination cursor ───────────────────────────────────────────────────
 
@@ -134,6 +150,55 @@ class AuditLogsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * §52.4 — Write the currently-loaded (and filtered) audit entries to [destUri]
+     * as a UTF-8 CSV file chosen by the user via SAF.
+     *
+     * The export operates on the already-loaded page(s); it does NOT re-fetch
+     * from the server.  Callers are responsible for loading all desired pages
+     * before invoking this function.
+     *
+     * CSV columns: id, timestamp, actor, actorRole, action, entityType, entityId,
+     * entityLabel, diffSummary (double-quote escaped, comma-separated).
+     */
+    fun exportCsvTo(context: Context, destUri: Uri) {
+        val snapshot = _items.value
+        if (snapshot.isEmpty()) {
+            _exportState.value = ExportState.Error("No entries to export")
+            return
+        }
+        viewModelScope.launch {
+            _exportState.value = ExportState.InProgress
+            try {
+                val rowCount = withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(destUri)?.bufferedWriter()?.use { writer ->
+                        // Header
+                        writer.write("id,timestamp,actor,actorRole,action,entityType,entityId,entityLabel,diffSummary\n")
+                        snapshot.forEach { e ->
+                            writer.write(
+                                "${e.id},${e.timestamp.csvCell()},${e.actor.csvCell()}," +
+                                    "${e.actorRole.csvCell()},${e.action.csvCell()}," +
+                                    "${e.entityType.csvCell()},${e.entityId ?: ""}," +
+                                    "${(e.entityLabel ?: "").csvCell()}," +
+                                    "${(e.diffSummary ?: "").csvCell()}\n",
+                            )
+                        }
+                    }
+                    snapshot.size
+                }
+                _exportState.value = ExportState.Success(rowCount)
+            } catch (e: Exception) {
+                Log.e(TAG, "exportCsvTo failed", e)
+                _exportState.value = ExportState.Error("Export failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Reset export state so the screen can show its idle UI again. */
+    fun clearExportState() {
+        _exportState.value = ExportState.Idle
+    }
+
     fun loadNextPage() {
         val cursor = nextCursor ?: return
         if (_isLoadingMore.value) return
@@ -165,4 +230,15 @@ class AuditLogsViewModel @Inject constructor(
             }
         }
     }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Wraps [this] string in RFC-4180 CSV double-quotes, escaping any embedded
+ * double-quote characters by doubling them.
+ */
+private fun String.csvCell(): String {
+    val escaped = replace("\"", "\"\"")
+    return "\"$escaped\""
 }

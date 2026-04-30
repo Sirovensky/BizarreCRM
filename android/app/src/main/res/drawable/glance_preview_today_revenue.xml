@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal vector preview shown in the launcher "Add widget" gallery for
+  TodayRevenueGlanceWidget.  Currency icon + revenue + ticket count placeholders.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="110dp"
+    android:height="80dp"
+    android:viewportWidth="110"
+    android:viewportHeight="80">
+
+    <!-- Widget background pill -->
+    <path
+        android:pathData="M8,0 L102,0 A8,8 0 0 1 110,8 L110,72 A8,8 0 0 1 102,80 L8,80 A8,8 0 0 1 0,72 L0,8 A8,8 0 0 1 8,0 Z"
+        android:fillColor="#1C1B1F"
+        android:fillAlpha="0.08" />
+
+    <!-- "Today" label line -->
+    <path
+        android:pathData="M10,14 L40,14"
+        android:strokeColor="#49454F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- "Revenue" sub-label line -->
+    <path
+        android:pathData="M10,26 L36,26"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Revenue amount placeholder (large) -->
+    <path
+        android:pathData="M10,44 L70,44"
+        android:strokeColor="#FDEED0"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Divider -->
+    <path
+        android:pathData="M10,54 L100,54"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="0.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:strokeAlpha="0.2" />
+
+    <!-- "Open tickets" label line -->
+    <path
+        android:pathData="M10,64 L48,64"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Ticket count placeholder -->
+    <path
+        android:pathData="M10,74 L30,74"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

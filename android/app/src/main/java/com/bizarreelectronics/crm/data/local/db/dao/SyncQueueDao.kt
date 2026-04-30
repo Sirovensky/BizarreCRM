@@ -119,6 +119,15 @@ interface SyncQueueDao {
     fun getDeadLetterCount(): Flow<Int>
 
     /**
+     * §20.7 — Reactive count of dead-letter entries for a specific entity type.
+     * Used by per-screen "N [entity] failed to sync" persistent banners. The entity
+     * type must match the snake_case values stored by SyncManager (e.g. `"ticket"`,
+     * `"customer"`, `"inventory"`).
+     */
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'dead_letter' AND entity_type = :entityType")
+    fun getDeadLetterCountForEntity(entityType: String): Flow<Int>
+
+    /**
      * AUD-20260414-M5: one-shot suspend variant used by the "Sync Issues" tile
      * badge on the Settings/More screen. The tile is a synchronous entry — it
      * does not need the Flow reactive contract that [getDeadLetterCount] offers.
@@ -144,9 +153,29 @@ interface SyncQueueDao {
     /**
      * Reset a dead-letter entry back to `pending` so the next flush will retry it.
      * Retry counter is zeroed so the entry gets a fresh budget.
+     *
+     * §20.7 — [newIdempotencyKey] rotates the idempotency key so the server does NOT
+     * treat the retried request as a duplicate of the original failed attempt. Without
+     * a fresh key, a server that already processed the request and returned an error
+     * could still respond with 409 Conflict on the retry, permanently blocking the
+     * row. Callers must supply a UUID generated via [OfflineIdGenerator.newIdempotencyKey].
      */
-    @Query("UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL WHERE id = :id")
-    suspend fun resurrectDeadLetter(id: Long)
+    @Query(
+        "UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL, " +
+            "idempotency_key = :newIdempotencyKey WHERE id = :id",
+    )
+    suspend fun resurrectDeadLetter(id: Long, newIdempotencyKey: String)
+
+    /**
+     * §20.7 — Same as [resurrectDeadLetter] but also rotates the idempotency key.
+     * Rotating the key is important when the server may have partially-applied the
+     * previous attempt: a stale key would cause the server to deduplicate the retry
+     * as if it had succeeded, silently dropping the user's change.
+     *
+     * Callers must generate a fresh UUID and pass it as [freshKey].
+     */
+    @Query("UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL, idempotency_key = :freshKey WHERE id = :id")
+    suspend fun resurrectDeadLetterWithFreshKey(id: Long, freshKey: String)
 
     // ─── Ordered queue (plan §20.4 L2112) ────────────────────────────────────────
 

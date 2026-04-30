@@ -6,7 +6,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
+
+/**
+ * §22.3 — hover affordance modifier applied to all brand buttons so that
+ * tablet / ChromeOS / desktop-mode cursors show the hand pointer when
+ * hovering over a tappable action. No-op on phones with no cursor.
+ */
+private val hoverHandModifier: Modifier get() = Modifier.pointerHoverIcon(PointerIcon.Hand)
 
 /**
  * Brand button system — thin wrappers that default-wire the correct color,
@@ -49,7 +58,7 @@ fun BrandPrimaryButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = hoverHandModifier.then(modifier),
         enabled = enabled,
         shape = RoundedCornerShape(28.dp),
         colors = ButtonDefaults.buttonColors(
@@ -74,7 +83,7 @@ fun BrandSecondaryButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = hoverHandModifier.then(modifier),
         enabled = enabled,
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.outlinedButtonColors(
@@ -98,7 +107,7 @@ fun BrandTertiaryButton(
 ) {
     TextButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = hoverHandModifier.then(modifier),
         enabled = enabled,
         colors = ButtonDefaults.textButtonColors(
             contentColor = MaterialTheme.colorScheme.primary,
@@ -143,7 +152,7 @@ fun BrandDestructiveButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = hoverHandModifier.then(modifier),
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.error,

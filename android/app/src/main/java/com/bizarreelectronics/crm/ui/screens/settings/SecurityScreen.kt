@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -667,14 +668,14 @@ private fun SecurityPreferenceRow(
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true,
 ) {
-    // a11y: merge so TalkBack reads the whole row as one node; contentDescription
-    //       tells users both the toggle state and the descriptive subtitle.
-    val toggleState = if (checked) "toggled on" else "toggled off"
+    // §26.1 — merge so TalkBack reads the whole row as one node; contentDescription
+    // names the row; stateDescription announces state change when the switch flips.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                contentDescription = "$title, $toggleState. $subtitle"
+                contentDescription = "$title. $subtitle"
+                stateDescription = if (checked) "on" else "off"
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

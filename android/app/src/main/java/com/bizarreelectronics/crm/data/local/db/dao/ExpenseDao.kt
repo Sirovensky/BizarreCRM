@@ -22,6 +22,32 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE category = :category ORDER BY date DESC")
     fun getByCategory(category: String): Flow<List<ExpenseEntity>>
 
+    @Query("SELECT * FROM expenses WHERE approval_status = :status ORDER BY date DESC")
+    fun getByApprovalStatus(status: String): Flow<List<ExpenseEntity>>
+
+    /**
+     * Combined filter query supporting date range, category, and approval status.
+     * Pass empty string to skip a filter. Supports any combination of the three.
+     */
+    @Query(
+        """
+        SELECT * FROM expenses
+        WHERE (:category = '' OR category = :category)
+          AND (:dateFrom = '' OR date >= :dateFrom)
+          AND (:dateTo = '' OR date <= :dateTo)
+          AND (:approvalStatus = '' OR approval_status = :approvalStatus)
+          AND (:employeeName = '' OR user_name LIKE '%' || :employeeName || '%')
+        ORDER BY date DESC
+        """
+    )
+    fun getFiltered(
+        category: String,
+        dateFrom: String,
+        dateTo: String,
+        approvalStatus: String,
+        employeeName: String,
+    ): Flow<List<ExpenseEntity>>
+
     @Query(
         """
         SELECT * FROM expenses
@@ -63,6 +89,27 @@ interface ExpenseDao {
         upsert(newEntity)
         deleteById(tempId)
     }
+
+    /**
+     * Filter by ISO date range (inclusive). Pass empty string to skip a bound.
+     * Used by [ExpenseListViewModel] for the date-range filter.
+     */
+    @Query(
+        """
+        SELECT * FROM expenses
+        WHERE (:fromDate = '' OR date >= :fromDate)
+          AND (:toDate   = '' OR date <= :toDate)
+        ORDER BY date DESC
+        """
+    )
+    fun getByDateRange(fromDate: String, toDate: String): Flow<List<ExpenseEntity>>
+
+    /**
+     * Filter by employee user_id. Null user_id rows are excluded.
+     * Used by [ExpenseListViewModel] for the employee filter.
+     */
+    @Query("SELECT * FROM expenses WHERE user_id = :userId ORDER BY date DESC")
+    fun getByEmployee(userId: Long): Flow<List<ExpenseEntity>>
 
     /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")

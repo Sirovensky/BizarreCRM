@@ -1,10 +1,15 @@
 /**
  * AgingReportPage — §52 idea 4.
  * Shows invoices bucketed by days-overdue with bulk-action scaffolding.
+ * WEB-W3-017: per-row Send Reminder + bulk Send Reminder wired to
+ *   invoiceApi.bulkAction('send_reminder', [id]).
  */
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Bell, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { invoiceApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 
 interface Bucket {
@@ -32,8 +37,11 @@ interface AgingResponse {
 const BUCKET_ORDER = ['0-30', '31-60', '61-90', '90+'] as const;
 
 export function AgingReportPage() {
+  const queryClient = useQueryClient();
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Track which individual row is currently sending so we can show a spinner
+  const [sendingId, setSendingId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['aging-report'],
@@ -56,6 +64,33 @@ export function AgingReportPage() {
       else next.add(id);
       return next;
     });
+  };
+
+  // WEB-W3-017: bulk send-reminder mutation
+  const bulkReminderMut = useMutation({
+    mutationFn: (ids: number[]) => invoiceApi.bulkAction('send_reminder', ids),
+    onSuccess: (_, ids) => {
+      toast.success(`Reminder sent for ${ids.length} invoice${ids.length !== 1 ? 's' : ''}`);
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message || 'Failed to send reminders'),
+  });
+
+  // WEB-W3-017: per-row send reminder
+  const handleRowReminder = async (inv: AgingInvoice) => {
+    setSendingId(inv.id);
+    try {
+      await invoiceApi.bulkAction('send_reminder', [inv.id]);
+      toast.success(`Reminder sent for ${inv.order_id}`);
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to send reminder');
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const totalDueCents = data
@@ -93,13 +128,23 @@ export function AgingReportPage() {
       </div>
 
       <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-        Total outstanding: <strong>{formatCents(totalDueCents)}</strong>
-        {selected.size > 0 ? (
-          <span className="ml-4">
-            {selected.size} selected — bulk actions (send reminder / void / write off) are wired on
-            the existing invoice endpoints; this page only scopes the selection.
+        <span>Total outstanding: <strong>{formatCents(totalDueCents)}</strong></span>
+        {selected.size > 0 && (
+          <span className="ml-4 inline-flex items-center gap-3">
+            <span>{selected.size} selected</span>
+            {/* WEB-W3-017: bulk send reminder */}
+            <button
+              onClick={() => bulkReminderMut.mutate([...selected])}
+              disabled={bulkReminderMut.isPending}
+              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              {bulkReminderMut.isPending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Bell className="h-3 w-3" />}
+              Send Reminder ({selected.size})
+            </button>
           </span>
-        ) : null}
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -113,13 +158,15 @@ export function AgingReportPage() {
               <th className="px-3 py-2 text-right">Amount</th>
               <th className="px-3 py-2 text-left">Days Over</th>
               <th className="px-3 py-2 text-left">Bucket</th>
+              {/* WEB-W3-017: action column */}
+              <th className="px-3 py-2 text-left">Action</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">Loading…</td></tr>
             ) : filteredInvoices.length === 0 ? (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No overdue invoices</td></tr>
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">No overdue invoices</td></tr>
             ) : (
               filteredInvoices.map((inv) => (
                 <tr key={inv.id} className="border-t border-gray-100">
@@ -138,6 +185,20 @@ export function AgingReportPage() {
                   </td>
                   <td className="px-3 py-2">{inv.days_overdue}</td>
                   <td className="px-3 py-2">{inv.bucket}</td>
+                  {/* WEB-W3-017: per-row send reminder */}
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => handleRowReminder(inv)}
+                      disabled={sendingId === inv.id || bulkReminderMut.isPending}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                      title="Send payment reminder"
+                    >
+                      {sendingId === inv.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Bell className="h-3 w-3" />}
+                      Remind
+                    </button>
+                  </td>
                 </tr>
               ))
             )}

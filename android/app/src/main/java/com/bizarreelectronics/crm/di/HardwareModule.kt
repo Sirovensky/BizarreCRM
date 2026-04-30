@@ -9,13 +9,19 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Binds the [CashDrawerController] singleton to the [CashDrawerControllerStub]
- * interface so ViewModels (e.g. [PosReceiptViewModel]) can depend on the
- * abstraction instead of the concrete hardware class.
+ * Hilt module for hardware singletons.
  *
- * [CashDrawerController] is already `@Singleton @Inject constructor(…)` so Hilt
- * knows how to build it; this module just exposes the binding under the interface
- * type.
+ * §17.4/17.5 — [CashDrawerController] bound to [CashDrawerControllerStub].
+ *
+ * §17.7 — [WeightScaleService] and [HardwareRepository] are
+ * `@Singleton @Inject constructor` so Hilt builds them directly; no binding
+ * needed here (no interface to bind against).
+ *
+ * §17.8 — [NfcRepository] is `@Singleton @Inject constructor`; no interface binding.
+ *
+ * §17.10 — [HidBarcodeScanner] is `@Singleton @Inject constructor`; no interface binding.
+ *
+ * §17.12 — [PrinterManager] is `@Singleton @Inject constructor`; no interface binding.
  */
 @Module
 @InstallIn(SingletonComponent::class)

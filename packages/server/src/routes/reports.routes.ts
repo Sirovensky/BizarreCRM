@@ -1469,6 +1469,7 @@ router.get('/comparison', requireFeature('advancedReports'), asyncHandler(async 
 // ─── ENR-R10: Saved Report Presets CRUD ─────────────────────────────────────
 
 router.get('/presets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const reportType = req.query.report_type as string | undefined;
@@ -1490,6 +1491,7 @@ router.get('/presets', asyncHandler(async (req, res) => {
 }));
 
 router.post('/presets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { name, report_type, filters, is_default } = req.body;
@@ -1522,6 +1524,7 @@ router.post('/presets', asyncHandler(async (req, res) => {
 }));
 
 router.put('/presets/:presetId', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const presetId = validateId(req.params.presetId, 'presetId');
@@ -1578,6 +1581,7 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/presets/:presetId', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const presetId = validateId(req.params.presetId, 'presetId');
@@ -2905,7 +2909,135 @@ router.get('/partner-report.pdf', asyncHandler(async (req, res) => {
   res.send(html);
 }));
 
-// ─── 15. NPS trend ───────────────────────────────────────────────────────
+// ─── 15. Sales summary PDF (print-to-PDF fallback) ───────────────────────
+
+router.get('/sales-report.pdf', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
+  const adb = req.asyncDb;
+  const from = String(req.query.from || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10));
+  const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+  validateReportDateRange(req, from, to);
+
+  const escapeHtml = (s: string) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const [rowsRaw, totals, byMethod] = await Promise.all([
+    adb.all<{ period: string; invoices: number; payment_revenue: number; imported_revenue: number; unique_customers: number }>(
+      `SELECT
+         STRFTIME('%Y-%m-%d', COALESCE(p.created_at, i.created_at)) AS period,
+         COUNT(DISTINCT i.id) AS invoices,
+         COALESCE(SUM(p.amount), 0) AS payment_revenue,
+         COALESCE(SUM(CASE WHEN p.id IS NULL THEN i.amount_paid ELSE 0 END), 0) AS imported_revenue,
+         COUNT(DISTINCT i.customer_id) AS unique_customers
+       FROM invoices i
+       LEFT JOIN payments p ON p.invoice_id = i.id
+       WHERE i.status != 'void' AND DATE(COALESCE(p.created_at, i.created_at)) BETWEEN ? AND ?
+       GROUP BY period ORDER BY period ASC`,
+      from, to,
+    ),
+    adb.get<{ total_invoices: number; payment_revenue: number; imported_revenue: number; unique_customers: number }>(
+      `SELECT COUNT(DISTINCT i.id) AS total_invoices,
+              COALESCE(SUM(p.amount), 0) AS payment_revenue,
+              COALESCE(SUM(CASE WHEN p.id IS NULL AND i.amount_paid > 0 THEN i.amount_paid ELSE 0 END), 0) AS imported_revenue,
+              COUNT(DISTINCT i.customer_id) AS unique_customers
+       FROM invoices i
+       LEFT JOIN payments p ON p.invoice_id = i.id
+       WHERE i.status != 'void' AND DATE(COALESCE(p.created_at, i.created_at)) BETWEEN ? AND ?`,
+      from, to,
+    ),
+    adb.all<{ method: string; revenue: number; count: number }>(
+      `SELECT COALESCE(p.method, 'Other') AS method, SUM(p.amount) AS revenue, COUNT(*) AS count
+       FROM payments p
+       JOIN invoices i ON i.id = p.invoice_id
+       WHERE i.status != 'void' AND DATE(p.created_at) BETWEEN ? AND ?
+       GROUP BY COALESCE(p.method, 'Other') ORDER BY revenue DESC`,
+      from, to,
+    ),
+  ]);
+
+  const rows = rowsRaw.map(r => ({
+    period: r.period,
+    invoices: r.invoices,
+    revenue: r.payment_revenue + r.imported_revenue,
+    unique_customers: r.unique_customers,
+  }));
+  const totalRevenue = (totals?.payment_revenue ?? 0) + (totals?.imported_revenue ?? 0);
+
+  audit(req.db, 'sales_report_pdf_generated', req.user?.id ?? null, req.ip || '', { from, to });
+
+  const rowsHtml = rows.length === 0
+    ? '<tr><td colspan="4" style="color:#888;text-align:center;">No invoices in this date range.</td></tr>'
+    : rows.map(r =>
+        `<tr>
+          <td>${escapeHtml(r.period)}</td>
+          <td class="num">${r.invoices}</td>
+          <td class="num">${r.unique_customers}</td>
+          <td class="num">$${Number(r.revenue).toFixed(2)}</td>
+        </tr>`,
+      ).join('');
+
+  const methodsHtml = byMethod.length === 0
+    ? '<tr><td colspan="3" style="color:#888;text-align:center;">No payment data.</td></tr>'
+    : byMethod.map(m =>
+        `<tr>
+          <td>${escapeHtml(m.method)}</td>
+          <td class="num">${m.count}</td>
+          <td class="num">$${Number(m.revenue).toFixed(2)}</td>
+        </tr>`,
+      ).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Sales Report ${from} to ${to}</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; color: #111; max-width: 900px; }
+  h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+  h2 { font-size: 15px; margin-top: 32px; }
+  .meta { color: #555; margin-bottom: 24px; font-size: 14px; }
+  .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+  .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; }
+  .kpi .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi .val { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 7px 10px; text-align: left; }
+  th { background: #f9fafb; font-weight: 600; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .total { font-weight: 700; background: #f3f4f6; }
+  @media print { button { display: none; } }
+</style></head>
+<body>
+<h1>Sales Report</h1>
+<div class="meta">
+  <div><strong>Period:</strong> ${escapeHtml(from)} &rarr; ${escapeHtml(to)}</div>
+</div>
+<div class="summary">
+  <div class="kpi"><div class="label">Total Revenue</div><div class="val">$${totalRevenue.toFixed(2)}</div></div>
+  <div class="kpi"><div class="label">Invoices</div><div class="val">${totals?.total_invoices ?? 0}</div></div>
+  <div class="kpi"><div class="label">Unique Customers</div><div class="val">${totals?.unique_customers ?? 0}</div></div>
+</div>
+<h2>Revenue by Day</h2>
+<table>
+  <thead><tr><th>Date</th><th class="num">Invoices</th><th class="num">Customers</th><th class="num">Revenue</th></tr></thead>
+  <tbody>${rowsHtml}</tbody>
+  <tfoot><tr class="total"><td>Total</td><td class="num">${totals?.total_invoices ?? 0}</td><td class="num">${totals?.unique_customers ?? 0}</td><td class="num">$${totalRevenue.toFixed(2)}</td></tr></tfoot>
+</table>
+<h2>Payment Method Breakdown</h2>
+<table>
+  <thead><tr><th>Method</th><th class="num">Transactions</th><th class="num">Revenue</th></tr></thead>
+  <tbody>${methodsHtml}</tbody>
+</table>
+<button onclick="window.print()" style="margin-top:28px;padding:8px 20px;">Print to PDF</button>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}));
+
+// ─── 16. NPS trend ───────────────────────────────────────────────────────
 
 router.get('/nps-trend', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);

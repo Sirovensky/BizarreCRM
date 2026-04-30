@@ -1,10 +1,45 @@
 <resources>
+    <!--
+        §67 Copy & Content Style Guide (Android-specific tone)
+        Voice: direct, friendly, second-person, active voice. No exclamation marks except
+        celebration moments (marked with §67.1 exception comments).
+        Naming: "Tickets" (not Repairs), "Sign in/out" (not Login/Logout), "Settings" (not Preferences).
+        Errors: what happened first, then what the user can do. Never blame the user.
+        Dialogs: title = question; body = consequences; confirm button = action word (not "Yes"/"No").
+        Localization: all user-facing strings here; use %1$s/%2$s placeholders, no string concatenation.
+        Translator comments: see inline XML notes on each string explaining context.
+    -->
     <string name="app_name">Bizarre CRM</string>
+    <!-- §67.3: Bottom navigation labels — use "Tickets" (not Repairs), "Settings" (not Preferences) -->
     <string name="nav_dashboard">Dashboard</string>
     <string name="nav_tickets">Tickets</string>
     <string name="nav_pos">POS</string>
     <string name="nav_messages">Messages</string>
     <string name="nav_more">More</string>
+
+    <!-- §10 Appointments — quick-create sheet & Kanban -->
+    <string name="appt_quick_create_title">Quick Appointment</string>
+    <string name="appt_quick_create_title_label">Title *</string>
+    <string name="appt_quick_create_end_label">Until</string>
+    <string name="appt_quick_create_end_after_start">End time must be after start time</string>
+    <string name="appt_quick_create_more_details">More details</string>
+    <string name="appt_quick_create_save">Save</string>
+    <string name="screen_appt_kanban">Time-Block Kanban</string>
+
+    <!-- §11 Expenses — advanced filter sheet -->
+    <string name="expense_filter_title">Filter expenses</string>
+    <string name="expense_filter_clear_all">Clear all</string>
+    <string name="expense_filter_date_range">Date range</string>
+    <string name="expense_filter_from_date">From date</string>
+    <string name="expense_filter_to_date">To date</string>
+    <string name="expense_filter_clear_dates">Clear date range</string>
+    <string name="expense_filter_approval_status">Approval status</string>
+    <string name="expense_filter_employee">Employee</string>
+    <string name="expense_filter_apply">Apply filters</string>
+
+    <!-- §47 Team Chat -->
+    <string name="nav_team_chat">Team Chat</string>
+    <string name="nav_team_chat_thread">Chat Thread</string>
 
     <!-- Home-screen widget -->
     <string name="widget_description">Revenue today, open tickets, low stock</string>
@@ -16,4 +51,1054 @@
     <string name="shortcut_new_customer_long">Add a new customer</string>
     <string name="shortcut_scan_short">Scan</string>
     <string name="shortcut_scan_long">Scan barcode or IMEI</string>
+
+    <!-- §14 Employees & Timeclock -->
+    <string name="screen_shift_schedule">Shift Schedule</string>
+    <string name="screen_leaderboard">Leaderboard</string>
+    <string name="screen_custom_roles">Custom Roles</string>
+    <string name="screen_assign_role">Assign Role</string>
+
+    <!-- §49 Permission Matrix Editor -->
+    <string name="screen_permission_matrix">Permission Matrix</string>
+    <string name="perm_save_cd">Save permissions</string>
+    <string name="perm_system_locked">System role — permissions are managed by the server and cannot be edited here.</string>
+    <string name="perm_reset_action">Reset to defaults</string>
+    <string name="perm_reset_title">Reset permissions?</string>
+    <string name="perm_reset_message">All permission changes will be discarded and the server defaults will be reloaded.</string>
+    <string name="perm_reset_confirm">Reset</string>
+    <string name="perm_empty_title">No permissions found</string>
+    <string name="perm_empty_subtitle">This role has no permissions defined. Update your server to populate the permission list.</string>
+
+    <!-- §43 Bench Workflow -->
+    <string name="nav_bench">My Bench</string>
+    <string name="bench_tile_label">My Bench</string>
+    <string name="bench_empty_title">No active bench tickets</string>
+    <string name="bench_empty_subtitle">Tickets assigned to you with status "In Repair" will appear here.</string>
+
+    <!-- §39 Cash Register / Z-Report -->
+    <string name="screen_cash_register">Cash Register</string>
+    <string name="cash_register_z_report_title">Z-Report</string>
+    <string name="cash_register_print_pdf">Print / PDF</string>
+    <string name="cash_register_close_drawer_title">Close drawer?</string>
+    <string name="cash_register_close_drawer_message">This will end the shift and generate the Z-report. This cannot be undone.</string>
+    <string name="cash_register_confirm_z_report_title">Done with Z-report?</string>
+    <string name="cash_register_confirm_z_report_message">Make sure you have printed or recorded the Z-report before continuing.</string>
+
+    <!-- §38 Memberships / Loyalty -->
+    <string name="nav_memberships">Memberships</string>
+    <string name="membership_tier_label">Membership tier</string>
+    <string name="membership_points_label">Loyalty points</string>
+    <string name="membership_benefit_uses_label">Benefit uses</string>
+    <string name="membership_renews_label">Renews</string>
+    <string name="membership_not_available">Memberships unavailable</string>
+    <string name="membership_not_available_subtitle">Update your server to enable membership tiers and loyalty points.</string>
+    <!-- §17.7 Weight scale -->
+    <string name="screen_weight_scale">Weight Scale</string>
+    <string name="weight_scale_read_button">Read weight</string>
+    <string name="weight_scale_no_scale_title">No scales found</string>
+    <string name="weight_scale_no_scale_subtitle">Pair a Bluetooth scale in Android Settings, then refresh here.</string>
+    <string name="weight_scale_remove_confirm_title">Remove scale</string>
+    <string name="weight_scale_remove_confirm_message">Remove the paired scale? You can re-pair it at any time.</string>
+
+    <!-- §17.8 NFC HCE tap-to-redeem loyalty -->
+    <string name="loyalty_hce_description">Tap phone to reader to redeem loyalty points</string>
+    <string name="nfc_customer_tap_title">NFC Customer Card</string>
+    <string name="nfc_customer_tap_hint">Tap a Bizarre-issued NFC card to look up the customer automatically.</string>
+
+    <!-- §17.11 Hardware pairing wizard -->
+    <string name="screen_hardware_wizard">Add Device</string>
+    <string name="hardware_wizard_step_bluetooth">Enable Bluetooth</string>
+    <string name="hardware_wizard_step_discover">Discover devices</string>
+    <string name="hardware_wizard_step_select">Select device</string>
+    <string name="hardware_wizard_step_role">Assign role</string>
+    <string name="hardware_wizard_step_test">Test &amp; save</string>
+
+    <!-- §17.12 Reconnect resilience banners -->
+    <string name="hardware_skip_receipt">Print skipped — reprint from Sales History when printer reconnects</string>
+    <string name="hardware_skip_label">Label skipped — reprint from Inventory when printer reconnects</string>
+    <string name="hardware_skip_invoice">Invoice print skipped — reprint from Invoice when printer reconnects</string>
+
+    <!-- §24.4 Quick-Settings tile + §24.x widgets + §1.5 launcher shortcuts -->
+    <string name="tile_clock_in_label">Clock In/Out</string>
+    <string name="widget_clock_in_description">Clock in or out directly from the home screen</string>
+    <string name="widget_low_stock_description">See how many inventory items are below reorder level</string>
+    <string name="widget_unread_sms_description">Count of unread SMS conversations</string>
+    <string name="widget_today_revenue_description">Today\'s revenue and open ticket count at a glance</string>
+    <string name="shortcut_recent_customer_short">Recent customer</string>
+    <string name="shortcut_recent_customer_long">Open recent customer record</string>
+    <string name="shortcut_clock_in_short">Clock in</string>
+    <string name="shortcut_clock_in_long">Clock in or out of your shift</string>
+    <!-- §14.10 — dynamic clock-out variant shown when employee is already clocked in -->
+    <string name="shortcut_clock_out_short">Clock out</string>
+    <string name="shortcut_clock_out_long">End your current shift</string>
+    <string name="shortcut_new_sms_short">New SMS</string>
+    <string name="shortcut_new_sms_long">Send a new SMS to a customer</string>
+    <string name="shortcut_create_ticket_voice">Create ticket</string>
+    <string name="shortcut_clock_in_voice">Clock me in</string>
+
+    <!-- §42 Voice & Calls -->
+    <!-- §42.4 Voicemail -->
+    <string name="screen_voicemail">Voicemail</string>
+    <string name="voicemail_filter_new">New</string>
+    <string name="voicemail_filter_all">All</string>
+    <string name="voicemail_refresh_cd">Refresh voicemails</string>
+    <string name="voicemail_not_configured">VoIP not configured on this server</string>
+    <string name="voicemail_not_configured_subtitle">Contact your admin to set up voice calling.</string>
+    <string name="voicemail_empty_new">No new voicemails</string>
+    <string name="voicemail_empty_all">No voicemails</string>
+    <string name="voicemail_delete_title">Delete voicemail?</string>
+    <string name="voicemail_delete_message">This voicemail will be permanently deleted from the provider.</string>
+
+    <!-- §42.3 Recording consent -->
+    <string name="screen_call_recording">Call Recording</string>
+    <string name="recording_enabled">Recording enabled on this tenant</string>
+    <string name="recording_disabled">Recording is not enabled on this tenant</string>
+    <string name="recording_two_party_required_title">Two-party consent required</string>
+    <string name="recording_two_party_required_body">Your jurisdiction requires all parties to consent before a call is recorded. An announcement will be played to the remote party at the start of the call.</string>
+    <string name="recording_announcement_configured">Consent announcement audio is configured.</string>
+    <string name="recording_permission_title">Microphone access</string>
+    <string name="recording_permission_rationale">Microphone access is required to record calls on this device. Audio is processed on the server — the app only captures the device microphone stream.</string>
+    <string name="recording_permission_granted">Microphone permission granted</string>
+    <string name="recording_permission_granted_cd">Microphone permission is granted</string>
+    <string name="recording_grant_permission">Grant microphone access</string>
+    <string name="recording_consent_toggle_title">Consent to record this call</string>
+    <string name="recording_consent_toggle_subtitle">Enable to allow this specific call to be recorded and stored on the server.</string>
+
+    <!-- §42.5 Dial prompt -->
+    <string name="dial_prompt_title">Dial number</string>
+    <string name="dial_prompt_title_customer">Call %1$s</string>
+    <string name="dial_prompt_number_label">Phone number</string>
+    <string name="dial_prompt_recent">Recent numbers</string>
+    <string name="dial_prompt_recent_cd">Recent call: %1$s</string>
+    <string name="dial_prompt_call_action">Call</string>
+
+    <!-- §41 Payment Links & Public Pay Page -->
+    <string name="screen_payment_links">Payment Links</string>
+    <string name="screen_payment_link_create">New Payment Link</string>
+    <string name="payment_link_cancel_title">Cancel payment link?</string>
+    <string name="payment_link_cancel_message">This will void the link and the customer will no longer be able to pay. This cannot be undone.</string>
+    <string name="payment_link_resend_title">Resend payment request?</string>
+    <string name="payment_link_resend_message">The customer will receive another SMS or email with the payment link.</string>
+    <string name="payment_link_qr_description">QR code for payment link</string>
+    <string name="payment_link_empty_title">No payment links</string>
+    <string name="payment_link_empty_subtitle">Tap + to create one</string>
+    <string name="payment_link_not_configured">Payment links not configured on this server</string>
+
+    <!-- §60 Inventory Stocktake -->
+    <string name="stocktake_title">Inventory Stocktake</string>
+    <string name="stocktake_start_subtitle">Physically count stock on shelves and reconcile against system quantities. Works fully offline — adjustments sync on commit.</string>
+    <string name="stocktake_start_cta">Start Counting</string>
+    <string name="stocktake_offline_note">You are offline. The session will run locally and sync adjustments to the server when connectivity is restored.</string>
+    <string name="stocktake_count_title">Count Sheet (%1$d items)</string>
+    <string name="stocktake_search_hint">Search by name or SKU…</string>
+    <string name="stocktake_add_item">Add</string>
+    <string name="stocktake_empty_title">No items counted yet</string>
+    <string name="stocktake_empty_subtitle">Scan a barcode or search by name to add items to the count sheet.</string>
+    <string name="stocktake_commit_title">Commit Count</string>
+    <string name="stocktake_commit_message">Write adjustments for %1$d counted items. This cannot be undone.</string>
+    <string name="stocktake_commit_confirm">Commit</string>
+    <string name="stocktake_commit_cta">Commit Count</string>
+    <string name="stocktake_discard_title">Discard Session</string>
+    <string name="stocktake_discard_message">All counted quantities will be lost. System stock is unchanged.</string>
+    <string name="stocktake_discard_confirm">Discard</string>
+    <string name="stocktake_scan_fab_cd">Scan barcode to add item</string>
+    <string name="stocktake_committed_title">Stocktake Complete</string>
+    <string name="stocktake_committed_summary">%1$d items counted · %2$d with variance</string>
+    <string name="stocktake_approval_pending">Variance adjustments are pending manager approval. Stock levels have been updated locally.</string>
+    <string name="stocktake_variances_header">Variances</string>
+    <string name="stocktake_no_variance_header">%1$d items — no variance</string>
+    <string name="stocktake_done">Done</string>
+    <string name="cd_back">Back</string>
+
+    <!-- §19 Settings sub-screens -->
+    <string name="screen_ticket_settings">Ticket Settings</string>
+    <string name="screen_payment_settings">POS &amp; Payment</string>
+    <string name="screen_sms_settings">SMS Settings</string>
+    <string name="screen_integrations">Integrations</string>
+    <string name="screen_team_settings">Team &amp; Roles</string>
+    <string name="screen_data_settings">Data</string>
+    <string name="screen_full_diagnostics">Diagnostics</string>
+    <string name="screen_app_info">About</string>
+    <string name="screen_business_info">Business Info</string>
+
+    <!-- §44 Device Templates / Repair-Pricing Catalog / Device Catalog -->
+    <string name="screen_device_templates">Device Templates</string>
+    <string name="screen_repair_pricing">Repair Pricing</string>
+    <string name="screen_device_catalog">Device Catalog</string>
+    <string name="device_templates_add">Add template</string>
+    <string name="device_templates_empty_title">No device templates</string>
+    <string name="device_templates_empty_subtitle">Tap “+Add template” to create your first device template.</string>
+    <string name="device_templates_empty_filtered">No templates in this category.</string>
+    <string name="device_templates_offline_subtitle">Device templates require a server connection.</string>
+    <string name="device_templates_add_dialog_title">Add device template</string>
+    <string name="device_templates_edit_dialog_title">Edit template</string>
+    <string name="device_templates_field_name">Template name *</string>
+    <string name="device_templates_field_category">Device category</string>
+    <string name="device_templates_field_model">Device model</string>
+    <string name="device_templates_field_fault">Fault description</string>
+    <string name="device_templates_field_labor_cost">Labor cost</string>
+    <string name="device_templates_field_suggested_price">Suggested price</string>
+    <string name="device_templates_field_labor_minutes">Labor (min)</string>
+    <string name="device_templates_field_warranty_days">Warranty (days)</string>
+    <string name="device_templates_field_checklist">Pre-conditions checklist</string>
+    <string name="device_templates_field_checklist_hint">One step per line…</string>
+    <string name="device_templates_delete_title">Delete template</string>
+    <string name="device_templates_delete_message">Delete “%s”? This cannot be undone.</string>
+    <string name="device_templates_delete_cd">Delete template “%s”</string>
+    <string name="repair_pricing_add">Add service</string>
+    <string name="repair_pricing_empty_title">No services</string>
+    <string name="repair_pricing_empty_subtitle">Tap “+Add service” to create your first pricing entry.</string>
+    <string name="repair_pricing_empty_search">No results for “%s”</string>
+    <string name="repair_pricing_empty_filtered">No services in this category.</string>
+    <string name="repair_pricing_offline_subtitle">Repair pricing requires a server connection.</string>
+    <string name="repair_pricing_search_hint">Search services…</string>
+    <string name="repair_pricing_add_dialog_title">Add service</string>
+    <string name="repair_pricing_edit_dialog_title">Edit service</string>
+    <string name="repair_pricing_field_name">Service name *</string>
+    <string name="repair_pricing_field_name_hint">e.g. Screen replacement</string>
+    <string name="repair_pricing_field_category">Category (optional)</string>
+    <string name="repair_pricing_field_category_hint">e.g. Screen, Battery</string>
+    <string name="repair_pricing_field_labor_rate">Default labor rate</string>
+    <string name="repair_pricing_field_description">Description (optional)</string>
+    <string name="repair_pricing_labor_rate">Labor: %s</string>
+    <string name="repair_pricing_delete_title">Delete service</string>
+    <string name="repair_pricing_delete_message">Delete “%s”? This cannot be undone.</string>
+    <string name="repair_pricing_delete_cd">Delete service “%s”</string>
+    <string name="device_catalog_search_hint">Search devices…</string>
+    <string name="device_catalog_offline_subtitle">Device catalog requires a server connection.</string>
+    <string name="device_catalog_empty_title">No manufacturers</string>
+    <string name="device_catalog_empty_subtitle">Device catalog is empty on this server.</string>
+    <string name="device_catalog_no_models">No models for this manufacturer.</string>
+    <string name="device_catalog_model_count">%d models</string>
+    <string name="device_catalog_expand">Expand %s</string>
+    <string name="device_catalog_collapse">Collapse %s</string>
+    <string name="device_catalog_no_results_title">No devices found</string>
+    <string name="device_catalog_no_results_subtitle">No devices matched “%s”.</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="filter_all">All</string>
+    <string name="error_offline">Offline</string>
+    <string name="error_field_required">Required</string>
+    <string name="cd_navigate_back">Back</string>
+    <string name="cd_add_template">Add device template</string>
+    <string name="cd_add_service">Add repair service</string>
+    <string name="cd_search">Search</string>
+
+    <!-- §40 Gift Cards / Store Credit / Refunds -->
+    <string name="screen_gift_cards">Gift Cards &amp; Store Credit</string>
+    <string name="screen_refunds">Refunds</string>
+    <string name="screen_gift_card_liability">Liability Report</string>
+    <string name="refund_manager_pin_required">Manager PIN required for refunds over $50</string>
+    <string name="refund_type_original_tender">Original Tender</string>
+    <string name="refund_type_store_credit">Store Credit</string>
+    <string name="refund_type_credit_note">Credit Note</string>
+    <string name="gift_card_expiry_warning">Expires soon</string>
+    <string name="gift_card_liability_title">Outstanding liabilities</string>
+    <string name="gift_card_liability_subtitle">Balances owed to customers</string>
+
+    <!-- §26 Accessibility — a11y_* namespace for TalkBack-facing strings -->
+    <!-- Signature pad -->
+    <string name="a11y_signature_pad">Signature pad. Draw your signature with a stylus or finger. Keyboard not supported for this field.</string>
+    <string name="a11y_signature_undo">Undo last stroke</string>
+    <string name="a11y_signature_clear">Clear signature</string>
+
+    <!-- Sync status badge -->
+    <string name="a11y_sync_status_syncing">Syncing data to server</string>
+    <string name="a11y_sync_status_pending">%1$d changes pending sync. Tap to open sync issues.</string>
+    <string name="a11y_sync_status_clean">All data synced</string>
+
+    <!-- Offline banner -->
+    <string name="a11y_offline_banner">Offline — showing cached data.</string>
+    <string name="a11y_offline_banner_syncing">Offline — showing cached data. Syncing.</string>
+    <string name="a11y_offline_banner_pending">Offline — showing cached data. %1$d changes pending sync.</string>
+
+    <!-- Clock in/out tile -->
+    <string name="a11y_clock_in_tile_on">Clocked in — %1$s. Tap to clock out or open clock screen.</string>
+    <string name="a11y_clock_in_tile_off">Not clocked in — %1$s. Tap to clock in or open clock screen.</string>
+    <string name="a11y_clock_in_tile_unknown">Clock in / out — %1$s. Tap to open clock screen.</string>
+
+    <!-- Toggle rows (settings) — stateDescription values are inlined via code but labels live here -->
+    <string name="a11y_toggle_on">on</string>
+    <string name="a11y_toggle_off">off</string>
+
+    <!-- Form field errors -->
+    <string name="a11y_field_required_error">This field is required</string>
+
+    <!-- Dashboard skip-nav -->
+    <string name="a11y_skip_to_kpi">Skip to KPI summary</string>
+
+    <!-- QR / barcode images -->
+    <string name="a11y_qr_code_for_ticket">QR code for ticket %1$s. Tap to enlarge.</string>
+    <string name="a11y_qr_code_large">Large QR code for ticket %1$s</string>
+    <string name="a11y_barcode_code128">Code-128 barcode for SKU %1$s</string>
+    <string name="a11y_barcode_qr">QR code for SKU %1$s</string>
+
+    <!-- Status badges — convey icon meaning in words -->
+    <string name="a11y_status_badge">Status: %1$s</string>
+
+    <!-- Heatmap chart -->
+    <string name="a11y_busy_hours_heatmap">Busy Hours heatmap: 7-day by 24-hour ticket volume grid.</string>
+    <string name="a11y_busy_hours_heatmap_empty">Busy Hours heatmap: no data yet.</string>
+
+    <!-- Color blind safe palette (§26.3) — label for the settings toggle -->
+    <string name="a11y_color_blind_palette_toggle">Color-blind safe palette, %1$s</string>
+
+    <!-- §24.7 Widget config activity -->
+    <string name="widget_config_title">Configure widget</string>
+    <string name="widget_config_subtitle">Choose what this widget shows. More options (tenant, time range) coming in a future update.</string>
+    <string name="widget_config_add">Add widget</string>
+
+    <!-- §24.3 Dynamic shortcut labels (supplements shortcut_recent_customer_* already declared above) -->
+    <string name="shortcut_dynamic_recent_label">Recent customers</string>
+
+    <!-- §25 Share sheet / Clipboard / Cross-device -->
+    <!-- §25.2 Share sheet -->
+    <string name="share_chooser_title">Share via…</string>
+    <string name="share_work_order_subject">Work Order %1$s</string>
+    <string name="share_inbound_title">Attach incoming content</string>
+    <string name="share_inbound_subtitle">Choose a ticket to attach this to, or create a new note.</string>
+    <!-- Direct-share shortcut category label shown in the system chooser -->
+    <string name="share_target_category_label">Customer</string>
+    <!-- §25.3 Clipboard -->
+    <string name="clipboard_copy_order_id">Copy order ID</string>
+    <string name="clipboard_order_id_copied">Order ID copied</string>
+    <string name="clipboard_copy_imei">Copy IMEI</string>
+    <string name="clipboard_imei_copied">IMEI copied (auto-clears in 30 s)</string>
+    <string name="clipboard_copy_email">Copy email</string>
+    <string name="clipboard_email_copied">Email copied</string>
+    <!-- §25.7 Intent filter media types (used by inbound share picker) -->
+    <string name="inbound_share_text">Received text</string>
+    <string name="inbound_share_image">Received image</string>
+    <string name="inbound_share_pdf">Received PDF</string>
+
+    <!-- §45 CRM Health Score & LTV -->
+    <string name="screen_health_score">Health Score</string>
+    <string name="screen_ltv_tier">LTV Tier</string>
+    <string name="health_score_unavailable">Health score data unavailable.\nThis feature requires server support.</string>
+    <string name="health_score_last_calculated">Last calculated: %1$s</string>
+    <string name="health_score_explanation_title">Score Breakdown</string>
+    <string name="ltv_tier_unavailable">LTV tier data unavailable.\nThis feature requires server support.</string>
+    <string name="ltv_lifetime_value_label">Lifetime Value</string>
+    <string name="ltv_tier_explanation_title">How your tier is calculated</string>
+    <string name="ltv_tier_threshold_note">Tier thresholds (e.g. VIP ≥ $1,000) are configured by your shop administrator.</string>
+    <string name="churn_win_back_sms_action">Send win-back SMS</string>
+
+    <!-- §45 a11y content descriptions -->
+    <string name="cd_recalculate_health_score">Recalculate health score</string>
+    <string name="cd_health_score_explanation">View score explanation</string>
+    <string name="cd_ltv_tier_icon">LTV tier</string>
+    <string name="cd_send_win_back_sms">Send win-back SMS to at-risk customers</string>
+
+    <!-- §48 Goals, Performance Reviews &amp; Time Off -->
+    <string name="screen_goals">Goals</string>
+    <string name="screen_performance_reviews">Performance Reviews</string>
+    <string name="screen_time_off_request">Time Off</string>
+    <string name="screen_time_off_list">Time-Off Requests</string>
+    <!-- Rating descriptors (1–5) used in performance reviews -->
+    <string name="rating_1_poor">Poor</string>
+    <string name="rating_2_fair">Fair</string>
+    <string name="rating_3_good">Good</string>
+    <string name="rating_4_great">Great</string>
+    <string name="rating_5_excellent">Excellent</string>
+    <!-- Confirm dialogs -->
+    <string name="delete_goal_title">Delete Goal</string>
+    <string name="delete_goal_message">Remove this goal permanently? This cannot be undone.</string>
+    <string name="approve_review_title">Submit Review</string>
+    <!-- a11y content descriptions -->
+    <string name="cd_add_goal">Add goal</string>
+    <string name="cd_delete_goal">Delete goal</string>
+    <string name="cd_new_review">New performance review</string>
+    <string name="cd_request_time_off">Request time off</string>
+
+    <!-- §12.1 Team inbox -->
+    <string name="nav_team_inbox">Team Inbox</string>
+    <string name="team_inbox_empty_title">Inbox is empty</string>
+    <string name="team_inbox_not_configured">Team inbox not enabled on this server</string>
+
+    <!-- §12.2 Message long-press actions -->
+    <string name="sms_msg_copy">Copy</string>
+    <string name="sms_msg_reply">Reply</string>
+    <string name="sms_msg_forward">Forward</string>
+    <string name="sms_msg_create_ticket">Create ticket from this</string>
+    <string name="sms_msg_flag">Flag message</string>
+    <string name="sms_msg_delete">Delete</string>
+
+    <!-- §12.2 Create customer from thread -->
+    <string name="sms_create_customer_title">Create customer</string>
+    <string name="sms_create_customer_first_name">First name</string>
+    <string name="sms_create_customer_last_name">Last name (optional)</string>
+    <string name="sms_create_customer_success">Customer created</string>
+    <string name="sms_create_customer_error">Failed to create customer</string>
+
+    <!-- §12.7 Send-failed retry -->
+    <string name="sms_send_failed_retry">Retry</string>
+    <string name="sms_send_failed_label">Send failed</string>
+
+    <!-- §46 Warranty &amp; Device History -->
+    <string name="screen_warranty_claim">Warranty Claim</string>
+    <string name="screen_warranty_lookup">Warranty Lookup</string>
+    <string name="screen_device_history">Device History</string>
+
+    <!-- §46.1 Warranty lookup -->
+    <string name="warranty_lookup_search_by">Search by</string>
+    <string name="warranty_lookup_search_cd">Search warranties</string>
+    <string name="warranty_lookup_results_count">%1$d record(s) found</string>
+    <string name="warranty_lookup_unknown_customer">Unknown customer</string>
+    <string name="warranty_lookup_unknown_device">Unknown device</string>
+    <string name="warranty_lookup_active">Active</string>
+    <string name="warranty_lookup_expired">Expired</string>
+    <string name="warranty_lookup_imei_label">IMEI: %1$s</string>
+    <string name="warranty_lookup_serial_label">Serial: %1$s</string>
+    <string name="warranty_lookup_expires_label">Expires: %1$s</string>
+    <string name="warranty_lookup_duration_label">Duration: %1$d days</string>
+    <string name="warranty_lookup_create_ticket_cta">Create warranty-return ticket</string>
+    <string name="warranty_lookup_confirm_create_ticket_title">Create warranty-return ticket?</string>
+    <string name="warranty_lookup_confirm_create_ticket_msg">Create a new warranty-return check-in for %1$s?</string>
+
+    <!-- §46.2 Device history -->
+    <string name="device_history_search_by">Search by</string>
+    <string name="device_history_search_cd">Search device history</string>
+    <string name="device_history_results_count">%1$d ticket(s) found</string>
+    <string name="device_history_repeat_repair">Repeat repair</string>
+    <string name="device_history_repeat_repair_cd">This device has been repaired 3 or more times</string>
+    <string name="device_history_created_label">Created: %1$s</string>
+    <string name="device_history_view_ticket">View ticket</string>
+
+    <!-- §46 a11y: cd_back defined in the global section above -->
+
+    <!-- §53 Training Mode (sandbox) -->
+    <string name="screen_training_mode">Training Mode</string>
+    <string name="training_mode_banner_label">TRAINING MODE — data is not saved</string>
+    <string name="training_mode_banner_cd">Training mode is active. Data is not saved.</string>
+    <string name="training_toggle_title">Training Mode</string>
+    <string name="training_toggle_label">Enable training mode</string>
+    <string name="training_toggle_description">Practice workflows using demo data. Nothing is sent to the server — SMS, emails, and payments are intercepted locally.</string>
+    <string name="training_seeded_data_title">Demo data available</string>
+    <string name="training_seeded_data_description">The following demo data is available when training mode is on. It resets when you tap Reset below.</string>
+    <string name="training_blockchyp_hint">BlockChyp sandbox card numbers for POS practice</string>
+    <string name="training_blockchyp_icon_cd">Payment card</string>
+    <string name="training_customers_hint">3 demo customers with tickets pre-attached</string>
+    <string name="training_customers_icon_cd">Demo customers</string>
+    <string name="training_tickets_hint">4 demo tickets across Diagnosed, Waiting, Ready, and In Progress</string>
+    <string name="training_tickets_icon_cd">Demo tickets</string>
+    <string name="training_checklist_title">Practice checklist</string>
+    <string name="training_intercepted_title">Intercepted sends</string>
+    <string name="training_intercepted_empty">No SMS or email sends intercepted yet. Try sending a message while training mode is on.</string>
+    <string name="training_reset_button">Reset training data</string>
+    <string name="training_reset_dialog_title">Reset training data?</string>
+    <string name="training_reset_dialog_message">This will clear the intercepted-send log and all checklist progress. Demo customers, tickets, and inventory will be restored to their original state.</string>
+    <string name="training_reset_dialog_confirm">Reset</string>
+    <string name="training_reset_dialog_icon_cd">Reset icon</string>
+    <!-- Settings row label for Training Mode -->
+    <string name="settings_training_mode">Training Mode</string>
+    <!-- action_cancel already defined globally -->
+
+    <!-- §52 Audit Logs Viewer -->
+    <string name="screen_audit_logs">Audit Log</string>
+    <string name="audit_export_cd">Export audit log to CSV</string>
+    <string name="audit_export_csv_filename">audit_log.csv</string>
+    <string name="audit_chain_broken">Audit chain integrity check failed — log may have been tampered with</string>
+
+    <!-- §66 Error, Empty & Loading States (cross-cutting) -->
+    <!-- §67.4: Error messages start with what happened, then what the user can do. Never blame the user. -->
+    <!-- §67.7: Each string below has a translator comment explaining UI context. -->
+
+    <!-- Shown when the device cannot reach the CRM server (network error / server down) -->
+    <string name="error_network">Can\'t reach the server. Check your connection and try again.</string>
+    <!-- Shown for unexpected 5xx server errors; keeps language first-person ("our end") per §67.1 active voice -->
+    <string name="error_server">Something went wrong on our end. We\'re looking into it.</string>
+    <!-- Shown when a record has been deleted or the ID is no longer valid -->
+    <string name="error_not_found">This item no longer exists or was removed.</string>
+    <!-- Shown when offline but cached data is visible in the list/detail -->
+    <string name="error_offline_cached">You\'re offline. Showing saved data — some info may be out of date.</string>
+    <!-- Generic fallback when no specific error message is available -->
+    <string name="error_unknown">Something went wrong. Try again or contact support.</string>
+    <!-- §67.5: Empty-state title — noun first, then CTA in subtitle -->
+    <!-- Tickets list empty state title; paired with tickets_empty_subtitle below -->
+    <string name="tickets_empty_title">No tickets yet</string>
+    <!-- Tickets list empty state subtitle / call to action -->
+    <string name="tickets_empty_subtitle">Create a ticket to get started</string>
+    <!-- Customers list empty state title -->
+    <string name="customers_empty_title">No customers yet</string>
+    <!-- Customers list empty state subtitle / call to action; "+" refers to the FAB button -->
+    <string name="customers_empty_subtitle">Tap + to add one, or import from Contacts</string>
+    <!-- Generic retry button label on error states -->
+    <string name="action_retry">Retry</string>
+    <!-- TalkBack content description for the error illustration icon -->
+    <string name="cd_error_icon">Error</string>
+    <!-- TalkBack content description for empty-state illustration icon -->
+    <string name="cd_empty_icon">No items</string>
+    <!-- TalkBack announcement for the offline banner when cached data is shown -->
+    <string name="error_offline_cached_banner_cd">Offline — showing cached data. Some info may be out of date.</string>
+    <!-- Shown when the user lacks permission to access a feature; directs them to their admin -->
+    <string name="error_permission_denied">Ask your admin to enable this feature.</string>
+    <!-- Shown on a 409 conflict — item was edited by another session -->
+    <string name="error_conflict">This item was updated elsewhere.</string>
+    <!-- Button label to reload after a conflict -->
+    <string name="error_conflict_reload">Reload</string>
+    <!-- TalkBack announcement while a screen is loading data -->
+    <string name="loading_content_description">Loading</string>
+
+    <!-- §4.1 Tablet split layout + column / density picker -->
+    <string name="tickets_split_empty_detail">Select a ticket</string>
+    <string name="tickets_columns_title">Columns</string>
+    <string name="tickets_columns_subtitle">Choose which columns appear on ticket rows.</string>
+    <string name="tickets_col_assignee">Assignee</string>
+    <string name="tickets_col_internal_note">Internal note (first line)</string>
+    <string name="tickets_col_diagnostic_note">Diagnostic note (first line)</string>
+    <string name="tickets_col_device">Device</string>
+    <string name="tickets_col_urgency_dot">Urgency dot</string>
+    <string name="tickets_columns_cancel">Cancel</string>
+    <string name="tickets_columns_apply">Apply</string>
+    <string name="tickets_columns_cd">Ticket column settings</string>
+
+    <!-- §4.8 Ticket camera screen -->
+    <string name="ticket_camera_title">Camera — Ticket #%1$d</string>
+    <string name="ticket_camera_flash_on_cd">Flash on</string>
+    <string name="ticket_camera_flash_off_cd">Flash off</string>
+    <string name="ticket_camera_flip_cd">Flip camera</string>
+    <string name="ticket_camera_grid_cd">Toggle grid</string>
+    <string name="ticket_camera_shutter_cd">Take photo</string>
+    <string name="ticket_camera_permission_rationale">Camera access is needed to capture repair photos.</string>
+    <string name="ticket_camera_open_settings">Open Settings</string>
+    <string name="ticket_camera_photo_uploaded">Photo uploaded</string>
+    <string name="ticket_camera_upload_error">Upload failed: %1$s</string>
+
+    <!-- §4.13 Empty / error states (detail screen) -->
+    <string name="tickets_error_permission_denied">Ask your admin to enable this.</string>
+    <string name="tickets_error_retry_pill">Retry</string>
+    <string name="tickets_error_network">Network error — showing cached data.</string>
+    <string name="tickets_error_stale_edit">This ticket changed. Reload to merge.</string>
+    <string name="tickets_error_stale_edit_reload">Reload</string>
+
+    <!-- §4.21 Labels -->
+    <string name="ticket_label_add_title">Add label</string>
+    <string name="ticket_label_add_hint">Label name…</string>
+    <string name="ticket_label_remove_cd">Remove label "%1$s"</string>
+    <string name="ticket_label_applied">Label "%1$s" applied</string>
+    <string name="ticket_label_removed">Label "%1$s" removed</string>
+
+    <!-- §4.22 SLA visualizer -->
+    <string name="screen_sla_heatmap">SLA Heatmap</string>
+    <string name="sla_heatmap_sort_red_first">Sort: red-zone first</string>
+    <string name="sla_heatmap_sort_green_first">Sort: green first</string>
+    <string name="sla_notify_delay">Notify of delay</string>
+    <string name="sla_ring_cd">SLA: %1$s</string>
+    <string name="sla_ring_overdue_label">OD</string>
+    <string name="sla_extend_cd">Extend SLA deadline</string>
+    <string name="sla_extend_title">Extend SLA</string>
+    <string name="sla_extend_subtitle">A reason is required. The extension is audit-logged.</string>
+    <string name="sla_extend_reason_label">Reason (required)</string>
+    <string name="sla_extend_duration_label">Extend by: %1$d minutes</string>
+    <string name="sla_extend_confirm">Extend SLA</string>
+
+    <!-- §50 Data Import wizard -->
+    <string name="screen_data_import">Data Import</string>
+    <string name="import_cancel_dialog_title">Cancel import?</string>
+    <string name="import_cancel_dialog_msg">The import job is still running. Cancelling will leave it in progress on the server — you can check status later from Settings.</string>
+    <string name="import_cancel_dialog_confirm">Cancel import</string>
+    <string name="import_discard_mapping_dialog_title">Discard column mapping?</string>
+    <string name="import_discard_mapping_dialog_msg">Going back will discard your current column mapping. You can re-detect columns when you return.</string>
+    <string name="import_discard_mapping_dialog_confirm">Discard</string>
+    <string name="import_download_error_report">Download Error Report</string>
+    <string name="import_cd_upload_icon">File selected for import</string>
+
+    <!-- §5.3 Customer barcode / QR scan lookup -->
+    <string name="screen_customer_barcode_lookup">Scan Customer Card</string>
+    <string name="customer_barcode_hint">Point camera at a customer QR or barcode card</string>
+    <string name="customer_barcode_camera_denied">Camera access is required to scan customer cards.</string>
+    <string name="customer_barcode_grant_camera">Grant camera access</string>
+    <string name="customer_barcode_no_match">No customer found for "%1$s"</string>
+    <string name="customer_barcode_multiple_matches">Multiple matches — tap to open</string>
+    <string name="customer_barcode_scan_again">Scan again</string>
+    <string name="customer_barcode_viewfinder_cd">Camera viewfinder for scanning customer card</string>
+    <string name="customer_barcode_open_cd">Open customer %1$s</string>
+
+    <!-- §5.14 Customer notes -->
+    <string name="screen_customer_notes">Customer Notes</string>
+    <string name="customer_notes_empty">No notes yet. Add the first note below.</string>
+    <string name="customer_note_compose_hint">Write a note…</string>
+    <string name="customer_note_send_cd">Post note</string>
+    <string name="customer_note_delete_title">Delete note?</string>
+    <string name="customer_note_delete_message">This note will be permanently deleted.</string>
+    <string name="customer_note_delete_cd">Delete this note</string>
+
+    <!-- §6.7 Purchase Orders -->
+    <string name="screen_purchase_orders">Purchase Orders</string>
+    <string name="screen_po_create">New Purchase Order</string>
+    <string name="po_supplier">Supplier</string>
+    <string name="po_expected_date">Expected date</string>
+    <string name="po_notes">Notes</string>
+    <string name="po_line_items">Line items</string>
+    <string name="po_add_line">Add line item</string>
+    <string name="po_receive_items">Receive items</string>
+    <string name="po_cancel_action">Cancel PO</string>
+    <string name="po_cancel_title">Cancel purchase order?</string>
+    <string name="po_cancel_message">Cancel this order? Stock will not be adjusted. This cannot be undone.</string>
+    <string name="po_cancel_confirm">Cancel order</string>
+    <string name="po_send_cd">Send PO to supplier</string>
+    <string name="cd_create_po">Create purchase order</string>
+
+    <!-- §6.4 Edit screen quick-actions -->
+    <string name="screen_inventory_edit">Edit Item</string>
+    <string name="inventory_delete_title">Delete item</string>
+    <string name="inventory_deactivate_title">Deactivate item</string>
+
+    <!-- §51 Data Export -->
+    <!-- Screen title for the data export flow -->
+    <string name="screen_data_export">Data Export</string>
+    <!-- Status label shown when export file is ready to download (no exclamation per §67.1) -->
+    <string name="export_ready_label">Export ready</string>
+    <!-- Button to download the completed export file -->
+    <string name="export_action_download">Download</string>
+    <!-- Button to cancel an in-progress export job -->
+    <string name="export_action_cancel">Cancel export</string>
+    <!-- Button to start a new export after the previous one completed or was cancelled -->
+    <string name="export_action_new">New Export</string>
+    <!-- Progress label; %1$d = progress percentage 0–100 -->
+    <string name="export_preparing">Preparing export… %1$d%%</string>
+    <!-- Hint shown while export is in progress, encouraging the user to navigate away -->
+    <string name="export_notify_hint">You can leave this screen — you\'ll be notified when ready.</string>
+    <!-- §67.2: AlertDialog title = question; body = consequences; confirm button = action word -->
+    <!-- Dialog title asking the user to confirm cancelling the export -->
+    <string name="export_cancel_title">Cancel export?</string>
+    <!-- Dialog body explaining what happens if the user cancels the export -->
+    <string name="export_cancel_message">The export job will be abandoned and you\'ll need to start a new one.</string>
+    <!-- Destructive confirm button: names the action explicitly per §67.2 (no "Yes/No") -->
+    <string name="export_cancel_confirm">Cancel export</string>
+    <!-- Non-destructive dismiss button on the cancel-export dialog -->
+    <string name="action_keep_waiting">Keep waiting</string>
+    <!-- Shown when the user does not have manager permission to export data -->
+    <string name="export_access_denied">Manager access required to export data.</string>
+    <!-- Shown when the server does not have the export API configured -->
+    <string name="export_unsupported">Export is not configured on this server.</string>
+    <!-- TalkBack content description for the export-complete icon -->
+    <string name="cd_export_ready">Export complete</string>
+    <!-- §51.4 — ZIP password protection strings -->
+    <!-- TalkBack: show password contents in the field -->
+    <string name="cd_show_password">Show password</string>
+    <!-- TalkBack: hide password contents in the field -->
+    <string name="cd_hide_password">Hide password</string>
+    <!-- Section header for the optional ZIP password row -->
+    <string name="export_zip_password_section">Encryption (optional)</string>
+    <!-- Toggle label for enabling AES-256 ZIP password -->
+    <string name="export_zip_password_toggle">Protect archive with AES-256 password</string>
+    <!-- Label for the password input field -->
+    <string name="export_zip_password_label">ZIP password</string>
+    <!-- Placeholder hint inside the password field -->
+    <string name="export_zip_password_placeholder">Enter a strong password</string>
+    <!-- Validation error when ZIP is enabled but password is empty -->
+    <string name="export_zip_password_required">Password is required when encryption is on</string>
+
+    <!-- §57 Kiosk / Lock-Task Single-Task Modes -->
+    <!-- §57.2 Customer check-in -->
+    <string name="screen_kiosk_checkin">Kiosk Check-In</string>
+    <string name="kiosk_checkin_title">Kiosk Check-In</string>
+    <string name="kiosk_checkin_headline">Welcome to Bizarre Electronics</string>
+    <string name="kiosk_checkin_subhead">Enter your phone number to check in your device for repair.</string>
+    <string name="kiosk_phone_label">Phone number</string>
+    <string name="kiosk_phone_icon_cd">Phone number field</string>
+    <string name="kiosk_checkin_cta">Look up or create record</string>
+    <string name="kiosk_inactivity_note">Screen will reset after 60 seconds of inactivity.</string>
+    <!-- §57.3 Customer-facing signature -->
+    <string name="screen_kiosk_signature">Customer Signature</string>
+    <string name="kiosk_signature_title">Customer Signature</string>
+    <string name="kiosk_signature_headline">Please sign below to authorize the repair</string>
+    <string name="kiosk_signature_terms_summary">By signing you authorize Bizarre Electronics to perform the described repair at the quoted estimate. We are not responsible for data loss — please back up your data before service.</string>
+    <string name="kiosk_signature_pad_label">Sign here</string>
+    <string name="kiosk_signature_placeholder">Customer signs here</string>
+    <string name="kiosk_signature_confirm_cta">I agree — confirm signature</string>
+    <!-- §57.5 Manager-PIN exit gate -->
+    <string name="screen_kiosk_exit">Exit Kiosk Mode</string>
+    <string name="kiosk_exit_title">Exit Kiosk</string>
+    <string name="kiosk_exit_button">Exit kiosk</string>
+    <string name="kiosk_exit_headline">Manager PIN required</string>
+    <string name="kiosk_exit_subhead">Enter the device PIN to exit kiosk mode.</string>
+    <!-- §57.2 Done screen -->
+    <string name="screen_kiosk_done">Check-In Complete</string>
+    <string name="kiosk_done_icon_cd">Check-in complete checkmark</string>
+    <!-- §67.1 exception: exclamation mark intentional — celebration moment for customer check-in completion -->
+    <!-- %1$s is not used in this string; see kiosk_done_subhead for the name placeholder -->
+    <string name="kiosk_done_headline">You\'re all checked in!</string>
+    <!-- Shown on kiosk after successful check-in; %1$s = customer first name -->
+    <string name="kiosk_done_subhead">Thank you, %1$s. Our team will be with you shortly.</string>
+    <string name="kiosk_done_returning">Returning to start screen…</string>
+    <string name="kiosk_done_start_over_cta">Start over</string>
+
+    <!-- §54.4 Command Palette settings (Display screen) -->
+    <string name="display_command_palette_section">Command Palette</string>
+    <string name="display_command_palette_toggle_title">Enable command palette</string>
+    <string name="display_command_palette_toggle_subtitle">Ctrl+K on keyboard or long-press the dashboard FAB opens a quick-command overlay. Turn off for staff devices where this is distracting.</string>
+
+    <!-- Shared action labels -->
+    <string name="action_back">Back</string>
+    <string name="action_refresh">Refresh</string>
+
+    <!-- §59 Field-Service / Dispatch -->
+    <string name="nav_field_service">Field Service</string>
+    <string name="field_service_optimize_route">Optimize route</string>
+    <string name="field_service_empty_title">No jobs today</string>
+    <string name="field_service_empty_subtitle">Dispatch jobs assigned to you will appear here.</string>
+    <string name="field_service_offline_title">Offline</string>
+    <string name="field_service_offline_subtitle">Field service requires a server connection.</string>
+    <string name="field_service_map_stub">Map view — %1$d job(s) (map integration deferred)</string>
+    <string name="field_service_eta_minutes">%1$d min ETA</string>
+    <string name="field_service_action_en_route">On my way</string>
+    <string name="field_service_action_on_site">Mark on-site</string>
+    <string name="field_service_action_complete">Mark complete</string>
+    <string name="field_service_action_cancel">Cancel job</string>
+    <string name="field_service_confirm_on_site_title">Mark on-site?</string>
+    <string name="field_service_confirm_on_site_message">Confirm you have arrived at the customer\'s location.</string>
+    <string name="field_service_confirm_complete_title">Mark job complete?</string>
+    <string name="field_service_confirm_complete_message">This will close the job and notify the dispatcher.</string>
+    <string name="field_service_confirm_cancel_title">Cancel job?</string>
+    <string name="field_service_confirm_cancel_message">This cannot be undone. The dispatcher will be notified.</string>
+    <string name="field_service_location_rationale_title">Location needed</string>
+    <string name="field_service_location_rationale_body">Field service uses your location for ETA calculation and optional geofence arrival detection. Your location is not stored unless you opt in.</string>
+    <string name="field_service_location_grant">Grant permission</string>
+    <string name="field_service_location_skip">Skip for now</string>
+
+    <!-- §72 In-App Help -->
+    <string name="screen_help_center">Help</string>
+    <string name="screen_report_problem">Report a Problem</string>
+    <string name="help_topic_tickets">Tickets</string>
+    <string name="help_topic_customers">Customers</string>
+    <string name="help_topic_invoices">Invoices</string>
+    <string name="help_topic_pos">Point of Sale</string>
+    <string name="help_topic_inventory">Inventory</string>
+    <string name="help_topic_settings">Settings</string>
+    <string name="help_search_hint">Search help…</string>
+    <string name="help_search_clear_cd">Clear search</string>
+    <string name="help_search_no_results">No articles matched your search.</string>
+    <string name="help_contact_support">Contact support</string>
+    <string name="help_contact_support_cd">Contact support</string>
+    <!-- §72.3 Report a problem -->
+    <string name="help_report_icon_cd">Bug report</string>
+    <string name="help_report_info_title">Your report goes directly to the shop admin</string>
+    <string name="help_report_info_body">We\'ll send your report to %1$s. Diagnostic info (app version, server URL) is included only if you choose to attach it — no customer data is shared.</string>
+    <string name="help_report_subject_label">Subject</string>
+    <string name="help_report_subject_hint">Brief description of the issue</string>
+    <string name="help_report_description_label">Description</string>
+    <string name="help_report_description_hint">What happened? What were you trying to do?</string>
+    <string name="help_report_attach_logs_title">Attach diagnostic info</string>
+    <string name="help_report_attach_logs_subtitle">App version, server URL, and last nav path. No customer data.</string>
+    <string name="help_report_send_action">Open email app</string>
+    <string name="help_report_sent_snackbar">Email app opened — tap Send to submit your report.</string>
+    <!-- §72.2 Contextual help -->
+    <string name="help_icon_cd">Help for this screen</string>
+    <!-- §72.5 Keyboard shortcuts overlay -->
+    <string name="help_keyboard_shortcuts_title">Keyboard Shortcuts</string>
+    <string name="help_keyboard_shortcuts_empty">No shortcuts defined for this screen.</string>
+    <!-- §72 Settings row label -->
+    <string name="settings_help">Help</string>
+    <!-- contact support strings referenced by error_contact_support / email_address pattern -->
+    <string name="error_contact_support">Contact support at %1$s</string>
+    <string name="email_address">pavel@bizarreelectronics.com</string>
+
+    <!-- §56 TV Queue Board (in-shop display) -->
+    <string name="screen_tv_queue_board">Queue Board</string>
+    <string name="tv_queue_title">Today\'s queue</string>
+    <string name="tv_queue_subtitle">Bizarre Electronics — Repair Status</string>
+    <string name="tv_queue_exit_hint">Tap with 3 fingers to exit</string>
+    <string name="tv_queue_empty_title">No tickets in queue</string>
+    <string name="tv_queue_empty_subtitle">Connect TV mode to display queue.\nGo to Settings → Display → Activate queue board.</string>
+
+    <!-- §58 Appointment Self-Booking (customer-facing public flow) -->
+    <string name="screen_self_booking">Book an Appointment</string>
+    <string name="screen_online_booking_settings">Online Booking</string>
+    <string name="self_booking_slots_heading">AVAILABLE TIMES</string>
+    <string name="self_booking_no_slots_title">No times available</string>
+    <string name="self_booking_no_slots_subtitle">There are no open slots for this date. Try a different day or contact the shop directly.</string>
+    <string name="self_booking_selected_label">Selected</string>
+    <string name="self_booking_proceed_btn">Continue</string>
+    <string name="self_booking_your_info_heading">YOUR DETAILS</string>
+    <string name="self_booking_field_name">Name *</string>
+    <string name="self_booking_field_phone">Phone *</string>
+    <string name="self_booking_field_email">Email (optional)</string>
+    <string name="self_booking_field_service">Service needed (optional)</string>
+    <string name="self_booking_field_notes">Notes (optional)</string>
+    <string name="self_booking_confirm_btn">Confirm Booking</string>
+    <!-- §67.1 exception: exclamation mark intentional — celebration moment for successful appointment booking -->
+    <string name="self_booking_confirmed_title">You\'re booked!</string>
+    <string name="self_booking_confirmed_time">Your appointment: %s</string>
+    <string name="self_booking_confirmation_code_label">CONFIRMATION CODE</string>
+    <string name="self_booking_done_btn">Done</string>
+    <string name="self_booking_unavailable_title">Booking unavailable</string>
+    <string name="self_booking_unavailable_subtitle">Online booking is not currently available for this location. Please contact the shop directly.</string>
+    <!-- §67.2: AlertDialog — title = question; body = consequences; confirm = action word (not "Yes") -->
+    <!-- Shown when user taps back/cancel during the self-booking flow -->
+    <string name="self_booking_cancel_dialog_title">Cancel booking?</string>
+    <!-- Body explains consequence: their selected time slot is released -->
+    <string name="self_booking_cancel_dialog_body">Your selected time will not be held. You can choose a new slot when you return.</string>
+    <!-- Destructive confirm button: names the action explicitly per §67.2 (no "Yes/No") -->
+    <string name="self_booking_cancel_dialog_confirm">Cancel booking</string>
+    <string name="online_booking_link_section_heading">BOOKING LINK</string>
+    <string name="online_booking_link_subtitle">Share this link with customers so they can book online.</string>
+    <string name="online_booking_copy_link_btn">Copy link</string>
+    <string name="online_booking_share_link_btn">Share link</string>
+    <string name="online_booking_share_subject">Book an appointment</string>
+    <string name="online_booking_share_chooser_title">Share booking link</string>
+    <string name="online_booking_advanced_unavailable_title">Advanced settings coming soon</string>
+    <string name="online_booking_advanced_unavailable_subtitle">Working hours, buffer times, and per-service toggles will be available in a future update.</string>
+    <string name="self_booking_link_copied">Booking link copied</string>
+    <string name="cd_no_slots_icon">No available slots</string>
+    <string name="cd_slot_time_icon">Appointment time</string>
+    <string name="cd_selected_slot_icon">Selected appointment time</string>
+    <string name="cd_booking_confirmed_icon">Booking confirmed</string>
+    <string name="cd_booking_unavailable_icon">Booking unavailable</string>
+    <string name="cd_booking_link_icon">Booking link</string>
+
+    <!-- §55 Public Tracking (customer-facing repair status) -->
+    <string name="screen_public_tracking">Repair Status</string>
+    <!-- Greeting shown at top of public repair-status screen; %s = customer first name -->
+    <string name="public_tracking_greeting">Hi, %s</string>
+    <string name="public_tracking_eta">Estimated ready: %s</string>
+    <string name="public_tracking_devices_heading">DEVICE(S)</string>
+    <string name="public_tracking_history_heading">STATUS UPDATES</string>
+    <string name="public_tracking_device_unknown">Unknown device</string>
+    <string name="public_tracking_not_found_title">Ticket not found</string>
+    <string name="public_tracking_not_found_subtitle">The tracking link may have expired or is invalid. Contact the shop for help.</string>
+    <string name="public_tracking_share_label">Share tracking link</string>
+    <string name="public_tracking_share_chooser_title">Share repair status link</string>
+    <!-- §55.3 — tracking QR label print action -->
+    <string name="tracking_label_print_action">Print tracking label</string>
+    <string name="tracking_label_print_error">Could not open print dialog</string>
+    <string name="a11y_tracking_label_qr">QR code for repair status — ticket %1$s. Scan to check status.</string>
+    <string name="cd_ticket_status">Ticket status</string>
+    <string name="cd_device_icon">Device</string>
+    <string name="cd_store_info">Store information</string>
+    <string name="cd_not_found_icon">Not found</string>
+
+    <!-- §62 Financial Dashboard (owner view) -->
+    <string name="screen_financial_dashboard">Financial Dashboard</string>
+    <string name="financial_error_title">Could not load financial data</string>
+
+    <!-- §62.1 P&amp;L snapshot -->
+    <string name="financial_pl_title">Profit &amp; Loss</string>
+    <string name="financial_pl_revenue">Revenue</string>
+    <string name="financial_pl_cogs">Cost of Goods Sold</string>
+    <string name="financial_pl_gross_margin">Gross Margin</string>
+    <string name="financial_pl_opex">Operating Expenses</string>
+    <string name="financial_pl_net_income">Net Income</string>
+    <string name="financial_pl_period_change">%1$s%% vs prior period</string>
+    <string name="financial_coming_soon_pl">P&amp;L data available once /reports/pl-summary is deployed.</string>
+    <string name="cd_financial_pl_icon">Profit and loss trend icon</string>
+
+    <!-- §62.2 Cash flow forecast -->
+    <string name="financial_cashflow_title">Cash Flow Forecast</string>
+    <string name="financial_cashflow_invoices_due">Upcoming invoices due</string>
+    <string name="financial_cashflow_recurring_expenses">Recurring expenses</string>
+    <string name="financial_cashflow_projections">Projected cash on hand</string>
+    <string name="financial_cashflow_30d">30d: %1$s</string>
+    <string name="financial_cashflow_60d">60d: %1$s</string>
+    <string name="financial_cashflow_90d">90d: %1$s</string>
+    <string name="financial_coming_soon_cashflow">Cash flow projections available once /reports/cashflow is deployed.</string>
+    <string name="cd_financial_cashflow_icon">Cash flow schedule icon</string>
+
+    <!-- §62.3 Tax liability -->
+    <string name="financial_tax_title">Tax Liability</string>
+    <string name="financial_tax_remitted_label">Remitted: %1$s</string>
+    <string name="financial_tax_remitted">Remitted</string>
+    <string name="financial_tax_pending">Pending</string>
+    <string name="financial_coming_soon_tax">Tax jurisdiction data available once /reports/expense-breakdown is deployed.</string>
+    <string name="cd_financial_tax_icon">Tax and government building icon</string>
+
+    <!-- §62.4 Budget vs actual -->
+    <string name="financial_budget_title">Budget vs Actual</string>
+    <string name="financial_budget_vs_actual_label">Budget: %1$s  ·  Actual: %2$s</string>
+    <string name="financial_coming_soon_budget">Budget categories available once the budget API is deployed.</string>
+    <string name="cd_financial_budget_icon">Budget bar chart icon</string>
+
+    <!-- §62.5 Owner-only gate + PIN re-prompt -->
+    <string name="financial_access_denied_title">Owner access required</string>
+    <string name="financial_access_denied_body">This screen is restricted to the owner role. Ask your admin to adjust your permissions.</string>
+    <string name="cd_financial_access_denied_icon">Lock icon indicating restricted access</string>
+    <string name="financial_pin_prompt_title">Confirm your PIN</string>
+    <string name="financial_pin_prompt_body">Enter your PIN to view financial data.</string>
+    <string name="financial_pin_incorrect">Incorrect PIN. Try again.</string>
+    <string name="financial_pin_cancel">Cancel</string>
+    <string name="cd_financial_pin_lock_icon">PIN lock icon</string>
+
+    <!-- §1.5 line 202 — Tab Order customisation -->
+    <string name="screen_tab_order">Tab Order</string>
+    <string name="tab_order_caption">Choose the order of tabs in the bottom navigation bar. The “More” tab is always last.</string>
+    <string name="tab_order_reset">Reset</string>
+    <string name="tab_order_move_up">Move %1$s up</string>
+    <string name="tab_order_move_down">Move %1$s down</string>
+    <string name="tab_name_dashboard">Dashboard</string>
+    <string name="tab_name_tickets">Tickets</string>
+    <string name="tab_name_pos">POS</string>
+    <string name="tab_name_messages">Messages</string>
+    <string name="tab_name_more">More</string>
+
+    <!-- §37 Marketing &amp; Growth -->
+    <string name="nav_marketing">Marketing</string>
+    <string name="screen_campaigns">Campaigns</string>
+    <string name="screen_campaign_builder">New Campaign</string>
+    <string name="screen_segments">Audience Segments</string>
+    <string name="screen_automations">Automations</string>
+    <string name="screen_review_solicitation">Review Request</string>
+
+    <string name="marketing_not_available">Marketing unavailable</string>
+    <string name="marketing_not_available_subtitle">Update your server to enable marketing campaigns and segments.</string>
+
+    <!-- Campaign list -->
+    <string name="campaigns_empty_title">No campaigns</string>
+    <string name="campaigns_empty_subtitle">Create your first campaign with the + button.</string>
+    <string name="campaign_send_confirm_title">Send campaign?</string>
+    <string name="campaign_send_confirm_msg">Send campaign &#8220;%s&#8221; to all eligible recipients now?</string>
+    <string name="campaign_send_confirm_btn">Send now</string>
+    <string name="campaign_cancel_confirm_title">Cancel campaign</string>
+    <string name="campaign_cancel_confirm_msg">Stop sending &#8220;%s&#8221; and archive it?</string>
+    <string name="campaign_cancel_confirm_btn">Cancel campaign</string>
+
+    <!-- Campaign builder -->
+    <string name="campaign_step_audience">Step 1: Audience</string>
+    <string name="campaign_step_message">Step 2: Message</string>
+    <string name="campaign_step_review">Step 3: Review</string>
+    <string name="campaign_name_label">Campaign name</string>
+    <string name="campaign_type_label">Type</string>
+    <string name="campaign_segment_label">Audience segment</string>
+    <string name="campaign_channel_label">Channel</string>
+    <string name="campaign_subject_label">Email subject</string>
+    <string name="campaign_body_label">Message body</string>
+    <string name="campaign_merge_tags_label">Merge tags (tap to insert)</string>
+    <string name="campaign_preview_audience">%d eligible recipients</string>
+    <string name="campaign_preview_sample">Sample rendered messages:</string>
+    <string name="campaign_save_draft">Save draft</string>
+    <string name="campaign_builder_confirm_title">Save campaign?</string>
+    <string name="campaign_builder_confirm_msg">Save this campaign as a draft. You can activate it from the Campaigns screen.</string>
+
+    <!-- TCPA compliance -->
+    <string name="tcpa_notice_title">TCPA compliance</string>
+    <string name="tcpa_notice_body">SMS is sent only to customers who have opted in AND given marketing consent. STOP footer is appended automatically. Quiet hours are enforced server-side.</string>
+
+    <!-- Segments -->
+    <string name="segments_empty_title">No segments</string>
+    <string name="segments_empty_subtitle">Create a segment to target a specific group of customers.</string>
+    <string name="segment_create_title">New segment</string>
+    <string name="segment_name_label">Segment name</string>
+    <string name="segment_description_label">Description (optional)</string>
+    <string name="segment_rule_json_label">Rule JSON</string>
+    <string name="segment_rule_hint">Example: {\"lifetime_value_cents\":{\">\":50000}}\nOperators: &gt; &gt;= &lt; &lt;= = !=</string>
+    <string name="segment_size_preview">%d members — tap to preview</string>
+    <string name="segment_size_sheet_title">Segment size</string>
+    <string name="segment_size_result">%d customers</string>
+    <string name="segment_size_subtitle">matching this segment\'s rule</string>
+
+    <!-- Automations -->
+    <string name="automations_empty_title">No automations</string>
+    <string name="automations_empty_subtitle">Create birthday, win-back, or review-request campaigns in the Campaigns screen to see them here.</string>
+
+    <!-- Review solicitation -->
+    <string name="review_solicitation_title">Request a Review</string>
+    <string name="review_solicitation_subtitle">Send a review-link SMS after a ticket is closed.</string>
+    <string name="review_ticket_id_label">Ticket ID</string>
+    <string name="review_sending">Sending review request…</string>
+    <!-- §67.1 exception: exclamation mark intentional — celebration moment after staff sends a review request -->
+    <string name="review_sent_title">Review request sent!</string>
+    <string name="review_sent_detail">Sent %1$d of %2$d messages.</string>
+    <string name="review_nps_deferred_note">NPS score capture and detractor routing coming in a future update.</string>
+    <string name="review_send_btn">Send review request</string>
+    <string name="review_confirm_title">Send review request?</string>
+    <string name="review_confirm_msg">Send a review-request SMS for ticket #%d?</string>
+    <string name="review_platforms_title">Review platforms</string>
+    <string name="review_platforms_body">The server appends your configured review link (Google, Facebook, or Yelp) to the message template. Configure the link in Settings &gt; Business Info.</string>
+
+    <!-- Content descriptions §37 -->
+    <string name="cd_create_campaign">Create campaign</string>
+    <string name="cd_campaign_icon">Campaign</string>
+    <string name="cd_send_campaign">Send campaign now</string>
+    <string name="cd_create_segment">Create segment</string>
+    <string name="cd_refresh_segment">Refresh segment membership</string>
+    <string name="cd_merge_tag">Merge tag</string>
+    <string name="cd_automation_icon">Automation</string>
+    <string name="cd_review_star">Review solicitation</string>
+
+    <!-- Common labels reused in §37 (if not already defined) -->
+    <string name="back">Back</string>
+    <string name="next">Next</string>
+    <string name="cancel">Cancel</string>
+    <string name="create">Create</string>
+    <string name="close">Close</string>
+
+    <!-- §7.6 Invoice Aging Report -->
+    <string name="screen_invoice_aging">Aging Report</string>
+    <string name="aging_bucket_0_30">0–30 days</string>
+    <string name="aging_bucket_31_60">31–60 days</string>
+    <string name="aging_bucket_61_90">61–90 days</string>
+    <string name="aging_bucket_90_plus">90+ days</string>
+    <string name="aging_write_off_title">Write off invoice?</string>
+    <string name="aging_write_off_message">Void this invoice as uncollectable. This cannot be undone.</string>
+    <string name="aging_write_off_confirm">Write Off</string>
+    <string name="cd_refresh_aging">Refresh aging report</string>
+
+    <!-- §7.2 Invoice Detail — credit note + send confirm -->
+    <string name="invoice_credit_note_title">Credit Note</string>
+    <string name="invoice_send_sms_title">Send invoice by SMS?</string>
+    <string name="invoice_send_email_title">Send invoice by email?</string>
+    <string name="invoice_send_confirm_message">A message with a payment link will be sent to %1$s.</string>
+    <string name="invoice_send_confirm_action">Send</string>
+
+    <!-- §63 Multi-Location Management -->
+    <string name="locations_title">Locations</string>
+    <string name="location_detail_title">Location</string>
+    <string name="location_create_title">New Location</string>
+
+    <!-- List filters -->
+    <string name="location_filter_all">All</string>
+    <string name="location_filter_active">Active</string>
+    <string name="location_filter_inactive">Inactive</string>
+
+    <!-- Fields -->
+    <string name="location_field_name">Name</string>
+    <string name="location_field_address">Address</string>
+    <string name="location_field_city">City</string>
+    <string name="location_field_state">State</string>
+    <string name="location_field_postcode">Postcode</string>
+    <string name="location_field_country">Country</string>
+    <string name="location_field_phone">Phone</string>
+    <string name="location_field_email">Email</string>
+    <string name="location_field_timezone">Timezone</string>
+    <string name="location_field_notes">Notes</string>
+    <string name="location_field_staff_count">Staff assigned</string>
+
+    <!-- Sections -->
+    <string name="location_section_basic">Address</string>
+    <string name="location_section_contact">Contact &amp; timezone</string>
+
+    <!-- Status labels -->
+    <string name="location_status_active">Active</string>
+    <string name="location_status_inactive">Inactive</string>
+    <string name="location_label_default">Default</string>
+
+    <!-- Actions -->
+    <string name="location_set_default_btn">Set as default</string>
+    <string name="location_deactivate_btn">Deactivate</string>
+    <string name="location_create_save_btn">Create location</string>
+
+    <!-- ConfirmDialogs -->
+    <string name="location_deactivate_confirm_title">Deactivate location?</string>
+    <string name="location_deactivate_confirm_msg">Deactivate %1$s? Staff assigned here will lose their primary location. This cannot be undone without admin access.</string>
+    <string name="location_set_default_confirm_title">Set as default location?</string>
+    <string name="location_set_default_confirm_msg">Set %1$s as the default location? All other locations will lose default status.</string>
+
+    <!-- Empty / error states -->
+    <string name="locations_empty_title">No locations yet</string>
+    <string name="locations_empty_subtitle">Create a location to manage multiple shop sites.</string>
+    <string name="location_load_error_title">Could not load locations</string>
+
+    <!-- Content descriptions §63 -->
+    <string name="cd_create_location">Create location</string>
+    <string name="cd_location_icon">Location building icon</string>
+    <string name="cd_location_default">Default location star</string>
+    <string name="cd_edit_location">Edit location</string>
+
+    <!-- §6.3 Inventory create — barcode scan + lookup autofill -->
+    <string name="inventory_create_scan_cd">Scan barcode to fill SKU / UPC</string>
+    <string name="inventory_barcode_match_title">Item found in inventory</string>
+    <string name="inventory_barcode_match_body">Barcode "%2$s" matches "%1$s". Autofill the form with this item\'s details?</string>
+    <string name="inventory_barcode_match_autofill">Autofill</string>
+    <string name="inventory_barcode_match_skip">Enter manually</string>
 </resources>

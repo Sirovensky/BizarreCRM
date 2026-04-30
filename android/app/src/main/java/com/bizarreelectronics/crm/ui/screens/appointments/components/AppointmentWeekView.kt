@@ -17,11 +17,11 @@ import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.WeekFields
+import com.bizarreelectronics.crm.util.DateFormatter
 
 /** Week view: appointments grouped within the week containing [selectedDate]. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -35,8 +35,10 @@ fun AppointmentWeekView(
     onDateChange: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // §27.3 — First day of week respects the active locale (e.g. Sunday for en-US,
+    // Monday for fr-CA / es-MX). DateFormatter.firstDayOfWeek uses WeekFields.of(Locale.getDefault()).
     val firstOfWeek = selectedDate.with(
-        WeekFields.of(DayOfWeek.SUNDAY, 1).dayOfWeek(), 1,
+        WeekFields.of(DateFormatter.firstDayOfWeek, 1).dayOfWeek(), 1,
     )
     val lastOfWeek = firstOfWeek.plusDays(6)
 

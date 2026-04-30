@@ -109,6 +109,19 @@ fun ErrorSurface(
     }
 }
 
+/**
+ * §26.1 — Returns the appropriate [LiveRegionMode] for error announcements.
+ *
+ * Error surfaces use [LiveRegionMode.Assertive] — screen readers interrupt
+ * whatever they are currently reading and announce the error immediately.
+ * Non-critical informational surfaces (Snackbars, OfflineBanner) use
+ * [LiveRegionMode.Polite] so they queue behind the current announcement.
+ *
+ * Callers outside this file that produce error content should use this
+ * instead of hardcoding [LiveRegionMode.Assertive].
+ */
+internal val errorLiveRegionMode: LiveRegionMode = LiveRegionMode.Assertive
+
 // ---------------------------------------------------------------------------
 // Internal layouts
 // ---------------------------------------------------------------------------
@@ -127,7 +140,8 @@ private fun CompactErrorSurface(
         modifier = modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                liveRegion = LiveRegionMode.Polite
+                // §26.1 — Assertive interrupts the screen reader immediately for errors.
+                liveRegion = LiveRegionMode.Assertive
                 contentDescription = announceText
             },
     ) {
@@ -196,7 +210,8 @@ private fun FullErrorSurface(
             .fillMaxWidth()
             .padding(24.dp)
             .semantics(mergeDescendants = true) {
-                liveRegion = LiveRegionMode.Polite
+                // §26.1 — Assertive interrupts the screen reader immediately for errors.
+                liveRegion = LiveRegionMode.Assertive
                 contentDescription = announceText
             },
         horizontalAlignment = Alignment.CenterHorizontally,

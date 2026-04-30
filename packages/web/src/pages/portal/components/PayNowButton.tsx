@@ -34,6 +34,15 @@ export function PayNowButton({
     );
   }
 
+  // WEB-S4-025: BlockChyp Hosted Checkout URLs are external by design — allow
+  // them alongside our own origin. Anchored to *.blockchyp.com so subdomains
+  // (checkout.blockchyp.com, etc.) are accepted without wildcarding all hosts.
+  function isAllowedPaymentUrl(parsed: URL): boolean {
+    if (parsed.origin === window.location.origin) return true;
+    if (/^https:\/\/([a-z0-9-]+\.)*blockchyp\.com$/i.test(parsed.origin)) return true;
+    return false;
+  }
+
   const handlePay = async (): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -47,7 +56,7 @@ export function PayNowButton({
           setError('Payment request not available. Please call the shop.');
           return;
         }
-        if (parsed.origin !== window.location.origin) {
+        if (!isAllowedPaymentUrl(parsed)) {
           setError('Payment request not available. Please call the shop.');
           return;
         }
@@ -81,7 +90,7 @@ export function PayNowButton({
         type="button"
         onClick={handlePay}
         disabled={loading}
-        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium py-2.5 text-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         {loading ? '...' : t('pay.button')}
       </button>

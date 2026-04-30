@@ -2,6 +2,13 @@
  * Portal v2 API client — talks to `/portal/api/v2/*` endpoints added by
  * portal-enrich.routes.ts. Reuses the same session token as portalApi.ts
  * (sessionStorage.portal_token).
+ *
+ * WEB-S4-026 VERIFIED: base path `/portal/api/v2` is correct.
+ *   - Server:    app.use('/portal/api/v2', portalEnrichRoutes)  [index.ts:1552]
+ *   - Vite proxy: '/portal/api' → https://localhost:443        [vite.config.ts:74]
+ *   - The proxy prefix `/portal/api` is a prefix match and covers `/portal/api/v2`.
+ *   - Main portal routes use `/api/v1/portal` (different mount, different auth).
+ *     The two paths serve different purposes and must NOT be unified.
  */
 import axios from 'axios';
 
@@ -40,6 +47,22 @@ client.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// WEB-S4-026: response error interceptor — log portal-v2 failures so proxy
+// mismatches (404 on wrong base path) and auth failures are visible in dev.
+client.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    const err = error as { config?: { url?: string }; response?: { status?: number } } | undefined;
+    // eslint-disable-next-line no-console
+    console.error(
+      `[enrichApi] ${err?.config?.url ?? '(unknown)'} →`,
+      err?.response?.status ?? 'network error',
+      error,
+    );
+    return Promise.reject(error);
+  },
+);
 
 export interface TimelineEvent {
   action: string;

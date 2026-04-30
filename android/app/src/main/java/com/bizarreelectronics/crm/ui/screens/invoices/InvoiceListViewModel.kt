@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.ui.screens.invoices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData
@@ -13,10 +15,12 @@ import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -52,6 +56,23 @@ class InvoiceListViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var collectJob: Job? = null
+
+    // ── Paging3 (§7.1) ──────────────────────────────────────────────────────
+
+    /**
+     * Paged stream of invoices, cached in [viewModelScope] so the Pager
+     * survives recomposition. Switches to a new stream when the selected
+     * status tab changes.
+     *
+     * Consumed by [InvoiceListScreen] via [collectAsLazyPagingItems] when the
+     * caller opts into the paged path. The existing [state.invoices] list is
+     * preserved for bulk-action and CSV-export operations that need a flat
+     * snapshot.
+     */
+    private val _filterKeyFlow = MutableStateFlow(resolveFilterKey())
+    val invoicesPaged: Flow<PagingData<InvoiceEntity>> = _filterKeyFlow
+        .flatMapLatest { key -> invoiceRepository.invoicesPaged(key) }
+        .cachedIn(viewModelScope)
 
     init {
         loadInvoices()
@@ -125,6 +146,14 @@ class InvoiceListViewModel @Inject constructor(
     fun onStatusChanged(status: String) {
         _state.value = _state.value.copy(selectedStatus = status)
         loadInvoices()
+        // Propagate the new filter to the Pager so the paged stream refreshes.
+        _filterKeyFlow.value = if (status == "All") "" else "status:${status.lowercase()}"
+    }
+
+    /** Derive the [InvoiceRemoteMediator] filter key from the current state. */
+    private fun resolveFilterKey(): String {
+        val status = _state.value.selectedStatus
+        return if (status == "All") "" else "status:${status.lowercase()}"
     }
 
     fun onSortChanged(sort: InvoiceSort) {

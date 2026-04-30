@@ -1,0 +1,128 @@
+# §33.11 — Fastlane lanes for BizarreCRM Android release automation.
+#
+# Prerequisites (one-time setup):
+#   gem install fastlane
+#   fastlane supply init   # pulls existing Play metadata into fastlane/metadata/android/
+#
+# Environment variables required (set in CI secrets or ~/.bashrc locally):
+#   PLAY_STORE_JSON_KEY_PATH  — path to service-account JSON key with Play API access
+#                               (or set SUPPLY_JSON_KEY_DATA to inline the JSON)
+#   KEYSTORE_PATH             — path to release .keystore/.jks file
+#   KEYSTORE_PASSWORD         — store password
+#   KEY_ALIAS                 — key alias
+#   KEY_PASSWORD              — key password
+#
+# Usage:
+#   fastlane deploy_beta          # build AAB + upload to internal track
+#   fastlane promote_to_production  # promote current internal build to production (staged rollout)
+
+default_platform(:android)
+
+platform :android do
+
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
+  # Resolve the service-account JSON key. Prefer inline env var (CI-friendly)
+  # over a file path.
+  private_lane :resolve_json_key do
+    if ENV["SUPPLY_JSON_KEY_DATA"] && !ENV["SUPPLY_JSON_KEY_DATA"].empty?
+      nil  # supply reads SUPPLY_JSON_KEY_DATA automatically when path is nil
+    elsif ENV["PLAY_STORE_JSON_KEY_PATH"] && File.exist?(ENV["PLAY_STORE_JSON_KEY_PATH"])
+      ENV["PLAY_STORE_JSON_KEY_PATH"]
+    else
+      UI.user_error!(
+        "No Play Store credentials found.\n" \
+        "Set PLAY_STORE_JSON_KEY_PATH or SUPPLY_JSON_KEY_DATA before running this lane."
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # deploy_beta — build a signed AAB and push to the internal testing track.
+  #
+  # Mirrors §33.1: "Internal: 25 testers, Fastlane / Gradle Play Publisher push
+  # on each main merge."
+  # ---------------------------------------------------------------------------
+  desc "Build a release AAB and upload it to the Play Store internal track"
+  lane :deploy_beta do
+    # 1. Ensure working tree is clean (skip in CI where builds are always clean)
+    unless ENV["CI"]
+      ensure_git_status_clean(
+        show_uncommitted_changes: true,
+        show_diff: true
+      )
+    end
+
+    # 2. Bump nothing — versionCode is computed from Unix timestamp in
+    #    build.gradle.kts (§33.2). versionName is updated manually per semver.
+
+    # 3. Build signed AAB.
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ".",  # fastlane is run from android/
+      print_command: true,
+      properties: {
+        # Pass keystore credentials from env vars so they never land in source.
+        "android.injected.signing.store.file"     => ENV["KEYSTORE_PATH"],
+        "android.injected.signing.store.password" => ENV["KEYSTORE_PASSWORD"],
+        "android.injected.signing.key.alias"      => ENV["KEY_ALIAS"],
+        "android.injected.signing.key.password"   => ENV["KEY_PASSWORD"],
+      }.compact
+    )
+
+    # 4. Upload to internal track.
+    upload_to_play_store(
+      track: "internal",
+      aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+      json_key: resolve_json_key,
+      # Release notes per locale live in fastlane/metadata/android/<locale>/changelogs/
+      # Supply will pick them up automatically if present (§33.12).
+      skip_upload_apk: true,
+      skip_upload_metadata: false,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,   # screenshots managed separately — large assets
+      release_status: "completed" # make immediately available to internal testers
+    )
+
+    UI.success("deploy_beta: AAB uploaded to internal track.")
+  end
+
+  # ---------------------------------------------------------------------------
+  # promote_to_production — promote the latest internal build to production
+  # with a staged 1% → 5% → 20% → 50% → 100% rollout (§33.1 / §33.9).
+  #
+  # This lane ONLY promotes; it does not build. Run deploy_beta first, verify
+  # crash-free sessions >= 99.5%, then run this lane.
+  # ---------------------------------------------------------------------------
+  desc "Promote the current internal track build to production (staged rollout at 1%)"
+  lane :promote_to_production do
+    json_key = resolve_json_key
+
+    # Start the staged rollout at 1% — ops will manually increase the fraction
+    # via Play Console (or re-run with a different rollout_percentage) after
+    # monitoring crash-free sessions (§33.9).
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "production",
+      json_key: json_key,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      rollout: "0.01"  # 1% initial staged rollout — bump to 0.05/0.20/0.50/1.0 manually
+    )
+
+    UI.success("promote_to_production: build promoted to production at 1% staged rollout.")
+    UI.important(
+      "Next steps:\n" \
+      "  1. Monitor crash-free sessions in Play Console (target >= 99.5%).\n" \
+      "  2. Increase rollout fraction: 5% → 20% → 50% → 100% over ~7 days.\n" \
+      "  3. Halt rollout immediately if crash-free sessions drop below 99.5% (§33.9)."
+    )
+  end
+
+end

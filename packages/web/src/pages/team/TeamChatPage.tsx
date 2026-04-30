@@ -62,6 +62,9 @@ export function TeamChatPage() {
   const userRole = useAuthStore((s) => s.user?.role);
   const canCreateGeneralChannel = userRole === 'admin';
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
+  const [olderMessages, setOlderMessages] = useState<Message[]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasOlder, setHasOlder] = useState(true);
   const [draft, setDraft] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
@@ -98,12 +101,17 @@ export function TeamChatPage() {
     staleTime: 4_000,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Message[] }>(
-        `/team-chat/channels/${selectedChannelId}/messages?limit=200`,
+        `/team-chat/channels/${selectedChannelId}/messages?limit=50`,
       );
       return res.data.data;
     },
   });
-  const messages: Message[] = messagesData || [];
+  const recentMessages: Message[] = messagesData || [];
+  // Merge: olderMessages (prepended) + recentMessages. De-dupe by id so
+  // a page refresh or channel switch doesn't show duplicates.
+  const allIds = new Set(recentMessages.map((m) => m.id));
+  const dedupedOlder = olderMessages.filter((m) => !allIds.has(m.id));
+  const messages: Message[] = [...dedupedOlder, ...recentMessages];
 
   // Resume immediately when the tab comes back to the foreground so users
   // don't stare at a stale chat for up to 15s after switching tabs.
@@ -185,6 +193,32 @@ export function TeamChatPage() {
     inputRef.current?.focus();
   }
 
+  async function loadOlder() {
+    if (!selectedChannelId || loadingOlder) return;
+    const oldestId = messages[0]?.id;
+    if (!oldestId) return;
+    setLoadingOlder(true);
+    try {
+      const res = await api.get<{ success: boolean; data: Message[] }>(
+        `/team-chat/channels/${selectedChannelId}/messages?before=${oldestId}&limit=50`,
+      );
+      const older = res.data.data;
+      if (older.length === 0) {
+        setHasOlder(false);
+      } else {
+        setOlderMessages((prev) => {
+          const existing = new Set(prev.map((m) => m.id));
+          return [...older.filter((m) => !existing.has(m.id)), ...prev];
+        });
+        if (older.length < 50) setHasOlder(false);
+      }
+    } catch {
+      toast.error('Failed to load older messages');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-3rem)]">
       <header className="mb-4 flex items-center justify-between">
@@ -216,7 +250,7 @@ export function TeamChatPage() {
                   ? 'bg-primary-100 text-primary-800 font-semibold'
                   : 'hover:bg-gray-50'
               }`}
-              onClick={() => setSelectedChannelId(c.id)}
+              onClick={() => { setSelectedChannelId(c.id); setOlderMessages([]); setHasOlder(true); }}
             >
               # {c.name}
             </button>
@@ -225,6 +259,18 @@ export function TeamChatPage() {
 
         <section className="bg-white rounded-lg shadow border flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {messages.length > 0 && hasOlder && (
+              <div className="flex justify-center pb-2">
+                <button
+                  className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1"
+                  disabled={loadingOlder}
+                  onClick={loadOlder}
+                >
+                  {loadingOlder && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Load older
+                </button>
+              </div>
+            )}
             {messages.length === 0 && (
               <p className="text-sm text-gray-500 text-center py-8">No messages yet. Say hi.</p>
             )}

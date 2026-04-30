@@ -23,6 +23,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bizarreelectronics.crm.util.HapticEvent
+import com.bizarreelectronics.crm.util.LocalAppHapticController
 import kotlin.random.Random
 
 /**
@@ -62,6 +65,12 @@ fun CelebratoryModal(
     reduceMotion: Boolean,
 ) {
     if (!visible) return
+
+    // §69.2 — Celebration waveform fires once when the sheet first appears.
+    val hapticCtrl = LocalAppHapticController.current
+    LaunchedEffect(Unit) {
+        hapticCtrl?.fire(HapticEvent.Celebration)
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 

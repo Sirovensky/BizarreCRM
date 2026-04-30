@@ -55,9 +55,20 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
   }
 
   if (loading) {
+    // WEB-S4-024: skeleton instead of spinner
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-950">
-        <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
+        <div className="bg-white dark:bg-surface-900 border-b border-surface-200 dark:border-surface-800 px-4 py-4">
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <div className="animate-pulse bg-surface-200 dark:bg-surface-700 h-5 w-5 rounded" />
+            <div className="animate-pulse bg-surface-200 dark:bg-surface-700 h-5 w-28 rounded" />
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto px-4 py-6 space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="animate-pulse bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl h-16" />
+          ))}
+        </div>
       </div>
     );
   }

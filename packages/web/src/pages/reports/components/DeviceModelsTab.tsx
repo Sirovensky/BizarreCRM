@@ -11,7 +11,7 @@ interface DeviceModelsData {
 }
 
 export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'device-models', from, to],
     queryFn: async () => {
       const res = await reportApi.deviceModels({ from_date: from, to_date: to });
@@ -20,7 +20,12 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load device model report" />;
+  const errMsg: string =
+    (error as any)?.response?.data?.message ??
+    (error as any)?.response?.data?.error ??
+    (error as Error)?.message ??
+    'Failed to load device model report';
+  if (isError || !data) return <ErrorState message={errMsg} />;
 
   const { rows } = data;
   const totalRepairs = rows.reduce((sum, r) => sum + r.repair_count, 0);

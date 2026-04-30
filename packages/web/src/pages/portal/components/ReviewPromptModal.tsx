@@ -132,7 +132,7 @@ export function ReviewPromptModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={rating < 1 || submitting}
-                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium disabled:opacity-50"
+                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {t('review.submit')}
               </button>

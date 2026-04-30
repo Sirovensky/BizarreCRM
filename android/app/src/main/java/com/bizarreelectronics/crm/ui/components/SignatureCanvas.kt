@@ -27,7 +27,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.util.StylusButtonCallback
 import com.bizarreelectronics.crm.util.handleStylusButtonEvent
 import com.bizarreelectronics.crm.util.isPalmTouch
@@ -83,6 +87,7 @@ fun SignatureCanvas(
 ) {
     val backgroundColor = Color.White
     val borderColor = MaterialTheme.colorScheme.outline
+    val context = LocalContext.current
 
     // Track canvas dimensions for capture (updated on first layout)
     var canvasWidthPx by remember { mutableIntStateOf(0) }
@@ -90,6 +95,10 @@ fun SignatureCanvas(
 
     Canvas(
         modifier = modifier
+            .semantics {
+                // §26 — custom-drawn canvas must carry a contentDescription
+                contentDescription = context.getString(R.string.a11y_signature_pad)
+            }
             .background(backgroundColor)
             .border(1.dp, borderColor)
             // §22 L2256 — route hardware stylus button events to StylusButtonCallback

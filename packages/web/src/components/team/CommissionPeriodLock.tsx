@@ -125,38 +125,38 @@ export function CommissionPeriodLock() {
   return (
     <div className="bg-white rounded-lg shadow border p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-bold text-gray-800">Payroll periods</h2>
+        <h2 className="text-sm font-bold text-surface-800 dark:text-surface-100">Payroll periods</h2>
         <button
-          className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs inline-flex items-center"
+          className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
           onClick={() => setShowNew(true)}
         >
           <Plus className="w-3 h-3 mr-1" /> New period
         </button>
       </div>
       {periods.length === 0 && (
-        <p className="text-xs text-gray-500 py-4 text-center">No payroll periods yet.</p>
+        <p className="text-xs text-surface-500 dark:text-surface-400 py-4 text-center">No payroll periods yet.</p>
       )}
       <div className="space-y-2">
         {periods.map((p) => (
           <div
             key={p.id}
-            className={`border rounded p-2 text-xs ${p.locked_at ? 'bg-gray-50' : ''}`}
+            className={`border rounded p-2 text-xs ${p.locked_at ? 'bg-surface-50 dark:bg-surface-800/50' : ''}`}
           >
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-semibold text-gray-800">{p.name}</div>
-                <div className="text-gray-500">{p.start_date} → {p.end_date}</div>
+                <div className="font-semibold text-surface-800 dark:text-surface-100">{p.name}</div>
+                <div className="text-surface-500 dark:text-surface-400">{p.start_date} → {p.end_date}</div>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="p-1 text-gray-600 hover:text-primary-600"
+                  className="p-1 text-surface-600 dark:text-surface-300 hover:text-primary-600"
                   title="Download CSV"
                   onClick={() => downloadCsv(p.id)}
                 >
                   <Download className="w-4 h-4" />
                 </button>
                 {p.locked_at ? (
-                  <span className="inline-flex items-center text-gray-500" title="Locked">
+                  <span className="inline-flex items-center text-surface-500 dark:text-surface-400" title="Locked">
                     <Lock className="w-4 h-4" />
                   </span>
                 ) : (
@@ -191,7 +191,7 @@ export function CommissionPeriodLock() {
             <h2 id="new-payroll-period-title" className="text-lg font-bold mb-4">New payroll period</h2>
             <div className="space-y-3">
               <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Name</span>
+                <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Name</span>
                 <input
                   type="text"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -202,7 +202,7 @@ export function CommissionPeriodLock() {
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="text-xs font-semibold text-gray-600">Start</span>
+                  <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Start</span>
                   <input
                     type="date"
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -211,7 +211,7 @@ export function CommissionPeriodLock() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-semibold text-gray-600">End</span>
+                  <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">End</span>
                   <input
                     type="date"
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -223,7 +223,7 @@ export function CommissionPeriodLock() {
             </div>
             <div className="flex gap-2 mt-5">
               <button
-                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-800"
                 onClick={() => setShowNew(false)}
               >
                 Cancel

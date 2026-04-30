@@ -1,11 +1,14 @@
 package com.bizarreelectronics.crm.util
 
+import android.content.Context
 import android.os.Build
 import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.data.sync.FcmTokenRetryWorker
 import com.google.firebase.messaging.FirebaseMessaging
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -41,6 +44,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DeviceTokenManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val appPreferences: AppPreferences,
     private val authPreferences: AuthPreferences,
     private val authApi: AuthApi,
@@ -81,14 +85,22 @@ class DeviceTokenManager @Inject constructor(
             appPreferences.fcmToken = token
             appPreferences.fcmTokenRegistered = true
             appPreferences.lastFcmTokenRefreshAtMs = System.currentTimeMillis()
+            // §73.9 — reset retry counter on success so diagnostics row shows 0.
+            appPreferences.fcmRetryAttemptCount = 0
+            // Cancel any pending retry work — registration succeeded.
+            FcmTokenRetryWorker.cancel(context)
             if (BuildConfig.DEBUG) {
                 Timber.d("DeviceTokenManager: token registered (len=%d)", token.length)
             }
             true
         }.onFailure { e ->
-            // Non-fatal — server unreachable or auth expired.  Caller retries next cycle.
-            Timber.w(e, "DeviceTokenManager: register failed, will retry on next foreground")
+            // Non-fatal — server unreachable or auth expired.
+            Timber.w(e, "DeviceTokenManager: register failed, scheduling exponential-backoff retry")
             appPreferences.fcmTokenRegistered = false
+            // §73.9 — enqueue a WorkManager one-time retry with exponential backoff
+            // (1 min base, max 7 attempts).  ExistingWorkPolicy.REPLACE means
+            // multiple rapid failures do not stack parallel chains.
+            FcmTokenRetryWorker.enqueue(context)
         }.getOrDefault(false)
     }
 

@@ -49,6 +49,8 @@ data class EnrollMemberData(val membership: Membership)
 
 data class RenewMembershipData(val membership: Membership)
 
+data class CancelMembershipData(val cancelled: Boolean, val immediate: Boolean)
+
 // ─── API interface ────────────────────────────────────────────────────────────
 
 /**
@@ -80,4 +82,21 @@ interface MembershipApi {
     /** Renew an existing membership (§38.2). */
     @POST("memberships/{id}/renew")
     suspend fun renew(@Path("id") id: Long): ApiResponse<RenewMembershipData>
+
+    /**
+     * Cancel a membership (§38.2). [body] should contain `{"immediate": true/false}`.
+     * Maps to `POST /memberships/:id/cancel`.
+     */
+    @POST("memberships/{id}/cancel")
+    suspend fun cancel(
+        @Path("id") id: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<CancelMembershipData>
+
+    /**
+     * Get the active membership for a specific customer (§38.2 / §38.3 TierChip in POS).
+     * Maps to `GET /memberships/customer/:customerId`.
+     */
+    @GET("memberships/customer/{customerId}")
+    suspend fun getCustomerMembership(@Path("customerId") customerId: Long): ApiResponse<EnrollMemberData>
 }

@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.estimates
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
@@ -20,6 +21,8 @@ data class EstimateListUiState(
     val estimates: List<EstimateEntity> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val hasMore: Boolean = true,
     val error: String? = null,
     val searchQuery: String = "",
     val selectedStatus: String = "All",
@@ -43,8 +46,18 @@ class EstimateListViewModel @Inject constructor(
     private var searchJob: Job? = null
     private var collectJob: Job? = null
 
+    // ── Cursor paging (L1325) ─────────────────────────────────────────────────
+    private var nextCursor: String? = null
+    private var loadMoreJob: Job? = null
+
+    companion object {
+        private const val TAG = "EstimateListVM"
+        private const val PAGE_SIZE = 50
+    }
+
     init {
         loadEstimates()
+        loadFirstPage()
     }
 
     fun loadEstimates() {
@@ -100,6 +113,67 @@ class EstimateListViewModel @Inject constructor(
     fun refresh() {
         _state.value = _state.value.copy(isRefreshing = true)
         loadEstimates()
+        // Also reset cursor paging so pull-to-refresh refetches page 1
+        loadFirstPage()
+    }
+
+    // ── Cursor-based paging (L1325) ───────────────────────────────────────────
+
+    /**
+     * Load the first cursor page. Called on init/refresh. Resets paging state.
+     * Results are merged into the Room flow via [EstimateRepository.loadEstimatesPage]
+     * which inserts fetched rows — the existing [collectJob] flow re-emits automatically.
+     */
+    fun loadFirstPage() {
+        loadMoreJob?.cancel()
+        nextCursor = null
+        _state.value = _state.value.copy(hasMore = true)
+        viewModelScope.launch {
+            try {
+                val filters = buildApiFilters()
+                val (_, cursor) = estimateRepository.loadEstimatesPage(null, PAGE_SIZE, filters)
+                nextCursor = cursor
+                _state.value = _state.value.copy(hasMore = cursor != null)
+            } catch (e: Exception) {
+                Log.d(TAG, "loadFirstPage error: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Append the next cursor page. No-op when already loading, no more pages,
+     * or in search mode (search uses its own debounced flow).
+     */
+    fun loadMore() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMore || s.isLoading || s.searchQuery.isNotEmpty()) return
+        val cursor = nextCursor ?: return
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingMore = true)
+            try {
+                val filters = buildApiFilters()
+                val (_, newCursor) = estimateRepository.loadEstimatesPage(cursor, PAGE_SIZE, filters)
+                nextCursor = newCursor
+                _state.value = _state.value.copy(
+                    hasMore = newCursor != null,
+                    isLoadingMore = false,
+                )
+            } catch (e: Exception) {
+                Log.d(TAG, "loadMore error: ${e.message}")
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    private fun buildApiFilters(): Map<String, String> {
+        val filters = _state.value.activeFilters
+        return buildMap {
+            if (_state.value.selectedStatus != "All") put("status", _state.value.selectedStatus.lowercase())
+            if (filters.customerQuery.isNotBlank()) put("customer", filters.customerQuery)
+            if (filters.dateFrom.isNotBlank()) put("date_from", filters.dateFrom)
+            if (filters.dateTo.isNotBlank()) put("date_to", filters.dateTo)
+        }
     }
 
     fun onSearchChanged(query: String) {
@@ -114,6 +188,7 @@ class EstimateListViewModel @Inject constructor(
     fun onStatusChanged(status: String) {
         _state.value = _state.value.copy(selectedStatus = status)
         loadEstimates()
+        loadFirstPage()
     }
 
     // ── L1321 Filters ─────────────────────────────────────────────────────────
@@ -121,6 +196,7 @@ class EstimateListViewModel @Inject constructor(
     fun onFiltersApplied(filters: EstimateFilterState) {
         _state.value = _state.value.copy(activeFilters = filters)
         loadEstimates()
+        loadFirstPage()
     }
 
     // ── L1322 Bulk selection ──────────────────────────────────────────────────

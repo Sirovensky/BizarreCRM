@@ -38,9 +38,9 @@ export function ConfirmDialog({
       lastFocusedRef.current = (document.activeElement as HTMLElement | null) ?? null;
       setTypedValue('');
       if (requireTyping) {
-        setTimeout(() => inputRef.current?.focus(), 50);
+        requestAnimationFrame(() => inputRef.current?.focus());
       } else {
-        confirmRef.current?.focus();
+        requestAnimationFrame(() => confirmRef.current?.focus());
       }
       return () => {
         // Restore focus on close (cleanup runs when `open` flips back to
@@ -90,8 +90,8 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="presentation" onClick={onCancel}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div data-state="open" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200 motion-reduce:animate-none" role="presentation" onClick={onCancel}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" data-state="open" className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-3">
           {danger && (
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/30">
@@ -131,7 +131,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             onClick={onConfirm}
             disabled={!typingMatch}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-[colors,box-shadow,transform] ${
               !typingMatch
                 ? 'bg-surface-300 dark:bg-surface-600 cursor-not-allowed'
                 : danger ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'

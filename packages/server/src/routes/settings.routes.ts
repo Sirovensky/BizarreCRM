@@ -13,6 +13,7 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import nodemailer from 'nodemailer';
 import { clearEmailCache } from '../services/email.js';
 import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
@@ -240,6 +241,73 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'shared_device_mode_enabled',
   'shared_device_auto_logoff_minutes',
   'shared_device_require_pin_on_switch',
+  // SSW1: First-run setup wizard — new keys (setup_wizard_*) for granular
+  // skip tracking. Distinct from legacy 'wizard_completed' key which remains
+  // for existing data compatibility.
+  'setup_wizard_completed',
+  'setup_wizard_skipped_at',
+  'setup_wizard_skip_count',
+  // Previously referenced in code but silently dropped by the allowlist:
+  'catalog_auto_sync',
+  'billing_dunning_enabled',
+  'file_count_quota',
+  'grandfathered',
+  'invoice_auto_reminder',
+  'invoice_reminder_days',
+  'invoice_reminder_template',
+  'membership_enabled',
+  'owner_email',
+  'payment_provider',
+  'profit_threshold_amber',
+  'profit_threshold_green',
+  'retention_sweep_enabled',
+  'scheduled_report_email',
+  'stall_followup_days',
+  'tv_display_enabled',
+  'wallet_pass_apple_url',
+  'wallet_pass_google_url',
+  'widget_allowed_origins',
+  'weekly_summary_last_sent_at',
+  'setup_imported_legacy_data',
+  // ─── Setup wizard expansion (H2 2026-04-27) ─────────────────────
+  // Keys for new wizard screens 5, 8, 14, 18-23. See
+  // docs/setup-wizard-implementation-plan.md per-agent specs for ownership.
+  // Step 5 — Shop type (Agent 7)
+  'shop_type',
+  // Step 8 — Repair pricing tier matrix (Agent 10)
+  'pricing_tier_a_screen', 'pricing_tier_a_battery', 'pricing_tier_a_charge_port',
+  'pricing_tier_a_back_glass', 'pricing_tier_a_camera',
+  'pricing_tier_b_screen', 'pricing_tier_b_battery', 'pricing_tier_b_charge_port',
+  'pricing_tier_b_back_glass', 'pricing_tier_b_camera',
+  'pricing_tier_c_screen', 'pricing_tier_c_battery', 'pricing_tier_c_charge_port',
+  'pricing_tier_c_back_glass', 'pricing_tier_c_camera',
+  // Step 14 — Payment terminal pairing (Agent 16). blockchyp_* base keys already
+  // listed above; only the IP-pairing key is new here.
+  'blockchyp_terminal_ip',
+  // Step 18 — Notification templates (Agent 20). Per-template enabled flags
+  // and the new appointment-reminder template added 2026-04-28 to match
+  // mockups/web-setup-wizard.html#screen-18 mockup.
+  'notif_tpl_received_enabled', 'notif_tpl_received_subj', 'notif_tpl_received_body',
+  'notif_tpl_ready_enabled', 'notif_tpl_ready_subj', 'notif_tpl_ready_body',
+  'notif_tpl_invoice_paid_enabled', 'notif_tpl_invoice_paid_subj', 'notif_tpl_invoice_paid_body',
+  'notif_tpl_appt_reminder_enabled', 'notif_tpl_appt_reminder_subj', 'notif_tpl_appt_reminder_body',
+  // Step 19 — Receipt printer (Agent 21)
+  'receipt_printer_driver', 'receipt_printer_connection', 'receipt_printer_address',
+  // Step 20 — Cash drawer (Agent 22)
+  'cash_drawer_driver', 'cash_drawer_address',
+  // Step 21 — Booking policy (Agent 23)
+  'booking_online_enabled', 'booking_lead_hours',
+  'booking_max_days_ahead', 'booking_walkins_enabled',
+  // Step 22 — Warranty defaults (Agent 24)
+  'warranty_default_months_screen', 'warranty_default_months_battery',
+  'warranty_default_months_charge_port', 'warranty_default_months_back_glass',
+  'warranty_default_months_camera', 'warranty_disclaimer',
+  // Step 23 — Backup destination (Agent 25). 'backup_path', 'backup_schedule',
+  // 'backup_retention' already exist above for the legacy local-only mode.
+  'backup_destination_type', 'backup_destination_path',
+  'backup_s3_endpoint', 'backup_s3_bucket', 'backup_s3_access_key', 'backup_s3_secret_key',
+  // SaaS trial / tier metadata written by Agent 31 signup route + visible in Step 25 Review
+  'trial_started_at', 'trial_expires_at', 'tier',
 ]);
 
 // ==================== Generic Config (key-value) ====================
@@ -251,6 +319,8 @@ const SENSITIVE_CONFIG_KEYS = new Set([
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
   'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
   'sms_plivo_auth_token', 'sms_vonage_api_secret',
+  // H2: backup destination secrets
+  'backup_s3_access_key', 'backup_s3_secret_key',
 ]);
 
 // GET /setup-status — check if initial store setup has been completed
@@ -1759,12 +1829,79 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
   }
 });
 
+// POST /settings/sms/test-send — WEB-S4-010
+// Sends a real test SMS to a supplied phone number using the credentials
+// provided in the request body (not necessarily saved yet). Allows the user
+// to verify their provider setup without committing the credentials first.
+// Credentials are validated for completeness before the outbound send is
+// attempted; the request never touches store_config.
+router.post('/sms/test-send', adminOnly, async (req, res, next) => {
+  try {
+    const { provider_type, credentials, to, body: msgBody } = req.body as {
+      provider_type?: ProviderType;
+      credentials?: Record<string, string>;
+      to?: string;
+      body?: string;
+    };
+    if (!provider_type) throw new AppError('provider_type is required', 400);
+    if (!credentials || typeof credentials !== 'object') throw new AppError('credentials are required', 400);
+    if (!to) throw new AppError('to (phone number) is required', 400);
+    const safeBody = (msgBody || 'Test SMS from BizarreCRM wizard').slice(0, 160);
+
+    const testProvider = createTestProvider(provider_type, credentials);
+    if (testProvider.name === 'console' && provider_type !== 'console') {
+      throw new AppError('Credentials incomplete — provider fell back to console', 400);
+    }
+    const result = await testProvider.send(to, safeBody);
+    if (!result.success) {
+      throw new AppError(result.error || 'SMS send failed', 502);
+    }
+    res.json({ success: true, data: { message: `Test SMS sent to ${to}`, providerId: result.providerId } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /settings/sms/reload — Hot-reload SMS provider from store_config
 // Note: reloadSmsProvider uses sync db internally, keep req.db
 router.post('/sms/reload', adminOnly, async (req, res) => {
   const db = req.db;
   const providerName = reloadSmsProvider(db);
   res.json({ success: true, data: { provider: providerName } });
+});
+
+// POST /settings/email/test-smtp — WEB-S4-009 / WEB-W1-034
+// Verifies SMTP credentials supplied in the request body (not necessarily saved yet)
+// by creating a transient nodemailer transport and calling .verify(). Never touches
+// store_config — purely a connectivity check during wizard or settings setup.
+router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
+  try {
+    const { host, port, user, pass } = req.body as {
+      host?: string; port?: string | number; user?: string; pass?: string;
+    };
+    if (!host) throw new AppError('smtp_host is required', 400);
+    const portNum = port ? parseInt(String(port), 10) : 587;
+    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      throw new AppError('Invalid port number', 400);
+    }
+
+    const transport = nodemailer.createTransport({
+      host: String(host).trim(),
+      port: portNum,
+      secure: portNum === 465,
+      auth: user ? { user: String(user), pass: String(pass ?? '') } : undefined,
+      connectionTimeout: 10_000,
+      socketTimeout: 10_000,
+      greetingTimeout: 10_000,
+    });
+    await transport.verify();
+    transport.close();
+    res.json({ success: true, data: { message: 'SMTP connection verified successfully.' } });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    const msg = (err as Error).message || 'SMTP connection failed';
+    next(new AppError(`SMTP test failed: ${msg}`, 502));
+  }
 });
 
 // ---------------------------------------------------------------------------

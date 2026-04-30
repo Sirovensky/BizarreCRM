@@ -16,6 +16,12 @@ interface AppointmentApi {
     @GET("api/v1/appointments/{id}")
     suspend fun getAppointment(@Path("id") id: Long): ApiResponse<AppointmentItem>
 
+    /** §10.3 Minimal quick-create. Body must contain at minimum title + start_time + end_time. */
+    @POST("api/v1/appointments")
+    suspend fun createAppointment(
+        @Body body: Map<String, @JvmSuppressWildcards Any?>,
+    ): ApiResponse<AppointmentItem>
+
     @PATCH("api/v1/appointments/{id}")
     suspend fun patchAppointment(
         @Path("id") id: Long,
@@ -30,4 +36,12 @@ interface AppointmentApi {
 
     @POST("api/v1/appointments/{id}/send-reminder")
     suspend fun sendReminder(@Path("id") id: Long): ApiResponse<Unit>
+
+    /** §10.6 — stamp check-in; server sets status="checked_in" + checked_in_at=now. */
+    @POST("api/v1/appointments/{id}/check-in")
+    suspend fun checkIn(@Path("id") id: Long): ApiResponse<AppointmentItem>
+
+    /** §10.6 — stamp check-out; server sets status="completed" + checked_out_at=now. */
+    @POST("api/v1/appointments/{id}/check-out")
+    suspend fun checkOut(@Path("id") id: Long): ApiResponse<AppointmentItem>
 }

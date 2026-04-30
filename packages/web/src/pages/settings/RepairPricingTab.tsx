@@ -204,7 +204,7 @@ function ServicesSubTab() {
             <button
               onClick={() => createMutation.mutate(addForm)}
               disabled={!addForm.name || !addForm.slug || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -544,7 +544,7 @@ function GradesSection({ priceId }: { priceId: number }) {
             <div className="flex gap-2">
               <button onClick={() => addGradeMutation.mutate({ ...addForm, labor_price_override: addForm.labor_price_override === '' ? null : parseFloat(String(addForm.labor_price_override)) })}
                 disabled={!addForm.grade || !addForm.grade_label}
-                className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded hover:bg-primary-700 disabled:opacity-50">
+                className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 Add
               </button>
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
@@ -736,7 +736,7 @@ function PricesSubTab() {
                 default_grade: addForm.default_grade,
               })}
               disabled={!addForm.device_model_id || !addForm.repair_service_id || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create

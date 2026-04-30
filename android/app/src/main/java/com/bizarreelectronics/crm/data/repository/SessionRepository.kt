@@ -2,6 +2,9 @@ package com.bizarreelectronics.crm.data.repository
 
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.data.remote.api.IntegrityApi
+import com.bizarreelectronics.crm.data.remote.api.IntegrityVerifyRequest
+import com.bizarreelectronics.crm.util.PlayIntegrityClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -9,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,11 +28,19 @@ import javax.inject.Singleton
  * The call is fire-and-forget: a 401 triggers `AuthPreferences.clear()`
  * which drops the user back to login through the existing
  * `authPreferences.authCleared` SharedFlow observer in the nav graph.
+ *
+ * §28.11 Play Integrity check: after a successful auth/me response, a
+ * non-blocking Play Integrity token is acquired and forwarded to the server
+ * for verdict.  A failed or missing verdict is logged as a warning but never
+ * blocks the user unless the tenant's [IntegrityVerdict.strict] flag is true.
+ * 404 from the server means the feature is not deployed; it is silently ignored.
  */
 @Singleton
 class SessionRepository @Inject constructor(
     private val authApi: AuthApi,
     private val authPreferences: AuthPreferences,
+    private val integrityApi: IntegrityApi,
+    private val playIntegrityClient: PlayIntegrityClient,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -75,6 +87,59 @@ class SessionRepository @Inject constructor(
         user.firstName?.let { authPreferences.userFirstName = it }
         user.lastName?.let { authPreferences.userLastName = it }
         authPreferences.userRole = user.role
+        // §28.9 — persist the server's minimum required version so the
+        // ForceUpgradeBlocker can compare it against BuildConfig.VERSION_CODE.
+        // Null = server doesn't set a floor → no upgrade enforcement.
+        authPreferences.serverMinVersion = user.minSupportedVersion
         _state.value = State.Ready
+
+        // §28.11 — non-blocking Play Integrity check on each authenticated
+        // cold-start.  Errors and missing server support are warnings only.
+        checkPlayIntegrityNonBlocking()
+    }
+
+    /**
+     * §28.11 — Acquire a Play Integrity token and forward it to the server for
+     * verdict in a fire-and-forget fashion.
+     *
+     * Non-blocking contract:
+     *   - A null token (stub / device without Play Services) → skip silently.
+     *   - HTTP 404 from the server → feature not deployed; skip silently.
+     *   - [IntegrityVerdict.strict] = false → log a warning but allow the session.
+     *   - [IntegrityVerdict.strict] = true → log as a security event; the server
+     *     is expected to enforce further restrictions via its own RBAC layer.
+     *     The Android client does NOT block the session unilaterally on strict mode
+     *     because it cannot fully trust its own enforcement; the server is authoritative.
+     *
+     * Called from [runBootstrap] after successful auth/me.
+     */
+    private suspend fun checkPlayIntegrityNonBlocking() {
+        try {
+            val nonce = "auth_success_${authPreferences.userId}_${System.currentTimeMillis()}"
+            val token = playIntegrityClient.requestTokenString(nonce) ?: run {
+                Timber.d("Play Integrity: token unavailable (stub or no Play Services)")
+                return
+            }
+            val verdict = integrityApi.verifyToken(
+                IntegrityVerifyRequest(token = token, action = "auth_success"),
+            )
+            if (verdict.success && verdict.data != null) {
+                if (!verdict.data.passed) {
+                    val msg = "Play Integrity: device did not pass integrity check" +
+                        (if (verdict.data.strict) " [STRICT mode — server will enforce]" else " [warning only]") +
+                        verdict.data.reason?.let { " — $it" }.orEmpty()
+                    Timber.w(msg)
+                } else {
+                    Timber.d("Play Integrity: device passed (strict=%s)", verdict.data.strict)
+                }
+            }
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() != 404) {
+                Timber.w(e, "Play Integrity: server verification returned HTTP %d", e.code())
+            }
+            // 404 = endpoint not deployed; skip silently (non-blocking)
+        } catch (e: Exception) {
+            Timber.w(e, "Play Integrity: non-blocking check failed")
+        }
     }
 }

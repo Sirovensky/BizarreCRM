@@ -21,7 +21,7 @@ interface TechnicianHoursData {
 }
 
 export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'technician-hours', from, to],
     queryFn: async () => {
       const res = await reportApi.technicianHours({ from_date: from, to_date: to });
@@ -30,7 +30,12 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load technician hours report" />;
+  const errMsg: string =
+    (error as any)?.response?.data?.message ??
+    (error as any)?.response?.data?.error ??
+    (error as Error)?.message ??
+    'Failed to load technician hours report';
+  if (isError || !data) return <ErrorState message={errMsg} />;
 
   const { rows } = data;
   const totalHours = rows.reduce((sum, r) => sum + r.hours_logged, 0);

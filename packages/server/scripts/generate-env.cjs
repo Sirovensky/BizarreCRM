@@ -121,8 +121,22 @@ ALLOWED_ORIGINS=
   {
     name: 'multi-tenant',
     detector: /^MULTI_TENANT=/m,
+    // Default OFF on fresh install. A first-time self-host should boot
+    // straight to single-tenant single-shop mode without needing
+    // BASE_DOMAIN, SUPER_ADMIN_SECRET, hCaptcha, Cloudflare API tokens, or
+    // a wildcard DNS setup. Operators wanting subdomain-based multi-tenant
+    // SaaS flip MULTI_TENANT=true (and fill HCAPTCHA_SECRET +
+    // CLOUDFLARE_API_TOKEN below) via the Management Dashboard or by
+    // editing .env directly. config.ts:325 / :399 / :429 all fatal-exit
+    // when MULTI_TENANT=true with the supporting secrets unset, so the
+    // single-tenant default is what keeps a fresh install from
+    // pm2 restart-looping on first boot.
     block: () => `# Multi-tenant mode (subdomain-based tenant routing)
-MULTI_TENANT=true
+# Set to true ONLY when running BizarreCRM as a hosted SaaS with shop
+# subdomains. Single-shop self-hosters keep this false — the server
+# boots without BASE_DOMAIN, SUPER_ADMIN_SECRET, HCAPTCHA_SECRET, or
+# Cloudflare credentials.
+MULTI_TENANT=false
 BASE_DOMAIN=${domain}
 
 `,
@@ -141,14 +155,23 @@ BASE_DOMAIN=${domain}
     // alone (without HCAPTCHA_SECRET) doesn't get the block appended a
     // second time on next upgrade, which would duplicate the flag line.
     detector: /^(HCAPTCHA_SECRET|SIGNUP_CAPTCHA_REQUIRED)\s*=/m,
+    // Fresh install defaults SIGNUP_CAPTCHA_REQUIRED=false so the server
+    // boots without hCaptcha credentials. The captcha gate is only
+    // meaningful in MULTI_TENANT=true SaaS mode (a single-shop self-host
+    // has no public /signup endpoint to protect). Operators turning on
+    // multi-tenant mode flip both MULTI_TENANT and SIGNUP_CAPTCHA_REQUIRED
+    // back to true (after pasting HCAPTCHA_SECRET) via the Management
+    // Dashboard "Require hCaptcha on signup" toggle.
     block: () => `# hCaptcha signup bot protection (SEC-H94)
 # Register at https://www.hcaptcha.com/ → Dashboard → copy the Secret key.
-# Leaving HCAPTCHA_SECRET empty requires SIGNUP_CAPTCHA_REQUIRED=false to boot.
+# In MULTI_TENANT=true mode SIGNUP_CAPTCHA_REQUIRED=true plus an empty
+# HCAPTCHA_SECRET makes the server refuse to boot — fail-closed so the
+# /signup endpoint never accepts unauthenticated tenant creation. Single-
+# tenant self-hosters keep SIGNUP_CAPTCHA_REQUIRED=false (no signup route
+# is exposed); multi-tenant operators paste HCAPTCHA_SECRET and flip
+# SIGNUP_CAPTCHA_REQUIRED back to true.
 HCAPTCHA_SECRET=
-# Set to false ONLY when an upstream bot filter (Cloudflare Turnstile, WAF)
-# already protects the signup endpoint. The Management Dashboard exposes
-# this as the "Require hCaptcha on signup" toggle.
-SIGNUP_CAPTCHA_REQUIRED=true
+SIGNUP_CAPTCHA_REQUIRED=false
 
 `,
   },
@@ -187,8 +210,11 @@ function freshInstall() {
   const envContent = HEADER + SECTIONS.map((s) => s.block()).join('');
   fs.writeFileSync(envPath, envContent, 'utf-8');
   console.log(`[setup] .env created (domain: ${domain})`);
-  console.log('[setup] Cloudflare auto-DNS is disabled until you fill in CLOUDFLARE_API_TOKEN,');
-  console.log('[setup] CLOUDFLARE_ZONE_ID, and SERVER_PUBLIC_IP in .env — see the section in the file.');
+  console.log('[setup] Mode: SINGLE-TENANT (MULTI_TENANT=false). Server will boot at');
+  console.log('[setup]   https://localhost without needing hCaptcha, Cloudflare, or BASE_DOMAIN.');
+  console.log('[setup] To switch to multi-tenant SaaS later: flip MULTI_TENANT=true in .env,');
+  console.log('[setup]   paste HCAPTCHA_SECRET, set SIGNUP_CAPTCHA_REQUIRED=true, and fill the');
+  console.log('[setup]   Cloudflare DNS section. The Management Dashboard exposes these toggles.');
 }
 
 function upgradeExisting() {

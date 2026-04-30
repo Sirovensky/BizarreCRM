@@ -180,7 +180,7 @@ export function SegmentsPage() {
                             if (ok) remove.mutate(s.id);
                           }}
                           disabled={remove.isPending && remove.variables === s.id}
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-40"
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           title="Delete"
                           aria-label={`Delete segment ${s.name}`}
                         >
@@ -213,6 +213,56 @@ export function SegmentsPage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// WEB-S6-022: Multi-condition rule builder
+// ---------------------------------------------------------------------------
+
+/** A single condition row in the multi-condition builder. */
+interface ConditionRow {
+  id: number; // stable key for React list
+  field: typeof RULE_FIELDS[number]['value'];
+  op: typeof RULE_OPS[number]['value'];
+  value: string;
+}
+
+let _conditionRowSeq = 1;
+function makeConditionRow(
+  field: typeof RULE_FIELDS[number]['value'] = 'lifetime_value_cents',
+  op: typeof RULE_OPS[number]['value'] = '>',
+  value = '',
+): ConditionRow {
+  return { id: _conditionRowSeq++, field, op, value };
+}
+
+/**
+ * Serialize conditions + combinator into the rule object sent to the server.
+ *
+ * One condition → flat legacy form: { field: { op: value } }
+ *   Server's parseSegmentRule accepts flat multi-field objects where every key
+ *   is joined with AND. For a single condition this is unambiguous and stays
+ *   compatible with seeded auto-segment rules that pre-date this builder.
+ *
+ * Two or more conditions → compound form: { op: 'and'|'or', conditions: [...] }
+ *   Each element is a flat single-field leaf: { field: { op: value } }
+ */
+function serializeConditions(
+  conditions: ConditionRow[],
+  combinator: 'and' | 'or',
+): Record<string, unknown> {
+  const toLeaf = (c: ConditionRow): Record<string, unknown> => {
+    const ruleValue: string | number = isNaN(Number(c.value)) ? c.value : Number(c.value);
+    return { [c.field]: { [c.op]: ruleValue } };
+  };
+
+  if (conditions.length === 1) {
+    return toLeaf(conditions[0]);
+  }
+  return {
+    op: combinator,
+    conditions: conditions.map(toLeaf),
+  };
+}
+
 interface CreateProps {
   onClose: () => void;
   onCreated: () => void;
@@ -221,9 +271,9 @@ interface CreateProps {
 function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [field, setField] = useState<typeof RULE_FIELDS[number]['value']>('lifetime_value_cents');
-  const [op, setOp] = useState<typeof RULE_OPS[number]['value']>('>');
-  const [value, setValue] = useState('');
+  // WEB-S6-022: multiple conditions with AND/OR combinator
+  const [conditions, setConditions] = useState<ConditionRow[]>(() => [makeConditionRow()]);
+  const [combinator, setCombinator] = useState<'and' | 'or'>('and');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -231,10 +281,26 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const addCondition = () => {
+    if (conditions.length >= 10) return; // mirror server limit
+    setConditions((prev) => [...prev, makeConditionRow()]);
+  };
+
+  const removeCondition = (id: number) => {
+    setConditions((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const updateCondition = (id: number, patch: Partial<Omit<ConditionRow, 'id'>>) => {
+    setConditions((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    );
+  };
+
+  const allConditionsFilled = conditions.every((c) => c.value.trim() !== '');
+
   const create = useMutation({
     mutationFn: async () => {
-      const ruleValue = isNaN(Number(value)) ? value : Number(value);
-      const rule = { [field]: { [op]: ruleValue } };
+      const rule = serializeConditions(conditions, combinator);
       const res = await crmApi.createSegment({ name, description, rule, is_auto: false });
       return res.data;
     },
@@ -256,7 +322,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
       aria-labelledby="new-segment-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-md w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 id="new-segment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">New segment</h2>
 
         <div>
@@ -277,43 +343,94 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-surface-600 mb-1">Field</label>
-            <select
-              value={field}
-              onChange={(e) => setField(e.target.value as any)}
-              className="w-full px-2 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
-            >
-              {RULE_FIELDS.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
+        {/* WEB-S6-022: multi-condition builder */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-surface-700 dark:text-surface-300 uppercase tracking-wide">
+              Conditions
+            </p>
+            {conditions.length > 1 && (
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-surface-500">Match</span>
+                <button
+                  type="button"
+                  onClick={() => setCombinator('and')}
+                  className={`px-2 py-0.5 rounded ${combinator === 'and' ? 'bg-primary-600 text-primary-950' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
+                >
+                  ALL (AND)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCombinator('or')}
+                  className={`px-2 py-0.5 rounded ${combinator === 'or' ? 'bg-primary-600 text-primary-950' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
+                >
+                  ANY (OR)
+                </button>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-xs font-medium text-surface-600 mb-1">Op</label>
-            <select
-              value={op}
-              onChange={(e) => setOp(e.target.value as any)}
-              className="w-full px-2 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
-            >
-              {RULE_OPS.map((o) => (
-                <option key={o.value} value={o.value}>{o.value}</option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-medium text-surface-600 mb-1">Value</label>
-          <input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="e.g. 500000 for $5000"
-            className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
-          />
-          <p className="text-[10px] text-surface-500 mt-1">
-            Cents-based fields expect integer cents ($50 = 5000).
+          {conditions.map((cond, idx) => (
+            <div key={cond.id} className="flex items-center gap-1.5">
+              {conditions.length > 1 && (
+                <span className="text-[10px] text-surface-400 w-6 shrink-0 text-right">
+                  {idx === 0 ? '' : combinator.toUpperCase()}
+                </span>
+              )}
+              {/* Field */}
+              <select
+                value={cond.field}
+                onChange={(e) => updateCondition(cond.id, { field: e.target.value as any })}
+                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
+              >
+                {RULE_FIELDS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+              {/* Op */}
+              <select
+                value={cond.op}
+                onChange={(e) => updateCondition(cond.id, { op: e.target.value as any })}
+                className="w-14 px-1 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
+              >
+                {RULE_OPS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.value}</option>
+                ))}
+              </select>
+              {/* Value */}
+              <input
+                type="text"
+                value={cond.value}
+                onChange={(e) => updateCondition(cond.id, { value: e.target.value })}
+                placeholder="value"
+                className="w-24 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
+              />
+              {/* Remove — only when more than one condition */}
+              {conditions.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeCondition(cond.id)}
+                  className="text-red-500 hover:text-red-700 px-1"
+                  aria-label="Remove condition"
+                  title="Remove condition"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+
+          {conditions.length < 10 && (
+            <button
+              type="button"
+              onClick={addCondition}
+              className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              + Add condition
+            </button>
+          )}
+          <p className="text-[10px] text-surface-500">
+            Cents-based fields expect integer cents ($50 = 5000). Enum fields use exact text (e.g. "at_risk").
           </p>
         </div>
 
@@ -326,10 +443,10 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           </button>
           <button
             onClick={() => create.mutate()}
-            disabled={create.isPending || !name.trim() || !value.trim()}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50"
+            disabled={create.isPending || !name.trim() || !allConditionsFilled}
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            Create
+            {create.isPending ? 'Creating…' : 'Create'}
           </button>
         </div>
       </div>

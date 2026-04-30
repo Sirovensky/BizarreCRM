@@ -267,3 +267,102 @@ data class InventoryPhoto(
 data class PhotoListData(
     val photos: List<InventoryPhoto>,
 )
+
+// ─── §6.8 Auto-reorder run result ────────────────────────────────────────────
+
+/**
+ * One line item inside a purchase order created by [InventoryApi.runAutoReorder].
+ */
+data class AutoReorderCreatedOrderItem(
+    val name: String?,
+    @SerializedName("quantity_ordered")
+    val quantityOrdered: Int,
+    @SerializedName("cost_price")
+    val costPrice: Double?,
+)
+
+/**
+ * A purchase order created as part of [AutoReorderRunResult].
+ */
+data class AutoReorderCreatedOrder(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("supplier_name")
+    val supplierName: String?,
+    val subtotal: Double?,
+    val items: List<AutoReorderCreatedOrderItem>,
+)
+
+/**
+ * Top-level response from POST /inventory/auto-reorder.
+ *
+ * [ordersCreated] — number of purchase orders generated.
+ * [itemsOrdered]  — total line-item count across all orders.
+ * [orders]        — per-order detail (supplier, items, subtotal).
+ */
+data class AutoReorderRunResult(
+    @SerializedName("orders_created")
+    val ordersCreated: Int,
+    @SerializedName("items_ordered")
+    val itemsOrdered: Int,
+    val orders: List<AutoReorderCreatedOrder>,
+)
+
+// ─── §6.7 Purchase Order DTOs ────────────────────────────────────────────────
+
+data class SupplierListItem(
+    val id: Long,
+    val name: String?,
+    val email: String?,
+    val phone: String?,
+    @SerializedName("is_active") val isActive: Int?,
+)
+
+// ── §6.8 Bin Locations (GET/POST/PUT/DELETE /inventory-enrich/bin-locations) ─
+
+/**
+ * A single bin-location row returned by GET /inventory-enrich/bin-locations.
+ *
+ * The server stores a 4-part address: aisle → shelf → bin, plus a short
+ * human-readable [code] used in pick-lists and on item labels.
+ */
+data class BinLocationItem(
+    val id: Long,
+    /** Short code printed on labels, e.g. "A2-S3-B1". */
+    val code: String,
+    val description: String?,
+    val aisle: String?,
+    val shelf: String?,
+    val bin: String?,
+    @SerializedName("is_active")
+    val isActive: Int = 1,
+)
+
+/** Envelope for GET /inventory-enrich/bin-locations → `{ success, data: [...] }`. */
+data class BinLocationListData(
+    val data: List<BinLocationItem>,
+)
+
+/** POST body for creating a new bin location. */
+data class CreateBinLocationRequest(
+    val code: String,
+    val description: String? = null,
+    val aisle: String? = null,
+    val shelf: String? = null,
+    val bin: String? = null,
+)
+
+/** PUT body for updating an existing bin location. */
+data class UpdateBinLocationRequest(
+    val description: String? = null,
+    val aisle: String? = null,
+    val shelf: String? = null,
+    val bin: String? = null,
+)
+
+/** Response from POST /inventory/:id/image (§6.3). */
+data class InventoryImageUploadData(
+    @SerializedName("image_url")
+    val imageUrl: String,
+)

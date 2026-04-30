@@ -39,6 +39,8 @@ data class PosEntryUiState(
     // TASK-4: offline banner (defensive)
     val isOnline: Boolean = true,
     val pendingSaleCount: Int = 0,
+    // Walk-in phone capture dialog visibility
+    val showWalkInPhoneDialog: Boolean = false,
 )
 
 @HiltViewModel
@@ -52,6 +54,14 @@ class PosEntryViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PosEntryUiState())
     val uiState: StateFlow<PosEntryUiState> = _uiState.asStateFlow()
+
+    /**
+     * Expose the singleton coordinator so the tablet-side cart panel
+     * (`PosCartSidePanel`) can subscribe to the same session as the
+     * VM. Read-only — UI must not mutate the session directly; route
+     * through the existing VM verbs (`attachCustomer`, etc.).
+     */
+    val sharedCoordinator: PosCoordinator get() = coordinator
 
     private val _rawQuery = MutableStateFlow("")
 
@@ -110,10 +120,55 @@ class PosEntryViewModel @Inject constructor(
         _rawQuery.value = query
     }
 
-    fun attachWalkIn() {
-        val walkIn = PosAttachedCustomer(id = 0L, name = "Walk-in customer")
-        coordinator.attachCustomer(walkIn)
-        _uiState.update { it.copy(attachedCustomer = walkIn) }
+    fun showWalkInPhoneDialog() = _uiState.update { it.copy(showWalkInPhoneDialog = true) }
+    fun dismissWalkInPhoneDialog() = _uiState.update { it.copy(showWalkInPhoneDialog = false) }
+
+    /**
+     * Attach a walk-in customer.
+     *
+     * - [phone] == null → bare walk-in; no DB record created.  Same path as before.
+     * - [phone] non-blank → POST a minimal "Walk-in" customer record so the
+     *   phone number is available for receipt SMS.  On API failure falls back to
+     *   the bare walk-in so the sale is never blocked.
+     */
+    fun attachWalkIn(phone: String? = null) {
+        if (phone.isNullOrBlank()) {
+            val walkIn = PosAttachedCustomer(id = 0L, name = "Walk-in customer")
+            coordinator.attachCustomer(walkIn)
+            _uiState.update { it.copy(attachedCustomer = walkIn) }
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                customerApi.createCustomer(
+                    CreateCustomerRequest(
+                        firstName = "Walk-in",
+                        lastName = null,
+                        phone = phone.trim(),
+                    )
+                )
+            }.onSuccess { resp ->
+                val detail = resp.data
+                val attached = if (detail != null) {
+                    PosAttachedCustomer(
+                        id = detail.id,
+                        name = "Walk-in customer",
+                        phone = detail.phone ?: detail.mobile ?: phone.trim(),
+                    )
+                } else {
+                    // Server returned success but no body — carry phone locally
+                    PosAttachedCustomer(id = 0L, name = "Walk-in customer", phone = phone.trim())
+                }
+                coordinator.attachCustomer(attached)
+                _uiState.update { it.copy(attachedCustomer = attached) }
+            }.onFailure {
+                // Network / server error — fall back to bare walk-in so the
+                // sale is never blocked by a transient connectivity issue.
+                val walkIn = PosAttachedCustomer(id = 0L, name = "Walk-in customer", phone = phone.trim())
+                coordinator.attachCustomer(walkIn)
+                _uiState.update { it.copy(attachedCustomer = walkIn) }
+            }
+        }
     }
 
     fun attachExistingCustomer(c: CustomerListItem) {
@@ -161,6 +216,40 @@ class PosEntryViewModel @Inject constructor(
         }
         loadCustomerHistory(result.id)
         loadStoreCredit(result.id)
+    }
+
+    /**
+     * §POS — Fetch customer by id and attach. Called when the full-screen
+     * CustomerCreate route returns to POS via savedStateHandle.
+     */
+    fun attachByCustomerId(id: Long) {
+        if (id <= 0L) return
+        viewModelScope.launch {
+            runCatching { customerApi.getCustomer(id) }
+                .onSuccess { resp ->
+                    val detail = resp.data ?: return@onSuccess
+                    val attached = PosAttachedCustomer(
+                        id = detail.id,
+                        name = listOfNotNull(detail.firstName, detail.lastName)
+                            .joinToString(" ").ifBlank { "Customer #${detail.id}" },
+                        phone = detail.phone ?: detail.mobile,
+                        email = detail.email,
+                    )
+                    coordinator.attachCustomer(attached)
+                    _uiState.update {
+                        it.copy(
+                            attachedCustomer = attached,
+                            searchQuery = "",
+                            searchResults = SearchResultGroup(),
+                        )
+                    }
+                    loadCustomerHistory(detail.id)
+                    loadStoreCredit(detail.id)
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(errorMessage = "Could not load new customer: ${e.message}") }
+                }
+        }
     }
 
     fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {

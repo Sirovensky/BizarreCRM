@@ -76,11 +76,13 @@ export function CustomerPortalPage() {
         .then(result => {
           if (result.valid) {
             sessionStorage.setItem('portal_token', tokenParam);
+            // WEB-S4-023: forward has_account from verifySession response
             auth.loginWithToken(
               tokenParam,
               result.scope as 'ticket' | 'full',
               result.customer_first_name || '',
               result.ticket_id || undefined,
+              result.has_account,
             );
           } else {
             toast.error(`Your sign-in link (…${tokenTail}) is invalid or has expired. Please request a new one.`);
@@ -108,16 +110,36 @@ export function CustomerPortalPage() {
     }
   }, [auth.isAuthenticated, auth.isLoading, auth.scope, auth.ticketId]);
 
+  // WEB-S4-022: track parent origin from the initial handshake so postMessage
+  // uses the real embedder origin, not our own origin (which would always fail
+  // the same-origin check on the parent side).
+  const [parentOrigin, setParentOrigin] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isWidget) return;
+    function onMessage(e: MessageEvent) {
+      if (
+        typeof e.data === 'object' &&
+        e.data !== null &&
+        (e.data as { type?: string }).type === 'bizarre-portal-init'
+      ) {
+        setParentOrigin(e.origin);
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [isWidget]);
+
   // Send height to parent for widget auto-resize
   useEffect(() => {
     if (!isWidget) return;
+    const target = parentOrigin ?? '*';
     const observer = new ResizeObserver(() => {
       const height = document.documentElement.scrollHeight;
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height }, window.location.origin);
+      window.parent.postMessage({ type: 'bizarre-portal-resize', height }, target);
     });
     observer.observe(document.body);
     return () => observer.disconnect();
-  }, [isWidget]);
+  }, [isWidget, parentOrigin]);
 
   if (auth.isLoading) {
     return (
@@ -217,15 +239,32 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   const [ticket, setTicket] = useState<api.TicketDetail | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Auto-resize iframe
+  // WEB-S4-022: capture parent origin from handshake message
+  const [parentOrigin, setParentOrigin] = useState<string | null>(null);
   useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (
+        typeof e.data === 'object' &&
+        e.data !== null &&
+        (e.data as { type?: string }).type === 'bizarre-portal-init'
+      ) {
+        setParentOrigin(e.origin);
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  // Auto-resize iframe — use captured parent origin, fall back to '*' only if
+  // handshake hasn't arrived yet (e.g., same-origin embed without init message).
+  useEffect(() => {
+    const target = parentOrigin ?? '*';
     const observer = new ResizeObserver(() => {
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, window.location.origin);
+      window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, target);
     });
     observer.observe(document.body);
     return () => observer.disconnect();
-  }, []);
+  }, [parentOrigin]);
 
   async function handleTrack(e: React.FormEvent) {
     e.preventDefault();
@@ -311,7 +350,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           >
             {loading ? 'Looking up...' : 'Track My Repair'}
           </button>

@@ -84,9 +84,11 @@ private fun ParkedCartRow(
     cart: ParkedCartEntity,
     onRestore: () -> Unit,
 ) {
+    // session 2026-04-26 — a11y: 48dp minimum touch target on parked-cart row
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .clickable(onClickLabel = "Restore ${cart.label}") { onRestore() }
             .padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,

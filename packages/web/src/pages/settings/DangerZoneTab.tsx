@@ -70,7 +70,7 @@ export function DangerZoneTab() {
             type="button"
             onClick={() => setOpen(true)}
             disabled={!isAdmin}
-            className="mt-4 inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <AlertTriangle className="h-4 w-4" />
             Request Account Termination
@@ -206,7 +206,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
 
         <div className="px-5 py-4 space-y-4">
           {errorMessage && (
-            <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
+            <div role="alert" aria-live="polite" className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
               {errorMessage}
             </div>
           )}
@@ -324,7 +324,7 @@ function StepRequest({
           type="button"
           onClick={onRequest}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
           Request Account Termination
@@ -381,7 +381,7 @@ function StepConfirmSlug({
           type="button"
           onClick={onConfirm}
           disabled={loading || typedSlug.length === 0}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Confirm slug
@@ -436,7 +436,7 @@ function StepConfirmPhrase({
           type="button"
           onClick={onFinalize}
           disabled={loading || !canFinalize}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Permanently delete my account

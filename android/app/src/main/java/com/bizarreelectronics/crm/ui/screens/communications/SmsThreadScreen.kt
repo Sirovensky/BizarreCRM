@@ -1,7 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.communications
 
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,7 +40,9 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
+import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateDto
@@ -54,6 +58,7 @@ import com.bizarreelectronics.crm.ui.screens.communications.components.SmsDelive
 import com.bizarreelectronics.crm.ui.screens.communications.components.scheduleSendLocally
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -95,6 +100,11 @@ data class SmsThreadUiState(
     val isRemoteTyping: Boolean = false,
     /** L1533 — true when server is in off-hours auto-reply mode */
     val isOffHours: Boolean = false,
+    /** L1529 — true if the thread phone has no associated customer */
+    val hasNoCustomer: Boolean = false,
+    /** L1524/entity picker — recent tickets from thread detail, formatted for insert */
+    val entityTickets: List<SmsEntityRef.TicketRef> = emptyList(),
+    val entityInvoices: List<SmsEntityRef.InvoiceRef> = emptyList(),
 )
 
 @HiltViewModel
@@ -106,6 +116,7 @@ class SmsThreadViewModel @Inject constructor(
     private val draftStore: DraftStore,
     private val gson: Gson,
     private val appPreferences: AppPreferences,
+    private val customerApi: CustomerApi,
 ) : ViewModel() {
 
     val phone: String = savedStateHandle.get<String>("phone") ?: ""
@@ -152,11 +163,51 @@ class SmsThreadViewModel @Inject constructor(
             try {
                 val response = smsApi.getThread(phone)
                 val data = response.data ?: return@launch
+                // L1524 / L1529 — build entity picker refs from recent tickets
+                val ticketRefs = data.recentTickets?.mapNotNull { t ->
+                    val id = (t["id"] as? Number)?.toLong() ?: return@mapNotNull null
+                    val subject = t["subject"] as? String ?: "Ticket #$id"
+                    SmsEntityRef.TicketRef(id, subject)
+                } ?: emptyList()
                 _state.value = _state.value.copy(
                     customer = data.customer,
                     recentTickets = data.recentTickets,
+                    hasNoCustomer = data.customer == null,
+                    entityTickets = ticketRefs,
                 )
             } catch (_: Exception) {}
+        }
+    }
+
+    // ── L1529 — create customer from thread ──────────────────────────────────
+
+    /**
+     * Creates a new customer record pre-filled with the thread phone number.
+     * On success the state is refreshed so the top-bar shows the customer name.
+     *
+     * @return true on success, false on failure.
+     */
+    suspend fun createCustomerFromThread(firstName: String, lastName: String?): Boolean {
+        return try {
+            customerApi.createCustomer(
+                CreateCustomerRequest(
+                    firstName = firstName,
+                    lastName = lastName,
+                    mobile = phone,
+                )
+            )
+            // Reload online details so the header reflects the new customer.
+            loadOnlineDetails()
+            _state.value = _state.value.copy(
+                hasNoCustomer = false,
+                actionMessage = "Customer created",
+            )
+            true
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(
+                actionMessage = "Failed to create customer: ${e.message}",
+            )
+            false
         }
     }
 
@@ -247,6 +298,17 @@ class SmsThreadViewModel @Inject constructor(
         }
     }
 
+    // ── L1557 — retry failed message ─────────────────────────────────────────
+
+    /**
+     * Re-sends a message that previously failed.
+     * The message body is extracted and re-submitted via [smsRepository.sendMessage].
+     */
+    fun retryMessage(message: com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem) {
+        val body = message.message ?: return
+        sendMessage(body)
+    }
+
     fun loadTemplates() {
         if (_state.value.templates.isNotEmpty() || _state.value.isLoadingTemplates) return
         viewModelScope.launch {
@@ -329,6 +391,10 @@ fun SmsThreadScreen(
     var showTemplateSheet by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showScheduleSheet by remember { mutableStateOf(false) }
+    // L1524 — entity/link picker
+    var showEntitySheet by remember { mutableStateOf(false) }
+    // L1529 — create customer dialog
+    var showCreateCustomerDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -337,6 +403,9 @@ fun SmsThreadScreen(
     val customerName = state.customer?.let {
         "${it.firstName ?: ""} ${it.lastName ?: ""}".trim()
     }?.ifBlank { null }
+
+    // §22.9 — expand SMS composer to ~60% screen height on tablet (≥600dp).
+    val isTablet = isMediumOrExpandedWidth()
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { message ->
@@ -409,6 +478,43 @@ fun SmsThreadScreen(
         )
     }
 
+    // L1524 — entity/link picker sheet
+    if (showEntitySheet) {
+        SmsEntityPickerSheet(
+            tickets = state.entityTickets,
+            invoices = state.entityInvoices,
+            paymentLinks = emptyList(), // payment-link server endpoint deferred
+            onEntitySelected = { ref ->
+                val insertText = ref.toInsertText()
+                val cur = messageText
+                val before = cur.text.substring(0, cur.selection.end)
+                val after = cur.text.substring(cur.selection.end)
+                val newText = if (before.isNotEmpty() && !before.endsWith(" ")) "$before $insertText" else "$before$insertText"
+                val newCursor = newText.length - after.length
+                messageText = androidx.compose.ui.text.input.TextFieldValue(
+                    newText + after,
+                    androidx.compose.ui.text.TextRange(newCursor.coerceAtLeast(0)),
+                )
+                showEntitySheet = false
+            },
+            onDismiss = { showEntitySheet = false },
+        )
+    }
+
+    // L1529 — create customer dialog
+    if (showCreateCustomerDialog) {
+        CreateCustomerFromThreadDialog(
+            phone = phone,
+            onDismiss = { showCreateCustomerDialog = false },
+            onConfirm = { firstName, lastName ->
+                coroutineScope.launch {
+                    val ok = viewModel.createCustomerFromThread(firstName, lastName)
+                    if (ok) showCreateCustomerDialog = false
+                }
+            },
+        )
+    }
+
     // L1525 — schedule send sheet
     if (showScheduleSheet) {
         ScheduleSendSheet(
@@ -477,6 +583,16 @@ fun SmsThreadScreen(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    // L1529 — create customer from thread (shown only when no customer linked)
+                    if (state.hasNoCustomer) {
+                        IconButton(onClick = { showCreateCustomerDialog = true }) {
+                            Icon(
+                                Icons.Default.PersonAdd,
+                                contentDescription = "Create customer from this thread",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.loadThread() }) {
                         Icon(
                             Icons.Default.Refresh,
@@ -495,6 +611,7 @@ fun SmsThreadScreen(
                 }
                 ComposeBar(
                     messageText = messageText,
+                    isTablet = isTablet,
                     onMessageChange = { newValue ->
                         messageText = newValue
                         viewModel.onComposeFieldChanged(newValue.text)
@@ -510,6 +627,8 @@ fun SmsThreadScreen(
                     },
                     onEmojiClick = { showEmojiSheet = true },
                     onScheduleClick = { showScheduleSheet = true },
+                    // L1524 — entity link picker
+                    onEntityPickerClick = { showEntitySheet = true },
                 )
             }
         },
@@ -602,7 +721,11 @@ fun SmsThreadScreen(
                             }
                         }
                         items(state.messages.reversed(), key = { it.id }) { message ->
-                            MessageBubble(message = message)
+                            MessageBubble(
+                                message = message,
+                                onCopyMessage = { /* clipboard already handled inside */ },
+                                onRetry = { viewModel.retryMessage(it) },
+                            )
                         }
                     }
                 }
@@ -677,15 +800,26 @@ private fun EmojiPickerSheet(
 // Bottom compose bar
 // ---------------------------------------------------------------------------
 
+/**
+ * §22.9 — SMS compose bar.
+ *
+ * On phone ([isTablet] = false) the text field is capped at 4 lines (original behaviour).
+ * On tablet ([isTablet] = true) the field expands to fill ~60% of the window height so
+ * the larger screen is used productively rather than wasting whitespace. The height
+ * is expressed as `fillMaxHeight(0.6f)` which correctly adapts when the keyboard is
+ * raised (imePadding applied on the parent Scaffold).
+ */
 @Composable
 private fun ComposeBar(
     messageText: TextFieldValue,
+    isTablet: Boolean,
     onMessageChange: (TextFieldValue) -> Unit,
     isSending: Boolean,
     onSend: () -> Unit,
     onTemplateClick: () -> Unit,
     onEmojiClick: () -> Unit,
     onScheduleClick: () -> Unit,
+    onEntityPickerClick: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -703,14 +837,24 @@ private fun ComposeBar(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                // §22.9 — on tablet: fillMaxHeight(0.6f) so the composer uses 60% of the
+                // available vertical space. On phone: maxLines=4 (compact row, thumb-reach).
+                val textFieldModifier = if (isTablet) {
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight(0.6f)
+                        .semantics { contentDescription = "Message input" }
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Message input" }
+                }
                 OutlinedTextField(
                     value = messageText,
                     onValueChange = onMessageChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics { contentDescription = "Message input" },
+                    modifier = textFieldModifier,
                     placeholder = { Text("Type a message...") },
-                    maxLines = 4,
+                    maxLines = if (isTablet) Int.MAX_VALUE else 4,
                 )
 
                 // L1524 — emoji picker
@@ -727,6 +871,15 @@ private fun ComposeBar(
                     Icon(
                         Icons.Default.ListAlt,
                         contentDescription = "Insert template",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // L1524 — ticket/invoice/payment-link entity picker
+                IconButton(onClick = onEntityPickerClick) {
+                    Icon(
+                        Icons.Default.Link,
+                        contentDescription = "Insert ticket, invoice or payment link",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -764,11 +917,19 @@ private fun ComposeBar(
 
 // ---------------------------------------------------------------------------
 // Message bubble with L1519 delivery status + L1520 read receipt
+// L1528 — long-press DropdownMenu: Copy, Reply, Forward, Create ticket, Flag, Delete
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: SmsMessageItem) {
+private fun MessageBubble(
+    message: SmsMessageItem,
+    onCopyMessage: (String) -> Unit = {},
+    onRetry: ((SmsMessageItem) -> Unit)? = null,
+) {
     val isOutbound = message.direction == "outbound"
+    var showContextMenu by remember { mutableStateOf(false) }
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     val bubbleShape = RoundedCornerShape(
         topStart = 14.dp,
@@ -777,11 +938,19 @@ private fun MessageBubble(message: SmsMessageItem) {
         bottomEnd = if (isOutbound) 2.dp else 14.dp,
     )
 
-    val bubbleBg = if (isOutbound) MaterialTheme.colorScheme.primaryContainer
-    else MaterialTheme.colorScheme.surfaceContainerHigh
+    // L1557 — failed messages use errorContainer so users immediately see the problem
+    val isFailed = message.status == "failed"
+    val bubbleBg = when {
+        isFailed && isOutbound -> MaterialTheme.colorScheme.errorContainer
+        isOutbound -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
 
-    val textColor = if (isOutbound) MaterialTheme.colorScheme.onPrimaryContainer
-    else MaterialTheme.colorScheme.onSurface
+    val textColor = when {
+        isFailed && isOutbound -> MaterialTheme.colorScheme.onErrorContainer
+        isOutbound -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
 
     val timestampColor = if (isOutbound)
         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
@@ -807,42 +976,181 @@ private fun MessageBubble(message: SmsMessageItem) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(bubbleShape)
-                .background(bubbleBg)
-                .padding(12.dp)
-                .clearAndSetSemantics { contentDescription = bubbleContentDescription },
-        ) {
-            Column {
-                Text(
-                    messageBody,
-                    color = textColor,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Timestamp
-                    Text(
-                        timeDisplay,
-                        style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
-                        color = timestampColor,
+        Box {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .clip(bubbleShape)
+                    .background(bubbleBg)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { showContextMenu = true },
+                        onLongClickLabel = "Message options",
                     )
-                    // L1519 — delivery status dot (outbound only)
-                    if (isOutbound) {
-                        SmsDeliveryStatusDot(
-                            status = message.status,
-                            readAt = null, // readAt not in SmsMessageItem yet — stub null
+                    .padding(12.dp)
+                    .clearAndSetSemantics { contentDescription = bubbleContentDescription },
+            ) {
+                Column {
+                    Text(
+                        messageBody,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Timestamp
+                        Text(
+                            timeDisplay,
+                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
+                            color = timestampColor,
+                        )
+                        // L1519 — delivery status dot (outbound only)
+                        if (isOutbound) {
+                            SmsDeliveryStatusDot(
+                                status = message.status,
+                                readAt = null, // readAt not in SmsMessageItem yet — stub null
+                            )
+                        }
+                    }
+                    // L1557 — send-failed retry chip
+                    if (isFailed && onRetry != null) {
+                        Spacer(Modifier.height(4.dp))
+                        SuggestionChip(
+                            onClick = { onRetry(message) },
+                            label = { Text("Retry", style = MaterialTheme.typography.labelSmall) },
+                            icon = {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Retry sending this message",
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Send failed. Tap to retry."
+                            },
                         )
                     }
                 }
             }
+
+            // L1528 — long-press context menu
+            DropdownMenu(
+                expanded = showContextMenu,
+                onDismissRequest = { showContextMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Copy") },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                    onClick = {
+                        showContextMenu = false
+                        clipboardManager.setText(
+                            androidx.compose.ui.text.AnnotatedString(messageBody)
+                        )
+                        onCopyMessage(messageBody)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Reply") },
+                    leadingIcon = { Icon(Icons.Default.Reply, contentDescription = null) },
+                    onClick = { showContextMenu = false },
+                    // Reply pre-fills compose — handled at parent level; stub dismiss for now
+                )
+                DropdownMenuItem(
+                    text = { Text("Forward") },
+                    leadingIcon = { Icon(Icons.Default.Forward, contentDescription = null) },
+                    onClick = { showContextMenu = false },
+                    // Forward navigates to pick a conversation — deferred
+                    enabled = false,
+                )
+                DropdownMenuItem(
+                    text = { Text("Create ticket from this") },
+                    leadingIcon = { Icon(Icons.Default.ConfirmationNumber, contentDescription = null) },
+                    onClick = { showContextMenu = false },
+                    // Create ticket deep link — server-side ticket creation; deferred until
+                    // TicketCreateScreen accepts a pre-filled description via nav args.
+                    enabled = false,
+                )
+                DropdownMenuItem(
+                    text = { Text("Flag") },
+                    leadingIcon = { Icon(Icons.Default.Flag, contentDescription = null) },
+                    onClick = { showContextMenu = false },
+                    // Per-message flag — server-side; UI-only stub
+                    enabled = false,
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = { showContextMenu = false },
+                    // Delete message — server endpoint not yet exposed
+                    enabled = false,
+                )
+            }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// L1529 — Create customer from thread dialog
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun CreateCustomerFromThreadDialog(
+    phone: String,
+    onDismiss: () -> Unit,
+    onConfirm: (firstName: String, lastName: String?) -> Unit,
+) {
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create customer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Create a new customer record for $phone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    label = { Text("First name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    label = { Text("Last name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                onClick = {
+                    onConfirm(firstName.trim(), lastName.trim().ifBlank { null })
+                },
+                enabled = firstName.isNotBlank(),
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

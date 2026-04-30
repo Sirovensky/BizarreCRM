@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.bizarreelectronics.crm.ui.theme.ConcaveFabShape
 
 /**
  * Brand FAB thin wrapper.
@@ -25,11 +26,13 @@ fun BrandFab(
     contentDescription: String,
     modifier: Modifier = Modifier,
 ) {
+    // §30.2 — expressive cut-corner shape (ConcaveFabShape) differentiates the
+    // FAB from body cards. The diagonal cut adds visual tension that draws the
+    // eye to the primary action. Use FullRoundShape at call-site for softer contexts.
     FloatingActionButton(
         onClick = onClick,
         modifier = modifier,
-        // containerColor defaults to primaryContainer via theme (purple tint).
-        // For a fully-filled purple FAB, override: containerColor = colorScheme.primary
+        shape = ConcaveFabShape,
         containerColor = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
     ) {

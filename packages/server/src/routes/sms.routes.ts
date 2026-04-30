@@ -208,7 +208,8 @@ router.get('/unread-count', async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/conversations', async (req, res) => {
   const adb = req.asyncDb;
-  const keyword = (req.query.keyword as string || '').trim();
+  // WEB-S6-034: accept `q=` (debounced server-side search) or legacy `keyword=`.
+  const keyword = ((req.query.q as string) || (req.query.keyword as string) || '').trim();
   const includeArchived = req.query.include_archived === '1' || req.query.include_archived === 'true';
   const userId = req.user!.id;
 

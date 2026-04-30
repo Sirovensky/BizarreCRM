@@ -1,12 +1,15 @@
 package com.bizarreelectronics.crm.util
 
 import android.text.format.DateUtils
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
+import java.time.temporal.WeekFields
 import java.util.Locale
 
 /**
@@ -23,14 +26,59 @@ import java.util.Locale
  * Both functions accept `Long` (epoch-ms) for new call sites. String-based
  * overloads (`formatDate`, `formatDateTime`, `formatRelative(String?)`) are
  * preserved for existing callers that hand in ISO strings from the server.
+ *
+ * §27.3 — Timezone and locale awareness:
+ *   - [effectiveZoneId] respects [timezoneOverride] (from AppPreferences) so
+ *     dates/times are rendered in the user's chosen zone, not necessarily the
+ *     device zone.
+ *   - [firstDayOfWeek] returns the locale-appropriate first day of the week so
+ *     calendar views (week/month) align correctly for each locale.
+ *   - [formatAbsolute] uses a locale-aware pattern via [FormatStyle.LONG] when
+ *     [useLocaleFormatStyle] is true (default). Raw "LLLL d, yyyy" is kept for
+ *     legacy string callers.
  */
 object DateFormatter {
     private val isoParser = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     private val isoParserT = DateTimeFormatter.ISO_LOCAL_DATE_TIME // handles "2026-04-04T17:30:00"
 
+    /**
+     * Optional timezone override (ZoneId string, e.g. "America/New_York").
+     * Null means use [ZoneId.systemDefault()].
+     * Set from [AppPreferences.timezoneOverride] at app start.
+     */
+    @Volatile
+    var timezoneOverride: String? = null
+
+    /**
+     * The effective ZoneId for all date/time formatting.
+     * Respects [timezoneOverride] if set; falls back to [ZoneId.systemDefault()].
+     */
+    val effectiveZoneId: ZoneId
+        get() = timezoneOverride
+            ?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+            ?: ZoneId.systemDefault()
+
+    /**
+     * Returns the locale-appropriate first day of the week (§27.3).
+     * Uses [WeekFields.of(Locale.getDefault())] so Sunday-first (en-US),
+     * Monday-first (fr-CA, es-MX), etc. are all handled automatically.
+     *
+     * Calendar views should prefer this over hardcoded [DayOfWeek.SUNDAY].
+     */
+    val firstDayOfWeek: DayOfWeek
+        get() = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+
     // CROSS46 canonical formats.
     private val absoluteFormat: DateTimeFormatter
         get() = DateTimeFormatter.ofPattern("LLLL d, yyyy", Locale.getDefault())
+
+    // Locale-aware medium date format (e.g. "Apr 16, 2026" in en-US, "16 avr. 2026" in fr-CA).
+    private val localizedDateFormat: DateTimeFormatter
+        get() = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
+
+    // Locale-aware time format (12h for en-US/es, 24h for fr-CA, etc.).
+    private val localizedTimeFormat: DateTimeFormatter
+        get() = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.getDefault())
 
     // Legacy formats (kept for string-based callers / detail screens).
     private val displayDate = DateTimeFormatter.ofPattern("MMM d, yyyy")
@@ -51,6 +99,21 @@ object DateFormatter {
     // ---------------------------------------------------------------------
 
     /**
+     * Locale-aware medium date — "Apr 16, 2026" (en-US), "16 avr. 2026" (fr-CA), etc.
+     * Uses [FormatStyle.MEDIUM] with the active locale and [effectiveZoneId].
+     *
+     * §27.3: Prefer this over [formatAbsolute] for new call sites where the
+     * locale-appropriate month abbreviation is acceptable.
+     */
+    fun formatLocalized(timestampMs: Long): String {
+        if (timestampMs <= 0L) return ""
+        return Instant.ofEpochMilli(timestampMs)
+            .atZone(effectiveZoneId)
+            .toLocalDateTime()
+            .format(localizedDateFormat)
+    }
+
+    /**
      * Absolute format: "April 16, 2026".
      *
      * Pattern `LLLL d, yyyy` with locale default. Used wherever a specific
@@ -60,7 +123,7 @@ object DateFormatter {
     fun formatAbsolute(timestampMs: Long): String {
         if (timestampMs <= 0L) return ""
         return Instant.ofEpochMilli(timestampMs)
-            .atZone(ZoneId.systemDefault())
+            .atZone(effectiveZoneId) // §27.3: respects timezoneOverride
             .toLocalDateTime()
             .format(absoluteFormat)
     }
@@ -90,9 +153,9 @@ object DateFormatter {
     fun formatTimeOfDay(timestampMs: Long): String {
         if (timestampMs <= 0L) return ""
         return Instant.ofEpochMilli(timestampMs)
-            .atZone(ZoneId.systemDefault())
+            .atZone(effectiveZoneId) // §27.3: respects timezoneOverride
             .toLocalDateTime()
-            .format(displayTime)
+            .format(localizedTimeFormat) // §27.3: locale-aware 12h/24h
     }
 
     // ---------------------------------------------------------------------

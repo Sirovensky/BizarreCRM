@@ -262,6 +262,27 @@ class NotificationListViewModel @Inject constructor(
         }
     }
 
+    /**
+     * §13.1 — Swipe-to-dismiss: remove the notification from Room so it
+     * disappears from the list immediately. Best-effort server sync via
+     * markRead (PATCH /notifications/:id/dismiss not yet available on server;
+     * see NOTE-defer in ActionPlan §13.1).
+     */
+    fun dismiss(id: Long) {
+        viewModelScope.launch {
+            notificationDao.deleteById(id)
+            if (serverMonitor.isEffectivelyOnline.value) {
+                try {
+                    // Best-effort: mark read as a proxy until server ships
+                    // PATCH /notifications/:id/dismiss.
+                    notificationApi.markRead(id)
+                } catch (e: Exception) {
+                    Log.d(TAG, "API dismiss (markRead proxy) failed: ${e.message}")
+                }
+            }
+        }
+    }
+
     // CROSS55: search query + filter chip handlers. Both update state only —
     // filtering happens inside [NotificationUiState.filteredNotifications] so
     // we avoid a Room round-trip per keystroke.
@@ -532,6 +553,43 @@ fun NotificationListScreen(
                                     MaterialTheme.colorScheme.surface
                                 }
 
+                                // §13.1 — Swipe-to-dismiss. Uses M3 SwipeToDismissBox (trailing
+                                // swipe only). The dismiss background shows a delete icon on the
+                                // error container colour so it is clearly destructive. On
+                                // DismissedToStart the item is removed from Room and best-effort
+                                // server sync fires (see NotificationListViewModel.dismiss).
+                                val dismissState = rememberSwipeToDismissBoxState(
+                                    confirmValueChange = { value ->
+                                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                                            viewModel.dismiss(notification.id)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    },
+                                )
+
+                                SwipeToDismissBox(
+                                    state = dismissState,
+                                    enableDismissFromStartToEnd = false,
+                                    enableDismissFromEndToStart = true,
+                                    backgroundContent = {
+                                        // Red destructive background revealed while swiping.
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.errorContainer),
+                                            contentAlignment = Alignment.CenterEnd,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Dismiss notification",
+                                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(end = 24.dp),
+                                            )
+                                        }
+                                    },
+                                ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -601,6 +659,7 @@ fun NotificationListScreen(
                                         },
                                     )
                                 }
+                                } // end SwipeToDismissBox content
 
                                 // Brand-aligned divider: outline at 40% alpha (§3 P2)
                                 BrandListItemDivider()

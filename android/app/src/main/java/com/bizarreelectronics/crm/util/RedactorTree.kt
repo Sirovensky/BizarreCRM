@@ -108,6 +108,9 @@ class RedactorTree(private val delegate: Timber.Tree) : Timber.Tree() {
             "card_number",
             "cvv",
             "ssn",
+            "challengeToken",
+            "twoFaSecret",
+            "pendingStashPassword",
         )
 
         const val MASK = "***REDACTED***"

@@ -7,16 +7,57 @@
     --sidebar-width: 256px;
     --sidebar-collapsed-width: 64px;
     --header-height: 56px;
+
+    /* Surface ramp — light mode = warm stone (matches cream primary). */
+    --surface-50:  250 250 249;
+    --surface-100: 245 245 244;
+    --surface-200: 231 229 228;
+    --surface-300: 214 211 209;
+    --surface-400: 168 162 158;
+    --surface-500: 120 113 108;
+    --surface-600: 87 83 78;
+    --surface-700: 68 64 60;
+    --surface-800: 41 37 36;
+    --surface-900: 28 25 23;
+    --surface-950: 12 10 9;
+  }
+
+  /* Surface ramp — dark mode = iPad Liquid Glass palette
+   * (mockups/ios-ipad-pos.html). Cream primary stays the same; only the
+   * deep-end neutrals shift to the iPad hex so web dark mode and iPad
+   * dark mode read as the same surface family. Light end (50–600) is
+   * unchanged because dark mode rarely uses it for backgrounds; when it
+   * does (e.g. text-surface-300 on dark bg), the warm stone tone still
+   * harmonizes with the iPad-aligned dark surfaces below. */
+  .dark {
+    --surface-700: 27 25 23;   /* iPad --surface-elev #1b1917 */
+    --surface-800: 20 18 17;   /* iPad --surface-solid #141211 */
+    --surface-900: 12 11 9;    /* iPad --bg #0c0b09 */
+    --surface-950: 5 4 3;      /* iPad --bg-deep #050403 */
   }
 
   /* Smooth theme transitions
    * Fixer-WW (WEB-FE-024): blanket html transition fired on every navigation
    * (200ms paint cost + flash on theme toggle). Gate behind .theme-transition
    * class so the cost only applies when the dark-mode toggle adds it briefly,
-   * and skip entirely when prefers-reduced-motion is set. */
+   * and skip entirely when prefers-reduced-motion is set.
+   *
+   * Extended (setup-wizard color-scheme swap): the surface ramp moved to CSS
+   * vars in :root / .dark, so flipping theme repaints every `bg-surface-*`
+   * + `text-surface-*` + `border-surface-*` instantly. Cascade the transition
+   * to descendants with `*` while the class is on so the whole tree fades
+   * together instead of strobing. uiStore.setTheme adds the class, schedules
+   * removal after 320ms (200ms anim + slack) so post-swap interactions don't
+   * pay the per-element transition cost. */
   @media (prefers-reduced-motion: no-preference) {
-    html.theme-transition {
-      transition: background-color 0.2s ease, color 0.2s ease;
+    html.theme-transition,
+    html.theme-transition * {
+      transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease,
+        fill 0.2s ease,
+        stroke 0.2s ease !important;
     }
   }
 
@@ -166,6 +207,34 @@
     /* Avoid clipping long detail tables across pages. */
     body:not(.print-route) table { page-break-inside: auto; }
     body:not(.print-route) tr { page-break-inside: avoid; page-break-after: auto; }
+
+    /* WEB-W2-034: Estimate detail print template.
+     * The estimate detail page uses a 3-column grid (lg:grid-cols-3).
+     * On paper, collapse to a single column so sidebar summary follows
+     * the line-items vertically — no truncation, no two-up layout. */
+    body:not(.print-route) .grid.lg\:grid-cols-3 {
+      display: block !important;
+    }
+    /* Hide action buttons, breadcrumb nav, and version history panel */
+    body:not(.print-route) .print\:hidden,
+    body:not(.print-route) nav[aria-label="Breadcrumb"],
+    body:not(.print-route) [data-estimate-actions],
+    body:not(.print-route) [data-version-history] {
+      display: none !important;
+    }
+    /* Cards render as clean bordered sections */
+    body:not(.print-route) .card {
+      border: 1px solid #d4d4d8 !important;
+      box-shadow: none !important;
+      break-inside: avoid;
+      margin-bottom: 12pt;
+      border-radius: 4pt;
+    }
+    /* Tables get clean borders */
+    body:not(.print-route) table th,
+    body:not(.print-route) table td {
+      border-bottom: 1px solid #e4e4e7 !important;
+    }
   }
 
   /* Touch targets for mobile — minimum 44px on interactive elements */

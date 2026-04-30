@@ -27,6 +27,7 @@ import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, MAX_PAGE_SIZE } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 
 const logger = createLogger('catalog-routes');
 
@@ -57,6 +58,52 @@ router.get('/manufacturers', asyncHandler(async (req, res) => {
     ORDER BY m.name
   `);
   res.json({ success: true, data: rows });
+}));
+
+// ─── Device categories (Android chip-row + web type picker source) ──────────
+const CATEGORY_LABELS: Record<string, string> = {
+  phone: 'Phone',
+  tablet: 'Tablet',
+  laptop: 'Laptop',
+  desktop: 'Desktop',
+  tv: 'TV',
+  'game-console': 'Game Console',
+  console: 'Console',
+  watch: 'Watch',
+  smartwatch: 'Smartwatch',
+  drone: 'Drone',
+  other: 'Other',
+};
+const CANONICAL_FALLBACK = ['phone', 'tablet', 'laptop', 'tv', 'game-console', 'desktop'];
+
+router.get('/categories', asyncHandler(async (_req, res) => {
+  const adb = _req.asyncDb;
+  const rows = await adb.all(`
+    SELECT category AS slug, COUNT(*) AS count
+    FROM device_models
+    WHERE category IS NOT NULL AND TRIM(category) != ''
+    GROUP BY category
+    ORDER BY count DESC, category ASC
+  `);
+  type Row = { slug: string; count: number };
+  const seen = new Set<string>();
+  const result: Array<{ slug: string; label: string; count: number }> = [];
+  for (const r of rows as Row[]) {
+    const slug = String(r.slug).toLowerCase().trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    result.push({
+      slug,
+      label: CATEGORY_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      count: Number(r.count) || 0,
+    });
+  }
+  for (const slug of CANONICAL_FALLBACK) {
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    result.push({ slug, label: CATEGORY_LABELS[slug] ?? slug, count: 0 });
+  }
+  res.json({ success: true, data: result });
 }));
 
 // ─── Device models ───────────────────────────────────────────────────────────
@@ -108,6 +155,62 @@ router.get('/devices', asyncHandler(async (req, res) => {
   `, ...params, limit);
 
   res.json({ success: true, data: rows });
+}));
+
+// ─── Add new device model (admin only, §44.3) ───────────────────────────────
+
+router.post('/devices', adminOnly, asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const { manufacturer_id, name, category = 'phone', release_year, is_popular = 0 } = req.body as {
+    manufacturer_id: unknown;
+    name: unknown;
+    category?: string;
+    release_year?: unknown;
+    is_popular?: unknown;
+  };
+
+  if (!manufacturer_id || !Number.isFinite(Number(manufacturer_id))) {
+    throw new AppError('manufacturer_id is required', 400);
+  }
+  const mfr = await adb.get('SELECT id FROM manufacturers WHERE id = ?', Number(manufacturer_id));
+  if (!mfr) throw new AppError('Manufacturer not found', 404);
+
+  if (typeof name !== 'string' || !name.trim()) {
+    throw new AppError('name is required', 400);
+  }
+  const nameTrimmed = validateRequiredString(name, 'name', 200);
+
+  const VALID_CATS = ['phone', 'tablet', 'laptop', 'console', 'tv', 'other'];
+  const cat = typeof category === 'string' && VALID_CATS.includes(category) ? category : 'other';
+
+  // Auto-generate slug: "<manufacturer_id>-<name-slugified>"
+  const slug = `${Number(manufacturer_id)}-${nameTrimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+  const existing = await adb.get(
+    'SELECT id FROM device_models WHERE manufacturer_id = ? AND name = ?',
+    Number(manufacturer_id), nameTrimmed,
+  );
+  if (existing) throw new AppError('A device model with this name already exists for this manufacturer', 409);
+
+  const result = await adb.run(
+    `INSERT INTO device_models (manufacturer_id, name, slug, category, release_year, is_popular)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    Number(manufacturer_id),
+    nameTrimmed,
+    slug,
+    cat,
+    release_year != null && Number.isFinite(Number(release_year)) ? Number(release_year) : null,
+    is_popular ? 1 : 0,
+  );
+
+  const newModel = await adb.get(`
+    SELECT dm.*, m.name AS manufacturer_name
+    FROM device_models dm
+    JOIN manufacturers m ON m.id = dm.manufacturer_id
+    WHERE dm.id = ?
+  `, result.lastInsertRowid);
+
+  res.status(201).json({ success: true, data: newModel });
 }));
 
 // Single device model detail + compatible catalog items
@@ -228,6 +331,13 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
 const VALID_SOURCES: CatalogSource[] = ['mobilesentrix', 'phonelcdparts'];
 
 router.post('/sync', adminOnly, asyncHandler(async (req, res) => {
+  // WEB-S8-037: rate-limit sync triggers to 3 per hour per admin to prevent
+  // flooding the scrape_jobs table and hammering supplier sites.
+  const rate = consumeWindowRate(req.db, 'catalog_sync', String(req.user!.id), 3, 3_600_000);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+    throw new AppError(`Too many sync requests; retry in ${rate.retryAfterSeconds}s`, 429);
+  }
   const db = req.db;
   const source = req.body.source as CatalogSource;
   if (!VALID_SOURCES.includes(source)) {

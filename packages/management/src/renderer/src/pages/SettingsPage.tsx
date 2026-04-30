@@ -12,6 +12,7 @@ import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 import { handleApiResponse } from '@/utils/handleApiResponse';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 // @audit-fixed: removed unused `theme` / `setTheme` zustand selectors and the
 // `Sun` icon import — the dashboard is dark-mode only and the toggle was never
@@ -82,6 +83,10 @@ export function SettingsPage() {
   // fields by key / label / description / category. Pending edits still
   // commit regardless of the filter view (the dirty-state survives).
   const [filter, setFilter] = useState('');
+
+  // DASH-ELEC-180 + DASH-ELEC-194: ConfirmDialog state for destructive actions
+  // that previously used window.confirm (blocked in sandboxed renderer).
+  const [confirmTarget, setConfirmTarget] = useState<null | 'hcaptcha' | 'closeDashboard'>(null);
 
   useEffect(() => {
     getAPI().system.getInfo()
@@ -188,12 +193,15 @@ export function SettingsPage() {
         ? pending['SIGNUP_CAPTCHA_REQUIRED']
         : (requireField?.value ?? 'true');
     if (requireAfter === 'true' && captchaSecretAfter === '') {
-      const ok = window.confirm(
-        'You are leaving HCAPTCHA_SECRET empty while requiring hCaptcha on signup. ' +
-          'The server will refuse to boot. Continue anyway?'
-      );
-      if (!ok) return;
+      // DASH-ELEC-180: window.confirm is blocked in the sandboxed renderer.
+      // Show a ConfirmDialog and resume saving when operator confirms.
+      setConfirmTarget('hcaptcha');
+      return;
     }
+    await executeSave();
+  }
+
+  async function executeSave() {
     setSaving(true);
     try {
       const res = await getAPI().admin.setEnvSettings(pending);
@@ -278,6 +286,19 @@ export function SettingsPage() {
               the IPC layer (which fails with a generic error). 512 covers the longest
               real-world secret (e.g. Cloudflare API tokens ~40, Stripe keys ~100); 2048
               for plain text fields like CORS_ORIGINS that may list multiple URLs. */}
+          {/* DASH-ELEC-199: CORS origins field gets a textarea so multiple origins
+              can be entered on separate lines without horizontal scrolling. */}
+          {f.category === 'cors' ? (
+            <textarea
+              id={`env-${f.key}`}
+              value={value}
+              rows={3}
+              maxLength={2048}
+              placeholder={f.placeholder ?? ''}
+              onChange={(e) => setPendingValue(f.key, e.target.value)}
+              className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400 focus:border-accent-600 focus:outline-none font-mono resize-y"
+            />
+          ) : (
           <input
             id={`env-${f.key}`}
             type={f.kind === 'secret' && !isRevealed ? 'password' : 'text'}
@@ -287,6 +308,7 @@ export function SettingsPage() {
             onChange={(e) => setPendingValue(f.key, e.target.value)}
             className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400 focus:border-accent-600 focus:outline-none font-mono"
           />
+          )}
           {f.kind === 'secret' && (
             <button
               type="button"
@@ -331,9 +353,12 @@ export function SettingsPage() {
     });
     if (fields.length === 0) return null;
     const Icon = meta.icon;
+    const headingId = `settings-section-${category}`;
     return (
-      <section key={category}>
-        <h2 className="text-sm font-semibold text-surface-300 mb-1 flex items-center gap-2">
+      // DASH-ELEC-204: aria-labelledby so the <section> landmark has a
+      // computed accessible name for screen reader navigation.
+      <section key={category} aria-labelledby={headingId}>
+        <h2 id={headingId} className="text-sm font-semibold text-surface-300 mb-1 flex items-center gap-2">
           <Icon className={`w-4 h-4 ${meta.iconColor}`} />
           {meta.label}
         </h2>
@@ -353,8 +378,9 @@ export function SettingsPage() {
       </h1>
 
       {/* Theme + density */}
-      <section>
-        <h2 className="text-sm font-semibold text-surface-300 mb-3">Appearance</h2>
+      {/* DASH-ELEC-204: aria-labelledby landmarks for static sections */}
+      <section aria-labelledby="settings-section-appearance">
+        <h2 id="settings-section-appearance" className="text-sm font-semibold text-surface-300 mb-3">Appearance</h2>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border bg-accent-600/15 border-accent-600 text-accent-400">
             <Moon className="w-4 h-4" />
@@ -372,10 +398,11 @@ export function SettingsPage() {
       </section>
 
       {/* Dashboard Close */}
-      <section>
-        <h2 className="text-sm font-semibold text-surface-300 mb-3">Dashboard</h2>
+      <section aria-labelledby="settings-section-dashboard">
+        <h2 id="settings-section-dashboard" className="text-sm font-semibold text-surface-300 mb-3">Dashboard</h2>
+        {/* DASH-ELEC-194: was calling closeDashboard() directly with no confirmation. */}
         <button
-          onClick={() => getAPI().system.closeDashboard()}
+          onClick={() => setConfirmTarget('closeDashboard')}
           className="px-4 py-2.5 text-sm font-medium text-red-400 bg-surface-900 border border-red-900/50 rounded-lg hover:bg-red-950/40 transition-colors"
         >
           Close Dashboard
@@ -516,7 +543,10 @@ export function SettingsPage() {
               if (f.kind === 'flag') {
                 const checked = current === 'true';
                 return (
-                  <label key={f.key} className="flex items-start gap-3 cursor-pointer select-none">
+                  // DASH-ELEC-200: aria-busy signals save in-progress to AT
+                  // so screen readers don't announce an intermediate "off"
+                  // checked-state while the server is still processing.
+                  <label key={f.key} aria-busy={busy} className="flex items-start gap-3 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -572,6 +602,29 @@ export function SettingsPage() {
       )}
 
       {/* System Info */}
+      {/* DASH-ELEC-180: hCaptcha misconfiguration warning — replaces window.confirm. */}
+      <ConfirmDialog
+        open={confirmTarget === 'hcaptcha'}
+        title="hCaptcha misconfiguration"
+        message={
+          'You are leaving HCAPTCHA_SECRET empty while requiring hCaptcha on signup. ' +
+          'The server will refuse to boot. Continue saving anyway?'
+        }
+        confirmLabel="Save anyway"
+        danger
+        onConfirm={() => { setConfirmTarget(null); void executeSave(); }}
+        onCancel={() => setConfirmTarget(null)}
+      />
+      {/* DASH-ELEC-194: Close Dashboard confirmation. */}
+      <ConfirmDialog
+        open={confirmTarget === 'closeDashboard'}
+        title="Close Dashboard?"
+        message="The CRM server will continue running as a Windows Service. Only the dashboard window will close."
+        confirmLabel="Close Dashboard"
+        onConfirm={() => { setConfirmTarget(null); getAPI().system.closeDashboard(); }}
+        onCancel={() => setConfirmTarget(null)}
+      />
+
       {systemInfo && (
         <section>
           <h2 className="text-sm font-semibold text-surface-300 mb-3 flex items-center gap-2">

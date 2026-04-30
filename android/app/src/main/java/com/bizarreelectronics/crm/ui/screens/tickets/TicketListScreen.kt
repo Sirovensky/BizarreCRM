@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -37,11 +36,14 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.SkeletonErrorTransition
+import com.bizarreelectronics.crm.ui.components.shared.skeletonErrorTransitionKey
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -50,20 +52,31 @@ import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ExportCsvMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinToggleMenuItem
+import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaHeatmapMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinnedTicketsHeader
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnDensityPicker
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRowBadges
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketBulkActionBar
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSavedViewSheet
+import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaChip
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSortDropdown
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSwipeRow
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgencyChip
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.ui.theme.SharedTicketElement
+import com.bizarreelectronics.crm.ui.theme.sharedTicketKey
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
+import com.bizarreelectronics.crm.util.SaveScrollOnDispose
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
+import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -72,6 +85,17 @@ fun TicketListScreen(
     animatedContentScope: AnimatedContentScope,
     onTicketClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
+    // §3.14 L586 — empty-state secondary CTA. When non-null and the list is
+    // empty (zero-data tenant), the EmptyStateIllustration shows a "Or
+    // import from old system" link in addition to "Create your first
+    // ticket". Default no-op so existing call-sites without the wiring
+    // still compile + the secondary link just doesn't render.
+    onImportFromOldSystem: () -> Unit = {},
+    // §4.22 — Manager SLA heatmap entry point. Default no-op so existing
+    // call-sites without the wiring (tests, previews) still compile cleanly.
+    // The overflow menu item only renders when this callback is non-trivial
+    // (always true when wired from AppNavGraph).
+    onSlaHeatmapClick: () -> Unit = {},
     viewModel: TicketListViewModel = hiltViewModel(),
     networkMonitor: NetworkMonitor? = null,
 ) {
@@ -103,7 +127,15 @@ fun TicketListScreen(
             listOf("All", "Open", "In Progress", "Waiting", "Closed")
         }
     }
-    val listState = rememberLazyListState()
+    // §75.5 — scroll position is restored from SavedStateHandle (process-death)
+    // and also from rememberSaveable (back-nav within the same session).
+    val restoredPos = remember { viewModel.restoreScrollPosition() }
+    val listState = rememberSaveableLazyListState(
+        key = "ticket_list",
+        initialIndex = restoredPos.firstVisibleItemIndex,
+        initialOffset = restoredPos.firstVisibleItemScrollOffset,
+    )
+    SaveScrollOnDispose(listState = listState) { pos -> viewModel.saveScrollPosition(pos) }
 
     // Toast observer
     val toastMessage = state.toastMessage
@@ -117,10 +149,23 @@ fun TicketListScreen(
     // BackHandler: exit select mode on back press
     BackHandler(enabled = state.isSelecting) { viewModel.exitSelectMode() }
 
+    // §75.5 — animate to top when the user re-taps the Tickets bottom-nav tab.
+    val scrollToTopBus = LocalScrollToTopBus.current
+    LaunchedEffect(scrollToTopBus) {
+        scrollToTopBus?.events?.collect { route ->
+            if (route == "tickets") listState.animateScrollToItem(0)
+        }
+    }
+
     // Saved views sheet
     var showSavedViewSheet by remember { mutableStateOf(false) }
     // Overflow menu (Export CSV etc.)
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §4.1 L660 — Column / density picker (tablet/ChromeOS only)
+    var showColumnPicker by remember { mutableStateOf(false) }
+    // §4.21 — Bulk label picker dialog
+    var showBulkLabelDialog by remember { mutableStateOf(false) }
+    var bulkLabelInput by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -165,6 +210,27 @@ fun TicketListScreen(
                                         state = state,
                                         onDismiss = { showOverflowMenu = false },
                                     )
+                                    // §4.22 — SLA heatmap entry point (manager surface).
+                                    SlaHeatmapMenuItem(
+                                        onDismiss = { showOverflowMenu = false },
+                                        onClick = onSlaHeatmapClick,
+                                    )
+                                    // §4.1 L660 — Column picker (tablet/ChromeOS only)
+                                    if (isExpandedWidth) {
+                                        DropdownMenuItem(
+                                            text = { Text("Columns") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.ViewColumn,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                showColumnPicker = true
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -183,12 +249,18 @@ fun TicketListScreen(
                 }
             }
         },
-        // Bulk action bar (L643) — bottom of screen in select mode
+        // Bulk action bar (L643 / §4.21) — bottom of screen in select mode
         bottomBar = {
             if (state.isSelecting && isExpandedWidth) {
-                BulkActionBar(
+                TicketBulkActionBar(
                     selectedCount = state.selectedIds.size,
+                    onBulkAssign = { /* TODO(plan:L643): Bulk assign — needs employee picker */ },
                     onBulkStatus = { viewModel.onBulkStatusChange("Closed") },
+                    onBulkArchive = { /* TODO(plan:L643): Bulk archive */ },
+                    onBulkTag = {
+                        bulkLabelInput = ""
+                        showBulkLabelDialog = true
+                    },
                     onExitSelect = { viewModel.exitSelectMode() },
                 )
             }
@@ -204,7 +276,7 @@ fun TicketListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search tickets...",
+                placeholder = "Order ID, customer, IMEI…",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -236,6 +308,21 @@ fun TicketListScreen(
                                 modifier = Modifier.size(16.dp),
                             )
                         },
+                    )
+                }
+            }
+
+            // §4.21 — Active label filter chip
+            if (state.activeLabelFilter != null) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TicketLabelChips(
+                        labels = listOfNotNull(state.activeLabelFilter),
+                        selectedLabel = state.activeLabelFilter,
+                        onLabelClick = { viewModel.onLabelFilterChanged(null) },
+                        onLabelRemove = { viewModel.onLabelFilterChanged(null) },
                     )
                 }
             }
@@ -332,8 +419,12 @@ fun TicketListScreen(
                 return@Column
             }
 
-            when {
-                state.isLoading -> {
+            // §75.4 — SkeletonErrorTransition cross-fades between the skeleton
+            // placeholder and real content so the switch is a 200ms dissolve
+            // instead of an abrupt jump.
+            SkeletonErrorTransition(
+                targetState = skeletonErrorTransitionKey(state.isLoading, state.error != null),
+                skeleton = {
                     Box(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             contentDescription = "Loading tickets"
@@ -341,8 +432,8 @@ fun TicketListScreen(
                     ) {
                         BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
                     }
-                }
-                state.error != null -> {
+                },
+                errorContent = {
                     Box(
                         modifier = Modifier.semantics {
                             liveRegion = LiveRegionMode.Assertive
@@ -353,8 +444,11 @@ fun TicketListScreen(
                             onRetry = { viewModel.loadTickets() },
                         )
                     }
-                }
-                state.tickets.isEmpty() -> {
+                },
+            ) {
+            // Content slot — rendered (inside SkeletonErrorTransition) when
+            // isLoading=false and error=null.
+            if (state.tickets.isEmpty()) {
                     @OptIn(ExperimentalMaterial3Api::class)
                     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
@@ -362,19 +456,33 @@ fun TicketListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
-                            EmptyState(
-                                icon = Icons.Default.ConfirmationNumber,
-                                title = "No tickets found",
-                                subtitle = if (state.searchQuery.isNotEmpty()) {
-                                    "Try a different search"
-                                } else {
-                                    "Create a ticket to get started"
-                                },
-                            )
+                            // §3.14 L586 — zero-data tenant gets the rich
+                            // EmptyStateIllustration (wrench emoji + "Create
+                            // your first ticket" + "Or import from old
+                            // system" link). Active search empty falls back
+                            // to the simpler EmptyState because the tenant
+                            // already has data — they just can't find a
+                            // match.
+                            if (state.searchQuery.isNotEmpty()) {
+                                EmptyState(
+                                    icon = Icons.Default.ConfirmationNumber,
+                                    title = context.getString(R.string.tickets_empty_title),
+                                    subtitle = "Try a different search",
+                                )
+                            } else {
+                                com.bizarreelectronics.crm.ui.components.EmptyStateIllustration(
+                                    emoji = "🔧",   // wrench
+                                    title = context.getString(R.string.tickets_empty_title),
+                                    subtitle = context.getString(R.string.tickets_empty_subtitle),
+                                    primaryCta = "Create your first ticket",
+                                    onPrimaryCta = onCreateClick,
+                                    secondaryCta = "Or import from old system",
+                                    onSecondaryCta = onImportFromOldSystem,
+                                )
+                            }
                         }
                     }
-                }
-                else -> {
+                } else {
                     @OptIn(ExperimentalMaterial3Api::class)
                     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
@@ -404,9 +512,17 @@ fun TicketListScreen(
                             }
                         }
 
+                        Column(modifier = Modifier.fillMaxSize()) {
+                        // §22.8 drag-and-drop "Drop ticket here to assign to me"
+                        // tablet rail removed 2026-04-28 — pattern was a
+                        // discovery dead-end (users don't think to long-press
+                        // a row to start a drag) and ate vertical space at the
+                        // top of the list. Replace with the swipe-row "Assign
+                        // to me" action that already exists.
+
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
                         ) {
                             // Paging3 items — filter + sort applied at VM/Room level
                             items(
@@ -442,6 +558,8 @@ fun TicketListScreen(
                                         isSelecting = state.isSelecting,
                                         isExpandedWidth = isExpandedWidth,
                                         isPinned = isPinned,
+                                        // §4.1 L660 — pass persisted column prefs; phone uses defaults (all on)
+                                        columnVisibility = if (isExpandedWidth) state.columnVisibility else TicketColumnVisibility(),
                                         onTicketClick = {
                                             if (state.isSelecting) {
                                                 viewModel.toggleSelection(ticket.id)
@@ -472,6 +590,13 @@ fun TicketListScreen(
                                                 ContextMenuAction.Pin -> viewModel.togglePin(ticket.id)
                                             }
                                         },
+                                        // §4.21 — Label chip tap → filter the list by that label
+                                        onLabelFilterClick = { label ->
+                                            viewModel.onLabelFilterChanged(
+                                                if (state.activeLabelFilter == label) null else label
+                                            )
+                                        },
+                                        activeLabelFilter = state.activeLabelFilter,
                                     )
                                 }
                                 BrandListItemDivider()
@@ -483,6 +608,7 @@ fun TicketListScreen(
                                 TicketListFooter(state = footerState)
                             }
                         }
+                        } // Column (AssigneeDropZone + LazyColumn)
                     }
                 }
             }
@@ -498,6 +624,53 @@ fun TicketListScreen(
                 showSavedViewSheet = false
             },
             onDismiss = { showSavedViewSheet = false },
+        )
+    }
+
+    // §4.1 L660 — Column / density picker sheet (tablet/ChromeOS)
+    if (showColumnPicker) {
+        TicketColumnDensityPicker(
+            current = state.columnVisibility,
+            onApply = { updated ->
+                viewModel.onColumnVisibilityChanged(updated)
+                showColumnPicker = false
+            },
+            onDismiss = { showColumnPicker = false },
+        )
+    }
+
+    // §4.21 — Bulk label dialog: staff types a label name to apply to all selected tickets.
+    if (showBulkLabelDialog) {
+        AlertDialog(
+            onDismissRequest = { showBulkLabelDialog = false; bulkLabelInput = "" },
+            title = { Text("Apply label") },
+            text = {
+                OutlinedTextField(
+                    value = bulkLabelInput,
+                    onValueChange = { bulkLabelInput = it },
+                    label = { Text("Label name") },
+                    singleLine = true,
+                    placeholder = { Text("e.g. urgent, VIP, warranty") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val label = bulkLabelInput.trim()
+                        if (label.isNotBlank()) {
+                            viewModel.bulkApplyLabel(label)
+                            showBulkLabelDialog = false
+                            bulkLabelInput = ""
+                        }
+                    },
+                    enabled = bulkLabelInput.isNotBlank(),
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkLabelDialog = false; bulkLabelInput = "" }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 }
@@ -524,9 +697,15 @@ private fun TicketListRow(
     isSelecting: Boolean,
     isExpandedWidth: Boolean,
     isPinned: Boolean,
+    // §4.1 L660 — Column / density prefs. Defaults show assignee + device + urgency dot.
+    columnVisibility: TicketColumnVisibility = TicketColumnVisibility(),
     onTicketClick: () -> Unit,
     onLongPress: () -> Unit,
     onContextMenuAction: (ContextMenuAction) -> Unit,
+    // §4.21 — Label filter callback: tap a label chip to filter the list
+    onLabelFilterClick: ((String) -> Unit)? = null,
+    // §4.21 — Currently active label filter (for chip highlight)
+    activeLabelFilter: String? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     // Customer preview popover (L654) — null means hidden
@@ -586,8 +765,10 @@ private fun TicketListRow(
                     )
                     } // with(sharedTransitionScope)
                     Spacer(modifier = Modifier.width(6.dp))
-                    // Urgency chip (L637)
-                    TicketUrgencyChip(urgency = urgency)
+                    // §4.1 L660 — Urgency chip gated on columnVisibility.showUrgencyDot
+                    if (columnVisibility.showUrgencyDot) {
+                        TicketUrgencyChip(urgency = urgency)
+                    }
                     // Pin indicator (L653)
                     if (isPinned) {
                         Spacer(modifier = Modifier.width(4.dp))
@@ -618,12 +799,37 @@ private fun TicketListRow(
                         ),
                 )
                 } // with(sharedTransitionScope)
+                // §4.1 L660 — Device name gated on columnVisibility.showDevice
                 val deviceName = ticket.firstDeviceName
-                if (!deviceName.isNullOrBlank()) {
+                if (!deviceName.isNullOrBlank() && columnVisibility.showDevice) {
                     Text(
                         deviceName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // §4.1 L660 — Assignee ID badge gated on columnVisibility.showAssignee
+                // Shows "Assigned" indicator when a tech is assigned; full name deferred until
+                // TicketEntity is extended with an assignedToName denormalized column.
+                if (columnVisibility.showAssignee && ticket.assignedTo != null) {
+                    Text(
+                        "Assigned #${ticket.assignedTo}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+                // §4.1 L660 — internalNote / diagnosticNote: columns reserved for future
+                // TicketEntity extension; flags stored in prefs already, no UI output yet.
+                // §4.21 — Label chips from comma-separated labels field
+                val labelList = remember(ticket.labels) {
+                    ticket.labels?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                }
+                if (labelList.isNotEmpty()) {
+                    TicketLabelChips(
+                        labels = labelList,
+                        selectedLabel = activeLabelFilter,
+                        onLabelClick = onLabelFilterClick,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
             },
@@ -635,7 +841,22 @@ private fun TicketListRow(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TicketGroupPill(group = group)
                             Spacer(modifier = Modifier.width(6.dp))
-                            BrandStatusBadge(label = statusName, status = statusName)
+                            // §70.3 — STATUS_CHIP shared-element: the badge morphs
+                            // into the TicketStatePill in the detail header row during
+                            // the list→detail nav transition. Key is scoped to this
+                            // ticket id so multiple rows never collide.
+                            with(sharedTransitionScope) {
+                                BrandStatusBadge(
+                                    label = statusName,
+                                    status = statusName,
+                                    modifier = Modifier.sharedElement(
+                                        sharedContentState = rememberSharedContentState(
+                                            key = sharedTicketKey(ticket.id, SharedTicketElement.STATUS_CHIP),
+                                        ),
+                                        animatedVisibilityScope = animatedContentScope,
+                                    ),
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -644,6 +865,28 @@ private fun TicketListRow(
                         createdAtStr = ticket.createdAt,
                         dueAtStr = ticket.dueOn,
                     )
+                    // §4.22 — SLA chip: simple deadline-based tier from dueOn field.
+                    // Full SLA tracking with pause/resume is §4.19 (deferred — needs server SLA defs).
+                    val dueOnStr = ticket.dueOn
+                    if (dueOnStr != null) {
+                        val (slaTier, slaLabel) = remember(dueOnStr) {
+                            val dueMs = runCatching {
+                                java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                    .parse(dueOnStr)?.time ?: 0L
+                            }.getOrDefault(0L)
+                            val remainingMs = dueMs - System.currentTimeMillis()
+                            val pct = if (dueMs > 0L) {
+                                // Approximate 24h SLA budget for display only
+                                val budgetMs = 24L * 60 * 60 * 1000
+                                ((1.0 - remainingMs.toDouble() / budgetMs) * 100).toInt().coerceIn(0, 200)
+                            } else 100
+                            val tier = com.bizarreelectronics.crm.util.SlaCalculator.tier(100 - pct)
+                            val label = com.bizarreelectronics.crm.ui.screens.tickets.components.formatSlaRemaining(remainingMs)
+                            tier to label
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        SlaChip(tier = slaTier, label = slaLabel)
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         ticket.total.formatAsMoney(),
@@ -778,45 +1021,6 @@ private fun TicketViewModeToggle(
 // Bulk action bar (L643 — tablet/ChromeOS only)
 // -----------------------------------------------------------------------
 
-@Composable
-private fun BulkActionBar(
-    selectedCount: Int,
-    onBulkStatus: () -> Unit,
-    onExitSelect: () -> Unit,
-) {
-    Surface(
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                "$selectedCount selected",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            // Bulk status (only action exposed for now per spec)
-            OutlinedButton(onClick = onBulkStatus) {
-                Text("Mark done")
-            }
-            // Bulk assign / bulk delete — TODO per plan:L643
-            TextButton(
-                onClick = { /* TODO(plan:L643): Bulk assign — not yet wired */ },
-                enabled = false,
-            ) { Text("Assign…") }
-            IconButton(onClick = onExitSelect) {
-                Icon(Icons.Default.Close, contentDescription = "Exit selection")
-            }
-        }
-    }
-}
-
 // -----------------------------------------------------------------------
 // Ticket status group — same as before (internal helpers)
 // -----------------------------------------------------------------------
@@ -867,3 +1071,7 @@ private fun TicketGroupPill(group: TicketStatusGroup) {
         )
     }
 }
+
+// §22.8 AssigneeDropZone removed 2026-04-28. Drag-to-assign was a UX
+// dead-end and ate vertical space on tablet. The swipe-right "Assign to
+// me" action covers the same need. See ActionPlan §22.8 / §4.16.

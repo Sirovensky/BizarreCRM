@@ -124,13 +124,31 @@ function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
   return ipcRenderer.invoke(channel, ...args);
 }
 
+// DASH-ELEC-007: deduplication wrapper for hot-path IPC channels (stats,
+// disk-space). If a call is already in flight for the same channel+args key,
+// callers share the single in-flight Promise instead of spawning N parallel
+// requests. Keyed by channel + JSON-serialised args so concurrent calls with
+// different arguments still resolve independently.
+const _inFlight = new Map<string, Promise<unknown>>();
+
+function dedupInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
+  const key = args.length === 0 ? channel : `${channel}:${JSON.stringify(args)}`;
+  const existing = _inFlight.get(key);
+  if (existing) return existing;
+  const p = safeInvoke(channel, ...args).finally(() => {
+    _inFlight.delete(key);
+  });
+  _inFlight.set(key, p);
+  return p;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Management API ─────────────────────────────────────────────
   management: {
     setupStatus: () => safeInvoke('management:setup-status'),
     logout: () => safeInvoke('management:logout'),
     setup: (username: string, password: string) => safeInvoke('management:setup', username, password),
-    getStats: () => safeInvoke('management:get-stats'),
+    getStats: () => dedupInvoke('management:get-stats'),
     getStatsHistory: (range: string) => safeInvoke('management:get-stats-history', range),
     getCrashes: () => safeInvoke('management:get-crashes'),
     getCrashStats: () => safeInvoke('management:get-crash-stats'),
@@ -234,7 +252,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── System ─────────────────────────────────────────────────────
   system: {
-    getDiskSpace: () => safeInvoke('system:get-disk-space'),
+    getDiskSpace: () => dedupInvoke('system:get-disk-space'),
     getInfo: () => safeInvoke('system:get-info'),
     openBrowser: () => safeInvoke('system:open-browser'),
     openExternal: (url: string) => safeInvoke('system:open-external', url),

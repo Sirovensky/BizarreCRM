@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
@@ -17,6 +17,15 @@ import {
   NotFoundPage,
   SetupFailedScreen,
 } from './components/shared/LoadingScreen';
+
+// WEB-FW-006: tiny helper so future lazy imports don't need the
+// `.then(m => ({ default: m.X }))` dance on every line.
+// Usage: `const FooPage = lazyNamed(() => import('./pages/foo/FooPage'), 'FooPage')`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lazyNamed = <T extends Record<string, ComponentType<any>>>(
+  factory: () => Promise<T>,
+  name: keyof T,
+) => lazy(() => factory().then((m) => ({ default: m[name] })));
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -80,6 +89,7 @@ const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m
 const TeamChatPage = lazy(() => import('./pages/team/TeamChatPage').then(m => ({ default: m.TeamChatPage })));
 const PerformanceReviewsPage = lazy(() => import('./pages/team/PerformanceReviewsPage').then(m => ({ default: m.PerformanceReviewsPage })));
 const GoalsPage = lazy(() => import('./pages/team/GoalsPage').then(m => ({ default: m.GoalsPage })));
+const PayrollPage = lazy(() => import('./pages/team/PayrollPage').then(m => ({ default: m.PayrollPage })));
 // Marketing / Growth enrichment pages (§54).
 const CampaignsPage = lazy(() => import('./pages/marketing/CampaignsPage').then(m => ({ default: m.CampaignsPage })));
 const SegmentsPage = lazy(() => import('./pages/marketing/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
@@ -97,6 +107,8 @@ const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => (
 // `/automations` is kept as a `<Navigate replace>` to preserve any
 // bookmarked links staff already have. The standalone wrapper page
 // (AutomationsListPage) was removed because it was a 28-LOC duplicate.
+// `/automations/:id` — detail/edit page for a single rule (WEB-S6-019).
+const AutomationDetailPage = lazy(() => import('./pages/settings/AutomationDetailPage').then(m => ({ default: m.AutomationDetailPage })));
 // Super-admin tenant management
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
@@ -108,13 +120,32 @@ const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => (
 // components/shared/LoadingScreen.tsx — see import above.
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
   const location = useLocation();
   const { data: setupData, isLoading: setupLoading, isError: setupError, error: setupErrorObj, refetch: refetchSetup } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
   >({
     queryKey: ['setup-status'],
     queryFn: () => settingsApi.getSetupStatus(),
+    staleTime: 30_000,
+    enabled: isAuthenticated,
+    retry: 1,
+  });
+
+  // SSW1: Gate 3 — reads setup_wizard_* keys via authApi.setupStatus() (distinct
+  // from the settings/setup-status query above). Fires only when the user is an
+  // admin, the wizard hasn't been completed, and skip count hasn't hit the limit (3).
+  const { data: authSetupData } = useQuery<
+    { data: { success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } } }
+  >({
+    queryKey: ['auth-setup-status'],
+    queryFn: () => authApi.setupStatus(),
     staleTime: 30_000,
     enabled: isAuthenticated,
     retry: 1,
@@ -149,7 +180,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/setup" replace />;
   }
 
-  // Gate 2 (NEW): setup_completed=true but wizard_completed is unset -> send to /setup.
+  // Gate 2 (existing): setup_completed=true but wizard_completed is unset -> send to /setup.
   // Valid wizard_completed values are 'true', 'skipped', or 'grandfathered' (set on
   // startup for pre-feature tenants). Any other falsy value (null / undefined / empty
   // string) means this is a brand-new post-feature tenant who hasn't been through the
@@ -164,6 +195,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     !location.pathname.startsWith('/setup')
   ) {
     return <Navigate to="/setup" replace />;
+  }
+
+  // Gate 3 (SSW1): setup_wizard_completed=false AND skip count < 3 AND user is admin.
+  // Uses the granular setup_wizard_* keys written by the new SetupPage handlers.
+  // Only fires when authSetupData has loaded (undefined = query still in-flight → don't block).
+  //
+  // 24h cooldown after a skip: without this, Gate 3 re-fires the instant the
+  // user lands back on '/' after skipping, which (combined with SetupPage's
+  // own redirect on terminal wizard_completed states) causes an infinite
+  // /setup ↔ / bounce. The skip is meant to defer the prompt, not dismiss it
+  // for one navigation tick.
+  if (authSetupData !== undefined && !location.pathname.startsWith('/setup')) {
+    const { setupWizardCompleted, setupWizardSkipCount, setupWizardSkippedAt } = authSetupData.data.data;
+    const isAdmin = user?.role === 'admin';
+    const SKIP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    const skipCooldownActive =
+      setupWizardSkippedAt !== null &&
+      Date.now() - new Date(setupWizardSkippedAt).getTime() < SKIP_COOLDOWN_MS;
+    if (!setupWizardCompleted && setupWizardSkipCount < 3 && isAdmin && !skipCooldownActive) {
+      return <Navigate to="/setup" replace />;
+    }
   }
 
   return <>{children}</>;
@@ -480,6 +532,7 @@ export default function App() {
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
+                    <Route path="/team/payroll" element={<RequireRole roles={['admin', 'manager']}><PayrollPage /></RequireRole>} />
                     {/* Gift Cards (§ orphan). */}
                     <Route path="/gift-cards" element={<GiftCardsListPage />} />
                     <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
@@ -489,8 +542,10 @@ export default function App() {
                     <Route path="/loaners" element={<LoanersPage />} />
                     {/* Automations canonical home is Settings → Automations.
                      *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
-                     *  there so navigation memory has one URL per feature. */}
+                     *  there so navigation memory has one URL per feature.
+                     *  WEB-S6-019: `/automations/:id` — detail/edit page for a single rule. */}
                     <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
+                    <Route path="/automations/:id" element={<AutomationDetailPage />} />
                     {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
                     <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}

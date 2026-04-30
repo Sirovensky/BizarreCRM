@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateMileageExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreatePerDiemExpenseRequest
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseDetail
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateExpenseRequest
@@ -43,4 +45,22 @@ interface ExpenseApi {
         @Path("id") id: Long,
         @Body comment: String? = null,
     ): ApiResponse<Unit>
+
+    /**
+     * Create a mileage expense. Server computes amount = round(miles × rate_cents).
+     * 404 is tolerated when the endpoint is not yet deployed on the connected server.
+     */
+    @POST("expenses/mileage")
+    suspend fun createMileageExpense(
+        @Body request: CreateMileageExpenseRequest,
+    ): ApiResponse<ExpenseDetail>
+
+    /**
+     * Create a per-diem expense. Server computes amount = days × rate_cents.
+     * 404 is tolerated when the endpoint is not yet deployed on the connected server.
+     */
+    @POST("expenses/perdiem")
+    suspend fun createPerDiemExpense(
+        @Body request: CreatePerDiemExpenseRequest,
+    ): ApiResponse<ExpenseDetail>
 }

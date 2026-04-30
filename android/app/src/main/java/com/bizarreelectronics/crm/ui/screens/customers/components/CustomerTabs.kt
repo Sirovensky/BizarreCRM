@@ -22,11 +22,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CardMembership
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -43,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAsset
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
@@ -114,6 +122,12 @@ fun CustomerDetailTabs(
     onTagClick: ((String) -> Unit)? = null,
     /** 5.8.1: tag color palette forwarded from Detail VM. */
     tagPalette: Map<String, Color> = emptyMap(),
+    /**
+     * §38.3: active membership for this customer, loaded by [CustomerDetailViewModel].
+     * Null = no membership or server doesn't support memberships.
+     * Displayed as a compact summary card in the Info tab.
+     */
+    membership: Membership? = null,
     modifier: Modifier = Modifier,
 ) {
     // 5.8.1: tag chips header row — rendered above the tab bar if customer has tags.
@@ -165,6 +179,7 @@ fun CustomerDetailTabs(
                     analytics = analytics,
                     healthScore = healthScore,
                     ltvTier = ltvTier,
+                    membership = membership,
                     onCall = onCall,
                     onSms = onSms,
                     onCreateTicket = onCreateTicket,
@@ -202,6 +217,7 @@ private fun InfoTab(
     analytics: CustomerAnalytics?,
     healthScore: CustomerHealthScore?,
     ltvTier: CustomerLtvTier?,
+    membership: Membership?,
     onCall: ((String) -> Unit)?,
     onSms: ((String) -> Unit)?,
     onCreateTicket: (() -> Unit)?,
@@ -216,6 +232,13 @@ private fun InfoTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // §5.9 — Analytics metrics bar (LTV, last visit, avg ticket, total tickets)
+        if (analytics != null) {
+            item {
+                CustomerAnalyticsMetricsBar(analytics = analytics)
+            }
+        }
+
         // Health score + LTV row
         if (healthScore != null || ltvTier != null) {
             item {
@@ -253,6 +276,13 @@ private fun InfoTab(
                 onShare = onShare,
                 onDelete = onDelete,
             )
+        }
+
+        // §38.3 — membership summary card (shown only when member)
+        if (membership != null) {
+            item {
+                MembershipSummaryCard(membership = membership)
+            }
         }
     }
 }
@@ -356,6 +386,119 @@ private fun LtvTierChip(
                 "$${lifetimeValue.toLong()}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ─── Analytics metrics bar (§5.9 plan:L1159) ────────────────────────────────
+
+/**
+ * Horizontal row of four stat tiles surfacing data already fetched by
+ * `GET /customers/:id/analytics` ([CustomerAnalytics]).
+ *
+ * Tiles (left → right):
+ *  1. **Tickets** — [CustomerAnalytics.totalTickets]
+ *  2. **Lifetime value** — [CustomerAnalytics.lifetimeValue] (dollars → cents → formatted)
+ *  3. **Avg ticket** — [CustomerAnalytics.avgTicketValue]
+ *  4. **Last visit** — [CustomerAnalytics.lastVisit] (ISO string → relative label)
+ *
+ * Each tile is a small [BrandCard] with a label row on top and a bold value
+ * below. The row uses equal weight so tiles grow/shrink symmetrically on any
+ * screen width.
+ *
+ * No new server endpoint required — all fields are in the existing analytics
+ * payload. Repeat rate / preferred services / churn risk require a future
+ * server-side expansion (§5.9 NOTE).
+ */
+@Composable
+internal fun CustomerAnalyticsMetricsBar(
+    analytics: CustomerAnalytics,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Tile 1 — Total tickets
+        AnalyticsMetricTile(
+            label = "Tickets",
+            value = analytics.totalTickets?.toString() ?: "—",
+            semanticDesc = "Total tickets: ${analytics.totalTickets ?: "unknown"}",
+            modifier = Modifier.weight(1f),
+        )
+
+        // Tile 2 — Lifetime value
+        val ltvDisplay = analytics.lifetimeValue
+            ?.let { it.toCentsOrZero().formatAsMoney() }
+            ?: "—"
+        AnalyticsMetricTile(
+            label = "LTV",
+            value = ltvDisplay,
+            semanticDesc = "Lifetime value: $ltvDisplay",
+            modifier = Modifier.weight(1f),
+        )
+
+        // Tile 3 — Average ticket value
+        val avgDisplay = analytics.avgTicketValue
+            ?.let { it.toCentsOrZero().formatAsMoney() }
+            ?: "—"
+        AnalyticsMetricTile(
+            label = "Avg ticket",
+            value = avgDisplay,
+            semanticDesc = "Average ticket value: $avgDisplay",
+            modifier = Modifier.weight(1f),
+        )
+
+        // Tile 4 — Last visit (relative, e.g. "3 days ago")
+        val lastVisitDisplay = analytics.lastVisit
+            ?.let { DateFormatter.formatRelative(it) }
+            ?: analytics.daysSinceLastVisit
+                ?.let { d -> if (d == 0) "Today" else "$d days ago" }
+            ?: "—"
+        AnalyticsMetricTile(
+            label = "Last visit",
+            value = lastVisitDisplay,
+            semanticDesc = "Last visit: $lastVisitDisplay",
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * Single stat tile — a compact [BrandCard] with a muted label line above
+ * a bold value line, centred horizontally.
+ */
+@Composable
+private fun AnalyticsMetricTile(
+    label: String,
+    value: String,
+    semanticDesc: String,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(
+        modifier = modifier.semantics { contentDescription = semanticDesc },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
             )
         }
     }
@@ -592,6 +735,79 @@ private fun AssetTabRow(asset: CustomerAsset, onClick: (() -> Unit)? = null) {
                 )
             }
         }
+    }
+}
+
+// ─── §38.3 Membership summary card ──────────────────────────────────────────
+
+/**
+ * Compact membership summary shown in the customer Info tab (§38.3).
+ *
+ * Displays tier name, status, expiry date, loyalty points accumulated, and
+ * the benefit-use count sourced from the [Membership.benefitUses] field
+ * already present in the server DTO. A full per-use log requires a
+ * `GET /memberships/:id/benefit-log` endpoint that does not yet exist.
+ */
+@Composable
+internal fun MembershipSummaryCard(
+    membership: Membership,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedCard(modifier = modifier.fillMaxWidth()) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    membership.tierName ?: "Member",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val expiry = membership.expiresAt
+                    if (expiry != null) {
+                        Text(
+                            "Renews ${expiry}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    "${membership.points} pts",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                        )
+                        if (membership.benefitUses > 0) {
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        "${membership.benefitUses} benefit uses",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            leadingContent = {
+                Icon(
+                    Icons.Default.CardMembership,
+                    contentDescription = "Membership tier: ${membership.tierName ?: "Member"}",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+        )
     }
 }
 

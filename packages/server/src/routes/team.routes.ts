@@ -112,6 +112,36 @@ router.get(
   }),
 );
 
+// WEB-W3-024 helper: detect overlapping shifts for the same employee.
+// Two intervals [a_start, a_end) and [b_start, b_end) overlap when
+// a_start < b_end AND a_end > b_start. excludeId skips the current row
+// when checking during a PUT (don't collide with yourself).
+async function checkShiftOverlap(
+  adb: AsyncDb,
+  userId: number,
+  startAt: string,
+  endAt: string,
+  excludeId?: number,
+): Promise<void> {
+  const conflict = await adb.get<{ id: number; start_at: string; end_at: string }>(
+    `SELECT id, start_at, end_at FROM shift_schedules
+     WHERE user_id = ?
+       AND start_at < ?
+       AND end_at   > ?
+       ${excludeId ? 'AND id != ?' : ''}
+     LIMIT 1`,
+    ...(excludeId
+      ? [userId, endAt, startAt, excludeId]
+      : [userId, endAt, startAt]),
+  );
+  if (conflict) {
+    throw new AppError(
+      `Shift overlaps with an existing shift (${conflict.start_at} – ${conflict.end_at})`,
+      409,
+    );
+  }
+}
+
 router.post(
   '/shifts',
   asyncHandler(async (req, res) => {
@@ -130,6 +160,9 @@ router.post(
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new AppError('end_at must be after start_at', 400);
     }
+    // WEB-W3-024: reject overlapping shifts for same employee
+    await checkShiftOverlap(adb, userId, startAt, endAt);
+
     const role = req.body?.role ? validateTextLength(req.body.role, 50, 'role') : null;
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
 
@@ -167,6 +200,9 @@ router.put(
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new AppError('end_at must be after start_at', 400);
     }
+    // WEB-W3-024: reject overlapping shifts for same employee (exclude self)
+    await checkShiftOverlap(adb, existing.user_id, startAt, endAt, id);
+
     const role = req.body?.role !== undefined
       ? (req.body.role ? validateTextLength(req.body.role, 50, 'role') : null)
       : existing.role;
@@ -474,8 +510,27 @@ router.post(
 // GOALS
 // ============================================================================
 
-const VALID_METRICS = ['tickets_closed_week', 'revenue_week', 'csat'] as const;
-type GoalMetric = typeof VALID_METRICS[number];
+// WEB-W3-037: All supported metric keys + labels. Adding a new metric here
+// automatically surfaces it in the GoalsPage create form without any frontend
+// change (beyond what the dynamic fetch provides).
+const GOAL_METRIC_DEFINITIONS = [
+  { key: 'tickets_closed_week',  label: 'Tickets closed (week)',   unit: 'count'    },
+  { key: 'revenue_week',         label: 'Revenue (week)',           unit: 'currency' },
+  { key: 'csat',                 label: 'CSAT score',               unit: 'score'    },
+  { key: 'avg_repair_hours',     label: 'Avg repair time (hours)',  unit: 'hours'    },
+  { key: 'first_response_mins',  label: 'First response time (min)',unit: 'minutes'  },
+] as const;
+
+const VALID_METRICS = GOAL_METRIC_DEFINITIONS.map((m) => m.key) as unknown as readonly [string, ...string[]];
+type GoalMetric = typeof GOAL_METRIC_DEFINITIONS[number]['key'];
+
+// GET /team/goal-metrics — returns supported metric keys + labels (WEB-W3-037)
+router.get(
+  '/goal-metrics',
+  asyncHandler(async (_req, res) => {
+    res.json({ success: true, data: GOAL_METRIC_DEFINITIONS });
+  }),
+);
 
 router.get(
   '/goals',
@@ -552,6 +607,48 @@ router.post(
       goal_id: Number(result.lastInsertRowid), user_id: userId, metric,
     });
     const row = await adb.get('SELECT * FROM team_goals WHERE id = ?', result.lastInsertRowid);
+    res.json({ success: true, data: row });
+  }),
+);
+
+router.put(
+  '/goals/:id',
+  asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseId(req.params.id, 'goal id');
+
+    const existing = await adb.get<{ id: number; user_id: number; metric: string; target_value: number; period_start: string; period_end: string }>(
+      'SELECT id, user_id, metric, target_value, period_start, period_end FROM team_goals WHERE id = ?', id,
+    );
+    if (!existing) throw new AppError('Goal not found', 404);
+
+    const userId = req.body?.user_id != null
+      ? parseId(String(req.body.user_id), 'user_id')
+      : existing.user_id;
+    const metric = req.body?.metric != null
+      ? (validateEnum(req.body.metric, VALID_METRICS, 'metric', true)! as GoalMetric)
+      : existing.metric as GoalMetric;
+    const target = req.body?.target_value != null
+      ? validatePositiveAmount(req.body.target_value, 'target_value')
+      : existing.target_value;
+    const periodStart = req.body?.period_start != null
+      ? validateIsoDate(req.body.period_start, 'period_start', true)!
+      : existing.period_start;
+    const periodEnd = req.body?.period_end != null
+      ? validateIsoDate(req.body.period_end, 'period_end', true)!
+      : existing.period_end;
+
+    if (new Date(periodEnd).getTime() < new Date(periodStart).getTime()) {
+      throw new AppError('period_end must be on/after period_start', 400);
+    }
+
+    await adb.run(
+      `UPDATE team_goals SET user_id = ?, metric = ?, target_value = ?, period_start = ?, period_end = ? WHERE id = ?`,
+      userId, metric, target, periodStart, periodEnd, id,
+    );
+    audit(req.db, 'goal_updated', requireUserId(req), req.ip || 'unknown', { goal_id: id });
+    const row = await adb.get('SELECT * FROM team_goals WHERE id = ?', id);
     res.json({ success: true, data: row });
   }),
 );

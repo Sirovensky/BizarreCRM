@@ -14,13 +14,20 @@ import com.bizarreelectronics.crm.util.EncryptedCoilCache
 import com.bizarreelectronics.crm.util.StrictModeInit
 import com.bizarreelectronics.crm.service.NotificationChannelBootstrap
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.sync.CachePurgeWorker
+import com.bizarreelectronics.crm.data.sync.HealthScoreResyncWorker
+import com.bizarreelectronics.crm.data.sync.RoomVacuumWorker
 import com.bizarreelectronics.crm.data.sync.SyncWorker
+import com.bizarreelectronics.crm.data.sync.TokenRefreshWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
+import com.bizarreelectronics.crm.util.AnrMonitor
 import com.bizarreelectronics.crm.util.DeviceTokenManager
 import com.bizarreelectronics.crm.util.FcmTokenRefresher
 import com.bizarreelectronics.crm.util.RedactorTree
+import com.bizarreelectronics.crm.util.ReleaseTree
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.LocaleFormatInit
 import com.bizarreelectronics.crm.util.SessionTimeout
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
@@ -58,6 +65,9 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
     lateinit var sessionTimeout: SessionTimeout
 
     @Inject
+    lateinit var localeFormatInit: LocaleFormatInit
+
+    @Inject
     lateinit var fcmTokenRefresher: FcmTokenRefresher
 
     @Inject
@@ -65,6 +75,12 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
 
     @Inject
     lateinit var draftStore: DraftStore
+
+    @Inject
+    lateinit var releaseTree: ReleaseTree
+
+    @Inject
+    lateinit var anrMonitor: AnrMonitor
 
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
@@ -89,24 +105,44 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
         System.loadLibrary("sqlcipher")
         StrictModeInit.init() // §28 L2505 — DEBUG-only thread + VM policy logging
         super.onCreate()
+        // §27.3 — Apply saved timezone / currency overrides to the formatter singletons
+        // so all downstream date and price renders use the user's chosen locale settings.
+        localeFormatInit.init()
         // §1 L228 / §28 L64 — plant Timber with a RedactorTree so all
         // Timber calls are sanitised before reaching Logcat or the delegate
         // tree. RedactorTree strips sensitive key-value pairs and then
         // delegates PII sweeps (tokens, email, phone, IMEI) to LogRedactor.
         // Must be planted BEFORE crashReporter.install() so that any
         // Timber usage during crash-reporter wiring is also covered.
+        // §32.4 — in DEBUG: DebugTree (full logcat). In release: ReleaseTree
+        // (Error + Warn only → redacted disk ring buffer, max 500 entries).
+        // Both paths are wrapped in RedactorTree so PII is stripped regardless
+        // of build variant before any log line reaches logcat or disk.
         val baseTree: Timber.Tree = if (BuildConfig.DEBUG) Timber.DebugTree()
-        else Timber.DebugTree() // TODO: replace with CrashReporterTree once a
-        // dedicated Timber-based release tree exists (currently CrashReporter
-        // operates as an UncaughtExceptionHandler, not a Timber.Tree).
+        else releaseTree
         Timber.plant(RedactorTree(baseTree))
         // §32.3 — wire the uncaught-exception handler before anything else
         // so init-path crashes are still captured.
         crashReporter.install()
+        // §32.8 — sample ActivityManager exit reasons (ANR) from the previous
+        // process session. Must run after Timber is planted so Timber.w() calls
+        // inside AnrMonitor reach RedactorTree → ReleaseTree / DebugTree.
+        // No-op on API < 30 (minSdk = 26).
+        anrMonitor.sample()
         // §13 L1591 — channel creation is now in NotificationChannelBootstrap
         // so it can be tested and reused independently of Application lifecycle.
         NotificationChannelBootstrap.registerAll(this)
         SyncWorker.schedule(this)
+        // §21.5 — Schedule secondary background workers (24h cache purge, 7d token refresh).
+        // KEEP policy means these are no-ops if the jobs are already queued — safe to call
+        // on every cold-start.
+        CachePurgeWorker.schedule(this)
+        TokenRefreshWorker.schedule(this)
+        // §45.1 — Daily health-score re-sync for all customers (~4 am advisory).
+        HealthScoreResyncWorker.schedule(this)
+        // §29.7 — Weekly SQLite VACUUM to reclaim fragmented pages from cache-purge
+        // and logout wipes. KEEP policy — safe to call on every cold-start.
+        RoomVacuumWorker.schedule(this)
         observeReconnect()
         startWebSocket()
         // §2.11 — confirm session validity + refresh user identity in the
@@ -231,6 +267,9 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
 
     /** Connect WebSocket for real-time SMS and ticket updates. */
     private fun startWebSocket() {
+        // §21.8 — Provide application context so the service can start
+        // WorkManager-based fallback polling when WebSocket is unavailable.
+        webSocketService.init(this)
         if (authPreferences.isLoggedIn && !authPreferences.serverUrl.isNullOrBlank()) {
             webSocketService.connect()
             webSocketEventHandler.startListening()
@@ -279,9 +318,24 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
         const val CH_DAILY_SUMMARY = "daily_summary"
         const val CH_SYNC = "sync"
         const val CH_BACKUP_REPORT = "backup_report"
+        // §51.3 — export-ready push: default-importance so the badge appears and
+        // the user gets a heads-up but it doesn't interrupt like a critical alert.
+        const val CH_EXPORT_READY = "export_ready"
 
         // §1.7 L245 — silent dedup channel for SMS while the thread is open.
         // IMPORTANCE_LOW: updates the shade badge without sound or vibration.
         const val CH_SMS_SILENT = "sms_silent"
+
+        // §73 — per-event matrix additional channels. Frozen constants.
+        const val CH_PAYMENT_DECLINED          = "payment_declined"
+        const val CH_INVOICE_OVERDUE           = "invoice_overdue"
+        const val CH_ESTIMATE_APPROVED         = "estimate_approved"
+        const val CH_SHIFT_STARTING            = "shift_starting"
+        const val CH_MANAGER_TIMEOFF           = "manager_timeoff"
+        const val CH_TEAM_MENTION              = "team_mention"
+        const val CH_WEEKLY_DIGEST             = "weekly_digest"
+        const val CH_SETUP_WIZARD              = "setup_wizard"
+        const val CH_SUBSCRIPTION_RENEWAL      = "subscription_renewal"
+        const val CH_INTEGRATION_DISCONNECTED  = "integration_disconnected"
     }
 }

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
 import { usePortalI18n } from './i18n';
 import { formatCurrency } from '../../utils/format';
+import toast from 'react-hot-toast';
 
 interface PortalTicketDetailProps {
   ticketId: number;
@@ -27,15 +28,32 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
   const { locale } = usePortalI18n();
   const [ticket, setTicket] = useState<api.TicketDetail | null>(initialData || null);
   const [loading, setLoading] = useState(!initialData);
-  // WEB-FV-005 (Fixer-B19 2026-04-25): track fetch errors so a failure
-  // doesn't strand the customer on an infinite spinner.
+  // WEB-S4-021 / WEB-FV-005: track fetch errors so a failure doesn't strand
+  // the customer on an infinite spinner; expose retry + toast on failure.
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (initialData) return;
+
+  const fetchTicket = useCallback(() => {
+    setLoading(true);
+    setError(null);
     api.getTicketDetail(ticketId)
       .then((t) => { setTicket(t); setError(null); })
-      .catch(() => setError('Could not load ticket. Please try again.'))
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const msg = status === 404
+          ? 'Ticket not found.'
+          : 'Could not load ticket details. Please try again.';
+        setError(msg);
+        toast.error(msg);
+      })
       .finally(() => setLoading(false));
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (initialData) return;
+    fetchTicket();
+    // fetchTicket is stable (ticketId via useCallback dep) — listing only what
+    // triggers a fresh fetch, not the callback identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId, initialData]);
 
   if (loading) {
@@ -48,8 +66,14 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-950">
-        <p role="alert" className="text-surface-500 dark:text-surface-400">{error}</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-950 gap-4 px-6 text-center">
+        <p role="alert" className="text-surface-600 dark:text-surface-300 text-sm">{error}</p>
+        <button
+          onClick={fetchTicket}
+          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors"
+        >
+          Try Again
+        </button>
       </div>
     );
   }

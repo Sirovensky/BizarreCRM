@@ -119,6 +119,7 @@ export class PageErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
+    try { sessionStorage.removeItem(CHUNK_RELOAD_SENTINEL); } catch { /* best-effort */ }
     this.setState({ hasError: false, error: null });
   };
 

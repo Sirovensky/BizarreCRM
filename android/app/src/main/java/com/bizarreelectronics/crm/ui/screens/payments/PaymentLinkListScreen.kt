@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.DateFormatter
@@ -87,17 +88,25 @@ fun PaymentLinkListScreen(
                 return@Scaffold
             }
 
-            // Status filter chips
+            // Status filter chips (SuggestionChip per M3-Expressive: non-selectable quick-filter)
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(statusFilters, key = { it }) { status ->
-                    FilterChip(
-                        selected = state.selectedStatus == status,
-                        onClick = { viewModel.onStatusFilterChanged(status) },
-                        label = { Text(status) },
-                    )
+                    if (state.selectedStatus == status) {
+                        // Active filter: filled tonal chip to show selection
+                        InputChip(
+                            selected = true,
+                            onClick = { viewModel.onStatusFilterChanged(status) },
+                            label = { Text(status) },
+                        )
+                    } else {
+                        SuggestionChip(
+                            onClick = { viewModel.onStatusFilterChanged(status) },
+                            label = { Text(status) },
+                        )
+                    }
                 }
             }
 
@@ -150,6 +159,11 @@ fun PaymentLinkListScreen(
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
+/**
+ * Pending confirmation for a destructive or sensitive action on this link.
+ */
+private enum class LinkPendingAction { VOID, RESEND, NONE }
+
 @Composable
 private fun PaymentLinkRow(
     link: PaymentLinkData,
@@ -158,62 +172,99 @@ private fun PaymentLinkRow(
     onRemind: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf(LinkPendingAction.NONE) }
     val amountDollars = "$${"%.2f".format(link.amount_cents / 100.0)}"
+
+    // ConfirmDialog — "Cancel link" (void)
+    if (pendingAction == LinkPendingAction.VOID) {
+        ConfirmDialog(
+            title = "Cancel payment link?",
+            message = "This will void the link and the customer will no longer be able to pay. This cannot be undone.",
+            confirmLabel = "Cancel link",
+            onConfirm = { pendingAction = LinkPendingAction.NONE; onVoid() },
+            onDismiss = { pendingAction = LinkPendingAction.NONE },
+            isDestructive = true,
+        )
+    }
+
+    // ConfirmDialog — "Resend" (re-send SMS/email)
+    if (pendingAction == LinkPendingAction.RESEND) {
+        ConfirmDialog(
+            title = "Resend payment request?",
+            message = "The customer will receive another SMS or email with the payment link.",
+            confirmLabel = "Resend",
+            onConfirm = { pendingAction = LinkPendingAction.NONE; onResend() },
+            onDismiss = { pendingAction = LinkPendingAction.NONE },
+            isDestructive = false,
+        )
+    }
 
     BrandCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Payment link $amountDollars, ${link.status}" },
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Use M3 ListItem for headline / supporting-text layout discipline
+        ListItem(
+            headlineContent = {
                 Text(amountDollars, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                link.memo?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                link.customer_name?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
-                }
-                Text(
-                    DateFormatter.formatRelative(link.created_at),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                BrandStatusBadge(label = link.status.replaceFirstChar { it.uppercase() }, status = link.status)
-
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More options", modifier = Modifier.size(16.dp))
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    link.memo?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        if (link.status == "pending") {
-                            DropdownMenuItem(
-                                text = { Text("Resend") },
-                                onClick = { showMenu = false; onResend() },
-                                leadingIcon = { Icon(Icons.Default.Send, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Remind") },
-                                onClick = { showMenu = false; onRemind() },
-                                leadingIcon = { Icon(Icons.Default.Notifications, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Void", color = MaterialTheme.colorScheme.error) },
-                                onClick = { showMenu = false; onVoid() },
-                                leadingIcon = { Icon(Icons.Default.Cancel, null, tint = MaterialTheme.colorScheme.error) },
-                            )
+                    link.customer_name?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        DateFormatter.formatRelative(link.created_at),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            leadingContent = {
+                Icon(
+                    Icons.Default.Link,
+                    contentDescription = "Payment link",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BrandStatusBadge(label = link.status.replaceFirstChar { it.uppercase() }, status = link.status)
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options for $amountDollars link")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            if (link.status == "pending") {
+                                DropdownMenuItem(
+                                    text = { Text("Resend") },
+                                    onClick = { showMenu = false; pendingAction = LinkPendingAction.RESEND },
+                                    leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Resend link") },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Remind") },
+                                    onClick = { showMenu = false; onRemind() },
+                                    leadingIcon = { Icon(Icons.Default.Notifications, contentDescription = "Send reminder") },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Cancel link", color = MaterialTheme.colorScheme.error) },
+                                    onClick = { showMenu = false; pendingAction = LinkPendingAction.VOID },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Cancel, contentDescription = "Cancel link", tint = MaterialTheme.colorScheme.error)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
-            }
-        }
+            },
+        )
     }
 }

@@ -57,3 +57,19 @@ data class MorningChecklistCompleteBody(
     @SerializedName("completed_steps") val completedSteps: List<Int>,
     @SerializedName("completed_at_ms") val completedAtMs: Long,
 )
+
+/**
+ * §3.15 L589 — Body posted to `POST /morning-checklist/skip`.
+ *
+ * 404 on this endpoint is tolerated — the skip is recorded locally regardless.
+ * The server writes this event into the tenant audit log when the endpoint ships.
+ *
+ * @property dateKey   ISO-date string (yyyy-MM-dd) for the day that was skipped.
+ * @property staffId   ID of the staff member who skipped.
+ * @property skippedAtMs Epoch-ms timestamp of skip action.
+ */
+data class MorningChecklistSkipBody(
+    @SerializedName("date_key") val dateKey: String,
+    @SerializedName("staff_id") val staffId: Long,
+    @SerializedName("skipped_at_ms") val skippedAtMs: Long,
+)

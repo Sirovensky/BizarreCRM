@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package, Pencil, Save, X, Plus, Minus, Loader2, TrendingUp, TrendingDown, Printer } from 'lucide-react';
+import { ArrowLeft, Package, Pencil, Save, X, Plus, Minus, Loader2, TrendingUp, TrendingDown, Printer, History, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
+import { formatCurrency } from '@/utils/format';
 
 // Covers every field the detail form reads or writes. Loose `number | string`
 // types on numeric columns mirror the edit-field state shape (inputs return
@@ -67,6 +68,24 @@ export function InventoryDetailPage() {
   const item: any = data?.data?.data?.item;
   const movements: any[] = data?.data?.data?.movements || [];
   const taxClasses: any[] = taxData?.data?.data || [];
+
+  // WEB-S6-009: Price history (admin/manager only)
+  const { data: priceHistoryData } = useQuery({
+    queryKey: ['inventory-price-history', id],
+    queryFn: () => inventoryApi.priceHistory(itemId),
+    enabled: isValidId,
+    staleTime: 60_000,
+  });
+  const priceHistory: any[] = priceHistoryData?.data?.data || [];
+
+  // WEB-S6-010: Multi-location stock
+  const { data: locationStockData } = useQuery({
+    queryKey: ['inventory-location-stock', id],
+    queryFn: () => inventoryApi.locationStock(itemId),
+    enabled: isValidId,
+    staleTime: 60_000,
+  });
+  const locationStock: any = locationStockData?.data?.data;
 
   const updateMutation = useMutation({
     mutationFn: (d: InventoryFormItem) => inventoryApi.update(itemId, d as Parameters<typeof inventoryApi.update>[1]),
@@ -176,7 +195,7 @@ export function InventoryDetailPage() {
                 <button type="button" aria-label="Cancel edit" onClick={() => { setEditMode(false); setForm(item); }} className="px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={handleSave} disabled={updateMutation.isPending} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                <button type="button" onClick={handleSave} disabled={updateMutation.isPending} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save
                 </button>
@@ -184,7 +203,7 @@ export function InventoryDetailPage() {
             ) : (
               <>
                 {(item.sku || item.upc) && (
-                  <button type="button" onClick={handlePrintBarcode} disabled={barcodeLoading} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+                  <button type="button" onClick={handlePrintBarcode} disabled={barcodeLoading} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                     {barcodeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                     Print Barcode
                   </button>
@@ -354,7 +373,7 @@ export function InventoryDetailPage() {
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-                  <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                     {adjustMutation.isPending ? 'Saving...' : 'Apply'}
                   </button>
                 </div>
@@ -404,6 +423,61 @@ export function InventoryDetailPage() {
               </div>
             )}
           </div>
+
+          {/* WEB-S6-009: Cost Price History — admin/manager only */}
+          {priceHistory.length > 0 && (
+            <div className="card p-6">
+              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <History className="h-4 w-4" /> Cost Price History
+              </h2>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {priceHistory.map((h: any) => (
+                  <div key={h.id} className="flex items-center justify-between text-sm border-b border-surface-100 dark:border-surface-800 pb-2 last:border-0">
+                    <div>
+                      <span className="text-surface-500 text-xs">
+                        {h.old_price != null ? formatCurrency(h.old_price) : '—'} → <strong>{formatCurrency(h.new_price)}</strong>
+                      </span>
+                      {h.changed_by_name && (
+                        <span className="ml-2 text-xs text-surface-400">{h.changed_by_name}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-surface-400">{new Date(h.created_at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* WEB-S6-010: Multi-location stock */}
+          {locationStock && locationStock.locations && locationStock.locations.length > 1 && (
+            <div className="card p-6">
+              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <MapPin className="h-4 w-4" /> Stock by Location
+              </h2>
+              <div className="space-y-2">
+                {locationStock.locations.map((loc: any) => (
+                  <div key={loc.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn(
+                        'h-2 w-2 rounded-full flex-shrink-0',
+                        loc.is_primary ? 'bg-primary-500' : 'bg-surface-300',
+                      )} />
+                      <span className="text-surface-700 dark:text-surface-300">{loc.location_name}</span>
+                      {loc.is_default === 1 && (
+                        <span className="text-xs text-surface-400">(default)</span>
+                      )}
+                    </div>
+                    <span className={cn(
+                      'font-mono font-semibold',
+                      loc.is_primary ? 'text-surface-900 dark:text-surface-100' : 'text-surface-400',
+                    )}>
+                      {loc.in_stock}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

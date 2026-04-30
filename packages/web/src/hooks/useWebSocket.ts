@@ -9,15 +9,22 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 // ---------------------------------------------------------------------------
 interface WsState {
   isConnected: boolean;
+  // WEB-FAD-004 (Fixer-426B 2026-04-26): expose an `isWsOffline` flag that
+  // consumers can render as a "Realtime updates offline — refresh to retry"
+  // banner. Set after MAX_RECONNECT_ATTEMPTS consecutive failures.
+  isWsOffline: boolean;
   lastMessage: { type: string; data: unknown } | null;
   setConnected: (v: boolean) => void;
-  setLastMessage: (msg: { type: string; data: unknown }) => void;
+  setWsOffline: (v: boolean) => void;
+  setLastMessage: (msg: { type: string; data: unknown } | null) => void;
 }
 
 export const useWsStore = create<WsState>((set) => ({
   isConnected: false,
+  isWsOffline: false,
   lastMessage: null,
   setConnected: (v) => set({ isConnected: v }),
+  setWsOffline: (v) => set({ isWsOffline: v }),
   setLastMessage: (msg) => set({ lastMessage: msg }),
 }));
 
@@ -30,7 +37,7 @@ export const useWsStore = create<WsState>((set) => ({
 // main.tsx already runs on the same event.
 if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {
-    useWsStore.setState({ lastMessage: null, isConnected: false });
+    useWsStore.setState({ lastMessage: null, isConnected: false, isWsOffline: false });
   });
 }
 
@@ -190,6 +197,60 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     // NOTE: WS_EVENTS.CUSTOMER_CREATED / CUSTOMER_UPDATED are defined in the
     // shared constants but the server never emits them. Removed from this map
     // to avoid silently accumulating dead entries.
+
+    // WEB-FO-011: additional entity invalidations. These event strings use the
+    // same snake_case convention as the server ws broadcast helpers. If the
+    // server doesn't emit a given event yet the entry is harmless (it never
+    // matches) but ensures the cache is kept fresh as soon as the server wires
+    // up the broadcast.
+    'customer:created': {
+      queryKeys: [['customers']],
+      toast: () => 'New customer added',
+    },
+    'customer:updated': {
+      queryKeys: [['customers']],
+      toast: undefined,
+    },
+    'payment:created': {
+      queryKeys: [['payments'], ['invoices'], ['dashboard']],
+      toast: undefined,
+    },
+    'payment:updated': {
+      queryKeys: [['payments'], ['invoices']],
+      toast: undefined,
+    },
+    'estimate:created': {
+      queryKeys: [['estimates']],
+      toast: () => 'New estimate created',
+    },
+    'estimate:updated': {
+      queryKeys: [['estimates']],
+      toast: undefined,
+    },
+    'expense:created': {
+      queryKeys: [['expenses']],
+      toast: undefined,
+    },
+    'expense:updated': {
+      queryKeys: [['expenses']],
+      toast: undefined,
+    },
+    'gift_card:created': {
+      queryKeys: [['gift-cards']],
+      toast: undefined,
+    },
+    'gift_card:updated': {
+      queryKeys: [['gift-cards']],
+      toast: undefined,
+    },
+    'automation:triggered': {
+      queryKeys: [['automations']],
+      toast: undefined,
+    },
+    'marketing:campaign_sent': {
+      queryKeys: [['marketing-campaigns']],
+      toast: undefined,
+    },
   };
 }
 
@@ -198,6 +259,12 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
 // ---------------------------------------------------------------------------
 const MAX_BACKOFF = 30_000;
 const INITIAL_BACKOFF = 1_000;
+// WEB-FAD-004 (Fixer-426B 2026-04-26): cap reconnect attempts so a
+// permanently-down server (DNS fail, sustained 502) doesn't keep retrying
+// forever at 30s intervals. After this many consecutive failures, set
+// `isWsOffline=true` and stop retrying. The visibility-change / auth-ready
+// handlers reset the counter and try again when the user re-engages.
+const MAX_RECONNECT_ATTEMPTS = 10;
 // WEB-FO-003: NAT idle timeouts (60-300s on cellular / corp NAT) silently
 // half-close WebSockets without firing onclose. Send a {type:'ping'} every
 // 30s and force-close the socket if no message of any kind has arrived
@@ -219,6 +286,8 @@ export function useWebSocket() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
   const authRejectedRef = useRef(false);
+  // WEB-FAD-004: consecutive-failure counter for the offline-banner gate.
+  const reconnectAttemptsRef = useRef(0);
   const invalidationMap = useRef(buildInvalidationMap());
   // WEB-FO-003 heartbeat plumbing.
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -452,6 +521,8 @@ export function useWebSocket() {
     };
   }, [getToken, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
+  const { setWsOffline } = useWsStore();
+
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
     if (authRejectedRef.current) return; // Don't reconnect if auth was explicitly rejected
@@ -459,14 +530,25 @@ export function useWebSocket() {
     if (document.visibilityState === 'hidden') return;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
 
-    const delay = backoffRef.current;
+    // WEB-FAD-004 (Fixer-426B 2026-04-26): cap consecutive attempts.
+    reconnectAttemptsRef.current += 1;
+    if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+      setWsOffline(true);
+      return; // stop retrying — banner now visible; visibility/auth-ready resets
+    }
+
+    // Add ±25% jitter to avoid thundering-herd on coordinated server bounces
+    // (100 clients all retry in lockstep without jitter).
+    const base = Math.min(backoffRef.current, MAX_BACKOFF);
+    const jitter = base * 0.25 * (Math.random() * 2 - 1); // ±25%
+    const delay = Math.max(INITIAL_BACKOFF, Math.round(base + jitter));
     backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF);
 
     reconnectTimerRef.current = setTimeout(() => {
       reconnectTimerRef.current = null;
       connect();
     }, delay);
-  }, [connect]);
+  }, [connect, setWsOffline]);
 
   // Keep the ref in sync so connect()'s closure always calls the latest version.
   scheduleReconnectRef.current = scheduleReconnect;
@@ -490,7 +572,17 @@ export function useWebSocket() {
         if (!hasToken) return;
         authRejectedRef.current = false;
       }
+      // Cancel any pending reconnect timer before initiating a direct connect
+      // so a visibility-resume doesn't race against an already-scheduled retry.
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       backoffRef.current = INITIAL_BACKOFF;
+      // WEB-FAD-004: user re-engaged — reset the offline-banner gate so the
+      // next N attempts get a fresh retry budget.
+      reconnectAttemptsRef.current = 0;
+      useWsStore.getState().setWsOffline(false);
       connect();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -499,6 +591,7 @@ export function useWebSocket() {
     // linger as an authenticated connection after credentials are cleared.
     const handleAuthCleared = () => {
       authRejectedRef.current = false; // allow reconnect on next login
+      reconnectAttemptsRef.current = 0; // WEB-FAD-004: reset attempt counter on logout
       disconnect();
     };
     window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
@@ -512,6 +605,9 @@ export function useWebSocket() {
     const handleAuthReady = () => {
       authRejectedRef.current = false;
       backoffRef.current = INITIAL_BACKOFF;
+      // WEB-FAD-004: fresh auth = fresh retry budget.
+      reconnectAttemptsRef.current = 0;
+      useWsStore.getState().setWsOffline(false);
       if (!wsRef.current) connect();
     };
     window.addEventListener('bizarre-crm:auth-ready', handleAuthReady);

@@ -40,6 +40,8 @@ private const val MINIMUM_FIRMWARE_VERSION = "1.0.0"
 fun HardwareSettingsScreen(
     onBack: () -> Unit,
     onNavigateToPrinters: () -> Unit,
+    onNavigateToScale: () -> Unit = {},
+    onNavigateToWizard: () -> Unit = {},
     viewModel: HardwareSettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -84,6 +86,52 @@ fun HardwareSettingsScreen(
                         supportingContent = { Text("Pair receipt, label, and invoice printers") },
                         leadingContent = {
                             Icon(Icons.Default.Print, contentDescription = null)
+                        },
+                        trailingContent = {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        },
+                    )
+                }
+            }
+
+            // §17.7 — Weight scale
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onNavigateToScale,
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Weight Scale") },
+                        supportingContent = { Text("Pair a Bluetooth scale for shipping / trade-in weight") },
+                        leadingContent = {
+                            Icon(Icons.Default.Scale, contentDescription = null)
+                        },
+                        trailingContent = {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        },
+                    )
+                }
+            }
+
+            // §17.11 — Add device wizard
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "PERIPHERALS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onNavigateToWizard,
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Add Device") },
+                        supportingContent = { Text("Guided setup for printers, scales, and card readers") },
+                        leadingContent = {
+                            Icon(Icons.Default.Add, contentDescription = null)
                         },
                         trailingContent = {
                             Icon(Icons.Default.ChevronRight, contentDescription = null)

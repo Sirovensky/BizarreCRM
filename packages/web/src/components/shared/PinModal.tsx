@@ -12,7 +12,7 @@ interface PinModalProps {
 }
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_SECONDS = 30;
+const LOCKOUT_SECONDS = 60;
 // SCAN-1168: persist the lockout across full page reloads — previously the
 // counter lived in useState only, so a user who hit the 5-attempt cap could
 // just refresh the page and get 5 fresh attempts. sessionStorage scopes per
@@ -170,13 +170,14 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div data-state="open" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pin-modal-title"
-        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        data-state="open"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">

@@ -269,7 +269,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           type="button"
           onClick={handleWalkIn}
           disabled={walkInLoading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2 text-sm font-medium text-surface-500 transition-colors hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2 text-sm font-medium text-surface-500 transition-colors hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <UserX className="h-4 w-4" />
           {walkInLoading ? 'Loading…' : 'Walk-in (no customer info)'}

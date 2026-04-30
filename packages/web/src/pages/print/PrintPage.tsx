@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import JsBarcode from 'jsbarcode'; // eslint-disable-line
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatPhone } from '@/utils/format';
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
@@ -155,27 +155,6 @@ function isSafeSignature(value: string | null | undefined): boolean {
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
-function formatDate(d: string | null | undefined) {
-  if (!d) return '';
-  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
-  return new Date(d).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatDateTime(d: string | null | undefined) {
-  if (!d) return '';
-  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
-  const dt = new Date(d);
-  return dt.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' (' + dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) + ')';
-}
-
-function formatPhone(p: string | null | undefined) {
-  if (!p) return '';
-  const digits = p.replace(/\D/g, '');
-  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  if (digits.length === 11) return `+${digits[0]} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  return p;
-}
 
 function money(v: number | null | undefined) {
   return formatCurrency(v ?? 0);
@@ -687,7 +666,10 @@ function PageReceipt({ ticket, config, isReceiptType }: {
                       <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at) : ''}</div>
                     </td>
                     <td style={{ ...valueCell, borderRight: 'none', whiteSpace: 'pre-wrap' }}>
-                      {(n.content || n.note || '').replace(/<[^>]*>/g, '')}
+                      {/* WEB-S4-033: use DOMPurify (already imported) instead of a
+                          regex strip so encoded entities, nested tags, and SVG
+                          payloads are handled correctly by the DOM parser. */}
+                      {DOMPurify.sanitize(n.content || n.note || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })}
                     </td>
                   </tr>
                 ))}
@@ -850,7 +832,26 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
               <td style={tdStyle}>
                 <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
                 {(d.service_name || d.service?.name) && <div>{d.service_name || d.service?.name}</div>}
-                {(d.parts?.length ?? 0) > 0 && (
+                {/* WEB-W1-017: receipt_cfg_*_page toggles for letter layout */}
+                {cfg('receipt_cfg_description_page') && (d.additional_notes || d.description) && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Notes: {d.additional_notes || d.description}</div>
+                )}
+                {cfg('receipt_cfg_security_code_page') && d.security_code && (
+                  <div style={{ fontSize: 10, color: '#555' }}>Security Code: {d.security_code}</div>
+                )}
+                {cfg('receipt_cfg_po_so_page') && d.po_number && (
+                  <div style={{ fontSize: 10, color: '#555' }}>PO/SO#: {d.po_number}</div>
+                )}
+                {cfg('receipt_cfg_pre_conditions_page') && d.pre_conditions?.length > 0 && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Pre-conditions: {d.pre_conditions}</div>
+                )}
+                {cfg('receipt_cfg_post_conditions_page') && d.post_conditions?.length > 0 && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Post-conditions: {d.post_conditions}</div>
+                )}
+                {cfg('receipt_cfg_service_desc_page') && (d.warranty || d.warranty_timeframe) && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Warranty: {d.warranty || d.warranty_timeframe}</div>
+                )}
+                {cfg('receipt_cfg_parts_page') && (d.parts?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
                     {(d.parts ?? []).map((p: PrintPart, pi: number) => (
                       <div key={pi}>Part: {p.name || p.item_name} x{p.quantity || 1} — {money((p.price || 0) * (p.quantity || 1))}</div>
@@ -880,7 +881,11 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Payments</div>
           {payments.map((p: PrintPayment, i: number) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
-              <span>{p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}</span>
+              <span>
+                {p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}
+                {/* WEB-W1-017: receipt_cfg_transaction_id_page */}
+                {cfg('receipt_cfg_transaction_id_page') && p.transaction_id ? ` (txn: ${p.transaction_id})` : ''}
+              </span>
               <span>{money(p.amount)}</span>
             </div>
           ))}
@@ -966,7 +971,8 @@ export function PrintPage() {
     queryFn: () => ticketApi.get(numericId),
     enabled: idIsValid,
   });
-  const ticket = data?.data?.data as any;
+  // WEB-S4-032: cast to PrintTicket (defined above) instead of `any`.
+  const ticket = data?.data?.data as PrintTicket | undefined;
 
   const { data: configData } = useQuery({
     queryKey: ['settings', 'config'],

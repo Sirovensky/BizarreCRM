@@ -28,6 +28,14 @@ interface BenchTimerProps {
   ticketDeviceId?: number;
 }
 
+// WEB-FD-012 (Fixer-426B 2026-04-26): typed response shape for benchApi.timer.stop.
+// A server rename of `total_seconds` or `labor_cost_cents` now fails at build
+// instead of silently producing zero/NaN in the sidebar.
+interface BenchStopResponse {
+  total_seconds?: number;
+  labor_cost_cents?: number;
+}
+
 interface TimerData {
   id: number;
   ticket_id: number;
@@ -94,8 +102,23 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
     const interval = window.setInterval(() => {
       setLocalElapsed(anchor + Math.floor((Date.now() - start) / 1000));
     }, 1000);
-    return () => window.clearInterval(interval);
-  }, [isOurs, currentTimer?.id, currentTimer?.paused, currentTimer?.elapsed_seconds]);
+
+    // WEB-FO-014 (Fixer-426B 2026-04-26): re-anchor the client-side counter on
+    // visibility resume. When the laptop wakes from sleep the `start` anchor is
+    // stale — the interval fires immediately but `Date.now() - start` has
+    // jumped by the sleep duration, causing a visible snap. By refetching from
+    // the server on visibility resume we get the authoritative `elapsed_seconds`
+    // and the dep-array change restarts this effect with a fresh anchor.
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+    document.addEventListener('visibilitychange', handleVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisible);
+    };
+  }, [isOurs, currentTimer?.id, currentTimer?.paused, currentTimer?.elapsed_seconds, refetch]);
 
   const laborCost = useMemo(() => {
     const rate = currentTimer?.labor_rate_cents ?? laborRateCents;
@@ -144,7 +167,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
 
   const stopMut = useMutation({
     mutationFn: () => benchApi.timer.stop(currentTimer!.id),
-    onSuccess: (res: any) => {
+    onSuccess: (res: { data?: { data?: BenchStopResponse } }) => {
       const secs = res?.data?.data?.total_seconds ?? localElapsed;
       const cost = res?.data?.data?.labor_cost_cents ?? laborCost;
       toast.success(`Timer stopped. ${formatHMS(secs)} (${centsToDisplay(cost)})`);
@@ -194,7 +217,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
         <button
           onClick={() => startMut.mutate()}
           disabled={startMut.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <Play className="h-4 w-4" />
           Start work
@@ -206,14 +229,14 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <button
             onClick={() => pauseMut.mutate()}
             disabled={pauseMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Pause className="h-4 w-4" /> Pause
           </button>
           <button
             onClick={() => stopMut.mutate()}
             disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Square className="h-4 w-4" /> Stop
           </button>
@@ -225,14 +248,14 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <button
             onClick={() => resumeMut.mutate()}
             disabled={resumeMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Play className="h-4 w-4" /> Resume
           </button>
           <button
             onClick={() => stopMut.mutate()}
             disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Square className="h-4 w-4" /> Stop
           </button>

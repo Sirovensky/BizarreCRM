@@ -187,6 +187,15 @@ class AppPreferences @Inject constructor(
      */
     val criticalChannelIds: Set<String> = setOf("sla_breach", "security_event")
 
+    /**
+     * §21.6 — OEM task-killer prompt. Set to `true` after the one-time in-app
+     * educational banner ("Your device may delay background notifications…") has
+     * been shown so we never repeat it on subsequent launches.
+     */
+    var oemBatteryPromptShown: Boolean
+        get() = prefs.getBoolean("oem_battery_prompt_shown", false)
+        set(value) = prefs.edit().putBoolean("oem_battery_prompt_shown", value).apply()
+
     /** §3.5 — once the user dismisses the dashboard onboarding card, stay hidden. */
     var onboardingDismissed: Boolean
         get() = prefs.getBoolean("onboarding_dismissed", false)
@@ -352,6 +361,24 @@ class AppPreferences @Inject constructor(
         get() = prefs.getLong("last_fcm_token_refresh_at_ms", 0L)
         set(value) = prefs.edit().putLong("last_fcm_token_refresh_at_ms", value).apply()
 
+    // --- §73.9 — FCM token retry backoff counter ----------------------------
+    //
+    // Tracks the number of consecutive failed FCM token registration attempts
+    // in the current failure run. Written by FcmTokenRetryWorker on each retry
+    // attempt. Reset to 0 by DeviceTokenManager.register on every successful
+    // registration. Exposed in Settings → Notifications diagnostics row so
+    // support staff can see whether the device is in a retry loop.
+
+    /**
+     * §73.9 — Number of consecutive FCM token registration failures in the
+     * current backoff run. Zero on a fresh install or after a successful
+     * registration. Max value is [FcmTokenRetryWorker.MAX_ATTEMPTS] (7) at
+     * which point the retry chain stops and the foreground cycle takes over.
+     */
+    var fcmRetryAttemptCount: Int
+        get() = prefs.getInt("fcm_retry_attempt_count", 0)
+        set(value) = prefs.edit().putInt("fcm_retry_attempt_count", value).apply()
+
     // --- plan:L653 — pinned ticket IDs (local cache) -----------------------
     //
     // Up to 5 ticket IDs persisted locally as a comma-separated Long string.
@@ -412,6 +439,20 @@ class AppPreferences @Inject constructor(
         get() = prefs.getString("ticket_list_saved_view", "None") ?: "None"
         set(value) = prefs.edit().putString("ticket_list_saved_view", value).apply()
 
+    // --- §4.1 L660 — ticket list column visibility (tablet/ChromeOS) --------
+
+    /**
+     * §4.1 — Persisted column-visibility config for the ticket list.
+     * Stored as the encoded string produced by [TicketColumnVisibility.encode].
+     * Empty string means "use defaults" — decoded at read time so future default
+     * changes are picked up without a migration.
+     *
+     * Only surfaced on tablet / ChromeOS (`isMediumOrExpandedWidth()`).
+     */
+    var ticketColumnVisibility: String
+        get() = prefs.getString("ticket_column_visibility", "") ?: ""
+        set(value) = prefs.edit().putString("ticket_column_visibility", value).apply()
+
     // --- §3.13 L565–L567 — display / TV mode preferences --------------------
     //
     // [keepScreenOn] prevents the display from sleeping while the app is in the
@@ -426,6 +467,19 @@ class AppPreferences @Inject constructor(
     var keepScreenOn: Boolean
         get() = prefs.getBoolean("keep_screen_on", false)
         set(value) = prefs.edit().putBoolean("keep_screen_on", value).apply()
+
+    /**
+     * §56.2 — TV queue board customer-name privacy mode.
+     *
+     * When true, customer full names shown on the TV board are masked to
+     * first-name + last-initial (e.g. "John S.") so bystanders cannot
+     * read a customer's full name from across the room.
+     *
+     * Defaults false (full name shown) — shop owner opts in explicitly.
+     */
+    var tvPrivacyMode: Boolean
+        get() = prefs.getBoolean("tv_privacy_mode", false)
+        set(value) = prefs.edit().putBoolean("tv_privacy_mode", value).apply()
 
     // --- §2.14 [plan:L369-L378] — shared-device / counter-kiosk mode --------
     //
@@ -567,6 +621,7 @@ class AppPreferences @Inject constructor(
 
     companion object {
         private const val RECENT_CHECKIN_MAX = 3
+        internal const val RECENT_COMMANDS_MAX = 5
     }
 
     val recentCheckinCustomerIds: List<Long>
@@ -613,6 +668,48 @@ class AppPreferences @Inject constructor(
     var lastCelebrationDate: String?
         get() = prefs.getString("last_celebration_date", null)
         set(value) = prefs.edit().putString("last_celebration_date", value).apply()
+
+    // --- §36.5 — First-milestone celebration flags ----------------------------
+    //
+    // Three one-shot booleans track whether each onboarding milestone celebration
+    // has already been shown on this device. Once true they stay true forever so
+    // the confetti modal fires exactly once per milestone per install.
+    //
+    // Milestones watched:
+    //   FIRST_TICKET  — openTickets KPI transitions from 0 → ≥1 on the dashboard.
+    //   FIRST_SALE    — revenueToday KPI transitions from 0.0 → >0 on the dashboard.
+    //   FIRST_CUSTOMER — totalCustomers KPI transitions from 0 → ≥1 (derived from
+    //                    the allKpisZero → non-zero transition when only the customer
+    //                    count becomes non-zero).
+    //
+    // All three are plain prefs (not encrypted) — no PII stored.
+
+    /**
+     * §36.5 — true after the "First ticket created!" celebration has been shown.
+     * Flipped to true the first time the `openTickets` KPI crosses 0 → ≥1.
+     */
+    var hasCelebratedFirstTicket: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_ticket", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_ticket", value).apply()
+
+    /**
+     * §36.5 — true after the "First sale made!" celebration has been shown.
+     * Flipped to true the first time `revenueToday` crosses 0.0 → >0.
+     */
+    var hasCelebratedFirstSale: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_sale", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_sale", value).apply()
+
+    /**
+     * §36.5 — true after the "First customer added!" celebration has been shown.
+     * Flipped to true the first time the KPI grid transitions away from
+     * `allKpisZero` with the customer-count as the trigger (approximated by the
+     * openTickets staying 0 while revenue stays 0.0 but some KPI becomes non-zero,
+     * OR on first receipt of any customer data — see DashboardViewModel logic).
+     */
+    var hasCelebratedFirstCustomer: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_customer", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_customer", value).apply()
 
     // --- §3.7 L538 — dismissed announcement ID --------------------------------
 
@@ -717,6 +814,31 @@ class AppPreferences @Inject constructor(
     fun setMorningChecklistDismissed(date: String) {
         prefs.edit()
             .putBoolean("morning_checklist_dismissed_$date", true)
+            .putString("morning_checklist_last_date", date)
+            .apply()
+    }
+
+    /**
+     * §3.15 L589 — Returns true if the user explicitly skipped (not just dismissed)
+     * the morning checklist for [date], and the skip was noted locally.
+     *
+     * "Skip" differs from "dismiss": dismiss hides the banner without a server
+     * audit entry; skip records the action in the server audit log (404-tolerant).
+     *
+     * [date] should be an ISO-date string (yyyy-MM-dd).
+     */
+    fun morningChecklistSkippedFor(date: String): Boolean =
+        prefs.getBoolean("morning_checklist_skipped_$date", false)
+
+    /**
+     * §3.15 L589 — Mark the morning checklist as explicitly skipped for [date].
+     *
+     * Also updates [lastMorningChecklistDate] so the banner does not re-appear.
+     * Idempotent.
+     */
+    fun setMorningChecklistSkipped(date: String) {
+        prefs.edit()
+            .putBoolean("morning_checklist_skipped_$date", true)
             .putString("morning_checklist_last_date", date)
             .apply()
     }
@@ -837,6 +959,73 @@ class AppPreferences @Inject constructor(
 
     private fun serializeTileList(tiles: List<String>): String =
         "[${tiles.joinToString(",") { "\"$it\"" }}]"
+
+    // --- §54.4 — Command palette power-user toggle -------------------------
+    //
+    // When false, the command palette is not reachable by staff (Ctrl+K and
+    // long-press FAB do nothing). Defaults TRUE for admins and FALSE for
+    // non-admin users; the ViewModel enforces the role-default on first read.
+    // Surfaced via Settings > Display > "Command palette" toggle.
+
+    private val _commandPaletteEnabledFlow = MutableStateFlow(
+        prefs.getBoolean("command_palette_enabled", true),
+    )
+
+    /**
+     * §54.4 — observable command-palette enabled flag.
+     *
+     * Collect in [com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteViewModel]
+     * and at the Ctrl+K / long-press FAB call sites to gate the palette overlay.
+     */
+    val commandPaletteEnabledFlow: StateFlow<Boolean> = _commandPaletteEnabledFlow.asStateFlow()
+
+    /**
+     * §54.4 — command palette enabled toggle.
+     *
+     * True = Ctrl+K / long-press FAB opens the palette.
+     * False = palette is suppressed (intended for staff-only devices where it
+     * is deemed noise; admin can re-enable per-device).
+     *
+     * Default: `true` — on by default for all roles (admin can turn it off for staff).
+     */
+    var commandPaletteEnabled: Boolean
+        get() = prefs.getBoolean("command_palette_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("command_palette_enabled", value).apply()
+            _commandPaletteEnabledFlow.value = value
+        }
+
+    // --- §54.3 — Recent command IDs (palette MRU) --------------------------
+    //
+    // Stores the last N command IDs activated via the palette so the RECENT
+    // group shows them at the top on the next open. Capped at
+    // RECENT_COMMANDS_MAX entries; most-recent first. Stored as comma-separated
+    // string (same scheme as recentCheckinCustomerIds).
+    //
+    // Plain prefs are sufficient — command IDs are opaque strings, not PII.
+
+    /**
+     * §54.3 — ordered list of recently activated command IDs, most-recent first.
+     * Returns an empty list when no commands have been activated yet.
+     */
+    val recentCommandIds: List<String>
+        get() = prefs.getString("recent_command_ids", null)
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+    /**
+     * §54.3 — record [commandId] as the most-recently activated command.
+     * Deduplicates and trims to [RECENT_COMMANDS_MAX].
+     */
+    fun addRecentCommandId(commandId: String) {
+        if (commandId.isBlank()) return
+        val updated = (listOf(commandId) + recentCommandIds)
+            .distinct()
+            .take(RECENT_COMMANDS_MAX)
+        prefs.edit().putString("recent_command_ids", updated.joinToString(",")).apply()
+    }
 
     // --- §4.14 L786 — accepted waiver versions (re-sign detection) -----------
     //
@@ -1024,6 +1213,39 @@ class AppPreferences @Inject constructor(
             _highContrastFlow.value = value
         }
 
+    // --- §26.3 — Color-blind safe palette mode ----------------------------------
+    //
+    // Persisted as a key string matching [ColorBlindMode.key] so new enum values
+    // can be added without a migration (unknown keys fall back to [ColorBlindMode.None]).
+    // Sourced in MainActivity and passed to [BizarreCrmTheme] via the
+    // `colorBlindMode` parameter.
+
+    private val _colorBlindModeFlow = MutableStateFlow(
+        prefs.getString("color_blind_mode", "none") ?: "none",
+    )
+
+    /**
+     * §26.3 — Observable color-blind mode key.
+     *
+     * Collect in MainActivity via [collectAsState] so [BizarreCrmTheme] receives
+     * the updated [ColorBlindMode] on every pref change without an activity recreate.
+     */
+    val colorBlindModeFlow: StateFlow<String> = _colorBlindModeFlow.asStateFlow()
+
+    /**
+     * §26.3 — Color-blind safe palette selection.
+     *
+     * Stored as the [ColorBlindMode.key] string. Setting this immediately emits
+     * on [colorBlindModeFlow] so the theme recomposits in the same frame.
+     * Defaults to "none" (standard palette).
+     */
+    var colorBlindMode: String
+        get() = prefs.getString("color_blind_mode", "none") ?: "none"
+        set(value) {
+            prefs.edit().putString("color_blind_mode", value).apply()
+            _colorBlindModeFlow.value = value
+        }
+
     // --- plan:L2004 — Timezone override ------------------------------------
     //
     // Null means "use the device default". Non-null is a ZoneId string
@@ -1122,10 +1344,18 @@ class AppPreferences @Inject constructor(
 
     /**
      * plan:L1991 — Returns whether the [eventId] × [channelId] cell is enabled.
-     * Defaults true.
+     * Defaults true (backwards-compat overload; prefer the 3-arg version for new code).
      */
     fun getNotifMatrixEnabled(eventId: String, channelId: String): Boolean =
         prefs.getBoolean("notif_matrix_${eventId}_$channelId", true)
+
+    /**
+     * §73.1 — Returns whether the [eventId] × [channelId] cell is enabled,
+     * using [defaultValue] as the fallback instead of a global `true` so each
+     * event's shipped default (from the §73 table) is respected on a fresh install.
+     */
+    fun getNotifMatrixEnabled(eventId: String, channelId: String, defaultValue: Boolean): Boolean =
+        prefs.getBoolean("notif_matrix_${eventId}_$channelId", defaultValue)
 
     /**
      * plan:L1991 — Persist the [enabled] state for the [eventId] × [channelId] cell.
@@ -1133,6 +1363,27 @@ class AppPreferences @Inject constructor(
     fun setNotifMatrixEnabled(eventId: String, channelId: String, enabled: Boolean) {
         prefs.edit().putBoolean("notif_matrix_${eventId}_$channelId", enabled).apply()
     }
+
+    // --- §57 Kiosk / Lock-Task Mode -----------------------------------------
+    //
+    // [kioskModeEnabled] — master switch; MainActivity calls startLockTask() /
+    //   stopLockTask() in response to this pref via KioskModeScreen's
+    //   onStartLockTask / onStopLockTask callbacks.
+    //
+    // [kioskTarget] — "check_in" | "tv_board" selects which single-task
+    //   screen the app navigates to when kiosk mode activates.
+    //
+    // Both stored in plain prefs (operational settings, not credentials).
+
+    /** §57 — Whether kiosk / lock-task mode is currently enabled. */
+    var kioskModeEnabled: Boolean
+        get() = prefs.getBoolean("kiosk_mode_enabled", false)
+        set(value) = prefs.edit().putBoolean("kiosk_mode_enabled", value).apply()
+
+    /** §57 — Selected kiosk target: "check_in" | "tv_board". Default "check_in". */
+    var kioskTarget: String
+        get() = prefs.getString("kiosk_target", "check_in") ?: "check_in"
+        set(value) = prefs.edit().putString("kiosk_target", value).apply()
 
     // --- Global Search saved/pinned queries (item 8) -----------------------
     //
@@ -1156,6 +1407,107 @@ class AppPreferences @Inject constructor(
                 prefs.edit().putString("global_search_saved_queries", value).apply()
             }
         }
+
+    // --- §1.5 line 202 — tab navigation order (phone bottom bar) ---------------
+    //
+    // Stores the user's preferred order for the four primary navigation tabs
+    // (Dashboard, Tickets, POS, Messages). Persisted as a comma-separated string
+    // of route identifiers matching [Screen].route values. The "More" tab is always
+    // appended as the fifth slot and is not user-reorderable.
+    //
+    // Default order: dashboard,tickets,pos,messages
+    // On fresh install or on any parse error the default order is returned so the
+    // bottom bar is never empty. Unknown route tokens are silently stripped; if the
+    // result is shorter than the four canonical tabs, the canonical default fills
+    // the gaps (forward-compatibility when new tabs are added).
+
+    private val _tabNavOrderFlow = MutableStateFlow(
+        prefs.getString("tab_nav_order", null) ?: "",
+    )
+
+    /**
+     * §1.5 line 202 — observable tab nav order.
+     *
+     * Emits the raw comma-separated route string. Consumers should call
+     * [com.bizarreelectronics.crm.util.TabNavPrefs.decodeOrder] to convert to a
+     * typed list. Emits an empty string on a fresh install (signals "use default").
+     */
+    val tabNavOrderFlow: StateFlow<String> = _tabNavOrderFlow.asStateFlow()
+
+    /**
+     * §1.5 line 202 — persisted tab order as a comma-separated route string.
+     *
+     * Write via [com.bizarreelectronics.crm.util.TabNavPrefs.encodeOrder] so
+     * serialisation stays in one place.
+     */
+    var tabNavOrder: String
+        get() = prefs.getString("tab_nav_order", null) ?: ""
+        set(value) {
+            prefs.edit().putString("tab_nav_order", value).apply()
+            _tabNavOrderFlow.value = value
+        }
+
+    // --- §71.5 — Post-upgrade "What's New" last-seen versionCode --------------
+    //
+    // Stores the versionCode of the build the user last launched.  On every
+    // cold start MainActivity compares BuildConfig.VERSION_CODE against this
+    // value; when the current code is strictly greater than the stored value
+    // the app has been upgraded and [WhatsNewDialog] is presented.  After the
+    // user dismisses the dialog MainActivity writes the new versionCode here
+    // so the dialog is not shown again for the same build.
+    //
+    // Default 0 so a fresh install always triggers the dialog on first launch,
+    // giving new users a brief orientation to the app's key features.
+
+    /**
+     * §71.5 — versionCode of the last build the user acknowledged in the
+     * "What's New" dialog.  0 on a fresh install.
+     *
+     * Write via [markWhatsNewSeen]. Read by MainActivity to decide whether to
+     * show [WhatsNewDialog].
+     */
+    var lastSeenVersionCode: Int
+        get() = prefs.getInt("last_seen_version_code", 0)
+        set(value) = prefs.edit().putInt("last_seen_version_code", value).apply()
+
+    /**
+     * §71.5 — Record that the user has seen the "What's New" dialog for
+     * [versionCode].  Idempotent — calling with the same code twice is safe.
+     */
+    fun markWhatsNewSeen(versionCode: Int) {
+        lastSeenVersionCode = versionCode
+    }
+
+    // --- §74.3 — Analytics / telemetry opt-out --------------------------------
+    //
+    // Default: true (enabled).  User can disable via Settings → Privacy →
+    // "Disable telemetry".  When false, TelemetryClient drops events without
+    // writing breadcrumbs or buffering for upload.
+    //
+    // NOTE: the local crash-log ring buffer (CrashReporter + ReleaseTree) is
+    // unaffected — it exists solely for developer diagnostics and is never
+    // transmitted to any server regardless of this flag.
+
+    /**
+     * §74.3 — Whether the user has opted in to privacy-first analytics telemetry.
+     *
+     * `true` (default) = events are recorded in the [Breadcrumbs] ring buffer
+     * and — once the server endpoint lands — flushed to the tenant server.
+     * `false` = [TelemetryClient.track] is a no-op.
+     */
+    var telemetryEnabled: Boolean
+        get() = prefs.getBoolean("telemetry_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("telemetry_enabled", value).apply()
+            _telemetryEnabledFlow.value = value
+        }
+
+    private val _telemetryEnabledFlow = MutableStateFlow(
+        prefs.getBoolean("telemetry_enabled", true),
+    )
+
+    /** Observable version of [telemetryEnabled] for reactive UI. */
+    val telemetryEnabledFlow: StateFlow<Boolean> = _telemetryEnabledFlow.asStateFlow()
 
     /**
      * Serialize a list of SavedQuery triples (id, name, query) into the raw string.

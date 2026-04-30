@@ -21,6 +21,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.EmployeeApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.data.remote.api.ShiftScheduleApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
@@ -44,6 +45,16 @@ data class EmployeePerformanceData(
 /** §14.3 L1629 — one day in the weekly timesheet grid */
 data class TimesheetDay(val label: String, val hoursWorked: Double)
 
+/** §14.2 L1619 — an upcoming shift entry shown in the detail screen. */
+data class UpcomingShift(
+    val id: Long,
+    val dayLabel: String,
+    val startTime: String,
+    val endTime: String,
+    val role: String?,
+    val notes: String?,
+)
+
 /** §14.3 L1628 — a single time-clock entry for the admin edit list */
 data class TimeEntry(
     val id: Long,
@@ -62,6 +73,9 @@ data class EmployeeDetailUiState(
     // §14.3 timesheet
     val weeklyTimesheet: List<TimesheetDay> = emptyList(),
     val timesheetLoading: Boolean = false,
+    // §14.2 L1619 — upcoming shifts
+    val upcomingShifts: List<UpcomingShift> = emptyList(),
+    val shiftsLoading: Boolean = false,
     // §14.3 time entries for admin edit
     val timeEntries: List<TimeEntry> = emptyList(),
     // admin action feedback
@@ -78,6 +92,7 @@ data class EmployeeDetailUiState(
 class EmployeeDetailViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val employeeApi: EmployeeApi,
+    private val shiftScheduleApi: ShiftScheduleApi,
     private val authPreferences: AuthPreferences,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -107,6 +122,7 @@ class EmployeeDetailViewModel @Inject constructor(
                     _state.value = _state.value.copy(isLoading = false, employee = match, error = null)
                     loadPerformance()
                     loadTimesheet()
+                    loadSchedule()
                 }
             } catch (t: Throwable) {
                 _state.value = _state.value.copy(
@@ -161,6 +177,44 @@ class EmployeeDetailViewModel @Inject constructor(
                 TimesheetDay(label = label, hoursWorked = hours)
             }
             _state.value = _state.value.copy(timesheetLoading = false, weeklyTimesheet = days)
+        }
+    }
+
+    /** §14.2 L1619 — load upcoming shifts for this employee; stub empty on 404. */
+    private fun loadSchedule() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(shiftsLoading = true)
+            val response = runCatching {
+                shiftScheduleApi.getShifts(userId = employeeId)
+            }.getOrNull()
+            val shifts = parseUpcomingShifts(response?.data)
+            _state.value = _state.value.copy(shiftsLoading = false, upcomingShifts = shifts)
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseUpcomingShifts(data: Any?): List<UpcomingShift> {
+        val list = when (data) {
+            is List<*> -> data
+            is Map<*, *> -> (data["shifts"] as? List<*>) ?: return emptyList()
+            else -> return emptyList()
+        }
+        val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        return list.take(7).mapNotNull { raw ->
+            val m = raw as? Map<*, *> ?: return@mapNotNull null
+            val startStr = m["start_time"] as? String ?: return@mapNotNull null
+            val dayLabel = runCatching {
+                val date = java.time.LocalDate.parse(startStr.take(10))
+                dayNames.getOrElse(date.dayOfWeek.value - 1) { "?" }
+            }.getOrDefault("?")
+            UpcomingShift(
+                id = (m["id"] as? Number)?.toLong() ?: return@mapNotNull null,
+                dayLabel = dayLabel,
+                startTime = startStr.drop(11).take(5),
+                endTime = (m["end_time"] as? String ?: "").drop(11).take(5),
+                role = m["role"] as? String,
+                notes = m["notes"] as? String,
+            )
         }
     }
 
@@ -537,6 +591,47 @@ private fun EmployeeDetailBody(
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── §14.2 L1619 — Schedule (upcoming shifts) ────────────────────────
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Upcoming shifts", style = MaterialTheme.typography.titleSmall)
+                    if (state.shiftsLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else if (state.upcomingShifts.isEmpty()) {
+                        Text(
+                            "No upcoming shifts",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        state.upcomingShifts.forEach { shift ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    shift.dayLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.width(40.dp),
+                                )
+                                Text(
+                                    "${shift.startTime} – ${shift.endTime}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    shift.role?.replaceFirstChar { it.uppercase() } ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }

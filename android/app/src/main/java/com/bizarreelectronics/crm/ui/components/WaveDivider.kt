@@ -1,7 +1,6 @@
 package com.bizarreelectronics.crm.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -50,23 +49,19 @@ import androidx.compose.ui.unit.dp
  */
 
 /**
- * Returns the appropriate magenta hairline color for the current theme.
- * Dark theme: slightly lighter magenta for contrast on dark backgrounds.
- * Light theme: the original brand magenta.
- * Intentionally decoupled from `MaterialTheme.colorScheme` so the decorative
- * flourish stays magenta regardless of primary/tertiary theme changes. See CROSS45-ext.
+ * 2026-04-27: Brand accent unified to cream (`colorScheme.primary`). Earlier
+ * magenta hairline (`#BC398F` / `#D966B5`) clashed with cream theme on the
+ * Login Server tab — see user feedback memory `feedback_brand_color.md`.
+ * Hairline now pulls from `colorScheme.primary` so it tracks future theme
+ * changes instead of drifting back to purple.
  */
-@Composable
-private fun defaultWaveColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFFD966B5) else Color(0xFFBC398F)
-
 @Composable
 fun WaveDivider(
     modifier: Modifier = Modifier,
-    color: Color = defaultWaveColor(),
+    color: Color = MaterialTheme.colorScheme.primary,
 ) {
     val outlineColor = MaterialTheme.colorScheme.outline
-    val magenta = color
+    val accent = color
 
     Canvas(
         // LOGIN-MOCK-085: reduced from 24dp → 16dp to compress the wave-divider
@@ -98,7 +93,7 @@ fun WaveDivider(
             style = Stroke(width = 1.5.dp.toPx()),
         )
 
-        // Magenta hairline: shifted 2dp below, single-pixel
+        // Accent hairline (cream): shifted 2dp below, single-pixel
         val hairlinePath = Path().apply {
             val offset = 2.dp.toPx()
             moveTo(0f, h * 0.5f + offset)
@@ -110,7 +105,7 @@ fun WaveDivider(
         }
         drawPath(
             path = hairlinePath,
-            color = magenta.copy(alpha = 0.30f),
+            color = accent.copy(alpha = 0.30f),
             style = Stroke(width = 1.dp.toPx()),
         )
     }

@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @Composable
 fun CheckInStep4Diagnostic(
@@ -46,12 +47,11 @@ fun CheckInStep4Diagnostic(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Brand cream `primary` not teal `secondaryContainer` — All OK
+                // is a flow shortcut button so it should match the bottom-shelf
+                // cream CTA pill, not look like a different action class.
                 Button(
                     onClick = onAllOk,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Set all tests to pass" },
@@ -114,16 +114,26 @@ private fun TriStateToggle(
     onSelect: (TriState) -> Unit,
     testLabel: String,
 ) {
+    val ext = LocalExtendedColors.current
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TriState.entries.forEach { state ->
             val isSelected = current == state
-            val color = when {
+            // PASS = success green (semantic, not brand secondary). FAIL = error
+            // red. Audit found PASS painting `secondaryContainer` (teal) which
+            // visually competed with the cream brand CTAs on the same screen
+            // and read as "another action" rather than "test passed".
+            val containerColor = when {
                 !isSelected -> MaterialTheme.colorScheme.surfaceVariant
-                state == TriState.PASS -> MaterialTheme.colorScheme.secondaryContainer
+                state == TriState.PASS -> ext.successContainer
                 state == TriState.FAIL -> MaterialTheme.colorScheme.errorContainer
-                else -> MaterialTheme.colorScheme.surfaceVariant
+                // UNKNOWN selected ("?" tested but indeterminate) — paint the
+                // brand-cream primaryContainer so the chip visibly distinguishes
+                // from the unselected surfaceVariant. Without this, selecting
+                // "?" looked identical to no selection.
+                else -> MaterialTheme.colorScheme.primaryContainer
             }
             Card(
+                colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
                 modifier = Modifier
                     .clickable { onSelect(state) }
                     .semantics {
@@ -136,9 +146,9 @@ private fun TriStateToggle(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     color = when {
                         !isSelected -> MaterialTheme.colorScheme.onSurfaceVariant
-                        state == TriState.PASS -> MaterialTheme.colorScheme.onSecondaryContainer
+                        state == TriState.PASS -> ext.success
                         state == TriState.FAIL -> MaterialTheme.colorScheme.onErrorContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
                     },
                 )
             }

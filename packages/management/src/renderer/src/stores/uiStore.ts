@@ -25,10 +25,15 @@ const THEME_KEY = 'bizarrecrm-dashboard-theme';
 /** Allowed density values. Anything not in this set is rejected. */
 const VALID_DENSITIES = new Set<string>(['default', 'compact']);
 
+// DASH-ELEC-146: Components use hardcoded dark-surface tokens — no `dark:`
+// Tailwind utilities have been added. Advertising 'light' as a valid theme
+// produces an unreadable white-text-on-white-bg UI. Until full light-mode
+// variants are implemented across all components, restrict to 'dark' only
+// so the Settings toggle cannot put the UI into an unusable state.
 /** Allowed theme values. Anything not in this set is rejected. */
-const VALID_THEMES = new Set<string>(['dark', 'light']);
+const VALID_THEMES = new Set<string>(['dark']);
 
-type Theme = 'dark' | 'light';
+type Theme = 'dark';
 
 /**
  * Read and validate the persisted theme from localStorage.

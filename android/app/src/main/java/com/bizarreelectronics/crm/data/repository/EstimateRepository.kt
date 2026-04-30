@@ -187,6 +187,46 @@ class EstimateRepository @Inject constructor(
         estimateDao.reconcileTempId(tempId, detail.toEntity())
     }
 
+    // ── Cursor-based paging (plan:L1325) ─────────────────────────────────────
+
+    /**
+     * Returns a single page of estimates for offline-first cursor paging.
+     *
+     * Online: calls [EstimateApi.getEstimatePage] with [cursor]; inserts results into Room
+     * then returns the same list plus the next cursor token.
+     * Offline: falls back to [EstimateDao.getPage] keyset query so the list still scrolls.
+     *
+     * Returns a [Pair] of (items, nextCursor). nextCursor is null when the page is the last.
+     */
+    suspend fun loadEstimatesPage(
+        cursor: String?,
+        limit: Int = 50,
+        filters: Map<String, String> = emptyMap(),
+    ): Pair<List<EstimateEntity>, String?> {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = estimateApi.getEstimatePage(cursor, limit, filters)
+                val page = response.data
+                if (page != null && page.estimates.isNotEmpty()) {
+                    estimateDao.insertAll(page.estimates.map { it.toEntity() })
+                    return Pair(page.estimates.map { it.toEntity() }, page.cursor)
+                }
+                // server returned empty or null data — treat as end of list
+                return Pair(emptyList(), null)
+            } catch (e: Exception) {
+                Log.d(TAG, "Cursor page fetch failed, falling back to Room: ${e.message}")
+            }
+        }
+
+        // Offline fallback: keyset pagination from local Room cache
+        val beforeCreatedAt = cursor ?: ""
+        val rows = estimateDao.getPage(beforeCreatedAt, limit)
+        // Derive the next cursor from the last row's created_at; null when fewer than
+        // [limit] rows returned (end of local cache).
+        val nextCursor = if (rows.size >= limit) rows.last().createdAt else null
+        return Pair(rows, nextCursor)
+    }
+
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return

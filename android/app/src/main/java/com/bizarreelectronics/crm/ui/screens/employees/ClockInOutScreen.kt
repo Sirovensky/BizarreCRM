@@ -29,8 +29,11 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.api.EmployeeApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.service.ClockInTileService
 import com.bizarreelectronics.crm.service.LiveUpdateNotifier
+import com.bizarreelectronics.crm.util.ClockShortcutPublisher
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.widget.glance.publishClockState
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.employees.components.ClockBreakPicker
 import android.location.LocationManager
@@ -162,14 +165,17 @@ class ClockInOutViewModel @Inject constructor(
                 settingsApi.clockIn(userId, mapOf("pin" to pin))
                 postClockedInNotification()
             }
+            val nowClockedIn = !wasClockedIn
             _state.value = _state.value.copy(
                 isProcessing = false,
-                isClockedIn = !wasClockedIn,
+                isClockedIn = nowClockedIn,
                 onBreak = false,
                 pin = "",
                 successMessage = if (wasClockedIn) "Clocked out successfully" else "Clocked in successfully",
             )
             if (wasClockedIn) stopBreakTimer()
+            // §14.10 — push new state to QS tile + Glance widget
+            broadcastClockState(nowClockedIn)
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 isProcessing = false,
@@ -196,9 +202,10 @@ class ClockInOutViewModel @Inject constructor(
         if (!wasClockedIn) postClockedInNotification()
         else cancelLiveUpdate()
 
+        val nowClockedIn = !wasClockedIn
         _state.value = _state.value.copy(
             isProcessing = false,
-            isClockedIn = !wasClockedIn,
+            isClockedIn = nowClockedIn,
             onBreak = false,
             pin = "",
             successMessage = if (wasClockedIn) {
@@ -208,6 +215,8 @@ class ClockInOutViewModel @Inject constructor(
             },
         )
         if (wasClockedIn) stopBreakTimer()
+        // \u00a714.10 \u2014 push new state to QS tile + Glance widget even when offline
+        broadcastClockState(nowClockedIn)
     }
 
     // endregion
@@ -276,6 +285,66 @@ class ClockInOutViewModel @Inject constructor(
         super.onCleared()
         stopBreakTimer()
         // Don't cancel live update on VM clear — notification stays while clocked in
+    }
+
+    // endregion
+
+    // region — §14.10 QS tile + Glance widget state broadcast
+
+    /**
+     * §14.10 — Propagates the latest clock state to both surfaces that reflect
+     * it outside the app:
+     *
+     * 1. **Quick Settings tile** (`ClockInTileService`) — writes a lightweight
+     *    SharedPreferences key and asks the OS to rebind the tile so its
+     *    [Tile.STATE_ACTIVE] / [Tile.STATE_INACTIVE] icon updates immediately.
+     *
+     * 2. **Glance home-screen widget** (`ClockInGlanceWidget`) — pushes the
+     *    new boolean + employee name into the Glance DataStore and triggers a
+     *    widget redraw via the Glance update machinery.
+     *
+     * Both calls are fire-and-forget: failures are logged but never surfaced
+     * to the user because the QS tile and widget are non-critical UI.
+     *
+     * This must be called from a coroutine (suspend context) because
+     * [publishClockState] is a suspend function.
+     */
+    private suspend fun broadcastClockState(isClockedIn: Boolean) {
+        // 1. Quick Settings tile (synchronous SharedPrefs + requestListeningState)
+        runCatching {
+            ClockInTileService.persistClockState(
+                context = appContext,
+                isClockedIn = isClockedIn,
+                isLoggedIn = true,
+            )
+        }.onFailure { android.util.Log.w("ClockInOutVM", "tile state update failed: ${it.message}") }
+
+        // §14.10 — Launcher App Shortcut: update dynamic shortcut to reflect new state
+        // (Clock in ↔ Clock out label + badge icon)
+        runCatching {
+            ClockShortcutPublisher.updateShortcut(
+                context = appContext,
+                isClockedIn = isClockedIn,
+            )
+        }.onFailure { android.util.Log.w("ClockInOutVM", "shortcut update failed: ${it.message}") }
+
+        // 2. Glance widget (suspend; iterates active widget instances)
+        val displayName = buildString {
+            append(authPreferences.userFirstName.orEmpty())
+            val last = authPreferences.userLastName.orEmpty()
+            if (last.isNotBlank()) {
+                if (isNotEmpty()) append(" ")
+                append(last)
+            }
+        }.ifBlank { authPreferences.username.orEmpty() }
+
+        runCatching {
+            publishClockState(
+                context = appContext,
+                isClockedIn = isClockedIn,
+                employeeName = displayName,
+            )
+        }.onFailure { android.util.Log.w("ClockInOutVM", "widget state update failed: ${it.message}") }
     }
 
     // endregion

@@ -60,8 +60,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
+import com.bizarreelectronics.crm.ui.screens.tickets.components.ConcurrentEditBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailHeaderRow
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPhotoGallery
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPrintActions
@@ -193,6 +195,29 @@ data class TicketDetailUiState(
     val waiverFeatureEnabled: Boolean = false,
     /** True while the waiver availability check is in-flight. */
     val waiverCheckInProgress: Boolean = false,
+    // ─── §4.13 L777 — Concurrent-edit banner (409) ───────────────────────────
+    /**
+     * True when the server returned HTTP 409 (stale `updated_at`). Drives
+     * [ConcurrentEditBanner] — user must tap Reload to re-fetch and merge.
+     * Cleared by [TicketDetailViewModel.clearConcurrentEdit] on successful reload.
+     */
+    val isConcurrentEdit: Boolean = false,
+    // ─── §4.13 L776 — Permission-denied ephemeral message ────────────────────
+    /**
+     * Non-null when a role-gated action was attempted without sufficient privileges.
+     * Shown as a one-shot Snackbar; consumed by the UI then cleared via
+     * [TicketDetailViewModel.clearPermissionDenied].
+     */
+    val permissionDeniedMessage: String? = null,
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+    /**
+     * True when the "Notify customer of delay" dialog is open from the overflow
+     * menu. The dialog pre-fills a delay template and calls [TicketDetailViewModel.sendDelayNotificationSms]
+     * on confirm.
+     */
+    val showNotifyDelayDialog: Boolean = false,
+    /** Non-null while the delay SMS is being sent; drives a progress indicator in the dialog. */
+    val isDelaySendInProgress: Boolean = false,
 )
 
 @HiltViewModel
@@ -209,6 +234,9 @@ class TicketDetailViewModel @Inject constructor(
     private val multipartUpload: MultipartUpload,
     private val smsApi: com.bizarreelectronics.crm.data.remote.api.SmsApi,
     private val waiverApi: WaiverApi,
+    // T-C6 — typeahead Quote add-row needs Inventory + RepairPricing.
+    private val inventoryApi: com.bizarreelectronics.crm.data.remote.api.InventoryApi,
+    private val repairPricingApi: com.bizarreelectronics.crm.data.remote.api.RepairPricingApi,
 ) : ViewModel() {
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -311,8 +339,12 @@ class TicketDetailViewModel @Inject constructor(
     private fun loadStatuses() {
         viewModelScope.launch {
             try {
-                val response = settingsApi.getStatuses()
-                val statuses = response.data?.statuses ?: emptyList()
+                // Server returns `data: [...]` array directly. The legacy
+                // `getStatuses()` wrapper expects `{ statuses: [...] }` nested
+                // shape and returns null on the array path; use the flat-list
+                // variant `getStatusList()` (added in §19.16) instead.
+                val response = settingsApi.getStatusList()
+                val statuses = response.data ?: emptyList()
                 _state.value = _state.value.copy(statuses = statuses)
             } catch (_: Exception) {
                 // Non-critical; status dropdown will be empty
@@ -412,13 +444,13 @@ class TicketDetailViewModel @Inject constructor(
         }
     }
 
-    fun addNote(text: String) {
+    fun addNote(text: String, type: String = "internal") {
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
-                    val response = ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                    val response = ticketApi.addNote(ticketId, mapOf("type" to type, "content" to text))
                     val noteId = response.data?.id ?: -1L
                     _state.value = _state.value.copy(
                         isActionInProgress = false,
@@ -473,13 +505,173 @@ class TicketDetailViewModel @Inject constructor(
                     entityType = "ticket_note",
                     entityId = ticketId,
                     operation = "add",
-                    payload = gson.toJson(mapOf("type" to "internal", "content" to text)),
+                    payload = gson.toJson(mapOf("type" to type, "content" to text)),
                 )
             )
             _state.value = _state.value.copy(
                 isActionInProgress = false,
                 actionMessage = "Note queued — will sync when online",
             )
+        }
+    }
+
+    // ── T-C6 — Quote add-row typeahead ─────────────────────────────────────────
+
+    private val _quoteSuggestions = MutableStateFlow<List<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>>(emptyList())
+    val quoteSuggestions: StateFlow<List<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>> =
+        _quoteSuggestions.asStateFlow()
+
+    private var quoteSuggestJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * T-C6 — debounced typeahead query against Inventory + RepairPricing.
+     *
+     * Caller invokes on every keystroke; we cancel any in-flight prior
+     * job, wait 250ms, then issue parallel `getItems(q=...)` and
+     * `getServices(q=...)` calls, merge the two lists, cap at 5 each,
+     * and emit them on [quoteSuggestions]. Empty query clears the
+     * dropdown immediately. When both server lists are empty, emits
+     * a single MISC fallback row for the user's literal query.
+     */
+    fun quoteSuggest(query: String) {
+        quoteSuggestJob?.cancel()
+        val q = query.trim()
+        if (q.isBlank()) {
+            _quoteSuggestions.value = emptyList()
+            return
+        }
+        quoteSuggestJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(250L)
+            val merged = mutableListOf<com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion>()
+            // Best-effort sequential calls — either may 404 on legacy DBs.
+            val parts: List<com.bizarreelectronics.crm.data.remote.dto.InventoryListItem> = try {
+                inventoryApi.getItems(mapOf("q" to q, "limit" to "5")).data?.items.orEmpty()
+            } catch (_: Exception) { emptyList() }
+            val services: List<com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem> = try {
+                repairPricingApi.getServices(query = q).data.orEmpty()
+            } catch (_: Exception) { emptyList() }
+
+            parts.take(5).forEach { p ->
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.PART,
+                    name = p.name ?: "(unnamed part)",
+                    meta = p.sku ?: p.upcCode,
+                    priceCents = ((p.price ?: 0.0) * 100.0).toLong(),
+                    inventoryItemId = p.id,
+                    inStock = p.inStock,
+                )
+            }
+            services.take(5).forEach { s ->
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.SVC,
+                    name = s.name,
+                    meta = s.category,
+                    priceCents = (s.laborPrice * 100.0).toLong(),
+                    repairServiceId = s.id,
+                )
+            }
+            if (merged.isEmpty()) {
+                merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
+                    kind = com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.MISC,
+                    name = "Add \"$q\" as one-off misc charge",
+                    meta = "Free-text line",
+                    priceCents = 0L,
+                )
+            }
+            _quoteSuggestions.value = merged
+        }
+    }
+
+    /**
+     * T-C6 — append a quote line to the device.
+     *
+     * PART suggestions ship a real [com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest]
+     * via the existing `tickets/devices/{deviceId}/parts` endpoint
+     * (server-wired today, supports inventory_item_id + price).
+     *
+     * SVC + MISC suggestions log the structured payload (Timber tag
+     * `T-C6-deferred`) and surface a "wiring deferred" snackbar — server
+     * routes for service-line + free-text MISC lines land in TODO.md
+     * T-C6-server. The UI is fully wired so the day the route exists,
+     * only this method's else-branches change.
+     *
+     * @param deviceId the ticket-device id to attach the line to.
+     *   When the ticket has no device yet we cannot ship anything; the
+     *   caller is expected to gate the add-row on a non-null device.
+     */
+    fun addQuoteLine(
+        deviceId: Long,
+        suggestion: com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion,
+    ) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            when (suggestion.kind) {
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.PART -> {
+                    val invId = suggestion.inventoryItemId
+                    if (invId == null) {
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Missing inventory id — cannot add",
+                        )
+                        return@launch
+                    }
+                    val req = com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest(
+                        inventoryItemId = invId,
+                        quantity = 1,
+                        price = suggestion.priceCents / 100.0,
+                    )
+                    runCatching { ticketApi.addPartToDevice(deviceId, req) }
+                        .onSuccess {
+                            _state.value = _state.value.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Added \"${suggestion.name}\"",
+                            )
+                            loadTicketDetail()
+                        }
+                        .onFailure { e ->
+                            _state.value = _state.value.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Add failed — ${e.message ?: "unknown error"}",
+                            )
+                        }
+                }
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.SVC -> {
+                    val payload = mapOf(
+                        "kind" to "service",
+                        "repair_service_id" to suggestion.repairServiceId,
+                        "name" to suggestion.name,
+                        "labor_price" to suggestion.priceCents / 100.0,
+                        "device_id" to deviceId,
+                        "ticket_id" to ticketId,
+                    )
+                    timber.log.Timber.tag("T-C6-deferred").i(
+                        "Service line payload (server endpoint pending): %s",
+                        gson.toJson(payload),
+                    )
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Service line wiring deferred — see TODO.md (T-C6-server)",
+                    )
+                }
+                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.MISC -> {
+                    val payload = mapOf(
+                        "kind" to "misc",
+                        "name" to suggestion.name,
+                        "amount_cents" to suggestion.priceCents,
+                        "device_id" to deviceId,
+                        "ticket_id" to ticketId,
+                    )
+                    timber.log.Timber.tag("T-C6-deferred").i(
+                        "Misc line payload (server endpoint pending): %s",
+                        gson.toJson(payload),
+                    )
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Misc line wiring deferred — see TODO.md (T-C6-server)",
+                    )
+                }
+            }
+            _quoteSuggestions.value = emptyList()
         }
     }
 
@@ -607,10 +799,13 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
             try {
-                val response = ticketApi.warrantyLookup(mapOf("query" to query))
-                val result = response.data
-                _state.value = if (result != null) {
-                    _state.value.copy(warrantyLoading = false, warrantyResult = result)
+                // Server lookup accepts imei/serial/phone as named query args.
+                // Caller's `query` is opaque — try imei (most common), fall back
+                // to serial if no result. Take the first match (server returns list).
+                val response = ticketApi.warrantyLookup(imei = query)
+                val first = response.data?.firstOrNull()
+                _state.value = if (first != null) {
+                    _state.value.copy(warrantyLoading = false, warrantyResult = first)
                 } else {
                     _state.value.copy(warrantyLoading = false, warrantyError = "No warranty record found.")
                 }
@@ -649,7 +844,7 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(deviceHistoryLoading = true)
             try {
                 val response = ticketApi.getDeviceHistory(imei = imei?.ifBlank { null }, serial = serial?.ifBlank { null })
-                val entries = response.data?.history ?: emptyList()
+                val entries = response.data ?: emptyList()
                 _state.value = _state.value.copy(
                     deviceHistoryLoading = false,
                     deviceHistoryEntries = entries,
@@ -1101,6 +1296,102 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
     // Override loadTicketDetail to detect 404 (L680)
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // §4.13 L776-L777 — Permission-denied + concurrent-edit helpers (additive)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Signal that a role-gated action was attempted without privileges.
+     * Sets [TicketDetailUiState.permissionDeniedMessage] which drives a one-shot Snackbar.
+     * Message follows §67 tone ("Ask your admin to enable this.").
+     */
+    fun signalPermissionDenied(action: String = "") {
+        val suffix = if (action.isNotBlank()) " ($action)" else ""
+        _state.value = _state.value.copy(
+            permissionDeniedMessage = "Ask your admin to enable this$suffix.",
+        )
+    }
+
+    /** Consume the permission-denied message after it has been shown. */
+    fun clearPermissionDenied() {
+        _state.value = _state.value.copy(permissionDeniedMessage = null)
+    }
+
+    /**
+     * Surface a concurrent-edit conflict (HTTP 409).
+     * Call from any PUT/PATCH catch block when `e.code() == 409`.
+     */
+    fun signalConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = true)
+    }
+
+    /** Dismiss the concurrent-edit banner (called before reload). */
+    fun clearConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = false)
+    }
+
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+
+    /** Open the "Notify customer of delay" dialog from the overflow menu. */
+    fun showNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = true)
+    }
+
+    /** Dismiss the notify-delay dialog without sending. */
+    fun dismissNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = false, isDelaySendInProgress = false)
+    }
+
+    /**
+     * Send the pre-filled delay SMS to the ticket's customer phone.
+     *
+     * Resolves phone from [TicketDetail.customer] (preferred) → [TicketEntity.customerPhone]
+     * (Room cache fallback). 404-tolerant: if the server returns 404 the dialog is still
+     * dismissed so the UI doesn't get stuck.
+     *
+     * @param message The (optionally edited) SMS body to send.
+     */
+    fun sendDelayNotificationSms(message: String) {
+        val phone = _state.value.ticketDetail?.customer?.phone
+            ?: _state.value.ticketDetail?.customer?.mobile
+            ?: _state.value.ticket?.customerPhone
+
+        if (phone.isNullOrBlank()) {
+            viewModelScope.launch {
+                withStateOnMain {
+                    copy(showNotifyDelayDialog = false, actionMessage = "No customer phone on file")
+                }
+            }
+            return
+        }
+
+        _state.value = _state.value.copy(isDelaySendInProgress = true)
+        viewModelScope.launch {
+            try {
+                smsApi.sendSms(mapOf("to" to phone, "message" to message))
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = "Delay notification sent",
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.tag("NotifyDelay").w(e, "Delay SMS send failed")
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = if ((e as? HttpException)?.code() == 404)
+                            "SMS not sent — server endpoint unavailable"
+                        else
+                            "Failed to send SMS: ${e.message}",
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -1133,6 +1424,8 @@ fun TicketDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val ticket = state.ticket
+    // T-C6 — typeahead suggestions flow drives the tablet QuoteAddRow.
+    val quoteSuggestions by viewModel.quoteSuggestions.collectAsState()
 
     // @audit-fixed: dialog visibility and the in-progress note text were lost
     // on rotation. The status dropdown is a transient menu so it can stay on
@@ -1175,6 +1468,16 @@ fun TicketDetailScreen(
         state.convertedInvoiceId?.let { invoiceId ->
             onNavigateToInvoice(invoiceId)
             viewModel.clearConvertedInvoiceId()
+        }
+    }
+
+    // §4.13 L776 — Permission-denied one-shot Snackbar.
+    // Shown when a role-gated action is attempted by a user without privileges.
+    LaunchedEffect(state.permissionDeniedMessage) {
+        val msg = state.permissionDeniedMessage
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearPermissionDenied()
         }
     }
 
@@ -1277,6 +1580,21 @@ fun TicketDetailScreen(
         }
     }
 
+    // ─── §4.22 — Notify customer of delay dialog ─────────────────────────────
+    if (state.showNotifyDelayDialog) {
+        val customerName = state.ticketDetail?.customer?.let { c ->
+            listOfNotNull(c.firstName, c.lastName).joinToString(" ").ifBlank { null }
+        } ?: ticket?.customerName ?: "Customer"
+        val orderId = ticket?.orderId?.let { "#$it" } ?: "your repair"
+        NotifyDelayDialog(
+            customerName = customerName,
+            orderId = orderId,
+            isSendInProgress = state.isDelaySendInProgress,
+            onSend = { msg -> viewModel.sendDelayNotificationSms(msg) },
+            onDismiss = { viewModel.dismissNotifyDelayDialog() },
+        )
+    }
+
     // ─── L740 — Status transition error snackbar ──────────────────────────────
     LaunchedEffect(state.statusTransitionError) {
         state.statusTransitionError?.let { err ->
@@ -1342,6 +1660,10 @@ fun TicketDetailScreen(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
+            // Width gate — tablet (sw >= 600 dp) renders its own top bar
+            // inside TicketDetailTabletLayoutV2 (T-C2 of the tablet
+            // redesign). Phone keeps the existing BrandTopAppBar.
+            if (com.bizarreelectronics.crm.util.isCompactWidth()) {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
             // sharedElement applied via titleContent so the orderId Text animates
             // from the list row without wrapping the whole TopAppBar.
@@ -1433,6 +1755,8 @@ fun TicketDetailScreen(
                             customerName = customerName,
                             deviceName = deviceName,
                             serverUrl = viewModel.serverUrl,
+                            // §55.3 — pass tracking URL so the label action can encode it in the QR
+                            trackingUrl = state.ticketDetail?.trackingUrl(),
                             snackbarHost = snackbarHostState,
                         )
                         // Overflow menu — Copy Link + permission-gated destructive actions
@@ -1455,6 +1779,61 @@ fun TicketDetailScreen(
                                         }
                                     },
                                 )
+                                // §55.1 — Share tracking link (customer-facing repair status URL)
+                                val trackingUrl = state.ticketDetail?.trackingUrl()
+                                if (trackingUrl != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_label)) },
+                                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, trackingUrl)
+                                                putExtra(
+                                                    Intent.EXTRA_SUBJECT,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
+                                                )
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    shareIntent,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
+                                                )
+                                            )
+                                        },
+                                    )
+                                }
+                                // §25.3 — Copy order ID (ticket #) to clipboard
+                                val orderId = ticket?.orderId ?: "T-$ticketId"
+                                DropdownMenuItem(
+                                    text = { Text("Copy order ID") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        ClipboardUtil.copy(context, "Order ID", orderId)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Order ID copied")
+                                        }
+                                    },
+                                )
+                                // §25.3 — Copy IMEI (PII → sensitive copy, auto-clears 30 s)
+                                val firstImei = state.devices.firstOrNull { !it.imei.isNullOrBlank() }?.imei
+                                if (firstImei != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy IMEI") },
+                                        leadingIcon = { Icon(Icons.Default.PhoneAndroid, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            // IMEI is PII — use sensitive copy so Android 13+
+                                            // suppresses clipboard preview and auto-clears after 30 s.
+                                            ClipboardUtil.copySensitive(context, "IMEI", firstImei)
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("IMEI copied (auto-clears in 30 s)")
+                                            }
+                                        },
+                                    )
+                                }
                                 // L725 — Check warranty
                                 DropdownMenuItem(
                                     text = { Text("Check warranty") },
@@ -1482,6 +1861,20 @@ fun TicketDetailScreen(
                                         viewModel.pinToDashboard()
                                     },
                                 )
+                                // §4.22 — Notify customer of delay (only when customer has a phone)
+                                val canNotifyDelay = !(state.ticketDetail?.customer?.phone.isNullOrBlank() &&
+                                    state.ticketDetail?.customer?.mobile.isNullOrBlank() &&
+                                    state.ticket?.customerPhone.isNullOrBlank())
+                                if (canNotifyDelay) {
+                                    DropdownMenuItem(
+                                        text = { Text("Notify customer of delay") },
+                                        leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            viewModel.showNotifyDelayDialog()
+                                        },
+                                    )
+                                }
                                 // L741 — QC sign-off (admin / manager / tech)
                                 run {
                                     val qcRole = state.userRole?.lowercase()?.let { r ->
@@ -1528,6 +1921,7 @@ fun TicketDetailScreen(
                     }
                 },
             )
+            } // closes `if (isCompactWidth())` — tablet renders its own top bar
         },
         bottomBar = {
             // AND-20260414-M9 (revised): previous attempt folded SMS +
@@ -1543,6 +1937,12 @@ fun TicketDetailScreen(
             // `navigationBarsPadding()` lives on `BottomAppBar` by default
             // via its Material3 windowInsets param, so the safe-area gap
             // is preserved.
+            //
+            // Tablet path renders its own actions in TabletTopAppBar +
+            // right-pane TabletComposeBar; suppress the phone bottom bar
+            // when the width class is medium/expanded so it does not
+            // overlap the right-pane compose bar.
+            if (com.bizarreelectronics.crm.util.isCompactWidth())
             BottomAppBar(contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1689,6 +2089,14 @@ fun TicketDetailScreen(
                 visible = state.isDeletedWhileViewing,
                 onClose = onBack,
             )
+            // §4.13 L777 — Concurrent-edit banner (HTTP 409 stale updated_at)
+            ConcurrentEditBanner(
+                visible = state.isConcurrentEdit,
+                onReload = {
+                    viewModel.clearConcurrentEdit()
+                    viewModel.loadTicketDetail()
+                },
+            )
             when {
                 state.isLoading -> {
                     BrandSkeleton(
@@ -1710,10 +2118,60 @@ fun TicketDetailScreen(
                     }
                 }
                 ticket != null -> {
-                    // L677 — tablet split-pane: content + related rail side-by-side
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        TicketDetailContent(
-                            modifier = Modifier.weight(1f),
+                    // Width gate — tablet (sw >= 600 dp) routes through the
+                    // new TicketDetailTabletLayoutV2 so subsequent phases of
+                    // the redesign (T-C2 onward, plan at
+                    // ~/.claude/plans/tablet-ticket-detail-redesign.md) can
+                    // replace the body one card at a time. Phone keeps the
+                    // existing single-column layout via the same Row block
+                    // unchanged. T-C1 is a transparent pass-through — no
+                    // visual change on either form factor.
+                    val existingRowBody: @Composable () -> Unit = {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            TicketDetailContent(
+                                modifier = Modifier.weight(1f),
+                                ticket = ticket,
+                                ticketId = ticketId,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedContentScope = animatedContentScope,
+                                ticketDetail = state.ticketDetail,
+                                devices = state.devices,
+                                notes = state.notes,
+                                history = state.history,
+                                photos = state.photos,
+                                statuses = state.statuses,
+                                payments = state.ticketDetail?.payments ?: emptyList(),
+                                employees = state.employees,
+                                isActionInProgress = state.isActionInProgress,
+                                isBenchTimerRunning = state.isBenchTimerRunning,
+                                reduceMotion = reduceMotion,
+                                padding = padding,
+                                onNavigateToCustomer = onNavigateToCustomer,
+                                onEditDevice = onEditDevice,
+                                onAddPhotos = onAddPhotos,
+                                serverUrl = viewModel.serverUrl,
+                                onStatusSelected = { viewModel.changeStatus(it) },
+                                onAddNote = { viewModel.addNote(it) },
+                                onNavigateToSms = onNavigateToSms,
+                                onDeletePhoto = { viewModel.deletePhoto(it) },
+                                onBenchStart = { viewModel.startBenchTimer() },
+                                onBenchStop = { viewModel.stopBenchTimer() },
+                            )
+                            // L677 — Related rail: tablet only; phone gets zero-size stub
+                            TicketRelatedRail(
+                                photos = state.photos,
+                                serverUrl = viewModel.serverUrl,
+                            )
+                        }
+                    }
+                    if (com.bizarreelectronics.crm.util.isCompactWidth()) {
+                        existingRowBody()
+                    } else {
+                        // Hoist phone resolution so both panes can use it.
+                        val tabletPhone: String? = state.ticketDetail?.customer?.phone?.takeIf { it.isNotBlank() }
+                            ?: state.ticketDetail?.customer?.mobile?.takeIf { it.isNotBlank() }
+                            ?: ticket.customerPhone
+                        com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.TicketDetailTabletLayoutV2(
                             ticket = ticket,
                             ticketId = ticketId,
                             sharedTransitionScope = sharedTransitionScope,
@@ -1730,21 +2188,204 @@ fun TicketDetailScreen(
                             isBenchTimerRunning = state.isBenchTimerRunning,
                             reduceMotion = reduceMotion,
                             padding = padding,
+                            onBack = onBack,
+                            ticketTitle = ticket.orderId ?: "T-$ticketId",
+                            currentStatusName = ticket.statusName ?: "",
+                            currentStatusId = ticket.statusId,
+                            onStatusSelected = { id ->
+                                // Route through the same notify-preview flow phone uses.
+                                viewModel.requestStatusChangeWithNotify(id)
+                            },
+                            deviceChipLabel = run {
+                                val firstDev = state.devices.firstOrNull()
+                                val model = listOfNotNull(
+                                    firstDev?.manufacturerName?.takeIf { it.isNotBlank() },
+                                    firstDev?.name?.takeIf { it.isNotBlank() }
+                                        ?: firstDev?.deviceName?.takeIf { it.isNotBlank() },
+                                ).joinToString(" ").ifBlank { null }
+                                val svc = firstDev?.category?.takeIf { it.isNotBlank() }
+                                listOfNotNull(model, svc).joinToString(" · ").ifBlank { null }
+                            },
+                            topBarActions = {
+                                // Print — opens server's /print/ticket/:id route. Disabled offline.
+                                run {
+                                    val isOnline by viewModel.isEffectivelyOnline.collectAsState()
+                                    val canPrint = viewModel.serverUrl.isNotBlank() && isOnline
+                                    IconButton(
+                                        enabled = canPrint,
+                                        onClick = {
+                                            val url = "${viewModel.serverUrl}/print/ticket/$ticketId?size=letter"
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        },
+                                    ) {
+                                        Icon(Icons.Default.Print, contentDescription = "Print")
+                                    }
+                                }
+                                // 1px divider between primary (Print) and tertiary (Pin / ⋮) actions.
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 6.dp)
+                                        .size(width = 1.dp, height = 24.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                )
+                                IconButton(onClick = { viewModel.togglePin() }) {
+                                    Icon(
+                                        Icons.Default.PushPin,
+                                        contentDescription = "Pin",
+                                        tint = if (state.ticketDetail?.isPinned == true)
+                                            MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box {
+                                    IconButton(onClick = { showOverflowMenu = true }) {
+                                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                    }
+                                    DropdownMenu(
+                                        expanded = showOverflowMenu,
+                                        onDismissRequest = { showOverflowMenu = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Copy link") },
+                                            leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                ClipboardUtil.copy(context, "Ticket link", "bizarrecrm://tickets/$ticketId")
+                                                scope.launch { snackbarHostState.showSnackbar("Link copied") }
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Copy order ID") },
+                                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                val orderId = ticket?.orderId ?: "T-$ticketId"
+                                                ClipboardUtil.copy(context, "Order ID", orderId)
+                                                scope.launch { snackbarHostState.showSnackbar("Order ID copied") }
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Check warranty") },
+                                            leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.showWarrantyDialog()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Device history") },
+                                            leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.showDeviceHistory()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Pin to dashboard") },
+                                            leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.pinToDashboard()
+                                            },
+                                        )
+                                    }
+                                }
+                            },
                             onNavigateToCustomer = onNavigateToCustomer,
                             onEditDevice = onEditDevice,
                             onAddPhotos = onAddPhotos,
                             serverUrl = viewModel.serverUrl,
-                            onStatusSelected = { viewModel.changeStatus(it) },
                             onAddNote = { viewModel.addNote(it) },
                             onNavigateToSms = onNavigateToSms,
                             onDeletePhoto = { viewModel.deletePhoto(it) },
                             onBenchStart = { viewModel.startBenchTimer() },
                             onBenchStop = { viewModel.stopBenchTimer() },
-                        )
-                        // L677 — Related rail: tablet only; phone gets zero-size stub
-                        TicketRelatedRail(
-                            photos = state.photos,
-                            serverUrl = viewModel.serverUrl,
+                            // T-C4 — left pane uses the new LeftMetaPane with the
+                            // redesigned Device + Customer cards. Quote / Photos /
+                            // Bench Timer slots are placeholders until T-C5..T-C7
+                            // land. Existing TicketDetailContent retired from
+                            // tablet here; phone keeps it via existingRowBody.
+                            leftPaneContent = {
+                                val firstDevice = state.devices.firstOrNull()
+                                val phone = tabletPhone
+                                com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.LeftMetaPane(
+                                    device = firstDevice,
+                                    customer = state.ticketDetail?.customer,
+                                    fallbackCustomerName = ticket.customerName,
+                                    fallbackCustomerPhone = ticket.customerPhone,
+                                    ticketDetail = state.ticketDetail,
+                                    devices = state.devices,
+                                    photos = state.photos,
+                                    serverUrl = viewModel.serverUrl,
+                                    isBenchTimerRunning = state.isBenchTimerRunning,
+                                    techName = state.ticketDetail?.assignedUser?.fullName,
+                                    onCustomerClick = ticket.customerId
+                                        ?.takeIf { it > 0 }
+                                        ?.let { id -> { onNavigateToCustomer(id) } },
+                                    onCall = phone?.takeIf { it.isNotBlank() }?.let { p ->
+                                        {
+                                            val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+                                                data = android.net.Uri.parse("tel:$p")
+                                            }
+                                            context.startActivity(dialIntent)
+                                        }
+                                    },
+                                    onSms = phone?.takeIf { it.isNotBlank() }?.let { p ->
+                                        onNavigateToSms?.let { sms -> { sms(p) } }
+                                    },
+                                    onEditDevice = {
+                                        firstDevice?.id?.let(onEditDevice)
+                                    },
+                                    onCheckout = onCheckout?.let { cb ->
+                                        { dueAmount ->
+                                            val displayName = state.ticketDetail?.customer?.let { c ->
+                                                listOfNotNull(c.firstName, c.lastName)
+                                                    .joinToString(" ")
+                                                    .ifBlank { null }
+                                            } ?: ticket.customerName ?: ""
+                                            cb(ticketId, dueAmount, displayName)
+                                        }
+                                    },
+                                    onAddPhoto = onAddPhotos?.let { cb ->
+                                        {
+                                            firstDevice?.id?.let { deviceId -> cb(ticketId, deviceId) }
+                                        }
+                                    },
+                                    onOpenPhoto = null, // wired with viewer integration in a follow-up commit.
+                                    onBenchStart = { viewModel.startBenchTimer() },
+                                    onBenchStop = { viewModel.stopBenchTimer() },
+                                    // T-C6 — Quote add-row typeahead.
+                                    quoteSuggestions = quoteSuggestions,
+                                    onQuoteQueryChange = { viewModel.quoteSuggest(it) },
+                                    onQuoteSuggestionPick = { sugg ->
+                                        firstDevice?.id?.let { devId ->
+                                            viewModel.addQuoteLine(devId, sugg)
+                                        }
+                                    },
+                                )
+                            },
+                            // T-C9 — right pane Activity feed (weight 1) +
+                            // pinned compose bar at the bottom.
+                            rightPaneContent = {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.feed.ActivityFeed(
+                                            history = state.history,
+                                            createdAt = state.ticketDetail?.createdAt ?: ticket.createdAt,
+                                            updatedAt = state.ticketDetail?.updatedAt ?: ticket.updatedAt,
+                                            assignedTo = state.ticketDetail?.assignedUser?.fullName,
+                                            slaHint = null,
+                                        )
+                                    }
+                                    com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.compose.TabletComposeBar(
+                                        onAddNote = { text, type ->
+                                            viewModel.addNote(text, type)
+                                        },
+                                        onNavigateToSms = onNavigateToSms,
+                                        customerPhone = tabletPhone,
+                                    )
+                                }
+                            },
                         )
                     }
                 }
@@ -1842,6 +2483,19 @@ private fun TicketDetailContent(
                     }
                 }
             }
+        }
+
+        // §4.2 — Status / urgency / due-date chip row (completes [~] header item)
+        // §70.3 — pass shared-element scopes so the status pill morphs during
+        // the list→detail transition (STATUS_CHIP key matched by TicketListRow).
+        item {
+            TicketDetailHeaderRow(
+                ticket = ticket,
+                ticketId = ticketId,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedContentScope = animatedContentScope,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         // Info row
@@ -2198,4 +2852,87 @@ private fun CompactBottomBarButton(
             style = MaterialTheme.typography.labelSmall,
         )
     }
+}
+
+// ─── §4.22 NotifyDelayDialog ──────────────────────────────────────────────────
+
+/**
+ * §4.22 — "One-tap Notify customer of delay" dialog.
+ *
+ * Opens from the ticket-detail overflow menu when the customer has a phone number
+ * on file. Pre-fills a delay template that the staff member can edit before sending.
+ * Calls [onSend] with the (possibly edited) body; caller drives [isSendInProgress]
+ * to show a spinner while the SMS is in-flight.
+ *
+ * The dialog is self-contained: it manages the mutable message body state internally
+ * and surfaces it to the caller only on confirm. This keeps the ViewModel free of
+ * intermediate text state.
+ */
+@Composable
+private fun NotifyDelayDialog(
+    customerName: String,
+    orderId: String,
+    isSendInProgress: Boolean,
+    onSend: (message: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Pre-filled template — staff can edit before sending.
+    var messageBody by rememberSaveable {
+        mutableStateOf(
+            "Hi $customerName, we wanted to let you know that $orderId is " +
+                "taking a bit longer than expected. We appreciate your patience " +
+                "and will update you as soon as it's ready. Thank you!"
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSendInProgress) onDismiss() },
+        title = {
+            Text(
+                text = "Notify Customer of Delay",
+                style = MaterialTheme.typography.titleMedium,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Edit the message below before sending. It will be sent as an SMS to the customer's phone number on file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("SMS message") },
+                    minLines = 4,
+                    maxLines = 8,
+                    enabled = !isSendInProgress,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSend(messageBody) },
+                enabled = !isSendInProgress && messageBody.isNotBlank(),
+            ) {
+                if (isSendInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("Send SMS")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSendInProgress,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }

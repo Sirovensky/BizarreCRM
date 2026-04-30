@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.data.local.db.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -15,6 +16,28 @@ interface InvoiceDao {
     @Query("SELECT * FROM invoices ORDER BY created_at DESC")
     fun getAll(): Flow<List<InvoiceEntity>>
 
+    // ── Paging3 sources (§7.1 cursor-based pagination) ──────────────────────
+
+    /**
+     * Unbounded paging source — all invoices newest-first.
+     * Consumed by [InvoiceRemoteMediator] via [InvoiceRepository.invoicesPaged].
+     */
+    @Query("SELECT * FROM invoices ORDER BY created_at DESC")
+    fun pagingSource(): PagingSource<Int, InvoiceEntity>
+
+    /**
+     * Status-scoped paging source for the status tabs (Paid / Unpaid / Partial / Void).
+     * The [status] value must match the server-returned status string exactly.
+     */
+    @Query("SELECT * FROM invoices WHERE status = :status ORDER BY created_at DESC")
+    fun pagingSourceByStatus(status: String): PagingSource<Int, InvoiceEntity>
+
+    /**
+     * Customer-scoped paging source — used by CustomerDetailScreen invoices tab.
+     */
+    @Query("SELECT * FROM invoices WHERE customer_id = :customerId ORDER BY created_at DESC")
+    fun pagingSourceByCustomer(customerId: Long): PagingSource<Int, InvoiceEntity>
+
     @Query("SELECT * FROM invoices WHERE id = :id")
     fun getById(id: Long): Flow<InvoiceEntity?>
 
@@ -27,6 +50,23 @@ interface InvoiceDao {
     /** Returns outstanding balance in **cents** (sum of `amount_due`). */
     @Query("SELECT SUM(amount_due) FROM invoices WHERE amount_due > 0")
     fun getOutstandingBalance(): Flow<Long?>
+
+    /**
+     * Keyset / cursor page for offline-first paging (§7.1).
+     *
+     * Pass [beforeCreatedAt] = "" to get the first page (no upper-bound filter).
+     * Subsequent pages use the [created_at] value of the last row as the cursor
+     * (exclusive upper bound).
+     */
+    @Query(
+        """
+        SELECT * FROM invoices
+        WHERE (:beforeCreatedAt = '' OR created_at < :beforeCreatedAt)
+        ORDER BY created_at DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getPage(beforeCreatedAt: String, limit: Int): List<InvoiceEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(invoices: List<InvoiceEntity>)

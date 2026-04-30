@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal vector preview shown in the launcher "Add widget" gallery for
+  ClockInGlanceWidget.  Clock-face icon with a status dot; simple enough to
+  render well at thumbnail size on any launcher.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="110dp"
+    android:height="40dp"
+    android:viewportWidth="110"
+    android:viewportHeight="40">
+
+    <!-- Widget background pill -->
+    <path
+        android:pathData="M8,0 L102,0 A8,8 0 0 1 110,8 L110,32 A8,8 0 0 1 102,40 L8,40 A8,8 0 0 1 0,32 L0,8 A8,8 0 0 1 8,0 Z"
+        android:fillColor="#1C1B1F"
+        android:fillAlpha="0.08" />
+
+    <!-- Clock face circle -->
+    <path
+        android:pathData="M26,8 A12,12 0 1 1 26,8.001 Z"
+        android:fillColor="#FDEED0"
+        android:strokeColor="#6750A4"
+        android:strokeWidth="1.5" />
+
+    <!-- Clock hands -->
+    <path
+        android:pathData="M26,12 L26,20 L31,20"
+        android:strokeColor="#6750A4"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Active status dot (green) -->
+    <path
+        android:pathData="M36,9 A4,4 0 1 1 36,9.001 Z"
+        android:fillColor="#4CAF50" />
+
+    <!-- Label "Clock In/Out" -->
+    <path
+        android:pathData="M46,16 L96,16"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Sub-label "Tap to open clock screen" -->
+    <path
+        android:pathData="M46,26 L84,26"
+        android:strokeColor="#49454F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

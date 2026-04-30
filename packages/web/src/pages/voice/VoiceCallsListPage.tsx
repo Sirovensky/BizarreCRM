@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -10,10 +11,65 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ShieldAlert,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { voiceApi, type VoiceCall } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
+
+// WEB-FK-009: Consent confirmation dialog shown before playing a recording
+// when the caller was not confirmed to have been informed of recording.
+function RecordingConsentDialog({
+  open,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="consent-dialog-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div className="w-full max-w-sm rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-2xl p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <ShieldAlert className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <h3 id="consent-dialog-title" className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-1">
+              Confirm Recording Disclosure
+            </h3>
+            <p className="text-sm text-surface-600 dark:text-surface-400">
+              This call has no confirmed disclosure on record. Was the customer informed that this call would be recorded?
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            Yes, Play Recording
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function formatDuration(seconds: number | null): string {
   if (seconds == null || seconds <= 0) return '—';
@@ -36,8 +92,18 @@ function hasRecording(call: VoiceCall): boolean {
   return Boolean(call.recording_url);
 }
 
-function openRecording(callId: number): void {
-  window.open(voiceApi.recordingPath(callId), '_blank', 'noopener,noreferrer');
+// WEB-W3-023: Fetch a short-lived signed URL from the server, then open it.
+// The signed URL is an HMAC-protected token valid for 5 minutes — the raw
+// /calls/:id/recording endpoint requires session auth which <audio> src cannot send.
+async function openRecordingSecure(callId: number): Promise<void> {
+  try {
+    const res = await voiceApi.recordingSignedUrl(callId);
+    const url = res.data?.data?.url;
+    if (!url) throw new Error('No URL returned');
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    toast.error('Could not load recording');
+  }
 }
 
 interface CallRowProps {
@@ -45,9 +111,52 @@ interface CallRowProps {
 }
 
 function CallRow({ call }: CallRowProps) {
+  const [loadingRec, setLoadingRec] = useState(false);
+  // WEB-FK-009: track whether the consent dialog is open for this row.
+  const [showConsentDialog, setShowConsentDialog] = useState(false);
   const isInbound = call.direction === 'inbound';
 
+  // Returns true if we need to show the consent dialog before playing.
+  // was_disclosed_to_caller = 1 means confirmed; anything else = needs confirm.
+  const needsConsentCheck = !call.was_disclosed_to_caller || call.was_disclosed_to_caller !== 1;
+
+  const doPlay = async () => {
+    setLoadingRec(true);
+    try {
+      await openRecordingSecure(call.id);
+    } finally {
+      setLoadingRec(false);
+    }
+  };
+
+  const handlePlay = () => {
+    if (needsConsentCheck) {
+      setShowConsentDialog(true);
+    } else {
+      void doPlay();
+    }
+  };
+
+  const handleConsentConfirm = () => {
+    setShowConsentDialog(false);
+    void doPlay();
+  };
+
+  const handleConsentCancel = () => {
+    setShowConsentDialog(false);
+  };
+
   return (
+    <>
+    {/* WEB-FK-009: render consent dialog via portal so it's not a child of <tr> */}
+    {showConsentDialog && createPortal(
+      <RecordingConsentDialog
+        open={showConsentDialog}
+        onConfirm={handleConsentConfirm}
+        onCancel={handleConsentCancel}
+      />,
+      document.body,
+    )}
     <tr className="border-t border-surface-100 dark:border-surface-800 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
       <td className="px-4 py-3 text-sm text-surface-700 dark:text-surface-300 font-mono">
         {call.from_number || '—'}
@@ -89,11 +198,16 @@ function CallRow({ call }: CallRowProps) {
       <td className="px-4 py-3">
         {hasRecording(call) ? (
           <button
-            onClick={() => openRecording(call.id)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+            onClick={handlePlay}
+            disabled={loadingRec}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             title="Open recording in new tab"
           >
-            <Play className="h-3 w-3" />
+            {loadingRec ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="h-3 w-3" />
+            )}
             Play
           </button>
         ) : (
@@ -101,6 +215,7 @@ function CallRow({ call }: CallRowProps) {
         )}
       </td>
     </tr>
+    </>
   );
 }
 
@@ -202,7 +317,7 @@ export function VoiceCallsListPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Previous
@@ -210,7 +325,7 @@ export function VoiceCallsListPage() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />

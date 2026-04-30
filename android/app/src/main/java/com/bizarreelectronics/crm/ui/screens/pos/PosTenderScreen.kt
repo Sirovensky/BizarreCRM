@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,9 +16,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -39,6 +47,8 @@ fun PosTenderScreen(
     var showSplitDialog by remember { mutableStateOf(false) }
     var showDrawerManualDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §38.6 / §38.3 — Loyalty points redemption dialog
+    var showLoyaltyDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when order completes
@@ -115,6 +125,17 @@ fun PosTenderScreen(
         )
     }
 
+    // ── §38.6 / §38.3 — Loyalty points redemption dialog ─────────────────────
+    if (showLoyaltyDialog) {
+        LoyaltyPointsDialog(
+            onApply = { membershipId, points ->
+                viewModel.applyLoyaltyPoints(membershipId, points)
+                showLoyaltyDialog = false
+            },
+            onDismiss = { showLoyaltyDialog = false },
+        )
+    }
+
     PosKeyboardShortcuts(
         // F1 — new sale: go back (caller pops Tender → Cart → Entry, or
         // PosCoordinator handles full reset via back-stack).
@@ -142,55 +163,60 @@ fun PosTenderScreen(
         // Ctrl+F — no search field on tender screen. No-op.
         onFocusSearch = {},
     ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                title = { Text("Tender") },
-                actions = {
-                    Surface(
-                        shape = RoundedCornerShape(99.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Text(
-                            state.totalCents.toDollarString(),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // ── Task 5: Overflow menu — "Open cash drawer" ────────────
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Open cash drawer") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showDrawerManualDialog = true
-                                },
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                },
+    // §23.5 PosFlowScaffold: PosTender is the final flow step (POS-Cart→Tender
+    // →Receipt). Title is just "Tender" (cart screen owns the customer pill);
+    // actions slot keeps the running-total pill + overflow menu so the cashier
+    // sees the amount due in the same place across cart and tender.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "Tender",
+        stepIndex = null,
+        totalSteps = 8,
+        onBack = onBack,
+        snackbarHost = {
+            SnackbarHost(
+                snackbarHostState,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
             )
+        },
+        actions = {
+            Surface(
+                shape = RoundedCornerShape(99.dp),
+                color = MaterialTheme.colorScheme.primary,
+            ) {
+                Text(
+                    state.totalCents.toDollarString(),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.semantics { contentDescription = "More options" },
+                ) {
+                    Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Open cash drawer") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showDrawerManualDialog = true
+                        },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
         },
         bottomBar = {
             TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
         // TASK-4: offline banner — zero-height when online
@@ -199,7 +225,8 @@ fun PosTenderScreen(
             pendingSaleCount = state.pendingSaleCount,
         )
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            // 16dp gutter unifies POS + CheckIn flow (audit H1).
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
         ) {
@@ -265,10 +292,13 @@ fun PosTenderScreen(
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
                     onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
+                    // NFC / Tap-to-pay: BlockChyp SDK pending — show snackbar until wired.
+                    onNfc = { viewModel.showMessage("Tap-to-pay coming soon (BlockChyp SDK pending)") },
                     onParkCart = { viewModel.parkCart() },
                     onStoreCredit = { viewModel.applyStoreCredit() },
                     onGiftCard = { showGiftCardDialog = true },
                     onInvoiceLater = { showInvoiceLaterConfirm = true },
+                    onLoyaltyPoints = { showLoyaltyDialog = true },
                 )
             }
         }
@@ -302,7 +332,15 @@ private fun BalanceHeroCard(state: PosTenderUiState) {
                     Text("TOTAL DUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(state.totalCents.toDollarString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                // session 2026-04-26 — a11y: color-blind safe remaining balance;
+                // merged semantics provide "Remaining: $X" so screen reader
+                // doesn't rely on primary color alone
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Remaining: ${state.remainingCents.toDollarString()}"
+                    },
+                ) {
                     Text("REMAINING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         state.remainingCents.toDollarString(),
@@ -358,8 +396,14 @@ private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // session 2026-04-26 — a11y: clearAndSetSemantics on visual-only badge
+        // so screen reader reads "Status: Paid" not just the ✓ glyph
         Box(
-            modifier = Modifier.size(26.dp).clip(CircleShape).background(success),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(success)
+                .clearAndSetSemantics { contentDescription = "Status: Paid" },
             contentAlignment = Alignment.Center,
         ) {
             Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFF002817))
@@ -391,17 +435,15 @@ private fun PaymentMethodGrid(
     onCardReader: () -> Unit,
     onCash: () -> Unit,
     onAch: () -> Unit,
+    onNfc: () -> Unit,
     onParkCart: () -> Unit,
     onStoreCredit: () -> Unit,
     onGiftCard: () -> Unit,
     onInvoiceLater: () -> Unit,
+    onLoyaltyPoints: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
-        // the shop's hardware path is a single Bluetooth/USB card reader (no
-        // device-to-device NFC), so the two collapse into one tile labelled
-        // 'Card / Tap'. Cash takes Tap-to-pay's slot since real-world walk-in
-        // sales still hand over physical bills more often than ACH.
+        // Mockup PHONE 5: Card-reader, Tap-to-pay (NFC), Cash, ACH as separate tiles.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "💳",
@@ -412,6 +454,16 @@ private fun PaymentMethodGrid(
                 modifier = Modifier.weight(1f),
             )
             PaymentTile(
+                emoji = "📱",
+                label = "Tap to pay",
+                sublabel = "NFC",
+                isPrimary = false,
+                onClick = onNfc,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PaymentTile(
                 emoji = "💵",
                 label = "Cash",
                 sublabel = "Receive · change due",
@@ -419,8 +471,6 @@ private fun PaymentMethodGrid(
                 onClick = onCash,
                 modifier = Modifier.weight(1f),
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "🏦",
                 label = "ACH / check",
@@ -429,6 +479,8 @@ private fun PaymentMethodGrid(
                 onClick = onAch,
                 modifier = Modifier.weight(1f),
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "⏸",
                 label = "Park cart",
@@ -468,6 +520,18 @@ private fun PaymentMethodGrid(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        // §38.6 / §38.3 — Loyalty points redemption tile.
+        // NOTE: server-side point deduction blocked — see PosTenderViewModel.applyLoyaltyPoints.
+        if (hasAttachedCustomer) {
+            PaymentTile(
+                emoji = "⭐",
+                label = "Loyalty points",
+                sublabel = "Redeem member points",
+                isPrimary = false,
+                onClick = onLoyaltyPoints,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -488,19 +552,19 @@ private fun PaymentTile(
     }
     val borderWidth = if (isPrimary && enabled) 1.5.dp else 1.dp
     val contentAlpha = if (enabled) 1f else 0.38f
-    // M3 Expressive: primary 'Card / Tap' tile uses MaterialShapes.Cookie9Sided
-    // so the canonical primary payment surface gets the alpha shape morph
-    // (visible cut-off edges). Secondary tiles stay rounded squares.
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-    val tileShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
-        MaterialShapes.Cookie9Sided.toShape()
-    else RoundedCornerShape(10.dp)
+    // 2026-04-26 audit: revert Cookie9Sided to plain 10dp rounded square
+    // (mockup PHONE 5 uses uniform 10px rounded square on all tender tiles —
+    // primary differs only via 1.5px border + cream label).
+    val tileShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp)
 
+    // session 2026-04-26 — a11y: Role.Button + 48dp min height on payment tile
     Column(
         modifier = modifier
             .clip(tileShape)
             .border(borderWidth, borderColor, tileShape)
             .background(MaterialTheme.colorScheme.surface)
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { role = Role.Button }
             .clickable(enabled = enabled, onClickLabel = label) { onClick() }
             .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -613,8 +677,11 @@ private fun CashTenderDialog(
     // Math.round avoids the float-truncation bug where 16.31 * 100 = 1630.999...
     // would .toLong() to 1630 and leave \$0.01 remaining on a fully-paid sale.
     val receivedCents = Math.round(received * 100)
-    val changeDollars = (received - remainingDollars).coerceAtLeast(0.0)
+    // session 2026-04-26 — ROUND-ERROR: compute change from Long cents (not Double dollars)
+    // to prevent floating-point display error (e.g. $2.4999... instead of $2.50).
+    val changeCents = (receivedCents - remainingCents).coerceAtLeast(0L)
     val canApply = receivedCents > 0L
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -627,9 +694,11 @@ private fun CashTenderDialog(
                     label = { Text("Amount") },
                     prefix = { Text("$") },
                     singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
                     ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
@@ -637,9 +706,9 @@ private fun CashTenderDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (changeDollars > 0.0) {
+                if (changeCents > 0L) {
                     Text(
-                        "Change due: ${"$%.2f".format(changeDollars)}",
+                        "Change due: ${changeCents.toDollarString()}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = LocalExtendedColors.current.success,
@@ -656,6 +725,83 @@ private fun CashTenderDialog(
     )
 }
 
+// ─── Loyalty points redemption dialog ────────────────────────────────────────
+
+/**
+ * §38.6 / §38.3 — Dialog for redeeming loyalty points at POS.
+ *
+ * Cashier enters the customer's membership ID and the number of points to
+ * redeem. Points are converted at 1 pt = $0.01 and applied as a
+ * `loyalty_points` tender via [PosTenderViewModel.applyLoyaltyPoints].
+ *
+ * NOTE: server-side point deduction is not yet implemented — see
+ * [PosTenderViewModel.applyLoyaltyPoints] for the full rationale.
+ */
+@Composable
+private fun LoyaltyPointsDialog(
+    onApply: (membershipId: Long, pointsToRedeem: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var membershipIdText by remember { mutableStateOf("") }
+    var pointsText by remember { mutableStateOf("") }
+    val membershipId = membershipIdText.toLongOrNull()
+    val points = pointsText.toIntOrNull()?.takeIf { it > 0 }
+    val dollarValue = points?.let { it * 1L }
+    val canApply = membershipId != null && points != null
+    val focusManager = LocalFocusManager.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Redeem loyalty points") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = membershipIdText,
+                    onValueChange = { membershipIdText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Membership ID") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = pointsText,
+                    onValueChange = { pointsText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Points to redeem") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (dollarValue != null) {
+                    Text(
+                        "Value: ${(dollarValue).toDollarString()} (1 pt = \$0.01)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Note: point balance is deducted server-side when the next sync completes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canApply,
+                onClick = { onApply(membershipId!!, points!!) },
+            ) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 // ─── Bottom action bar ────────────────────────────────────────────────────────
 
 @Composable
@@ -665,7 +811,7 @@ private fun TenderActionBar(state: PosTenderUiState, onFinalize: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Button(
                 onClick = onFinalize,
                 enabled = state.isFullyPaid && !state.isProcessing,

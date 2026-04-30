@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
@@ -7,14 +8,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,8 +30,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.sync.FcmTokenRetryWorker
+import com.bizarreelectronics.crm.service.NotificationHistoryStore
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.DeviceTokenManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.launch
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +59,15 @@ data class NotifEvent(
     val id: String,
     val title: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    /** Per-channel default-on map. Keys: "push", "sms", "email". True = default ON. */
+    val defaultsOn: Map<String, Boolean> = mapOf("push" to true, "sms" to false, "email" to false),
+    /** If true the user has flipped this cell away from its default value. */
+    // (derived at call-site from AppPreferences; stored here as compile-time reference only)
+)
+
+// §73.1 — events marked as "high-volume" warn the user before enabling SMS.
+val HIGH_VOLUME_SMS_EVENTS = setOf(
+    "sms_inbound", "ticket_status_auto", "low_stock",
 )
 
 /** L1992 — Notification channel IDs. */
@@ -73,21 +92,134 @@ data class NotificationSettingsUiState(
     val eventMatrix: Map<String, Boolean> = emptyMap(),
     // L1992 — per-channel ringtone URIs: map of channelId → uri string or null
     val channelSoundUris: Map<String, String?> = emptyMap(),
+    // §73.1 — high-volume SMS warning: set when user enables SMS on a high-volume event
+    val pendingHighVolumeSmsEvent: String? = null,
+    val pendingHighVolumeSmsChannel: String? = null,
+    // §73.8 — recent push history (last 100, newest first)
+    val recentHistory: List<NotificationHistoryStore.Entry> = emptyList(),
 )
 
 @HiltViewModel
 class NotificationSettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val appPreferences: AppPreferences,
+    private val notificationHistoryStore: NotificationHistoryStore,
+    private val deviceTokenManager: DeviceTokenManager,
 ) : ViewModel() {
 
-    /** L1991 — Events shown in the matrix. */
+    /** §73 — Full 21-event matrix matching the ActionPlan §73 table. */
     val notifEvents: List<NotifEvent> = listOf(
-        NotifEvent("new_ticket",             "New ticket",             Icons.Default.ConfirmationNumber),
-        NotifEvent("low_stock",              "Low stock",              Icons.Default.Inventory),
-        NotifEvent("appointment_reminder",   "Appointment reminder",   Icons.Default.Event),
-        NotifEvent("sla_breach",             "SLA breach",             Icons.Default.Warning),
-        NotifEvent("security_event",         "Security event",         Icons.Default.Security),
-        NotifEvent("payment_received",       "Payment received",       Icons.Default.Payments),
+        // Customer group
+        NotifEvent(
+            "sms_inbound", "SMS inbound",
+            Icons.Default.Sms,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "appointment_reminder", "Appointment reminder",
+            Icons.Default.Event,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "mention", "Ticket mention",
+            Icons.Default.AlternateEmail,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "team_mention", "Team chat mention",
+            Icons.Default.Forum,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        // Operational group
+        NotifEvent(
+            "ticket_assigned", "Ticket assigned",
+            Icons.Default.AssignmentInd,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "ticket_status_auto", "Ticket status change",
+            Icons.Default.ConfirmationNumber,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "estimate_approved", "Estimate approved",
+            Icons.Default.ThumbUp,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        // Admin / financial group
+        NotifEvent(
+            "payment_received", "Payment received",
+            Icons.Default.Payments,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "payment_declined", "Payment declined",
+            Icons.Default.CreditCardOff,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "invoice_overdue", "Invoice overdue",
+            Icons.Default.Receipt,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to true),
+        ),
+        NotifEvent(
+            "low_stock", "Low stock",
+            Icons.Default.Inventory,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to true),
+        ),
+        NotifEvent(
+            "sla_breach", "SLA breach",
+            Icons.Default.Warning,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to true),
+        ),
+        // Staff group
+        NotifEvent(
+            "shift_starting", "Shift starting",
+            Icons.Default.AccessTime,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "timeoff_request", "Time-off request",
+            Icons.Default.BeachAccess,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        // Digest / admin
+        NotifEvent(
+            "daily_summary", "Daily summary",
+            Icons.Default.BarChart,
+            defaultsOn = mapOf("push" to false, "sms" to false, "email" to true),
+        ),
+        NotifEvent(
+            "weekly_digest", "Weekly digest",
+            Icons.Default.DateRange,
+            defaultsOn = mapOf("push" to false, "sms" to false, "email" to true),
+        ),
+        // Diagnostics
+        NotifEvent(
+            "setup_wizard_incomplete", "Setup wizard (24 h)",
+            Icons.Default.Build,
+            defaultsOn = mapOf("push" to false, "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "subscription_renewal", "Subscription renewal",
+            Icons.Default.Autorenew,
+            defaultsOn = mapOf("push" to false, "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "integration_disconnected", "Integration disconnected",
+            Icons.Default.LinkOff,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "backup_failed", "Backup failed",
+            Icons.Default.BackupTable,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
+        NotifEvent(
+            "security_event", "Security event",
+            Icons.Default.Security,
+            defaultsOn = mapOf("push" to true,  "sms" to false, "email" to false),
+        ),
     )
 
     /** L1992 — Channels shown as columns. */
@@ -96,9 +228,29 @@ class NotificationSettingsViewModel @Inject constructor(
     private fun buildMatrix(): Map<String, Boolean> = buildMap {
         notifEvents.forEach { event ->
             channels.forEach { channel ->
-                put("${event.id}_${channel.id}", appPreferences.getNotifMatrixEnabled(event.id, channel.id))
+                // §73.1 — Read persisted value; fall back to per-event default
+                // (not global true) so initial state matches the §73 table.
+                val defaultOn = event.defaultsOn[channel.id] ?: false
+                val key = "${event.id}_${channel.id}"
+                // Only use persisted value if it's been explicitly set; otherwise
+                // the default-on map governs. AppPreferences stores true as default
+                // for backwards compat, so we shadow with the event-specific default
+                // by checking whether a key has EVER been written. The simplest
+                // approach: write all defaults on first load so the matrix is
+                // always self-consistent.
+                put(key, appPreferences.getNotifMatrixEnabled(event.id, channel.id, defaultOn))
             }
         }
+    }
+
+    /**
+     * §73.1 — Returns whether [eventId]×[channelId] has been overridden away from
+     * its shipped default so the UI can grey out unmodified cells.
+     */
+    fun isAtDefault(eventId: String, channelId: String): Boolean {
+        val event = notifEvents.firstOrNull { it.id == eventId } ?: return true
+        val shippedDefault = event.defaultsOn[channelId] ?: false
+        return appPreferences.getNotifMatrixEnabled(eventId, channelId, shippedDefault) == shippedDefault
     }
 
     private fun buildSoundUris(): Map<String, String?> = buildMap {
@@ -120,9 +272,44 @@ class NotificationSettingsViewModel @Inject constructor(
             quietHoursEndMinutes = appPreferences.quietHoursEndMinutes,
             eventMatrix = buildMatrix(),
             channelSoundUris = buildSoundUris(),
+            recentHistory = notificationHistoryStore.snapshot(),
         ),
     )
     val state: StateFlow<NotificationSettingsUiState> = _state.asStateFlow()
+
+    /** §73.8 — Refresh the history snapshot (called when screen becomes visible). */
+    fun refreshHistory() {
+        _state.update { it.copy(recentHistory = notificationHistoryStore.snapshot()) }
+    }
+
+    /** §73.8 — Clear all history entries and refresh state. */
+    fun clearHistory() {
+        notificationHistoryStore.clear()
+        _state.update { it.copy(recentHistory = emptyList()) }
+    }
+
+    /**
+     * §73.9 — Manual FCM token re-registration.
+     *
+     * Cancels any active exponential-backoff retry chain so the manual attempt
+     * is not racing the WorkManager schedule, then forces an immediate fresh
+     * registration via [DeviceTokenManager.registerIfNeeded].
+     *
+     * Resets the "registered" flag so the fetch+POST happens even if the
+     * 24-hour staleness window has not elapsed.
+     *
+     * Surfaced in Settings → Notifications as a diagnostic/support row.
+     */
+    fun reRegisterPushToken() {
+        // §73.9 — cancel pending backoff retry before attempting manual re-register
+        // so the two paths don't race each other.
+        FcmTokenRetryWorker.cancel(context)
+        appPreferences.fcmTokenRegistered = false
+        appPreferences.fcmRetryAttemptCount = 0
+        viewModelScope.launch {
+            deviceTokenManager.registerIfNeeded()
+        }
+    }
 
     fun setEmailAlerts(enabled: Boolean) {
         appPreferences.notifEmailAlertsEnabled = enabled
@@ -170,12 +357,60 @@ class NotificationSettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(quietHoursEndMinutes = minutes)
     }
 
-    // L1991 — per-event matrix toggle
+    // L1991 — per-event matrix toggle.
+    // §73.1 — If enabling SMS on a high-volume event, raise a confirmation dialog
+    // instead of writing immediately; the UI calls [confirmHighVolumeSms] on OK.
     fun setMatrixEnabled(eventId: String, channelId: String, enabled: Boolean) {
+        if (shouldWarnHighVolumeSms(eventId, channelId, enabled)) {
+            _state.update { it.copy(
+                pendingHighVolumeSmsEvent = eventId,
+                pendingHighVolumeSmsChannel = channelId,
+            ) }
+            return
+        }
         appPreferences.setNotifMatrixEnabled(eventId, channelId, enabled)
         val key = "${eventId}_$channelId"
         _state.update { it.copy(eventMatrix = it.eventMatrix + (key to enabled)) }
     }
+
+    /** §73.1 — User confirmed enabling SMS on a high-volume event. */
+    fun confirmHighVolumeSms() {
+        val eventId = _state.value.pendingHighVolumeSmsEvent ?: return
+        val channelId = _state.value.pendingHighVolumeSmsChannel ?: return
+        appPreferences.setNotifMatrixEnabled(eventId, channelId, true)
+        val key = "${eventId}_$channelId"
+        _state.update { it.copy(
+            eventMatrix = it.eventMatrix + (key to true),
+            pendingHighVolumeSmsEvent = null,
+            pendingHighVolumeSmsChannel = null,
+        ) }
+    }
+
+    /** §73.1 — User cancelled enabling SMS on a high-volume event. */
+    fun cancelHighVolumeSms() {
+        _state.update { it.copy(
+            pendingHighVolumeSmsEvent = null,
+            pendingHighVolumeSmsChannel = null,
+        ) }
+    }
+
+    // §73.1 — Reset all per-event matrix cells to shipped defaults.
+    fun resetAllToDefaults() {
+        val newMatrix = buildMap<String, Boolean> {
+            notifEvents.forEach { event ->
+                channels.forEach { channel ->
+                    val defaultOn = event.defaultsOn[channel.id] ?: false
+                    appPreferences.setNotifMatrixEnabled(event.id, channel.id, defaultOn)
+                    put("${event.id}_${channel.id}", defaultOn)
+                }
+            }
+        }
+        _state.update { it.copy(eventMatrix = newMatrix) }
+    }
+
+    // §73.1 — whether to show the high-volume SMS warning for this event + channel combo.
+    fun shouldWarnHighVolumeSms(eventId: String, channelId: String, enabling: Boolean): Boolean =
+        enabling && channelId == "sms" && eventId in HIGH_VOLUME_SMS_EVENTS
 
     // L1992 — per-channel ringtone
     fun setChannelSoundUri(channelId: String, uri: String?) {
@@ -188,9 +423,14 @@ class NotificationSettingsViewModel @Inject constructor(
 @Composable
 fun NotificationSettingsScreen(
     onBack: () -> Unit,
+    // §19.3 — navigate to the in-app channel preview (importance / sound / badge per channel).
+    onChannelPreview: (() -> Unit)? = null,
     viewModel: NotificationSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+
+    // §73.8 — refresh the history snapshot whenever the screen is (re)composed.
+    LaunchedEffect(Unit) { viewModel.refreshHistory() }
 
     // L1992 — Ringtone picker launcher (per-channel).
     // We carry the channelId via a remembered mutable so the result callback
@@ -263,6 +503,77 @@ fun NotificationSettingsScreen(
                         checked = state.pushNotifications,
                         onCheckedChange = viewModel::setPushNotifications,
                     )
+                    NotificationToggleDivider()
+                    // §73.9 — Manual re-register row for diagnostics / support.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.reRegisterPushToken() }
+                            .padding(vertical = 10.dp)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription =
+                                    "Re-register push token. Tap to force a fresh registration with the server."
+                                role = Role.Button
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Re-register push token", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Force a fresh push token registration with the server.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    // §19.3 — Channel preview row: tap to open per-channel importance/sound/badge inspector.
+                    if (onChannelPreview != null) {
+                        NotificationToggleDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChannelPreview() }
+                                .padding(vertical = 10.dp)
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription =
+                                        "View notification channels. Tap to inspect and configure each push channel."
+                                    role = Role.Button
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "View notification channels",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    "Inspect importance, sound, badge and vibration per channel.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -350,7 +661,42 @@ fun NotificationSettingsScreen(
                 onToggle = { eventId, channelId, enabled ->
                     viewModel.setMatrixEnabled(eventId, channelId, enabled)
                 },
+                onResetAll = viewModel::resetAllToDefaults,
+                isAtDefault = { eventId, channelId -> viewModel.isAtDefault(eventId, channelId) },
             )
+
+            // §73.1 — High-volume SMS warning dialog
+            if (state.pendingHighVolumeSmsEvent != null) {
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelHighVolumeSms,
+                    title = { Text("Enable SMS for this event?") },
+                    text = {
+                        Text(
+                            "This event can generate 50 or more texts per day. " +
+                                "Your SMS provider may charge per message. Continue?",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = viewModel::confirmHighVolumeSms,
+                            modifier = androidx.compose.ui.Modifier.semantics {
+                                contentDescription = "Confirm enable SMS for high-volume event"
+                                role = Role.Button
+                            },
+                        ) { Text("Enable anyway") }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = viewModel::cancelHighVolumeSms,
+                            modifier = androidx.compose.ui.Modifier.semantics {
+                                contentDescription = "Cancel enabling SMS for high-volume event"
+                                role = Role.Button
+                            },
+                        ) { Text("Cancel") }
+                    },
+                )
+            }
 
             // L1992 — Sound picker per channel
             NotifSoundPickerCard(
@@ -369,6 +715,12 @@ fun NotificationSettingsScreen(
                     }
                     ringtoneLauncher.launch(intent)
                 },
+            )
+
+            // §73.8 — Recent push history card
+            NotifHistoryCard(
+                entries = state.recentHistory,
+                onClear = viewModel::clearHistory,
             )
         }
     }
@@ -545,16 +897,41 @@ private fun NotifEventMatrixCard(
     channels: List<NotifChannel>,
     matrix: Map<String, Boolean>,
     onToggle: (eventId: String, channelId: String, enabled: Boolean) -> Unit,
+    onResetAll: () -> Unit,
+    isAtDefault: (eventId: String, channelId: String) -> Boolean,
 ) {
+    var showResetConfirm by remember { mutableStateOf(false) }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Per-event channels",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { heading() },
+                )
+                // §73.1 — "Reset all to default" button
+                TextButton(
+                    onClick = { showResetConfirm = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Reset all notification overrides to default"
+                        role = Role.Button
+                    },
+                ) {
+                    Text(
+                        "Reset defaults",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
             Text(
-                "Per-event channels",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                "Fine-tune which channels fire for each event type.",
+                "Fine-tune which channels fire for each event type. " +
+                    "Greyed checkboxes are at their shipped default.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -591,21 +968,173 @@ private fun NotifEventMatrixCard(
                     )
                     channels.forEach { channel ->
                         val key = "${event.id}_${channel.id}"
-                        val checked = matrix[key] ?: true
+                        val defaultOn = event.defaultsOn[channel.id] ?: false
+                        val checked = matrix[key] ?: defaultOn
+                        val atDefault = isAtDefault(event.id, channel.id)
+                        // §73.1 — Greyed (onSurfaceVariant alpha 0.5) when at default.
+                        // The "(default)" label is conveyed via contentDescription for a11y.
+                        val checkboxColors = if (atDefault) {
+                            CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                checkmarkColor = MaterialTheme.colorScheme.surface,
+                            )
+                        } else {
+                            CheckboxDefaults.colors()
+                        }
+                        val defaultLabel = if (atDefault) " (default)" else ""
                         Checkbox(
                             checked = checked,
                             onCheckedChange = { onToggle(event.id, channel.id, it) },
+                            colors = checkboxColors,
                             modifier = Modifier
                                 .size(52.dp)
                                 .semantics {
                                     contentDescription =
-                                        "${event.title} via ${channel.label}: ${if (checked) "on" else "off"}"
+                                        "${event.title} via ${channel.label}: " +
+                                            "${if (checked) "on" else "off"}$defaultLabel"
                                 },
                         )
                     }
                 }
                 if (index < events.lastIndex) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                }
+            }
+        }
+    }
+
+    // §73.1 — Confirm before resetting all to defaults.
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset all to defaults?") },
+            text = {
+                Text(
+                    "This will restore every per-event channel setting to its shipped default.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onResetAll()
+                        showResetConfirm = false
+                    },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Confirm reset all notification settings to default"
+                        role = Role.Button
+                    },
+                ) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetConfirm = false },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Cancel reset notification settings"
+                        role = Role.Button
+                    },
+                ) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §73.8 — Recent push history card
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NotifHistoryCard(
+    entries: List<NotificationHistoryStore.Entry>,
+    onClear: () -> Unit,
+) {
+    val dateFormat = remember { SimpleDateFormat("HH:mm MMM d", Locale.getDefault()) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Recent (last ${NotificationHistoryStore.CAPACITY})",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { heading() },
+                )
+                if (entries.isNotEmpty()) {
+                    TextButton(
+                        onClick = onClear,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Clear notification history"
+                            role = Role.Button
+                        },
+                    ) {
+                        Text("Clear", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            if (entries.isEmpty()) {
+                Text(
+                    "No push notifications received yet this session.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            } else {
+                entries.take(NotificationHistoryStore.CAPACITY).forEachIndexed { index, entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription =
+                                    "${entry.title}: ${entry.body}. " +
+                                        "Type ${entry.type}. " +
+                                        "Received ${dateFormat.format(Date(entry.receivedAtMs))}." +
+                                        if (entry.silenced) " Silenced." else ""
+                            },
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                entry.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (entry.silenced)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else
+                                    MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (entry.body.isNotBlank()) {
+                                Text(
+                                    entry.body,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                )
+                            }
+                            Text(
+                                "${entry.type} · ${dateFormat.format(Date(entry.receivedAtMs))}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
+                        if (entry.silenced) {
+                            Icon(
+                                Icons.Default.VolumeOff,
+                                contentDescription = null, // merged
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .padding(start = 4.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            )
+                        }
+                    }
+                    if (index < entries.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    }
                 }
             }
         }

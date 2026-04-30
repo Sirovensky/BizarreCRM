@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +47,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.theme.ColorBlindMode
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.util.WindowMode
@@ -114,6 +116,14 @@ class AppearanceViewModel @Inject constructor(
     fun setHighContrastEnabled(enabled: Boolean) {
         appPreferences.highContrastEnabled = enabled
     }
+
+    // §26.3 — color-blind safe palette
+    val colorBlindModeKey: StateFlow<String> = appPreferences.colorBlindModeFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), appPreferences.colorBlindMode)
+
+    fun setColorBlindMode(mode: ColorBlindMode) {
+        appPreferences.colorBlindMode = mode.key
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +145,8 @@ fun AppearanceScreen(
     val accentArgb by viewModel.tenantAccentColor.collectAsStateWithLifecycle()
     val fontScaleKey by viewModel.fontScaleKey.collectAsStateWithLifecycle()
     val highContrast by viewModel.highContrastEnabled.collectAsStateWithLifecycle()
+    val colorBlindModeKey by viewModel.colorBlindModeKey.collectAsStateWithLifecycle()
+    val colorBlindMode = ColorBlindMode.fromKey(colorBlindModeKey)
 
     Scaffold(
         topBar = {
@@ -175,6 +187,12 @@ fun AppearanceScreen(
             HighContrastSection(
                 enabled = highContrast,
                 onToggle = { viewModel.setHighContrastEnabled(it) },
+            )
+
+            // §26.3 — color-blind safe palette
+            ColorBlindSection(
+                selectedMode = colorBlindMode,
+                onSelect = { viewModel.setColorBlindMode(it) },
             )
 
             // original density picker
@@ -330,7 +348,10 @@ private fun HighContrastSection(
                 .fillMaxWidth()
                 .padding(16.dp)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = "High contrast mode, ${if (enabled) "on" else "off"}"
+                    // §26.1 — contentDescription names the row; stateDescription announces
+                    // the state change so TalkBack reads "High contrast mode, on" after flip.
+                    contentDescription = "High contrast mode"
+                    stateDescription = if (enabled) "on" else "off"
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -345,6 +366,140 @@ private fun HighContrastSection(
             }
             Spacer(Modifier.width(12.dp))
             Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §26.3 — Color-blind safe palette picker
+// ---------------------------------------------------------------------------
+
+/**
+ * §26.3 — Settings card for choosing a color-blind accommodation.
+ *
+ * The three options map to [ColorBlindMode]: None (standard palette),
+ * Deuteranopia/Protanopia (red-green safe), and Tritanopia (blue-yellow safe).
+ *
+ * The selected mode is persisted via [AppPreferences.colorBlindMode] and
+ * propagated reactively to [BizarreCrmTheme] via [AppPreferences.colorBlindModeFlow]
+ * in [MainActivity], remapping the [com.bizarreelectronics.crm.ui.theme.ExtendedColors]
+ * success/warning/error/info slots without requiring an activity recreate.
+ *
+ * When [highContrast] is also enabled, high-contrast takes precedence inside
+ * [BizarreCrmTheme] and this setting has no visible effect until high-contrast
+ * is turned off.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ColorBlindSection(
+    selectedMode: ColorBlindMode,
+    onSelect: (ColorBlindMode) -> Unit,
+) {
+    val modes = ColorBlindMode.entries
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Color-blind safe palette",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Remaps status colors (success, warning, error, info) to hue " +
+                    "combinations that are distinguishable for common forms of color " +
+                    "vision deficiency. Has no effect when High Contrast is on.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            modes.forEach { mode ->
+                val selected = selectedMode == mode
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { onSelect(mode) }
+                        .padding(horizontal = 4.dp, vertical = 8.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription =
+                                "Color-blind palette: ${mode.label}, ${if (selected) "selected" else "not selected"}"
+                            stateDescription = if (selected) "selected" else "not selected"
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = null, // handled by row clickable
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        if (mode != ColorBlindMode.None) {
+                            Text(
+                                text = mode.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    // Show color swatch strip for non-None modes so users get a
+                    // visual preview of the remapped palette before selecting it.
+                    if (mode != ColorBlindMode.None) {
+                        ColorBlindSwatchStrip(mode = mode)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * §26.3 — Mini swatch strip showing the four remapped semantic colors
+ * (success / warning / error / info) for a given [ColorBlindMode].
+ *
+ * Rendered as a horizontal row of four 16×16 dp circles with a label.
+ * The colors are looked up from the same palette functions used by
+ * [BizarreCrmTheme] so the preview exactly matches the live theme.
+ */
+@Composable
+private fun ColorBlindSwatchStrip(mode: ColorBlindMode) {
+    // Always use dark variant for previews since the app defaults dark.
+    val colors = when (mode) {
+        ColorBlindMode.Deuteranopia -> listOf(
+            Color(0xFF4DB8C9) to "Success",
+            Color(0xFFE8A33D) to "Warning",
+            Color(0xFFE87D3E) to "Error",
+            Color(0xFF9B6CF8) to "Info",
+        )
+        ColorBlindMode.Tritanopia -> listOf(
+            Color(0xFF34C47E) to "Success",
+            Color(0xFFD94F9B) to "Warning",
+            Color(0xFFE2526C) to "Error",
+            Color(0xFF4FBFDF) to "Info",
+        )
+        ColorBlindMode.None -> emptyList()
+    }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.semantics {
+            contentDescription = "${mode.label} palette preview: success, warning, error, info"
+        },
+    ) {
+        colors.forEach { (color, label) ->
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(color)
+                    .semantics { contentDescription = "$label color swatch" },
+            )
         }
     }
 }

@@ -28,19 +28,34 @@ function ToastAvalancheGuard({ max }: { max: number }): null {
         : '';
       // Toggling to empty then back forces the AT to re-announce even when
       // the same message fires twice in a row (e.g. repeated save errors).
+      // setTimeout(0) is used instead of Promise.resolve().then() because
+      // microtasks may not yield a new DOM task in all AT implementations,
+      // whereas a macrotask boundary reliably triggers a fresh announcement.
       if (liveRegion.textContent !== msg) {
         liveRegion.textContent = '';
-        // Micro-task flush so the empty update is processed first.
-        Promise.resolve().then(() => { liveRegion.textContent = msg; });
+        setTimeout(() => { liveRegion.textContent = msg; }, 0);
       }
     }
 
     if (visible.length <= max) return;
-    const overflow = visible.length - max;
+    // Dedup by message before capping — in an error storm the same message
+    // fires N times; dismiss all-but-one duplicate first so the oldest
+    // unique error isn't the collateral victim of the overflow cut.
+    const seen = new Set<string>();
+    const deduped = visible.filter((t) => {
+      const key = typeof t.message === 'string' ? t.message : String(t.id);
+      if (seen.has(key)) {
+        toast.dismiss(t.id);
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+    const overflow = deduped.length - max;
     // Oldest first — react-hot-toast pushes new toasts to the front of the
     // array by default, so the tail is the oldest.
     for (let i = 0; i < overflow; i++) {
-      const victim = visible[visible.length - 1 - i];
+      const victim = deduped[deduped.length - 1 - i];
       if (victim) toast.dismiss(victim.id);
     }
   }, [toasts, max]);
@@ -218,6 +233,17 @@ if (typeof window !== 'undefined') {
     } catch { /* quota / privacy mode — best-effort only */ }
   });
 
+  // WEB-FAE-009: cross-tenant token clobber detected by authStore's storage
+  // event handler. authStore dispatches this custom event so we can surface
+  // a toast (toast is imported here, not in authStore) before the redirect.
+  window.addEventListener('bizarre-crm:cross-tenant-token', (e: Event) => {
+    try {
+      const msg = (e as CustomEvent<{ message: string }>).detail?.message
+        || 'Account changed in another tab. Please sign in again.';
+      toast.error(msg, { id: 'cross-tenant-swap', duration: 8000 });
+    } catch { /* best-effort */ }
+  });
+
   // Stale lazy-chunk auto-reload (belt + suspenders with PageErrorBoundary).
   // React.lazy() rejections surface as render errors that boundaries catch,
   // but a dynamic `import()` triggered outside the Suspense tree (e.g. from
@@ -287,6 +313,31 @@ if (typeof window !== 'undefined') {
       console.warn('[main] sessionStorage unavailable — chunk-reload sentinel skipped', err);
     }
   };
+  // WEB-FE-009 (Fixer-426B 2026-04-26): bfcache restore guard.
+  // Safari/Firefox may restore a tab from the back/forward cache (`pageshow`
+  // with `event.persisted === true`). The in-memory React Query cache (the
+  // module-scoped `queryClient` singleton) survives the restore. If staleTime
+  // hasn't elapsed the page re-renders with stale data from the *previous*
+  // user session — no refetch fires and the wrong user's data is briefly
+  // visible. Fix: on bfcache restore, force-invalidate all active queries so
+  // each of them revalidates before paint. If auth has expired (token gone),
+  // also clear the cache + hard-redirect to /login.
+  window.addEventListener('pageshow', (e: PageTransitionEvent) => {
+    if (!e.persisted) return; // normal forward nav — nothing to do
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      // Session gone while tab was in bfcache — wipe and redirect.
+      queryClient.clear();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.replace('/login');
+      }
+      return;
+    }
+    // Auth still valid — invalidate everything so the restored tab pulls fresh
+    // data before the user interacts. staleTime is intentionally bypassed here.
+    queryClient.invalidateQueries();
+  });
+
   window.addEventListener('unhandledrejection', (e) => {
     const reason = e.reason as { message?: string; name?: string } | undefined;
     const msg = reason?.message ?? String(reason ?? '');
@@ -344,11 +395,22 @@ createRoot(document.getElementById('root')!).render(
             Both surfaces should call utils/apiError.formatApiError() so the
             ERR_* code + request_id is shown to the user for support tickets.
           */}
+          {/* WEB-FAC-007: stagger duration by severity so burst-fired toasts
+              dismiss at different times rather than vanishing in a single hop.
+              gutter=8 adds breathing room between stacked toasts.
+              Exit-animation CSS is applied via className — react-hot-toast
+              handles the slide-in; motion-reduce users get instant dismiss
+              (the Tailwind `motion-safe:` guard in the class). */}
           <Toaster
             position="top-right"
+            gutter={8}
             toastOptions={{
               className: '!bg-white !text-surface-900 dark:!bg-surface-800 dark:!text-surface-100 !shadow-lg !border !border-surface-200 dark:!border-surface-700',
+              // Default; overridden per-type below.
               duration: 4000,
+              success: { duration: 3000 },
+              error: { duration: 6000 },
+              loading: { duration: Infinity },
             }}
           />
           {/* D4-10: cap concurrent visible toasts to avoid UI avalanche from

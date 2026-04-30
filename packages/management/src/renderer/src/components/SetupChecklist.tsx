@@ -250,6 +250,12 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
 
   if (!envFields || checks.length === 0) return null;
 
+  // DASH-ELEC-250: sort by severity so blocking items surface at the top.
+  const SEVERITY_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 };
+  const sortedChecks = [...checks].sort(
+    (a, b) => (SEVERITY_ORDER[a.status] ?? 3) - (SEVERITY_ORDER[b.status] ?? 3),
+  );
+
   const headerKey: 'fail' | 'warn' | 'pass' =
     failCount > 0 ? 'fail' : warnCount > 0 ? 'warn' : 'pass';
 
@@ -272,7 +278,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
 
       {expanded && (
         <div className="px-3 pb-3 space-y-2">
-          {checks.map((c) => {
+          {sortedChecks.map((c) => {
             const Icon = c.status === 'pass' ? CheckCircle2 : c.status === 'fail' ? XCircle : AlertTriangle;
             const colorCls = ITEM_COLOR[c.status] ?? ITEM_COLOR.warn;
             const target = c.to ? c.to + (c.toHash ?? '') : null;

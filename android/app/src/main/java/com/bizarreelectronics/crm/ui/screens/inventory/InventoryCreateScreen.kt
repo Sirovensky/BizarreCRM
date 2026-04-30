@@ -9,19 +9,29 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
+import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
+import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
+import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +39,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * §6.3 — Barcode lookup state machine.
+ *
+ * Idle      → user scans → Lookup (spinner visible next to UPC field)
+ * Lookup    → 200 hit    → MatchFound(item)   — dialog shown
+ * Lookup    → 404/empty  → Idle               — raw code placed in UPC/SKU
+ * Lookup    → error      → Idle               — raw code placed in UPC/SKU (silent fallback)
+ * MatchFound→ user accepts→ Idle              — form fields filled from item
+ * MatchFound→ user rejects→ Idle              — raw code placed in UPC/SKU
+ */
+sealed interface BarcodeLookupState {
+    data object Idle : BarcodeLookupState
+    data class Lookup(val rawCode: String) : BarcodeLookupState
+    data class MatchFound(val rawCode: String, val item: InventoryDetail) : BarcodeLookupState
+}
 
 data class InventoryCreateUiState(
     val name: String = "",
@@ -43,15 +69,50 @@ data class InventoryCreateUiState(
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val createdId: Long? = null,
+    /** Set to true after a "Save & add another" submit so the screen resets instead of navigating. */
+    val savedAndAddAnother: Boolean = false,
+    // §6.3: supplier picker
+    val suppliers: List<SupplierRow> = emptyList(),
+    val selectedSupplierId: Long? = null,
+    val selectedSupplierName: String = "",
+    // §6.3: tax class picker + tax-inclusive toggle
+    val taxClasses: List<TaxClassOption> = emptyList(),
+    val selectedTaxClassId: Long? = null,
+    val selectedTaxClassName: String = "",
+    val taxInclusive: Boolean = false,
+    // §6.3: barcode lookup autofill
+    val barcodeLookup: BarcodeLookupState = BarcodeLookupState.Idle,
 )
 
 @HiltViewModel
 class InventoryCreateViewModel @Inject constructor(
     private val inventoryRepository: InventoryRepository,
+    private val purchaseOrderApi: PurchaseOrderApi,
+    private val inventoryApi: InventoryApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(InventoryCreateUiState())
     val state = _state.asStateFlow()
+
+    init {
+        // §6.3: prefetch supplier and tax-class lists for pickers.
+        viewModelScope.launch {
+            try {
+                val suppliersResponse = purchaseOrderApi.listSuppliers()
+                if (suppliersResponse.success) {
+                    _state.value = _state.value.copy(suppliers = suppliersResponse.data ?: emptyList())
+                }
+            } catch (_: Exception) { /* list remains empty — pickers still operable as free text */ }
+        }
+        viewModelScope.launch {
+            try {
+                val taxResponse = inventoryApi.getTaxClasses()
+                if (taxResponse.success) {
+                    _state.value = _state.value.copy(taxClasses = taxResponse.data ?: emptyList())
+                }
+            } catch (_: Exception) { /* list remains empty */ }
+        }
+    }
 
     fun updateName(value: String) { _state.value = _state.value.copy(name = value) }
     fun updateSku(value: String) { _state.value = _state.value.copy(sku = value) }
@@ -79,21 +140,116 @@ class InventoryCreateViewModel @Inject constructor(
     }
     fun updateDescription(value: String) { _state.value = _state.value.copy(description = value) }
 
+    // §6.3: supplier picker selection
+    fun selectSupplier(supplier: SupplierRow?) {
+        _state.value = _state.value.copy(
+            selectedSupplierId = supplier?.id,
+            selectedSupplierName = supplier?.name ?: "",
+        )
+    }
+
+    // §6.3: tax class picker selection
+    fun selectTaxClass(taxClass: TaxClassOption?) {
+        _state.value = _state.value.copy(
+            selectedTaxClassId = taxClass?.id,
+            selectedTaxClassName = taxClass?.name ?: "",
+        )
+    }
+
+    // §6.3: tax-inclusive toggle
+    fun toggleTaxInclusive() {
+        _state.value = _state.value.copy(taxInclusive = !_state.value.taxInclusive)
+    }
+
+    /**
+     * §6.3 — Called when a barcode result arrives from the Scanner screen.
+     *
+     * Triggers [GET /inventory/barcode/{code}] to look up an existing inventory item.
+     * While the lookup is in-flight, [BarcodeLookupState.Lookup] is set so the screen
+     * can show a progress indicator next to the UPC field.  On success a match dialog
+     * is presented; on failure (404 / network error) the code is applied directly.
+     */
+    fun lookupAndApplyScannedBarcode(code: String) {
+        if (code.isBlank()) return
+        _state.value = _state.value.copy(barcodeLookup = BarcodeLookupState.Lookup(code))
+        viewModelScope.launch {
+            try {
+                val response = inventoryApi.lookupBarcode(code)
+                val item = if (response.success) response.data?.item else null
+                if (item != null) {
+                    _state.value = _state.value.copy(
+                        barcodeLookup = BarcodeLookupState.MatchFound(rawCode = code, item = item),
+                    )
+                } else {
+                    // No match in inventory — just fill the code fields.
+                    applyRawCode(code)
+                }
+            } catch (_: Exception) {
+                // Network error or server unavailable — fall back silently.
+                applyRawCode(code)
+            }
+        }
+    }
+
+    /** User accepted the barcode-match autofill dialog. Fills all matching fields. */
+    fun acceptBarcodeMatch() {
+        val match = _state.value.barcodeLookup as? BarcodeLookupState.MatchFound ?: return
+        val item = match.item
+        _state.value = _state.value.copy(
+            barcodeLookup = BarcodeLookupState.Idle,
+            // Only overwrite fields that are currently blank to avoid clobbering user edits.
+            name = _state.value.name.ifBlank { item.name ?: "" },
+            sku = _state.value.sku.ifBlank { item.sku ?: "" },
+            upcCode = _state.value.upcCode.ifBlank { item.upcCode ?: match.rawCode },
+            itemType = if (_state.value.itemType == "product") item.itemType ?: "product" else _state.value.itemType,
+            costPrice = _state.value.costPrice.ifBlank { item.costPrice?.toBigDecimal()?.toPlainString() ?: "" },
+            retailPrice = _state.value.retailPrice.ifBlank { item.price?.toBigDecimal()?.toPlainString() ?: "" },
+            description = _state.value.description.ifBlank { item.description ?: "" },
+        )
+    }
+
+    /** User dismissed the barcode-match autofill dialog. Falls back to raw code fill. */
+    fun dismissBarcodeMatch() {
+        val match = _state.value.barcodeLookup as? BarcodeLookupState.MatchFound ?: return
+        applyRawCode(match.rawCode)
+    }
+
+    /** Places [code] into whichever of UPC / SKU is currently blank. */
+    private fun applyRawCode(code: String) {
+        val current = _state.value
+        _state.value = current.copy(
+            barcodeLookup = BarcodeLookupState.Idle,
+            upcCode = if (current.upcCode.isBlank()) code else current.upcCode,
+            sku = if (current.upcCode.isNotBlank() && current.sku.isBlank()) code else current.sku,
+        )
+    }
+
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
 
-    fun save() {
+    private fun validateForm(): String? {
         val current = _state.value
-        if (current.name.isBlank()) {
-            _state.value = current.copy(error = "Name is required")
-            return
-        }
+        if (current.name.isBlank()) return "Name is required"
         val retail = current.retailPrice.toDoubleOrNull()
-        if (retail == null || retail <= 0.0) {
-            _state.value = current.copy(error = "Retail price must be greater than 0")
+        if (retail == null || retail <= 0.0) return "Retail price must be greater than 0"
+        val costStr = current.costPrice
+        if (costStr.isNotBlank() && costStr.toDoubleOrNull() == null) return "Cost price is not a valid number"
+        val stockStr = current.inStock
+        if (stockStr.isNotBlank() && stockStr.toIntOrNull() == null) return "Stock qty must be a whole number"
+        val reorderStr = current.reorderLevel
+        if (reorderStr.isNotBlank() && reorderStr.toIntOrNull() == null) return "Reorder level must be a whole number"
+        return null
+    }
+
+    fun save(addAnother: Boolean = false) {
+        val validationError = validateForm()
+        if (validationError != null) {
+            _state.value = _state.value.copy(error = validationError)
             return
         }
+        val current = _state.value
+        val retail = current.retailPrice.toDouble()
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
@@ -108,12 +264,27 @@ class InventoryCreateViewModel @Inject constructor(
                     costPrice = current.costPrice.toDoubleOrNull(),
                     price = retail,
                     reorderLevel = current.reorderLevel.toIntOrNull(),
+                    // §6.3: supplier, tax class, tax-inclusive
+                    supplierId = current.selectedSupplierId,
+                    taxClassId = current.selectedTaxClassId,
+                    taxInclusive = if (current.taxInclusive) 1 else 0,
                 )
                 val createdId = inventoryRepository.createItem(request)
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                )
+                if (addAnother) {
+                    // Reset form fields; keep itemType and loaded picker lists as convenience for the user.
+                    _state.value = InventoryCreateUiState(
+                        itemType = current.itemType,
+                        isSubmitting = false,
+                        savedAndAddAnother = true,
+                        suppliers = current.suppliers,
+                        taxClasses = current.taxClasses,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                    )
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -122,6 +293,10 @@ class InventoryCreateViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearSavedAndAddAnother() {
+        _state.value = _state.value.copy(savedAndAddAnother = false)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,12 +304,36 @@ class InventoryCreateViewModel @Inject constructor(
 fun InventoryCreateScreen(
     onBack: () -> Unit,
     onCreated: (Long) -> Unit,
+    /** Navigate to the shared BarcodeScanScreen; result arrives via [scannedBarcode]. */
+    onScanBarcode: () -> Unit = {},
+    /** Barcode delivered from BarcodeScanScreen via savedStateHandle. */
+    scannedBarcode: String? = null,
+    /** Called after the scanned barcode has been consumed so the caller can clear it. */
+    onBarcodeLookupConsumed: () -> Unit = {},
     viewModel: InventoryCreateViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Navigate on successful creation
+    // §6.3: Consume a scanned barcode — trigger inventory lookup then autofill or dialog.
+    LaunchedEffect(scannedBarcode) {
+        val code = scannedBarcode ?: return@LaunchedEffect
+        viewModel.lookupAndApplyScannedBarcode(code)
+        onBarcodeLookupConsumed()
+    }
+
+    // §6.3: Show the barcode-match dialog when a lookup finds an existing item.
+    val barcodeLookup = state.barcodeLookup
+    if (barcodeLookup is BarcodeLookupState.MatchFound) {
+        BarcodeMatchDialog(
+            itemName = barcodeLookup.item.name ?: barcodeLookup.rawCode,
+            rawCode = barcodeLookup.rawCode,
+            onAccept = viewModel::acceptBarcodeMatch,
+            onDismiss = viewModel::dismissBarcodeMatch,
+        )
+    }
+
+    // Navigate on successful creation.
     LaunchedEffect(state.createdId) {
         val id = state.createdId
         if (id != null) {
@@ -142,7 +341,15 @@ fun InventoryCreateScreen(
         }
     }
 
-    // Show error via snackbar
+    // "Save & add another" feedback — show snackbar then clear flag.
+    LaunchedEffect(state.savedAndAddAnother) {
+        if (state.savedAndAddAnother) {
+            snackbarHostState.showSnackbar("Item saved. Form cleared for next item.")
+            viewModel.clearSavedAndAddAnother()
+        }
+    }
+
+    // Show error via snackbar.
     LaunchedEffect(state.error) {
         val error = state.error
         if (error != null) {
@@ -165,6 +372,23 @@ fun InventoryCreateScreen(
                     }
                 },
                 actions = {
+                    // §6.3: inline barcode scan icon; spinner while lookup is in-flight.
+                    if (barcodeLookup is BarcodeLookupState.Lookup) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp).padding(end = 4.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(
+                            onClick = onScanBarcode,
+                            enabled = barcodeLookup is BarcodeLookupState.Idle,
+                        ) {
+                            Icon(
+                                Icons.Filled.QrCodeScanner,
+                                contentDescription = stringResource(R.string.inventory_create_scan_cd),
+                            )
+                        }
+                    }
                     if (state.isSubmitting) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
@@ -203,9 +427,20 @@ fun InventoryCreateScreen(
             onReorderLevelChange = viewModel::updateReorderLevel,
             description = state.description,
             onDescriptionChange = viewModel::updateDescription,
-            // D5-6: IME Done on the last (Description) field saves the new
-            // item, matching the toolbar Save button.
             onSubmit = { if (canSave) viewModel.save() },
+            // §6.3: "Save & add another" secondary CTA shown at the bottom.
+            onSaveAndAddAnother = { if (canSave) viewModel.save(addAnother = true) },
+            canSave = canSave,
+            // §6.3: supplier picker
+            suppliers = state.suppliers,
+            selectedSupplierName = state.selectedSupplierName,
+            onSupplierSelected = viewModel::selectSupplier,
+            // §6.3: tax class picker + toggle
+            taxClasses = state.taxClasses,
+            selectedTaxClassName = state.selectedTaxClassName,
+            onTaxClassSelected = viewModel::selectTaxClass,
+            taxInclusive = state.taxInclusive,
+            onTaxInclusiveToggle = viewModel::toggleTaxInclusive,
         )
     }
 }
@@ -240,6 +475,19 @@ internal fun InventoryFormContent(
     // final (Description) field. Callers pass their own save/guard logic so
     // Create and Edit can reuse this shared form.
     onSubmit: () -> Unit = {},
+    /** §6.3: "Save & add another" secondary CTA. Null = not shown (Edit screen). */
+    onSaveAndAddAnother: (() -> Unit)? = null,
+    canSave: Boolean = true,
+    // §6.3: supplier picker — empty list = picker not shown (e.g. Edit screen before wiring)
+    suppliers: List<SupplierRow> = emptyList(),
+    selectedSupplierName: String = "",
+    onSupplierSelected: (SupplierRow?) -> Unit = {},
+    // §6.3: tax class picker + tax-inclusive toggle
+    taxClasses: List<TaxClassOption> = emptyList(),
+    selectedTaxClassName: String = "",
+    onTaxClassSelected: (TaxClassOption?) -> Unit = {},
+    taxInclusive: Boolean = false,
+    onTaxInclusiveToggle: () -> Unit = {},
 ) {
     // D5-6: IME Next advances focus, Done clears focus and invokes onSubmit.
     val focusManager = LocalFocusManager.current
@@ -383,6 +631,97 @@ internal fun InventoryFormContent(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = onDoneSubmit,
         )
+
+        // §6.3: Supplier picker — shown only when the list has loaded.
+        if (suppliers.isNotEmpty()) {
+            InventoryDropdownPicker(
+                label = "Supplier",
+                selectedLabel = selectedSupplierName.ifBlank { "None" },
+                options = listOf(null to "None") + suppliers.map { it to it.name },
+                onOptionSelected = { onSupplierSelected(it) },
+            )
+        }
+
+        // §6.3: Tax class picker + tax-inclusive toggle.
+        if (taxClasses.isNotEmpty()) {
+            InventoryDropdownPicker(
+                label = "Tax Class",
+                selectedLabel = selectedTaxClassName.ifBlank { "None" },
+                options = listOf(null to "None") + taxClasses.map { it to "${it.name} (${it.rate}%)" },
+                onOptionSelected = { onTaxClassSelected(it) },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "Price is tax-inclusive",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = taxInclusive,
+                    onCheckedChange = { onTaxInclusiveToggle() },
+                )
+            }
+        }
+
+        // §6.3: "Save & add another" secondary CTA — only shown on the Create screen.
+        if (onSaveAndAddAnother != null) {
+            androidx.compose.material3.OutlinedButton(
+                onClick = onSaveAndAddAnother,
+                enabled = canSave,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save & add another")
+            }
+        }
+    }
+}
+
+/**
+ * Generic single-select dropdown picker used for Supplier and Tax Class in §6.3.
+ * [options] is a list of (value, displayLabel) pairs; null value = "None" sentinel.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> InventoryDropdownPicker(
+    label: String,
+    selectedLabel: String,
+    options: List<Pair<T?, String>>,
+    onOptionSelected: (T?) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+    ) {
+        OutlinedTextField(
+            value = selectedLabel,
+            onValueChange = { },
+            readOnly = true,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            label = { Text(label) },
+            trailingIcon = {
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            },
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { (value, display) ->
+                DropdownMenuItem(
+                    text = { Text(display) },
+                    onClick = {
+                        onOptionSelected(value)
+                        expanded = false
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -428,4 +767,55 @@ private fun ItemTypeDropdown(
             }
         }
     }
+}
+
+/**
+ * §6.3 — Barcode match dialog.
+ *
+ * Shown when [GET /inventory/barcode/{code}] returns an existing item.  The user
+ * can either accept (autofill all blank form fields from the match) or dismiss
+ * (which falls back to placing the raw code in the UPC/SKU field only).
+ *
+ * This keeps the user in control: a technician receiving a replacement part with
+ * the same UPC as an existing SKU can still enter a new name / price if desired.
+ */
+@Composable
+private fun BarcodeMatchDialog(
+    itemName: String,
+    rawCode: String,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        title = {
+            Text(stringResource(R.string.inventory_barcode_match_title))
+        },
+        text = {
+            Text(
+                stringResource(
+                    R.string.inventory_barcode_match_body,
+                    itemName,
+                    rawCode,
+                ),
+            )
+        },
+        confirmButton = {
+            Button(onClick = onAccept) {
+                Text(stringResource(R.string.inventory_barcode_match_autofill))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.inventory_barcode_match_skip))
+            }
+        },
+    )
 }

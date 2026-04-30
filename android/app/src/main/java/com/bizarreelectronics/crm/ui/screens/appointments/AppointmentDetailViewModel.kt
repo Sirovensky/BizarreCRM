@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -39,6 +40,18 @@ data class AppointmentDetailUiState(
      * Dispatched once [confirmRecurringEdit] is called.
      */
     val pendingPatchBody: Map<String, Any?>? = null,
+    // §10.6 Check-in / check-out
+    /**
+     * Epoch-millis timestamp when the customer was checked in during this session.
+     * Null = not yet checked in. Persisted in ViewModel only (no server column yet);
+     * the server receives a status change to "in_progress" / "completed".
+     */
+    val localCheckedInAt: Long? = null,
+    /**
+     * Epoch-millis timestamp when the customer was checked out during this session.
+     * Null = not yet checked out.
+     */
+    val localCheckedOutAt: Long? = null,
 )
 
 @HiltViewModel
@@ -95,6 +108,42 @@ class AppointmentDetailViewModel @Inject constructor(
     fun markNoShow() {
         patch(mapOf("status" to "no_show"), optimisticUpdate = { it.copy(status = "no_show") }) {
             _state.update { it.copy(toastMessage = "Marked as no-show") }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // §10.6 Check-in / check-out
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Stamps the customer as arrived. Updates appointment status to "in_progress"
+     * on the server and records a local timestamp for the elapsed-time display.
+     * If the appointment has a linked ticket, the server is expected to start
+     * a bench timer for that ticket (server-side; client emits status only).
+     */
+    fun checkIn() {
+        val now = Instant.now().toEpochMilli()
+        _state.update { it.copy(localCheckedInAt = now, localCheckedOutAt = null) }
+        patch(
+            body = mapOf("status" to "in_progress"),
+            optimisticUpdate = { appt -> appt.copy(status = "in_progress") },
+        ) {
+            _state.update { it.copy(toastMessage = "Customer checked in") }
+        }
+    }
+
+    /**
+     * Stamps the customer as departed. Updates appointment status to "completed"
+     * on the server and records a local check-out timestamp.
+     */
+    fun checkOut() {
+        val now = Instant.now().toEpochMilli()
+        _state.update { it.copy(localCheckedOutAt = now) }
+        patch(
+            body = mapOf("status" to "completed"),
+            optimisticUpdate = { appt -> appt.copy(status = "completed") },
+        ) {
+            _state.update { it.copy(toastMessage = "Customer checked out") }
         }
     }
 

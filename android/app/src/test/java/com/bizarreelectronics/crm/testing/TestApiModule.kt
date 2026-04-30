@@ -83,6 +83,7 @@ object TestApiModule {
     @Provides @Singleton fun provideCatalogApi(r: Retrofit): CatalogApi = r.create(CatalogApi::class.java)
     @Provides @Singleton fun provideTenantsApi(r: Retrofit): TenantsApi = r.create(TenantsApi::class.java)
     @Provides @Singleton fun provideRepairPricingApi(r: Retrofit): RepairPricingApi = r.create(RepairPricingApi::class.java)
+    @Provides @Singleton fun provideDeviceTemplateApi(r: Retrofit): DeviceTemplateApi = r.create(DeviceTemplateApi::class.java)
     // §14.3 L1626-L1631 — break/timesheet/admin endpoints
     @Provides @Singleton fun provideEmployeeApi(r: Retrofit): EmployeeApi = r.create(EmployeeApi::class.java)
 }

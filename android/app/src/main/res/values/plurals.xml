@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Plurals resource — ActionPlan §27.2.
+    Use via resources.getQuantityString(R.plurals.X, n, n).
+    Compose callers: pluralStringResource(R.plurals.X, n, n).
+    All counts use formatArgs so the number itself is localized by the OS formatter.
+-->
+<resources>
+    <!-- Generic item count -->
+    <plurals name="plural_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+
+    <!-- Ticket count -->
+    <plurals name="plural_tickets">
+        <item quantity="one">%d ticket</item>
+        <item quantity="other">%d tickets</item>
+    </plurals>
+
+    <!-- Open ticket count (dashboard KPI) -->
+    <plurals name="plural_open_tickets">
+        <item quantity="one">%d open ticket</item>
+        <item quantity="other">%d open tickets</item>
+    </plurals>
+
+    <!-- Pending sync changes -->
+    <plurals name="plural_pending_changes">
+        <item quantity="one">%d change pending sync</item>
+        <item quantity="other">%d changes pending sync</item>
+    </plurals>
+
+    <!-- Inventory items below reorder level -->
+    <plurals name="plural_low_stock_items">
+        <item quantity="one">%d item below reorder level</item>
+        <item quantity="other">%d items below reorder level</item>
+    </plurals>
+
+    <!-- Overdue invoices -->
+    <plurals name="plural_overdue_invoices">
+        <item quantity="one">%d overdue invoice</item>
+        <item quantity="other">%d overdue invoices</item>
+    </plurals>
+
+    <!-- Stocktake items counted -->
+    <plurals name="plural_stocktake_items_counted">
+        <item quantity="one">%d item counted</item>
+        <item quantity="other">%d items counted</item>
+    </plurals>
+
+    <!-- Stocktake variances -->
+    <plurals name="plural_stocktake_variances">
+        <item quantity="one">%d variance</item>
+        <item quantity="other">%d variances</item>
+    </plurals>
+
+    <!-- Customer count -->
+    <plurals name="plural_customers">
+        <item quantity="one">%d customer</item>
+        <item quantity="other">%d customers</item>
+    </plurals>
+
+    <!-- Employee / staff count -->
+    <plurals name="plural_employees">
+        <item quantity="one">%d employee</item>
+        <item quantity="other">%d employees</item>
+    </plurals>
+
+    <!-- Unread messages -->
+    <plurals name="plural_unread_messages">
+        <item quantity="one">%d unread message</item>
+        <item quantity="other">%d unread messages</item>
+    </plurals>
+
+    <!-- Days remaining (e.g. warranty) -->
+    <plurals name="plural_days_remaining">
+        <item quantity="one">%d day remaining</item>
+        <item quantity="other">%d days remaining</item>
+    </plurals>
+
+    <!-- Minutes (e.g. labor estimate) -->
+    <plurals name="plural_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+</resources>

@@ -253,13 +253,13 @@ export function CommandPalette() {
     setSelectedIndex(0);
   }, [setCommandPaletteOpen]);
 
-  // Focus input on open — return a cleanup so the timer doesn't fire after
-  // an unmount (W10 fix). A stale callback trying to focus a detached input
-  // is harmless but still creates a memory retention path.
+  // Focus input on open — requestAnimationFrame fires after the browser paints
+  // so the focus ring appears at the end of the open animation, not mid-transition.
   useEffect(() => {
     if (!commandPaletteOpen) return;
-    const timer = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(timer);
+    let raf = 0;
+    raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [commandPaletteOpen]);
 
   // Debounced search
@@ -436,7 +436,8 @@ export function CommandPalette() {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
+        data-state="open"
+        className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200 motion-reduce:animate-none"
         onClick={close}
       />
 
@@ -446,7 +447,8 @@ export function CommandPalette() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="command-palette-title"
-          className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+          data-state="open"
+          className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
           onClick={(e) => e.stopPropagation()}
         >
           <h2 id="command-palette-title" className="sr-only">Command palette</h2>

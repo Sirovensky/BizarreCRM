@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.dao.CheckInDraftDao
 import com.bizarreelectronics.crm.data.local.db.entities.CheckInDraftEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.RepairPricingApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
@@ -24,6 +25,7 @@ import javax.inject.Inject
 class CheckInViewModel @Inject constructor(
     private val ticketApi: TicketApi,
     private val inventoryApi: InventoryApi,
+    private val repairPricingApi: RepairPricingApi,
     private val checkInDraftDao: CheckInDraftDao,
     private val gson: Gson,
 ) : ViewModel() {
@@ -34,10 +36,12 @@ class CheckInViewModel @Inject constructor(
     private var autosaveJob: Job? = null
     private var customerId: Long = 0L
     private var deviceId: Long = 0L
+    private var deviceModelId: Long? = null
 
-    fun init(customerId: Long, deviceId: Long) {
+    fun init(customerId: Long, deviceId: Long, deviceModelId: Long? = null) {
         this.customerId = customerId
         this.deviceId = deviceId
+        this.deviceModelId = deviceModelId
         viewModelScope.launch { loadDraftIfPresent() }
     }
 
@@ -46,7 +50,13 @@ class CheckInViewModel @Inject constructor(
     fun advance() {
         val current = _uiState.value.currentStep
         if (current < TOTAL_STEPS - 1) {
-            _uiState.update { it.copy(currentStep = current + 1) }
+            val next = current + 1
+            _uiState.update { it.copy(currentStep = next) }
+            // Quote step (index 4) — auto-fill subtotal from RepairPricingApi
+            // catalog. Server services seeded at first-run setup wizard
+            // (todofixes426 commit 07ec4c4b). Honors user override: skips if
+            // subtotal already set or auto-fill already ran.
+            if (next == 4) maybeAutoFillQuoteSubtotal()
         }
     }
 
@@ -185,8 +195,80 @@ class CheckInViewModel @Inject constructor(
     }
 
     fun setQuoteSubtotalCents(cents: Long) {
-        _uiState.update { it.copy(quoteSubtotalCents = cents) }
+        // Mark as user-touched so subsequent advance()→Quote re-entries don't
+        // overwrite the manual value with the auto-fill.
+        _uiState.update { it.copy(quoteSubtotalCents = cents, subtotalAutoFilled = true) }
         scheduleSave()
+    }
+
+    /**
+     * Symptom-label → service-search-term map used to translate the cashier's
+     * symptom selection into a fuzzy service catalog query. Server matches
+     * `q` against `repair_services.name LIKE %q%` so simple keywords work.
+     */
+    private val symptomToServiceQuery = mapOf(
+        "Cracked screen" to "screen",
+        "Battery drain" to "battery",
+        "Won't charge" to "charge",
+        "Liquid damage" to "liquid",
+        "No sound" to "speaker",
+        "Camera" to "camera",
+        "Buttons" to "button",
+    )
+
+    private fun maybeAutoFillQuoteSubtotal() {
+        val s = _uiState.value
+        if (s.quoteSubtotalCents > 0L || s.subtotalAutoFilled) return
+        if (s.symptoms.isEmpty()) return
+        val modelId = deviceModelId
+        viewModelScope.launch {
+            var totalCents = 0L
+            var matched = false
+            try {
+                for (symptom in s.symptoms) {
+                    val query = symptomToServiceQuery[symptom] ?: continue
+                    val response = repairPricingApi.getServices(query = query)
+                    val first = response.data?.firstOrNull { it.isActive == 1 } ?: continue
+                    // Two-tier lookup:
+                    //   1. If the cashier picked a model in the drill flow,
+                    //      hit the per-device pricingLookup endpoint —
+                    //      RepairPriceLookup.laborPrice carries the
+                    //      device-specific override (RepairDesk parity).
+                    //   2. Otherwise fall back to the service's default
+                    //      labor price.
+                    var priceDollars = first.laborPrice
+                    if (modelId != null && modelId > 0L) {
+                        runCatching {
+                            val lookup = repairPricingApi.pricingLookup(
+                                deviceModelId = modelId.toInt(),
+                                serviceId = first.id.toInt(),
+                            )
+                            val perDevice = lookup.data?.laborPrice
+                            if (perDevice != null && perDevice > 0.0) {
+                                priceDollars = perDevice
+                            }
+                        }
+                        // Quiet failure: per-device lookup is best-effort;
+                        // missing override means use the service default.
+                    }
+                    if (priceDollars > 0.0) {
+                        totalCents += (priceDollars * 100).toLong()
+                        matched = true
+                    }
+                }
+            } catch (_: Exception) {
+                // Network/server failure — leave subtotal blank so cashier
+                // notices and enters manually. Don't surface an error: the
+                // pricing catalog may simply be empty pre-setup-wizard.
+                return@launch
+            }
+            if (matched) {
+                _uiState.update {
+                    it.copy(quoteSubtotalCents = totalCents, subtotalAutoFilled = true)
+                }
+                scheduleSave()
+            }
+        }
     }
 
     fun setTaxRateBps(bps: Int) {
@@ -213,7 +295,11 @@ class CheckInViewModel @Inject constructor(
     }
 
     fun setSignature(base64: String) {
-        _uiState.update { it.copy(signatureBase64 = base64) }
+        // Re-sign: when caller passes "" treat it as a clear, not a captured
+        // empty signature. Without this, signatureBase64 was still non-null
+        // after pressing Re-sign so the UI stayed on "Signature captured ✓"
+        // and canAdvance() at step 5 still passed.
+        _uiState.update { it.copy(signatureBase64 = base64.ifBlank { null }) }
     }
 
     // ── Submit ─────────────────────────────────────────────────────────────────
@@ -340,6 +426,10 @@ data class CheckInUiState(
     val batteryCycles: Int? = null,
     // Step 5
     val quoteSubtotalCents: Long = 0L,
+    /** True once the cashier has touched the subtotal field, OR the auto-fill
+     *  from the pricing catalog has run. Prevents repeat advance()→Quote
+     *  visits from clobbering a manually-entered value. */
+    val subtotalAutoFilled: Boolean = false,
     val taxRateBps: Int = 800,
     val depositCents: Long = 0L,
     val depositFullBalance: Boolean = false,

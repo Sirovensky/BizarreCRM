@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAPI } from '@/api/bridge';
+import { getAPI, type ServiceStatus } from '@/api/bridge';
 import { useServerStore } from '@/stores/serverStore';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -39,13 +39,23 @@ export function useServerHealth(): void {
   // DASH-ELEC-047: isMounted guard prevents setState after unmount under
   // React 18 StrictMode double-mount (cleanup fires before second mount).
   const isMountedRef = useRef(true);
+  // DASH-ELEC-012: AbortController signals unmount to in-flight poll cycles.
+  // Note: the IPC bridge (preload safeInvoke → ipcRenderer.invoke) does not
+  // accept AbortSignal — aborting cannot cancel the underlying Electron IPC
+  // round-trip. The controller is used only to short-circuit the async
+  // continuation (state updates) after unmount, which is handled equivalently
+  // by isMountedRef. This structure makes the intent explicit and leaves a
+  // clear extension point if the IPC bridge ever gains signal support.
+  const abortRef = useRef<AbortController>(new AbortController());
 
   useEffect(() => {
     isMountedRef.current = true;
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
 
     const poll = async () => {
       const isAuth = useAuthStore.getState().isAuthenticated;
-      if (!isMountedRef.current || !isAuth || pollingRef.current) return;
+      if (signal.aborted || !isMountedRef.current || !isAuth || pollingRef.current) return;
       pollingRef.current = true;
 
       try {
@@ -57,7 +67,15 @@ export function useServerHealth(): void {
 
         // Guard again after the await — component may have unmounted while
         // the IPC round-trip was in flight.
-        if (!isMountedRef.current) {
+        if (signal.aborted || !isMountedRef.current) {
+          pollingRef.current = false;
+          return;
+        }
+        // DASH-ELEC-232: also re-check auth state after the await — a logout
+        // that fires while the request is in-flight would otherwise cause stale
+        // stats to overwrite the cleared store and keep the offline/online
+        // banner visible on the post-logout login screen.
+        if (!useAuthStore.getState().isAuthenticated) {
           pollingRef.current = false;
           return;
         }
@@ -89,9 +107,20 @@ export function useServerHealth(): void {
           intervalRef.current = BASE_INTERVAL;
         }
 
-        useServerStore.getState().setServiceStatus(serviceStatus);
+        // DASH-ELEC-096: contextBridge strips TypeScript types — the actual IPC
+        // result is `unknown`. Narrow to ServiceStatus before storing; a shape
+        // mismatch after a main-process handler change surfaces here rather than
+        // propagating a malformed object into the store and crashing UI renders.
+        if (
+          serviceStatus !== null &&
+          typeof serviceStatus === 'object' &&
+          'state' in serviceStatus &&
+          'mode' in serviceStatus
+        ) {
+          useServerStore.getState().setServiceStatus(serviceStatus as ServiceStatus);
+        }
       } catch {
-        if (isMountedRef.current) {
+        if (!signal.aborted && isMountedRef.current) {
           useServerStore.getState().setOffline('Server not reachable');
           // DASH-ELEC-226: Jitter in the catch branch too.
           intervalRef.current = Math.min(
@@ -102,7 +131,7 @@ export function useServerHealth(): void {
       }
 
       pollingRef.current = false;
-      if (isMountedRef.current) {
+      if (!signal.aborted && isMountedRef.current) {
         timerRef.current = setTimeout(poll, intervalRef.current);
       }
     };
@@ -112,6 +141,7 @@ export function useServerHealth(): void {
 
     return () => {
       isMountedRef.current = false;
+      abortRef.current.abort();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [navigate]);

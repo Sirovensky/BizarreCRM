@@ -130,7 +130,7 @@ export function DepositCollectModal({
             type="button"
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
-            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {mutation.isPending ? 'Collecting…' : 'Collect deposit'}
           </button>

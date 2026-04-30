@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Spanish — Mexico regional overrides (es-MX) — ActionPlan §27.2 Phase-1.
+    Inherits all keys from values-es/strings.xml.
+    Only keys that differ from es-US appear here (e.g. currency symbol context,
+    voseo vs. tuteo, localisms).
+    Keys MUST remain identical to values/strings.xml.
+-->
+<resources>
+    <!-- Mexico uses "Folio" more commonly than "ticket" in repair shops,
+         but we keep the brand term consistent; no key changes needed here.
+         Regional currency note: MXN is the tenant-level setting, not a string. -->
+
+    <!-- "Computadora" is more natural in MX than "dispositivo" for computers,
+         but generic "dispositivo" remains correct for phones/tablets. No override needed. -->
+
+    <!-- Mexican Spanish often uses "celular" — no override needed as strings are device-agnostic. -->
+
+    <!-- Placeholder: add MX-specific overrides here as copy review identifies them. -->
+</resources>

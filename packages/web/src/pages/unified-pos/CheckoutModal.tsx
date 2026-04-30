@@ -341,25 +341,62 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       // to customers whose card had actually declined.
       let cardDeclined = false;
       let cardDeclineMessage: string | null = null;
-      if (!splitMode && method === 'Card' && blockchypConfigured) {
+
+      if (blockchypConfigured) {
         const invoiceId: number | undefined = res.data?.data?.invoice?.id;
         if (invoiceId) {
-          try {
-            const terminalRes = await blockchypApi.processPayment(invoiceId);
-            const terminalResult = terminalRes.data?.data;
-            if (!terminalResult?.success) {
+          if (!splitMode && method === 'Card') {
+            // Single Card payment — charge full remaining balance.
+            try {
+              const terminalRes = await blockchypApi.processPayment(invoiceId);
+              const terminalResult = terminalRes.data?.data;
+              if (!terminalResult?.success) {
+                cardDeclined = true;
+                cardDeclineMessage =
+                  terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
+                toast.error(
+                  `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
+                  { duration: 8000 },
+                );
+              }
+            } catch (terminalErr: unknown) {
               cardDeclined = true;
-              cardDeclineMessage =
-                terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
-              toast.error(
-                `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
-                { duration: 8000 },
-              );
+              cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+              toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
             }
-          } catch (terminalErr: unknown) {
-            cardDeclined = true;
-            cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
-            toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
+          } else if (splitMode) {
+            // WEB-W3-004: split payments — each Card leg must fire an independent
+            // BlockChyp `charge` for that leg's amount. Non-card legs (Cash/Other)
+            // are already recorded by the POS checkout endpoint; we only hit
+            // the terminal for Card legs.
+            const cardLegs = (validSplits ?? []).filter((sp) => sp.method === 'Card');
+            for (const leg of cardLegs) {
+              const legAmount = parseFloat(leg.amount) || 0;
+              if (legAmount <= 0) continue;
+              try {
+                const terminalRes = await blockchypApi.processPayment(invoiceId, undefined, legAmount);
+                const terminalResult = terminalRes.data?.data;
+                if (!terminalResult?.success) {
+                  cardDeclined = true;
+                  const legMsg =
+                    terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
+                  cardDeclineMessage = cardDeclineMessage
+                    ? `${cardDeclineMessage}; ${legMsg}`
+                    : legMsg;
+                  toast.error(
+                    `Card leg $${legAmount.toFixed(2)} declined: ${legMsg}. Retry from the invoice page.`,
+                    { duration: 8000 },
+                  );
+                }
+              } catch (terminalErr: unknown) {
+                cardDeclined = true;
+                const legMsg = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+                cardDeclineMessage = cardDeclineMessage
+                  ? `${cardDeclineMessage}; ${legMsg}`
+                  : legMsg;
+                toast.error(`Card leg $${legAmount.toFixed(2)} failed: ${legMsg}. Retry from the invoice page.`, { duration: 8000 });
+              }
+            }
           }
         }
       }

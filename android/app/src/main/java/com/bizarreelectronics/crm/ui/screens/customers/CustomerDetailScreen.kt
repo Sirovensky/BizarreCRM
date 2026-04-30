@@ -55,7 +55,9 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
+import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.data.repository.MembershipRepository
 import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.hashTagToColor
 import retrofit2.HttpException
@@ -68,6 +70,7 @@ import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerDetailTabs
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.UndoStack
 import com.bizarreelectronics.crm.util.VCardBuilder
@@ -190,6 +193,14 @@ data class CustomerDetailUiState(
     /** Checkbox: user acknowledged the irreversibility warning. */
     val mergeAcknowledged: Boolean = false,
 
+    // ─── §38.3 Membership / loyalty summary ──────────────────────────────
+    /**
+     * Active membership for this customer loaded from
+     * `GET /memberships/customer/:id`. Null = not loaded or 404 (no membership).
+     * Displayed as a compact summary card in the Info tab.
+     */
+    val membership: Membership? = null,
+
     // ─── 5.7 Asset tracking ───────────────────────────────────────────────
     /** True when the "Add asset" bottom sheet is open. */
     val showAddAssetSheet: Boolean = false,
@@ -208,6 +219,7 @@ class CustomerDetailViewModel @Inject constructor(
     private val customerApi: CustomerApi,
     private val settingsApi: SettingsApi,
     private val ticketApi: TicketApi,
+    private val membershipRepository: MembershipRepository,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -303,6 +315,7 @@ class CustomerDetailViewModel @Inject constructor(
         loadLtvTier()
         loadInvoices()
         loadAssets()
+        loadMembership()
     }
 
     /**
@@ -423,6 +436,20 @@ class CustomerDetailViewModel @Inject constructor(
         }
     }
 
+    // §38.3 — membership summary for Info tab
+    private var membershipJob: Job? = null
+    private fun loadMembership() {
+        membershipJob?.cancel()
+        membershipJob = viewModelScope.launch {
+            membershipRepository.getCustomerMembership(customerId).fold(
+                onSuccess = { membership ->
+                    _state.value = _state.value.copy(membership = membership)
+                },
+                onFailure = { /* 404 / NotAvailable = no membership; silent degrade */ },
+            )
+        }
+    }
+
     // plan:L905 — delete
     fun requestDelete() {
         _state.value = _state.value.copy(showDeleteConfirm = true)
@@ -540,7 +567,7 @@ class CustomerDetailViewModel @Inject constructor(
                     imei = asset.imei?.takeIf { it.isNotBlank() },
                     serial = asset.serial?.takeIf { it.isNotBlank() },
                 )
-                _state.value = _state.value.copy(assetHistory = response.data?.history ?: emptyList())
+                _state.value = _state.value.copy(assetHistory = response.data ?: emptyList())
             } catch (_: Exception) {
                 _state.value = _state.value.copy(assetHistory = emptyList())
             }
@@ -1021,6 +1048,28 @@ fun CustomerDetailScreen(
                                         viewModel.openMergeSheet()
                                     },
                                 )
+                                // §25.3 — Copy customer email to clipboard (PII → sensitive copy)
+                                val email = customer?.email
+                                if (!email.isNullOrBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy email") },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            showOverflow = false
+                                            // Email is PII — sensitive copy suppresses Android 13+
+                                            // clipboard preview toast and auto-clears after 30 s.
+                                            ClipboardUtil.copySensitive(context, "Email", email)
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Email copied")
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1199,6 +1248,8 @@ fun CustomerDetailScreen(
                             // 5.8.1/5.8.2: tag chip click → navigate to tag-filtered list
                             onTagClick = onNavigateToTagFilter,
                             tagPalette = state.tagPalette,
+                            // §38.3: membership summary in Info tab
+                            membership = state.membership,
                             modifier = Modifier.weight(1f),
                         )
                     }

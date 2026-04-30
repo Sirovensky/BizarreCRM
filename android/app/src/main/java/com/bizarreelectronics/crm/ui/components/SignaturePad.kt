@@ -29,9 +29,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.R
 import kotlin.math.hypot
 
 // ---------------------------------------------------------------------------
@@ -102,6 +104,7 @@ fun SignaturePad(
     // this in local remembered state rather than passing it up to avoid
     // triggering a recomposition mid-stroke on every pointer sample.
     var currentStrokePoints by remember { mutableStateOf<List<SignaturePoint>>(emptyList()) }
+    val context = LocalContext.current
 
     val outlineColor = MaterialTheme.colorScheme.outline
     val inkColor = MaterialTheme.colorScheme.onSurface
@@ -123,8 +126,8 @@ fun SignaturePad(
                     .fillMaxWidth()
                     .height(200.dp)
                     .semantics {
-                        contentDescription =
-                            "Signature pad. Draw your signature with stylus or finger."
+                        // §26 — use a11y_* string resource; never raw literals on TalkBack-facing surfaces
+                        contentDescription = context.getString(R.string.a11y_signature_pad)
                     }
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
@@ -136,6 +139,9 @@ fun SignaturePad(
                                             ?: continue
                                         currentStrokePoints =
                                             listOf(SignaturePoint(pos.x, pos.y))
+                                        // Consume so parent LazyColumn does not
+                                        // intercept this press as a scroll start.
+                                        event.changes.forEach { it.consume() }
                                     }
                                     PointerEventType.Move -> {
                                         val pos = event.changes.firstOrNull()?.position
@@ -143,6 +149,10 @@ fun SignaturePad(
                                         currentStrokePoints =
                                             currentStrokePoints +
                                             SignaturePoint(pos.x, pos.y)
+                                        // Consume so vertical drags inside the
+                                        // pad never bubble up to the host
+                                        // scrollable container.
+                                        event.changes.forEach { it.consume() }
                                     }
                                     PointerEventType.Release -> {
                                         val pos = event.changes.firstOrNull()?.position
@@ -158,6 +168,7 @@ fun SignaturePad(
                                             )
                                         }
                                         currentStrokePoints = emptyList()
+                                        event.changes.forEach { it.consume() }
                                     }
                                     else -> Unit
                                 }
@@ -210,7 +221,7 @@ fun SignaturePad(
                 },
                 enabled = strokes.isNotEmpty(),
                 modifier = Modifier.semantics {
-                    contentDescription = "Undo last stroke"
+                    contentDescription = context.getString(R.string.a11y_signature_undo)
                 },
             ) {
                 Text("Undo")
@@ -220,7 +231,7 @@ fun SignaturePad(
                 onClick = { onStrokesChanged(emptyList()) },
                 enabled = strokes.isNotEmpty(),
                 modifier = Modifier.semantics {
-                    contentDescription = "Clear signature"
+                    contentDescription = context.getString(R.string.a11y_signature_clear)
                 },
             ) {
                 Text("Clear")

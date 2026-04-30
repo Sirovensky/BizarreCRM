@@ -49,6 +49,10 @@ function dueBadge(dueOn: string | null): { label: string; color: string } | null
 }
 
 export function MyQueuePage() {
+  // WEB-FO-010 (Fixer-426B 2026-04-26): opt back in to refetchOnWindowFocus
+  // for this shared-workflow view. The global default is false (main.tsx)
+  // to guard POS/form drafts, but the queue shows shared assignment state —
+  // a tech returning from their email should see new handoffs immediately.
   const { data, isLoading, error } = useQuery({
     queryKey: ['team', 'my-queue'],
     queryFn: async () => {
@@ -56,6 +60,7 @@ export function MyQueuePage() {
       return res.data.data;
     },
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const tickets: QueueTicket[] = data || [];

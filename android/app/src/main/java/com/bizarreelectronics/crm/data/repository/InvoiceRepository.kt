@@ -1,10 +1,16 @@
 package com.bizarreelectronics.crm.data.repository
 
 import android.util.Log
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.bizarreelectronics.crm.data.local.db.dao.InvoiceDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncStateDao
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem
+import com.bizarreelectronics.crm.data.sync.InvoiceRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.bizarreelectronics.crm.util.toDollars
@@ -20,9 +26,51 @@ import javax.inject.Singleton
 @Singleton
 class InvoiceRepository @Inject constructor(
     private val invoiceDao: InvoiceDao,
+    private val syncStateDao: SyncStateDao,
     private val invoiceApi: InvoiceApi,
     private val serverMonitor: ServerReachabilityMonitor,
 ) {
+
+    // ── Paging3 (§7.1) ──────────────────────────────────────────────────────
+
+    /**
+     * Returns a [Flow] of [PagingData] for the invoices list backed by
+     * [InvoiceRemoteMediator] and Room. The Pager survives configuration
+     * changes when cached in a ViewModel via [cachedIn(viewModelScope)].
+     *
+     * [filterKey] encodes the active filter as `"status:<value>"` or blank for
+     * all invoices. Each distinct key gets its own [SyncStateEntity] row so
+     * switching tabs doesn't corrupt the shared cursor.
+     */
+    @OptIn(ExperimentalPagingApi::class)
+    fun invoicesPaged(filterKey: String = ""): Flow<PagingData<InvoiceEntity>> {
+        val mediator = InvoiceRemoteMediator(
+            invoiceDao = invoiceDao,
+            syncStateDao = syncStateDao,
+            invoiceApi = invoiceApi,
+            filterKey = filterKey,
+            pageSize = InvoiceRemoteMediator.PAGE_SIZE,
+        )
+        val statusValue = if (filterKey.startsWith("status:")) {
+            filterKey.removePrefix("status:")
+        } else {
+            null
+        }
+        return Pager(
+            config = PagingConfig(
+                pageSize = InvoiceRemoteMediator.PAGE_SIZE,
+                enablePlaceholders = false,
+            ),
+            remoteMediator = mediator,
+            pagingSourceFactory = {
+                if (statusValue != null) {
+                    invoiceDao.pagingSourceByStatus(statusValue)
+                } else {
+                    invoiceDao.pagingSource()
+                }
+            },
+        ).flow
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun getInvoices(): Flow<List<InvoiceEntity>> {
@@ -49,6 +97,46 @@ class InvoiceRepository @Inject constructor(
 
     /** Outstanding balance in **cents** — preferred over [getOutstandingBalance]. */
     fun getOutstandingBalanceCents(): Flow<Long?> = invoiceDao.getOutstandingBalance()
+
+    // ── Cursor-based paging (§7.1) ────────────────────────────────────────────
+
+    /**
+     * Returns a single page of invoices for offline-first cursor paging.
+     *
+     * Online: calls [InvoiceApi.getInvoicePage] with [cursor]; inserts results into
+     * Room then returns the list plus the next cursor token.
+     * Offline: falls back to [InvoiceDao.getPage] keyset query so the list still scrolls.
+     *
+     * @return [Pair] of (items, nextCursor). nextCursor is null when no more pages exist.
+     */
+    suspend fun loadInvoicesPage(
+        cursor: String?,
+        limit: Int = 50,
+        filters: Map<String, String> = emptyMap(),
+    ): Pair<List<InvoiceEntity>, String?> {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = invoiceApi.getInvoicePage(cursor, limit, filters)
+                val page = response.data
+                if (page != null && page.invoices.isNotEmpty()) {
+                    invoiceDao.insertAll(page.invoices.map { it.toEntity() })
+                    return Pair(page.invoices.map { it.toEntity() }, page.cursor)
+                }
+                // Server returned empty or null data — treat as end of list.
+                return Pair(emptyList(), null)
+            } catch (e: Exception) {
+                Log.d(TAG, "Cursor page fetch failed, falling back to Room: ${e.message}")
+            }
+        }
+
+        // Offline fallback: keyset pagination from local Room cache.
+        val beforeCreatedAt = cursor ?: ""
+        val rows = invoiceDao.getPage(beforeCreatedAt, limit)
+        // Derive the next cursor from the last row's created_at; null when fewer than
+        // [limit] rows returned (end of local cache).
+        val nextCursor = if (rows.size >= limit) rows.last().createdAt else null
+        return Pair(rows, nextCursor)
+    }
 
     /**
      * Full pull from server — used by SyncManager.

@@ -35,6 +35,9 @@ data class EntryStep1State(
     val isCreating: Boolean = false,
 )
 
+/** Drill-down step inside Add-New-Device: pick category → manufacturer → model → fill details. */
+enum class DeviceDrillStep { CATEGORY, MANUFACTURER, MODEL, DETAILS }
+
 data class EntryStep2State(
     val deviceModel: String = "",
     val imeiSerial: String = "",
@@ -44,6 +47,24 @@ data class EntryStep2State(
     val selectedOnFileDeviceId: Long? = null,
     /** Toggled true when cashier taps 'Add new device' tile so the text fields reveal. */
     val showManualEntry: Boolean = false,
+    /** 2026-04-26 — server-driven device-type chip-row for Add-New-Device. */
+    val deviceCategories: List<com.bizarreelectronics.crm.data.remote.api.DeviceCategoryItem> = emptyList(),
+    /** Selected category slug (e.g. "phone", "laptop"). null = no selection yet. */
+    val selectedDeviceType: String? = null,
+    /** 2026-04-27 — drill-down: where in the category → manufacturer → model flow. */
+    val drillStep: DeviceDrillStep = DeviceDrillStep.CATEGORY,
+    /** Manufacturers available for the selected category (filtered client-side from /catalog/devices). */
+    val manufacturers: List<com.bizarreelectronics.crm.data.remote.dto.ManufacturerItem> = emptyList(),
+    /** Selected manufacturer id; null = no selection yet. */
+    val selectedManufacturerId: Long? = null,
+    /** Models available for the selected (category, manufacturer) pair. */
+    val models: List<com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem> = emptyList(),
+    /** Selected model id once the cashier picks a tile. Threads through to
+     *  CheckInHostScreen → CheckInViewModel so per-device pricing lookups
+     *  (RepairPricingApi.pricingLookup) can run on the Quote step. */
+    val selectedModelId: Long? = null,
+    val drillLoading: Boolean = false,
+    val drillError: String? = null,
 )
 
 data class OnFileDevice(
@@ -69,6 +90,8 @@ data class AttachedCustomerEntry(
 class CheckInEntryViewModel @Inject constructor(
     private val customerApi: CustomerApi,
     private val appPreferences: AppPreferences,
+    private val deviceCategoryRepository: com.bizarreelectronics.crm.data.repository.DeviceCategoryRepository,
+    private val catalogApi: com.bizarreelectronics.crm.data.remote.api.CatalogApi,
 ) : ViewModel() {
 
     private val _step1 = MutableStateFlow(EntryStep1State())
@@ -85,6 +108,142 @@ class CheckInEntryViewModel @Inject constructor(
     init {
         wireSearchDebounce()
         hydrateRecentCustomers()
+        observeDeviceCategories()
+    }
+
+    /** Subscribe to server-driven category list (refreshed at app start). */
+    private fun observeDeviceCategories() {
+        viewModelScope.launch {
+            deviceCategoryRepository.categories.collect { list ->
+                _step2.update { it.copy(deviceCategories = list) }
+            }
+        }
+    }
+
+    /**
+     * Cashier taps a device-category tile on the Add-New-Device form. Null
+     * clears the selection back to root. Selecting a category triggers
+     * a server fetch of all models in that category and groups them by
+     * manufacturer for the next tile grid.
+     */
+    fun onDeviceTypeSelected(slug: String?) {
+        if (slug == null) {
+            // Clear back to root.
+            _step2.update {
+                it.copy(
+                    selectedDeviceType = null,
+                    drillStep = DeviceDrillStep.CATEGORY,
+                    manufacturers = emptyList(),
+                    selectedManufacturerId = null,
+                    models = emptyList(),
+                    drillError = null,
+                )
+            }
+            return
+        }
+        _step2.update {
+            it.copy(
+                selectedDeviceType = slug,
+                drillStep = DeviceDrillStep.MANUFACTURER,
+                drillLoading = true,
+                drillError = null,
+                manufacturers = emptyList(),
+                selectedManufacturerId = null,
+                models = emptyList(),
+            )
+        }
+        viewModelScope.launch {
+            runCatching { catalogApi.searchDevices(category = slug, limit = 200) }
+                .onSuccess { resp ->
+                    val all = resp.data ?: emptyList()
+                    val grouped = all
+                        .filter { it.manufacturerId != null && it.manufacturerName != null }
+                        .groupBy { it.manufacturerId!! to (it.manufacturerName ?: "") }
+                        .map { (key, devices) ->
+                            com.bizarreelectronics.crm.data.remote.dto.ManufacturerItem(
+                                id = key.first,
+                                name = key.second,
+                                modelCount = devices.size,
+                            )
+                        }
+                        .sortedBy { it.name.lowercase() }
+                    _step2.update { it.copy(manufacturers = grouped, drillLoading = false) }
+                }
+                .onFailure { t ->
+                    _step2.update { it.copy(drillLoading = false, drillError = t.message) }
+                }
+        }
+    }
+
+    /** Cashier taps a manufacturer tile. Loads the model list for (category, manufacturer). */
+    fun onManufacturerSelected(id: Long?) {
+        if (id == null) {
+            _step2.update {
+                it.copy(
+                    selectedManufacturerId = null,
+                    drillStep = DeviceDrillStep.MANUFACTURER,
+                    models = emptyList(),
+                )
+            }
+            return
+        }
+        val category = _step2.value.selectedDeviceType ?: return
+        _step2.update {
+            it.copy(
+                selectedManufacturerId = id,
+                drillStep = DeviceDrillStep.MODEL,
+                drillLoading = true,
+                drillError = null,
+                models = emptyList(),
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                catalogApi.searchDevices(category = category, manufacturerId = id.toInt(), limit = 200)
+            }
+                .onSuccess { resp ->
+                    val list = resp.data ?: emptyList()
+                    val sorted = list.sortedWith(
+                        compareByDescending<com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem> { it.releaseYear ?: 0 }
+                            .thenBy { it.name.lowercase() },
+                    )
+                    _step2.update { it.copy(models = sorted, drillLoading = false) }
+                }
+                .onFailure { t ->
+                    _step2.update { it.copy(drillLoading = false, drillError = t.message) }
+                }
+        }
+    }
+
+    /** Cashier taps a model tile. Pre-fills `deviceModel` and advances to DETAILS. */
+    fun onModelSelected(model: com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem) {
+        _step2.update {
+            it.copy(
+                drillStep = DeviceDrillStep.DETAILS,
+                deviceModel = model.name,
+                selectedModelId = model.id,
+            )
+        }
+    }
+
+    /** Back button inside the drill: MODEL → MANUFACTURER → CATEGORY. */
+    fun onDrillBack() {
+        _step2.update {
+            when (it.drillStep) {
+                DeviceDrillStep.DETAILS -> it.copy(drillStep = DeviceDrillStep.MODEL)
+                DeviceDrillStep.MODEL -> it.copy(
+                    drillStep = DeviceDrillStep.MANUFACTURER,
+                    selectedManufacturerId = null,
+                    models = emptyList(),
+                )
+                DeviceDrillStep.MANUFACTURER -> it.copy(
+                    drillStep = DeviceDrillStep.CATEGORY,
+                    selectedDeviceType = null,
+                    manufacturers = emptyList(),
+                )
+                DeviceDrillStep.CATEGORY -> it
+            }
+        }
     }
 
     /**

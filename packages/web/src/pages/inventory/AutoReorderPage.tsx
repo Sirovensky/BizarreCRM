@@ -155,7 +155,7 @@ export function AutoReorderPage() {
             if (ok) runMut.mutate();
           }}
           disabled={runMut.isPending}
-          className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {runMut.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -224,7 +224,7 @@ export function AutoReorderPage() {
           <button
             onClick={() => upsertMut.mutate()}
             disabled={!itemId || !minQty || !reorderQty || upsertMut.isPending}
-            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50"
+            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Save
           </button>
@@ -299,7 +299,7 @@ export function AutoReorderPage() {
                       });
                       if (ok) deleteMut.mutate(r.inventory_item_id);
                     }}
-                    className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                    className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     disabled={deleteMut.isPending && deleteMut.variables === r.inventory_item_id}
                     aria-label={`Remove auto-reorder rule for ${r.name}`}
                   >

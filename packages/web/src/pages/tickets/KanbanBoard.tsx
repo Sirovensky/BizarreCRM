@@ -132,11 +132,17 @@ export default function KanbanBoard() {
   // is connected; left in as a fallback bounded to once-per-minute when WS is
   // down (see useWsStore for the connection signal — keeping the poll cheap
   // here rather than wiring it conditionally to avoid a remount churn).
+  // WEB-FO-010 (Fixer-426B 2026-04-26): opt back in to refetchOnWindowFocus
+  // for shared-workflow views. The global default is false (set in main.tsx to
+  // protect POS cart / form drafts from spurious refetches), but the kanban
+  // board shows shared state — a tech alt-tabbing back should see any
+  // reassignments or status changes that landed while they were in another tab.
   const { data: kanbanData, isLoading } = useQuery({
     queryKey: ['tickets', 'kanban'],
     queryFn: () => ticketApi.kanban(),
     refetchInterval: 60000,
     staleTime: 10000,
+    refetchOnWindowFocus: true,
   });
 
   const allColumns: KanbanColumn[] = kanbanData?.data?.data?.columns || [];

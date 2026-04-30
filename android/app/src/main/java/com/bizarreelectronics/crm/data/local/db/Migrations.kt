@@ -767,6 +767,198 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 11 → 12: FTS4 virtual tables + sync triggers (§18.1).**
+     *
+     * Creates three FTS4 virtual shadow tables (`customers_fts`, `tickets_fts`,
+     * `inventory_fts`) and the AFTER INSERT / AFTER UPDATE / AFTER DELETE triggers
+     * that keep them synchronized with their canonical tables.
+     *
+     * ## Why FTS4 and not FTS5
+     *
+     * Room's `@Fts4` annotation is the supported path. FTS5 tables require raw
+     * `execSQL` and are not registered with Room's schema-hash checker, making
+     * them invisible to migration validation. FTS4 gives prefix matching
+     * (`MATCH 'query*'`), which is all we need for §18.1 and §18.3.
+     *
+     * ## Trigger strategy
+     *
+     * Each canonical table (`customers`, `tickets`, `inventory_items`) gets three
+     * triggers. The triggers call the FTS `DELETE`/`INSERT` pair pattern required
+     * by content-table FTS4 (`content=""` is not used here — Room generates a
+     * real shadow table with a `content` column, so plain AFTER * triggers are
+     * sufficient).
+     *
+     * ## Idempotency
+     *
+     * `CREATE VIRTUAL TABLE IF NOT EXISTS` and `CREATE TRIGGER IF NOT EXISTS` are
+     * idempotent — a retried migration is safe.
+     */
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // ── customers_fts ─────────────────────────────────────────────────
+            db.execSQL(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS customers_fts
+                USING fts4(
+                    content="customers",
+                    first_name, last_name, email, phone, mobile, organization, tags,
+                    tokenize="unicode61 tokenchars '0123456789'"
+                )
+                """.trimIndent()
+            )
+            // Backfill existing rows into the FTS index
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO customers_fts(rowid, first_name, last_name, email, phone, mobile, organization, tags)
+                SELECT id, first_name, last_name, email, phone, mobile, organization, tags
+                FROM customers
+                WHERE is_deleted = 0
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS customers_fts_ai AFTER INSERT ON customers BEGIN
+                    INSERT INTO customers_fts(rowid, first_name, last_name, email, phone, mobile, organization, tags)
+                    VALUES (new.id, new.first_name, new.last_name, new.email, new.phone, new.mobile, new.organization, new.tags);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS customers_fts_au AFTER UPDATE ON customers BEGIN
+                    DELETE FROM customers_fts WHERE rowid = old.id;
+                    INSERT INTO customers_fts(rowid, first_name, last_name, email, phone, mobile, organization, tags)
+                    VALUES (new.id, new.first_name, new.last_name, new.email, new.phone, new.mobile, new.organization, new.tags);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS customers_fts_ad AFTER DELETE ON customers BEGIN
+                    DELETE FROM customers_fts WHERE rowid = old.id;
+                END
+                """.trimIndent()
+            )
+
+            // ── tickets_fts ───────────────────────────────────────────────────
+            db.execSQL(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts
+                USING fts4(
+                    content="tickets",
+                    order_id, status_name, customer_name, customer_phone, first_device_name, labels,
+                    tokenize="unicode61 tokenchars '0123456789-'"
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO tickets_fts(rowid, order_id, status_name, customer_name, customer_phone, first_device_name, labels)
+                SELECT id, order_id, status_name, customer_name, customer_phone, first_device_name, labels
+                FROM tickets
+                WHERE is_deleted = 0
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS tickets_fts_ai AFTER INSERT ON tickets BEGIN
+                    INSERT INTO tickets_fts(rowid, order_id, status_name, customer_name, customer_phone, first_device_name, labels)
+                    VALUES (new.id, new.order_id, new.status_name, new.customer_name, new.customer_phone, new.first_device_name, new.labels);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS tickets_fts_au AFTER UPDATE ON tickets BEGIN
+                    DELETE FROM tickets_fts WHERE rowid = old.id;
+                    INSERT INTO tickets_fts(rowid, order_id, status_name, customer_name, customer_phone, first_device_name, labels)
+                    VALUES (new.id, new.order_id, new.status_name, new.customer_name, new.customer_phone, new.first_device_name, new.labels);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS tickets_fts_ad AFTER DELETE ON tickets BEGIN
+                    DELETE FROM tickets_fts WHERE rowid = old.id;
+                END
+                """.trimIndent()
+            )
+
+            // ── inventory_fts ─────────────────────────────────────────────────
+            db.execSQL(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS inventory_fts
+                USING fts4(
+                    content="inventory_items",
+                    name, sku, upc_code, category, manufacturer_name, supplier_name, description,
+                    tokenize="unicode61 tokenchars '0123456789-'"
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO inventory_fts(rowid, name, sku, upc_code, category, manufacturer_name, supplier_name, description)
+                SELECT id, name, sku, upc_code, category, manufacturer_name, supplier_name, description
+                FROM inventory_items
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS inventory_fts_ai AFTER INSERT ON inventory_items BEGIN
+                    INSERT INTO inventory_fts(rowid, name, sku, upc_code, category, manufacturer_name, supplier_name, description)
+                    VALUES (new.id, new.name, new.sku, new.upc_code, new.category, new.manufacturer_name, new.supplier_name, new.description);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS inventory_fts_au AFTER UPDATE ON inventory_items BEGIN
+                    DELETE FROM inventory_fts WHERE rowid = old.id;
+                    INSERT INTO inventory_fts(rowid, name, sku, upc_code, category, manufacturer_name, supplier_name, description)
+                    VALUES (new.id, new.name, new.sku, new.upc_code, new.category, new.manufacturer_name, new.supplier_name, new.description);
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS inventory_fts_ad AFTER DELETE ON inventory_items BEGIN
+                    DELETE FROM inventory_fts WHERE rowid = old.id;
+                END
+                """.trimIndent()
+            )
+        }
+    }
+
+    /**
+     * **Migration 12 → 13: add `approval_status` column to `expenses` + index.**
+     *
+     * Mirrors the server's `expenses.status` column (server migration 120,
+     * values: `pending | approved | denied`). Android stores it under the
+     * Kotlin field `approvalStatus` mapped to SQL column `approval_status`
+     * — name disambiguates from any future generic `status` field.
+     *
+     * Powers [ExpenseDao.getByApprovalStatus], the approval-status chip row
+     * in [ExpenseFilterSheet], and the "Pending approval" badge on the list
+     * summary tile.
+     *
+     * Existing cached rows get DEFAULT `'pending'`; next sync overwrites them
+     * with server-authoritative value via [ExpenseRepository.refreshFromServer].
+     *
+     * Renumbered from main's MIGRATION_11_12 to 12→13 so it sequences after
+     * MIGRATION_11_12 (FTS4 search, §18.1) on this branch.
+     */
+    val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE expenses ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending'"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_expenses_approval_status ON expenses(approval_status)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -779,5 +971,7 @@ object Migrations {
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
+        MIGRATION_11_12,
+        MIGRATION_12_13,
     )
 }

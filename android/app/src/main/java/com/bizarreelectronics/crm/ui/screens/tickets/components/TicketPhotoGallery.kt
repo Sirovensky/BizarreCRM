@@ -73,6 +73,8 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.util.ExifStripper
 import com.bizarreelectronics.crm.util.MultipartUpload
+import com.bizarreelectronics.crm.util.draggableItem
+import com.bizarreelectronics.crm.util.uriClipData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -249,10 +251,24 @@ fun TicketPhotoGallery(
                 var offsetX by remember { mutableFloatStateOf(0f) }
                 var offsetY by remember { mutableFloatStateOf(0f) }
 
+                // §22.8 — draggableItem: long-press on a photo starts a cross-ticket
+                // drag-and-drop with the absolute photo URL as a uri-list payload.
+                // The receiving ticket's photo gallery (or a dedicated drop zone) can
+                // accept image/* or text/uri-list drops to attach the photo.
+                // NOTE(server): attaching a photo from one ticket to another requires
+                // a server-side copy endpoint (POST /tickets/:id/photos with a source_url
+                // body param). Until that endpoint exists, the drag source is wired but
+                // the drop-target acceptance + server call is deferred.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(RoundedCornerShape(12.dp))
+                        .draggableItem(
+                            clipData = uriClipData(
+                                label = "photo_url",
+                                uriString = "$serverUrl${photo.url}",
+                            ),
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     AsyncImage(

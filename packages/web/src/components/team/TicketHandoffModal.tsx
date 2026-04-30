@@ -92,12 +92,12 @@ export function TicketHandoffModal({
         <h2 id="ticket-handoff-title" className="text-lg font-bold mb-1 inline-flex items-center">
           <ArrowRightLeft className="w-5 h-5 mr-2 text-primary-500" /> Hand off ticket
         </h2>
-        <p className="text-xs text-gray-500 mb-4">
+        <p className="text-xs text-surface-500 dark:text-surface-400 mb-4">
           The new assignee will see this in their queue. The reason is logged for audit.
         </p>
         <div className="space-y-3">
           <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Hand off to</span>
+            <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Hand off to</span>
             <select
               className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
               value={toUserId}
@@ -112,7 +112,7 @@ export function TicketHandoffModal({
             </select>
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Reason (required)</span>
+            <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Reason (required)</span>
             <input
               type="text"
               className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -122,7 +122,7 @@ export function TicketHandoffModal({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-gray-600">Context (optional)</span>
+            <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Context (optional)</span>
             <textarea
               className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
               rows={3}
@@ -134,14 +134,14 @@ export function TicketHandoffModal({
         </div>
         <div className="flex gap-2 mt-5">
           <button
-            className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+            className="flex-1 px-3 py-2 border rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-800"
             onClick={onClose}
             disabled={handoffMut.isPending}
           >
             Cancel
           </button>
           <button
-            className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50"
+            className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             disabled={!canSubmit}
             onClick={() => handoffMut.mutate()}
           >

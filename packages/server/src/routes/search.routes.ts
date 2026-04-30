@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { isAdminOrManager } from '../utils/constants.js';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ function ftsMatchExpr(keyword: string): string {
   // DA-3: bound raw input before regex + split run so a large query cannot
   // stall the single Node thread. 200 chars covers any realistic search.
   const bounded = typeof keyword === 'string' ? keyword.slice(0, 200) : '';
-  const cleaned = bounded.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
+  const cleaned = bounded.replace(/[^a-zA-Z0-9À-ɏ\s\-@.]/g, '').trim();
   const tokens = cleaned.split(/\s+/).filter(Boolean).slice(0, 16);
   if (tokens.length === 0) return '';
   return tokens.map(t => `"${t}"*`).join(' OR ');
@@ -26,6 +27,8 @@ interface SearchResult {
   display: string;
   type: string;
   subtitle?: string;
+  customer_name?: string;
+  device?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +40,10 @@ router.get(
     const db = req.db;
     const adb = req.asyncDb;
     const q = (req.query.q as string || '').trim();
-    if (!q) {
+    // WEB-S7-022: fast-exit for very short queries — correlated EXISTS subqueries
+    // on ticket_notes / ticket_history are expensive full-table scans; single-char
+    // queries return too many results to be useful anyway.
+    if (!q || q.length < 3) {
       return void res.json({
         success: true,
         data: { customers: [], tickets: [], inventory: [], invoices: [] },
@@ -51,7 +57,8 @@ router.get(
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    const isAdmin = userRole === 'admin' || userRole === 'manager';
+    // WEB-S7-034: use shared helper so role additions are a one-line change
+    const isAdmin = isAdminOrManager(userRole);
 
     let canViewAllTickets = isAdmin;
     if (!isAdmin) {
@@ -103,9 +110,12 @@ router.get(
     const [tickets, inventory, invoices] = await Promise.all([
       adb.all<SearchResult>(`
         SELECT t.id, t.order_id AS display, 'ticket' AS type,
-               ts.name AS subtitle
+               ts.name AS subtitle,
+               c.first_name || ' ' || c.last_name AS customer_name,
+               (SELECT device_name FROM ticket_devices WHERE ticket_id = t.id LIMIT 1) AS device
         FROM tickets t
         LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+        LEFT JOIN customers c ON c.id = t.customer_id
         WHERE t.is_deleted = 0
           AND (t.order_id LIKE ? ESCAPE '\\' OR EXISTS (
             SELECT 1 FROM ticket_devices td WHERE td.ticket_id = t.id AND td.device_name LIKE ? ESCAPE '\\'
@@ -158,13 +168,13 @@ router.get(
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
 
-    if (!q || q.length < 2) {
+    if (!q || q.length < 1) {
       return void res.json({ success: true, data: { notes: [], total: 0 } });
     }
 
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    const isAdmin = userRole === 'admin' || userRole === 'manager';
+    const isAdmin = isAdminOrManager(userRole);
     let canViewAllTickets = isAdmin;
     if (!isAdmin) {
       const viewAllCfg = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");
@@ -197,16 +207,15 @@ router.get(
       // used in the DISTINCT tn.id count query above.
       adb.all<any>(`
         SELECT tn.id, tn.ticket_id, tn.type, tn.content, tn.created_at,
-               t.order_id, MIN(td.device_name) AS device_name,
+               t.order_id,
+               (SELECT MIN(device_name) FROM ticket_devices WHERE ticket_id = t.id) AS device_name,
                u.first_name AS author_first, u.last_name AS author_last,
                c.first_name AS customer_first, c.last_name AS customer_last
         FROM ticket_notes tn
         JOIN tickets t ON t.id = tn.ticket_id
-        LEFT JOIN ticket_devices td ON td.ticket_id = t.id
         LEFT JOIN users u ON u.id = tn.user_id
         LEFT JOIN customers c ON c.id = t.customer_id
         WHERE ${whereClause}
-        GROUP BY tn.id
         ORDER BY tn.created_at DESC
         LIMIT ? OFFSET ?
       `, ...params, pageSize, (page - 1) * pageSize),

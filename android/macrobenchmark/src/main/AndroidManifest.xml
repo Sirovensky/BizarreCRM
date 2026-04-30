@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §29.8 — Macrobenchmark module manifest.
+
+  The benchmark APK targets the debug variant of :app via
+  androidx.benchmark.junit4.MacrobenchmarkRule.  The target package is declared
+  in each benchmark class via MacrobenchmarkRule(packageName = "…").
+
+  This manifest is intentionally minimal — the benchmark runner wires
+  everything else.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

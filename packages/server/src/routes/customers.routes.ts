@@ -186,6 +186,7 @@ router.get(
 
     // For sorting by computed columns, wrap in subquery
     const orderColumn = ['total_spent', 'ticket_count'].includes(safeSortBy) ? safeSortBy : `c.${safeSortBy}`;
+    const nullsLast = ['total_spent', 'outstanding_balance', 'ticket_count'].includes(safeSortBy) ? ' NULLS LAST' : '';
 
     // Fetch page
     const dataSql = `
@@ -201,7 +202,7 @@ router.get(
       ${ftsJoin}
       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
       ${whereClause}
-      ORDER BY ${orderColumn} ${sortOrder}
+      ORDER BY ${orderColumn} ${sortOrder}${nullsLast}
       LIMIT ? OFFSET ?
     `;
 
@@ -687,6 +688,82 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// POST /bulk-delete – Soft-delete multiple customers at once
+// WEB-W2-029: bulk action from CustomerListPage checkbox selection.
+// Mirrors the single-delete checks: no open tickets, no unpaid invoices.
+// Capped at 200 to prevent accidental mass erasure.
+// ---------------------------------------------------------------------------
+router.post(
+  '/bulk-delete',
+  requirePermission('customers.delete'),
+  asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required to delete customers', 403);
+    }
+
+    const adb = req.asyncDb;
+    const { customer_ids } = req.body;
+
+    if (!Array.isArray(customer_ids) || customer_ids.length === 0) {
+      throw new AppError('customer_ids array is required', 400);
+    }
+    if (customer_ids.length > 200) {
+      throw new AppError('Maximum 200 customers per bulk delete operation', 400);
+    }
+
+    const validIds: number[] = [];
+    for (const rawId of customer_ids) {
+      const cid = Number(rawId);
+      if (Number.isInteger(cid) && cid > 0) validIds.push(cid);
+    }
+    if (validIds.length === 0) {
+      throw new AppError('No valid customer IDs provided', 400);
+    }
+
+    const placeholders = validIds.map(() => '?').join(', ');
+
+    // Block if any selected customer has open tickets or unpaid invoices.
+    const openTicketsRow = await adb.get<{ n: number }>(`
+      SELECT COUNT(*) AS n FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.customer_id IN (${placeholders}) AND t.is_deleted = 0
+        AND ts.is_closed = 0 AND ts.is_cancelled = 0
+    `, ...validIds);
+    if ((openTicketsRow?.n ?? 0) > 0) {
+      throw new AppError(
+        `${openTicketsRow!.n} open ticket(s) found across selected customers. Close or reassign them first.`,
+        400,
+      );
+    }
+
+    const unpaidRow = await adb.get<{ n: number }>(`
+      SELECT COUNT(*) AS n FROM invoices
+      WHERE customer_id IN (${placeholders}) AND status IN ('unpaid', 'partial')
+    `, ...validIds);
+    if ((unpaidRow?.n ?? 0) > 0) {
+      throw new AppError(
+        `${unpaidRow!.n} unpaid invoice(s) found across selected customers. Settle or void them first.`,
+        400,
+      );
+    }
+
+    const result = await adb.run(
+      `UPDATE customers SET is_deleted = 1, updated_at = datetime('now')
+       WHERE id IN (${placeholders}) AND is_deleted = 0`,
+      ...validIds,
+    );
+
+    audit(req.db, 'customers_bulk_deleted', req.user!.id, req.ip || 'unknown', {
+      customer_ids: validIds,
+      deleted_count: result.changes,
+    });
+
+    res.json({ success: true, data: { deleted: result.changes, requested: validIds.length } });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // POST /archive-inactive – Mark customers as inactive if no recent activity
 // ENR-C9: Inactive customer archival
 // SEC-H25: archiving customers is a bulk write — gate behind customers.archive.
@@ -970,6 +1047,10 @@ router.post(
       }
     }
 
+    const inputAny = input as unknown as Record<string, unknown>;
+    const lat = typeof inputAny.lat === 'number' && isFinite(inputAny.lat) ? inputAny.lat : null;
+    const lng = typeof inputAny.lng === 'number' && isFinite(inputAny.lng) ? inputAny.lng : null;
+
     const result = await adb.run(
       `INSERT INTO customers
         (first_name, last_name, title, organization, type,
@@ -979,7 +1060,8 @@ router.post(
          referred_by, customer_group_id,
          tax_number, tax_class_id,
          email_opt_in, sms_opt_in,
-         comments, source, tags)
+         comments, source, tags,
+         lat, lng)
        VALUES
         (?, ?, ?, ?, ?,
          ?, ?, ?,
@@ -988,7 +1070,8 @@ router.post(
          ?, ?,
          ?, ?,
          ?, ?,
-         ?, ?, ?)`,
+         ?, ?, ?,
+         ?, ?)`,
       input.first_name,
       input.last_name ?? '',
       input.title ?? null,
@@ -1014,6 +1097,8 @@ router.post(
       input.comments ?? null,
       input.source ?? null,
       JSON.stringify(input.tags ?? []),
+      lat,
+      lng,
     );
 
     const customerId = result.lastInsertRowid as number;
@@ -1305,6 +1390,22 @@ router.put(
         sets.push(`${col} = ?`);
         values.push(val ?? null);
       }
+    }
+
+    // lat/lng are not in CUSTOMER_COLUMNS (to keep the allowlist tight) but
+    // are persisted when the client sends them (geocoded on address blur).
+    const inputAny2 = input as Record<string, unknown>;
+    if ('lat' in inputAny2) {
+      const v = inputAny2.lat;
+      const n = typeof v === 'number' && isFinite(v) ? v : null;
+      sets.push('lat = ?');
+      values.push(n);
+    }
+    if ('lng' in inputAny2) {
+      const v = inputAny2.lng;
+      const n = typeof v === 'number' && isFinite(v) ? v : null;
+      sets.push('lng = ?');
+      values.push(n);
     }
 
     if (sets.length > 0) {

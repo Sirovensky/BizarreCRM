@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,17 +16,25 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -33,6 +42,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryColumn
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryColumnsPickerSheet
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryContextMenu
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilter
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilterSheet
@@ -40,6 +51,8 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySortDropdown
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryStockBadge
 import com.bizarreelectronics.crm.ui.screens.inventory.components.QuickStockAdjust
+import com.bizarreelectronics.crm.ui.screens.inventory.components.RunAutoReorderDialog
+import com.bizarreelectronics.crm.ui.screens.inventory.components.loadInventoryColumns
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.local.db.entities.costPrice
@@ -61,6 +74,11 @@ fun InventoryListScreen(
     onItemClick: (Long) -> Unit,
     onScanClick: () -> Unit,
     onAddClick: () -> Unit = {},
+    onImportCatalog: () -> Unit = {},
+    /** §6.6 — navigate to the stocktake sessions list. */
+    onStocktakeListClick: () -> Unit = {},
+    /** §6.8 — navigate to the ABC analysis screen. */
+    onAbcClick: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -74,6 +92,42 @@ fun InventoryListScreen(
     val clipboardManager = LocalClipboardManager.current
 
     var showFilterSheet by remember { mutableStateOf(false) }
+    // §6.1: tablet column picker state (persisted via SharedPreferences)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var visibleColumns by remember {
+        mutableStateOf(loadInventoryColumns(context))
+    }
+    var showColumnsPicker by remember { mutableStateOf(false) }
+
+    // §6.8: auto-reorder dialog
+    var showAutoReorderDialog by remember { mutableStateOf(false) }
+    // Admin overflow menu
+    var showAdminOverflow by remember { mutableStateOf(false) }
+
+    // Show auto-reorder error in snackbar
+    LaunchedEffect(state.autoReorderError) {
+        val err = state.autoReorderError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(err)
+        viewModel.clearAutoReorderResult()
+    }
+
+    // §6.5: HID-scanner support — hidden focused BasicTextField captures rapid
+    // keystrokes from an external Bluetooth scanner operating in HID keyboard
+    // mode. The scanner sends characters with intra-key interval < 50 ms and
+    // terminates with Enter (KeyEvent.KEYCODE_ENTER / '\n'). We accumulate the
+    // buffer and submit when we see a newline. Regular keyboard typing is
+    // filtered out by the 50 ms threshold: human key repeat is typically > 80 ms.
+    var hidBuffer by remember { mutableStateOf(TextFieldValue("")) }
+    var hidLastCharMs by remember { mutableStateOf(0L) }
+    val hidFocusRequester = remember { FocusRequester() }
+
+    // Re-request focus on the hidden field whenever we're back on the list screen
+    // so the scanner can always inject input without user interaction.
+    LaunchedEffect(Unit) {
+        // Delay slightly to let the Scaffold settle before requesting focus.
+        kotlinx.coroutines.delay(300)
+        try { hidFocusRequester.requestFocus() } catch (_: Exception) { /* safe to ignore */ }
+    }
 
     // Trigger barcode lookup when a scanned barcode arrives
     LaunchedEffect(scannedBarcode) {
@@ -106,6 +160,31 @@ fun InventoryListScreen(
                 showFilterSheet = false
             },
             onDismiss = { showFilterSheet = false },
+        )
+    }
+
+    // §6.1: Columns picker sheet — tablet/ChromeOS only
+    if (showColumnsPicker && isTablet) {
+        InventoryColumnsPickerSheet(
+            visibleColumns = visibleColumns,
+            onColumnsChanged = { updated -> visibleColumns = updated },
+            onDismiss = { showColumnsPicker = false },
+        )
+    }
+
+    // §6.8: Run auto-reorder dialog (admin-only)
+    if (showAutoReorderDialog || state.isRunningAutoReorder || state.autoReorderResult != null) {
+        RunAutoReorderDialog(
+            isRunning = state.isRunningAutoReorder,
+            result = state.autoReorderResult,
+            errorMessage = state.autoReorderError,
+            onConfirm = {
+                viewModel.runAutoReorder()
+            },
+            onDismiss = {
+                showAutoReorderDialog = false
+                viewModel.clearAutoReorderResult()
+            },
         )
     }
 
@@ -149,11 +228,65 @@ fun InventoryListScreen(
                         currentSort = state.currentSort,
                         onSortSelected = { viewModel.onSortChanged(it) },
                     )
+                    // §6.1: Column picker icon — tablet/ChromeOS only
+                    if (isTablet) {
+                        IconButton(onClick = { showColumnsPicker = true }) {
+                            Icon(Icons.Default.ViewColumn, contentDescription = "Choose visible columns")
+                        }
+                    }
                     IconButton(onClick = onScanClick) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode to find item")
                     }
                     IconButton(onClick = { viewModel.loadItems() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh inventory")
+                    }
+                    // §6.8: admin-only overflow with auto-reorder action
+                    if (isAdmin) {
+                        Box {
+                            IconButton(onClick = { showAdminOverflow = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Admin actions",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showAdminOverflow,
+                                onDismissRequest = { showAdminOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Run auto-reorder") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Autorenew, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        showAutoReorderDialog = true
+                                    },
+                                )
+                                // §6.6 — Stocktake sessions list
+                                DropdownMenuItem(
+                                    text = { Text("Stocktake sessions") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Assignment, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onStocktakeListClick()
+                                    },
+                                )
+                                // §6.8 — ABC analysis screen
+                                DropdownMenuItem(
+                                    text = { Text("ABC analysis") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.BarChart, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onAbcClick()
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -177,10 +310,43 @@ fun InventoryListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
+            // §6.5: HID-scanner hidden field — zero-size, invisible to a11y.
+            // External Bluetooth scanner (HID keyboard mode) injects characters
+            // here; rapid bursts (< 50 ms inter-char) + newline → barcode lookup.
+            BasicTextField(
+                value = hidBuffer,
+                onValueChange = { newVal ->
+                    val nowMs = System.currentTimeMillis()
+                    val deltaMs = nowMs - hidLastCharMs
+                    hidLastCharMs = nowMs
+
+                    val newText = newVal.text
+                    if (newText.endsWith("\n")) {
+                        // Newline = scanner terminator → submit
+                        val barcode = newText.trimEnd('\n').trim()
+                        if (barcode.isNotBlank()) {
+                            viewModel.lookupBarcode(barcode)
+                        }
+                        hidBuffer = TextFieldValue("")
+                    } else if (deltaMs < 50 || hidBuffer.text.isNotEmpty()) {
+                        // Fast typing (< 50 ms) OR already buffering → accumulate
+                        hidBuffer = newVal
+                    } else {
+                        // Slow typing (human) → discard so the hidden field stays empty
+                        hidBuffer = TextFieldValue("")
+                    }
+                },
+                modifier = Modifier
+                    .size(0.dp)
+                    .focusRequester(hidFocusRequester)
+                    .semantics { invisibleToUser() },
+                textStyle = TextStyle(fontSize = 0.sp),
+            )
+
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search inventory...",
+                placeholder = "Name, SKU, UPC, category…",
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = "Search inventory" },
@@ -241,7 +407,8 @@ fun InventoryListScreen(
                 }
 
                 state.items.isEmpty() -> {
-                    // §6.1 L1067 — filter-aware empty state
+                    // §3.14 L587 — filter-aware empty state: rich illustration for
+                    // zero-data tenant, simple state for active search/filter empty.
                     val hasActiveFilter = state.currentFilter != InventoryFilter.Empty ||
                         state.searchQuery.isNotEmpty()
                     Box(
@@ -263,17 +430,21 @@ fun InventoryListScreen(
                                                 viewModel.onSearchChanged("")
                                             },
                                         ) { Text("Clear filters") }
-                                        Button(onClick = { /* TODO: import CSV stub */ }) {
+                                        Button(onClick = onImportCatalog) {
                                             Text("Import CSV")
                                         }
                                     }
                                 },
                             )
                         } else {
-                            EmptyState(
-                                icon = Icons.Default.Inventory2,
-                                title = "No items found",
-                                subtitle = "Add inventory items to get started",
+                            EmptyStateIllustration(
+                                emoji = "📦",
+                                title = "No inventory yet",
+                                subtitle = "Add your first product to get started",
+                                primaryCta = "Add your first product",
+                                onPrimaryCta = onAddClick,
+                                secondaryCta = "Import catalog (CSV)",
+                                onSecondaryCta = onImportCatalog,
                             )
                         }
                     }

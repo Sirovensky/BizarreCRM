@@ -625,6 +625,21 @@ function stopDirectServer(): CommandResult {
   return stopped;
 }
 
+// DASH-ELEC-083: Module-level concurrency gate for destructive service actions.
+// Rapid Start/Stop/Restart clicks (or CommandPalette + ServerControlPage firing
+// simultaneously) race pm2/sc commands against each other.  Serialise all
+// mutating operations through this gate; read-only `service:get-status` is
+// intentionally excluded so status polling is never blocked.
+let serviceActionInFlight: Promise<CommandResult> | null = null;
+
+async function withServiceLock(action: () => Promise<CommandResult>): Promise<CommandResult> {
+  if (serviceActionInFlight !== null) {
+    return { success: false, output: 'Another service action is already in progress — please wait.' };
+  }
+  serviceActionInFlight = action().finally(() => { serviceActionInFlight = null; });
+  return serviceActionInFlight;
+}
+
 export function registerServiceControlIpc(): void {
   ipcMain.handle('service:get-status', async (event): Promise<ServiceStatus> => {
     assertRendererOrigin(event);
@@ -662,6 +677,7 @@ export function registerServiceControlIpc(): void {
 
   ipcMain.handle('service:start', async (event) => {
     assertRendererOrigin(event);
+    return withServiceLock(async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       return runArgs('sc', ['start', SERVICE_NAME]);
@@ -682,10 +698,12 @@ export function registerServiceControlIpc(): void {
       };
     }
     return startDirectServer();
+    }); // end withServiceLock
   });
 
   ipcMain.handle('service:stop', async (event) => {
     assertRendererOrigin(event);
+    return withServiceLock(async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       return runArgs('sc', ['stop', SERVICE_NAME]);
@@ -694,10 +712,12 @@ export function registerServiceControlIpc(): void {
       return pm2Run(['stop', 'bizarre-crm']);
     }
     return stopDirectServer();
+    }); // end withServiceLock
   });
 
   ipcMain.handle('service:restart', async (event) => {
     assertRendererOrigin(event);
+    return withServiceLock(async () => {
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       runArgs('sc', ['stop', SERVICE_NAME]);
@@ -715,6 +735,7 @@ export function registerServiceControlIpc(): void {
     }
     stopDirectServer();
     return startDirectServer();
+    }); // end withServiceLock
   });
 
   ipcMain.handle('service:emergency-stop', async (event) => {

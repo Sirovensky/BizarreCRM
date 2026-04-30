@@ -17,7 +17,7 @@ import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionRule
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosTaxCalculator
 import com.bizarreelectronics.crm.ui.screens.pos.components.TenantTaxConfig
 import com.bizarreelectronics.crm.ui.screens.pos.components.TaxBreakdown
-import com.bizarreelectronics.crm.util.CashDrawerControllerStub
+import com.bizarreelectronics.crm.ui.screens.pos.CashDrawerControllerStub
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -118,9 +118,11 @@ class PosTenderViewModel @Inject constructor(
      */
     fun applyGiftCard(code: String) {
         val remaining = _uiState.value.remainingCents
-        if (remaining <= 0L) return
+        // session 2026-04-26 — RACE: move isProcessing guard before launch so a second tap cannot
+        // slip through the window between launch() and the first _uiState.update inside the coroutine.
+        if (remaining <= 0L || _uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
             runCatching {
                 posApi.redeemGiftCard(PosGiftCardRedeemRequest(code = code.trim(), amountCents = remaining))
             }.onSuccess { resp ->
@@ -318,6 +320,45 @@ class PosTenderViewModel @Inject constructor(
 
     fun removeTender(tenderId: String) = coordinator.removeTender(tenderId)
 
+    // ─── §38.6 / §38.3 — Loyalty points redemption ───────────────────────────
+
+    /**
+     * Redeem loyalty points as a discount tender at POS.
+     *
+     * Each point converts at [centsPerPoint] (default: 1 pt = $0.01).
+     * Applied amount is capped at the remaining balance.
+     *
+     * NOTE (§38.6): server has no `/memberships/:id/redeem-points` endpoint yet —
+     * point deduction is queued client-side as a `loyalty_points` tender and
+     * sent to the server in the payments array on finalization. The server
+     * records the tender type but does NOT decrement the membership.points
+     * column. Full server-side enforcement is blocked pending a new migration +
+     * endpoint. See TODO §38.6 — "Redemption at POS".
+     *
+     * @param membershipId  the customer's active membership id
+     * @param pointsToRedeem  how many points the customer wishes to redeem
+     * @param centsPerPoint  conversion rate (default 1 cent per point)
+     */
+    fun applyLoyaltyPoints(
+        membershipId: Long,
+        pointsToRedeem: Int,
+        centsPerPoint: Long = 1L,
+    ) {
+        if (pointsToRedeem <= 0) return
+        val remaining = _uiState.value.remainingCents
+        if (remaining <= 0L) return
+        val requestedCents = pointsToRedeem * centsPerPoint
+        val appliedCents = requestedCents.coerceAtMost(remaining)
+        coordinator.addTender(
+            AppliedTender(
+                method = "loyalty_points",
+                label = "Loyalty Points",
+                amountCents = appliedCents,
+                detail = "${(appliedCents / centsPerPoint)} pts redeemed (membership #$membershipId)",
+            )
+        )
+    }
+
     /** Stub for Phase 4 BlockChyp integration. */
     @Suppress("UNUSED_PARAMETER")
     fun chargeCard(amountCents: Long) {
@@ -328,7 +369,10 @@ class PosTenderViewModel @Inject constructor(
     }
 
     fun finalizeSale() {
-        if (!_uiState.value.isFullyPaid) return
+        // session 2026-04-26 — RACE: guard isProcessing so rapid double-tap cannot launch a second
+        // coroutine before the first sets isProcessing = true (each coroutine generates its own UUID,
+        // so idempotency key would NOT deduplicate them).
+        if (!_uiState.value.isFullyPaid || _uiState.value.isProcessing) return
         val session = coordinator.session.value
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
 
@@ -387,9 +431,10 @@ class PosTenderViewModel @Inject constructor(
                         notes = line.note,
                     )
                 },
-                cartDiscountCents = session.cartDiscountCents,
+                discount = session.cartDiscountCents / 100.0,
+                tip = 0.0,
                 paymentMethod = session.appliedTenders.firstOrNull()?.method ?: "card",
-                paymentAmountCents = session.paidCents,
+                paymentAmount = session.paidCents / 100.0,
                 // Server prefers `payments[]` when non-empty so split-tender
                 // sales preserve the per-method breakdown on the receipt.
                 payments = session.appliedTenders.map { t ->
