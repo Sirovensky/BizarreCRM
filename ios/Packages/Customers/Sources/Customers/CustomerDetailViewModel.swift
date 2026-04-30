@@ -10,7 +10,7 @@ public struct CustomerSnapshot: Sendable {
     public var detail: CustomerDetail?
     public var analytics: CustomerAnalytics?
     public var recentTickets: [TicketSummary]?
-    public var recentInvoices: [InvoiceSummary]?
+    public var recentInvoices: [Networking.InvoiceSummary]?
     public var notes: [CustomerNote]?
 }
 
@@ -79,7 +79,7 @@ public protocol CustomerDetailRepository: Sendable {
     func detail(id: Int64) async throws -> CustomerDetail
     func analytics(id: Int64) async throws -> CustomerAnalytics
     func recentTickets(id: Int64) async throws -> [TicketSummary]
-    func recentInvoices(id: Int64) async throws -> [InvoiceSummary]
+    func recentInvoices(id: Int64) async throws -> [Networking.InvoiceSummary]
     func notes(id: Int64) async throws -> [CustomerNote]
 }
 
@@ -97,7 +97,7 @@ public actor CustomerDetailRepositoryImpl: CustomerDetailRepository {
     public func recentTickets(id: Int64) async throws -> [TicketSummary] {
         try await api.customerRecentTickets(id: id)
     }
-    public func recentInvoices(id: Int64) async throws -> [InvoiceSummary] {
+    public func recentInvoices(id: Int64) async throws -> [Networking.InvoiceSummary] {
         try await api.customerRecentInvoices(id: id)
     }
     public func notes(id: Int64) async throws -> [CustomerNote] {

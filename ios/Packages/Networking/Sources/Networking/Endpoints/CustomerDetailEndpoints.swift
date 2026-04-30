@@ -85,6 +85,11 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         /// 6-digit RGB hex string from server, e.g. `"FF8C00"` (no leading `#`).
         /// Nil when the tenant has not assigned a color to this tag.
         public let color: String?
+
+        public init(name: String, color: String?) {
+            self.name = name
+            self.color = color
+        }
     }
 
     public struct CustomerPhoneRow: Decodable, Sendable, Identifiable, Hashable {

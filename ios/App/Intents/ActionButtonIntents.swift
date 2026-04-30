@@ -63,7 +63,7 @@ struct ClockInOutActionIntent: AppIntent {
 
 /// Exposes Action Button-compatible shortcuts.
 /// System presents these in Settings → Action Button → Shortcut when our app is installed.
-struct BizarreCRMActionButtonProvider: AppShortcutsProvider {
+enum BizarreCRMActionButtonProvider {
     @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

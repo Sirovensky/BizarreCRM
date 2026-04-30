@@ -153,7 +153,7 @@ public actor CoreHapticsEngine {
         case .validationError:
             return try singleTapPattern(intensity: 0.8, sharpness: 0.9)
 
-        case .destructiveConfirm:
+        case .destructiveConfirm, .swipeActionCommit:
             return try singleTapPattern(intensity: 0.95, sharpness: 0.5)
 
         case .saveForm, .clockIn, .clockOut:

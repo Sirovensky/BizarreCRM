@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import DesignSystem
+import Networking
 
 // MARK: - StocktakeSessionSummaryView
 
@@ -51,7 +52,7 @@ public struct StocktakeSessionSummaryView: View {
             }
         }
         .padding(BrandSpacing.sm)
-        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: BrandCornerRadius.md))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }

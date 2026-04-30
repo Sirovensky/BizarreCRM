@@ -42,7 +42,7 @@ extension CreateNewTicketIntent {
 extension SendSMSToCustomerIntent {
     static var parameterSummary: some ParameterSummary {
         When(\.$messageBody, .hasAnyValue) {
-            Summary("Text \(\.$customerQuery) "\(\.$messageBody)"")
+            Summary("Text \(\.$customerQuery) \"\(\.$messageBody)\"")
         } otherwise: {
             Summary("Text \(\.$customerQuery)")
         }
@@ -89,17 +89,19 @@ struct CustomerNameOptionsProvider: DynamicOptionsProvider {
 struct BizarreCRMFocusFilterIntent: SetFocusFilterIntent {
     static let title: LocalizedStringResource = "Set Bizarre CRM Focus Options"
     static let description: IntentDescription = IntentDescription(
-        "Control which Bizarre CRM features are active during a Focus mode. " +
-        "For example, suppress non-urgent SMS notifications in Do Not Disturb."
+        "Control which Bizarre CRM features are active during a Focus mode. For example, suppress non-urgent SMS notifications in Do Not Disturb."
     )
 
     /// When true, the active Focus suppresses non-urgent outbound SMS.
     @Parameter(
         title: "Suppress non-urgent SMS",
-        description: "Disable outbound customer SMS while this Focus is active, " +
-                     "except when the message is marked urgent."
+        description: "Disable outbound customer SMS while this Focus is active, except when the message is marked urgent."
     )
     var suppressNonUrgentSMS: Bool
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "Bizarre CRM Focus Options")
+    }
 
     func perform() async throws -> some IntentResult {
         // Persist the current focus preference to App Group so the main app
@@ -118,8 +120,7 @@ struct BizarreCRMFocusFilterIntent: SetFocusFilterIntent {
 struct FocusAwareSendTextIntent: AppIntent {
     static let title: LocalizedStringResource = "Send Text to Customer"
     static let description: IntentDescription = IntentDescription(
-        "Send an SMS to a customer. Respects Focus / DND settings — " +
-        "non-urgent messages are blocked when Do Not Disturb suppression is on.",
+        "Send an SMS to a customer. Respects Focus / DND settings — non-urgent messages are blocked when Do Not Disturb suppression is on.",
         categoryName: "Communications"
     )
     static let isDiscoverable: Bool = true
@@ -177,7 +178,7 @@ struct FocusAwareSendTextIntent: AppIntent {
                 symbol: "message.fill",
                 tint: .green,
                 title: "Text Sent",
-                body: "To: \(customerQuery)"
+                detail: "To: \(customerQuery)"
             )
         )
     }
@@ -264,11 +265,11 @@ enum IntentAppError: Swift.Error, CustomLocalizedStringResourceConvertible {
         case .smsBlocked:
             return "SMS is suppressed by your active Focus mode. Mark the message urgent to send it anyway."
         case .customerNotFound(let query):
-            return "No customer found matching "\(query)". Try a different name or phone number."
+            return "No customer found matching \"\(query)\". Try a different name or phone number."
         case .datastoreUnavailable:
             return "Bizarre CRM data isn't ready yet. Open the app once to sync, then try again."
         case .ambiguousParameter(let name):
-            return ""\(name)" matches multiple records. Please be more specific."
+            return "\"\(name)\" matches multiple records. Please be more specific."
         }
     }
 }
@@ -307,7 +308,7 @@ struct IntentResultCard: View {
     let symbol: String
     let tint: Color
     let title: String
-    let body: String
+    let detail: String
 
     var body: some View {
         HStack(spacing: 12) {
@@ -321,7 +322,7 @@ struct IntentResultCard: View {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text(body)
+                Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

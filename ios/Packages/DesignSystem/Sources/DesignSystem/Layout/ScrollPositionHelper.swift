@@ -22,14 +22,14 @@ import SwiftUI
 
 // MARK: - NamespacedScrollPosition
 
-/// A thin wrapper that holds a SwiftUI `ScrollPosition` (iOS 17+) and exposes
+/// A thin wrapper that holds a SwiftUI `ScrollPosition` (iOS 18+) and exposes
 /// convenience helpers for common scroll-to patterns used across iPad list
 /// columns.
 ///
 /// Designed to be stored in a view's `@State` so that the `ScrollView` or
 /// `List` can bind to it while the view model or toolbar can trigger scrolls
 /// without holding a reference to SwiftUI internals.
-@available(iOS 17.0, *)
+@available(iOS 18.0, *)
 public struct NamespacedScrollPosition: Equatable {
 
     // MARK: - Stored properties
@@ -77,7 +77,7 @@ public struct NamespacedScrollPosition: Equatable {
 // MARK: - View helpers (iOS 16 fallback)
 
 public extension View {
-    /// Attaches a `ScrollPosition` binding when running on iOS 17+ and is a
+    /// Attaches a `ScrollPosition` binding when running on iOS 18+ and is a
     /// no-op on earlier OS versions.
     ///
     /// - Parameters:
@@ -88,11 +88,12 @@ public extension View {
     /// - Returns: The view with the scroll position binding applied when
     ///   supported, or the unmodified view on older OS versions.
     @ViewBuilder
+    @available(iOS 18.0, *)
     func brandScrollPosition(
         _ position: Binding<NamespacedScrollPosition>,
         anchor: UnitPoint = .top
     ) -> some View {
-        if #available(iOS 17.0, *) {
+        if #available(iOS 18.0, *) {
             self.scrollPosition(position.position, anchor: anchor)
         } else {
             self
@@ -102,7 +103,7 @@ public extension View {
 
 // MARK: - Binding projection helper
 
-@available(iOS 17.0, *)
+@available(iOS 18.0, *)
 private extension Binding where Value == NamespacedScrollPosition {
     /// Projects the inner `ScrollPosition` for use with `.scrollPosition(_:)`.
     var position: Binding<ScrollPosition> {

@@ -94,6 +94,7 @@ public struct OfflineBannerCopy: Sendable, Equatable {
     /// Derives the correct copy variant from the live `Reachability` object.
     ///
     /// Priority: noSignal > constrainedWifi > cellular > online
+    @MainActor
     public static func resolve(reachability: Reachability) -> OfflineBannerCopy {
         if !reachability.isOnline {
             return OfflineBannerCopy(kind: .noSignal)

@@ -2,9 +2,9 @@ import SwiftUI
 
 // §30 — Visual / motion / haptics pass
 // Five modifiers + one component shipped in this file:
-//   1. drawerOpenHaptic(isOpen:)      — fires drawerOpen haptic on open
+//   1. drawerOpenHaptic(isOpen:)      — fires drawer haptic on open
 //   2. successCheckmark(isActive:)    — draw-on checkmark for generic success
-//   3. errorShake(trigger:)           — horizontal shake + .error haptic
+//   3. errorShake(trigger:)           — horizontal shake + validation haptic
 //   4. loadingShimmer(isLoading:)     — inline shimmer overlay (no redaction)
 //   5. ScrollToTopButton              — fade-in FAB; ScrollToTopFadeModifier
 
@@ -26,7 +26,7 @@ private struct DrawerOpenHapticModifier: ViewModifier {
         content
             .onChange(of: isOpen) { _, opened in
                 guard opened else { return }
-                Task { await HapticCatalog.play(.drawerOpen) }
+                Task { await HapticCatalog.play(.drawerKick) }
             }
     }
 }
@@ -58,7 +58,7 @@ private struct SuccessCheckmarkModifier: ViewModifier {
             }
             .onChange(of: isActive) { _, active in
                 guard active else { return }
-                Task { await HapticCatalog.play(.successConfirm) }
+                Task { await HapticCatalog.play(.saveForm) }
             }
     }
 }
@@ -99,7 +99,7 @@ private struct GenericCheckmarkView: View {
 // MARK: - 3. Error shake
 
 /// Applies a horizontal shake animation when `trigger` is `true`, then fires
-/// `.errorShake` haptic. Caller must reset `trigger` to `false` after the
+/// `.validationError` haptic. Caller must reset `trigger` to `false` after the
 /// animation completes (e.g. via `.onAnimationComplete` or a 0.5s DispatchQueue).
 ///
 /// ```swift
@@ -122,7 +122,7 @@ private struct ErrorShakeModifier: ViewModifier {
             .offset(x: shakeOffset)
             .onChange(of: trigger) { _, firing in
                 guard firing else { return }
-                Task { await HapticCatalog.play(.errorShake) }
+                Task { await HapticCatalog.play(.validationError) }
                 guard !reduceMotion else { return }
                 shake()
             }
@@ -269,7 +269,7 @@ public struct ScrollToTopButton: View {
 /// }
 /// ```
 private struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
@@ -311,12 +311,12 @@ public extension View {
     }
 
     /// Overlays an animated circle-draw checkmark on success. Also fires
-    /// `.successConfirm` haptic. Caller controls `isActive`.
+    /// `.saveForm` haptic. Caller controls `isActive`.
     func successCheckmark(isActive: Bool) -> some View {
         modifier(SuccessCheckmarkModifier(isActive: isActive))
     }
 
-    /// Shakes the view horizontally and fires `.errorShake` haptic.
+    /// Shakes the view horizontally and fires `.validationError` haptic.
     /// Caller is responsible for resetting `trigger` to `false`.
     func errorShake(trigger: Bool) -> some View {
         modifier(ErrorShakeModifier(trigger: trigger))

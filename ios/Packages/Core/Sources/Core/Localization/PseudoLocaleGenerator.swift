@@ -88,14 +88,24 @@ public enum PseudoLocaleGenerator {
     /// outside a full DEBUG build (e.g. an internal TestFlight build where the
     /// preprocessor constant is Release but a hidden debug menu is available).
     ///
+    private static let isEnabledKey = "bizarrecrm.pseudoLocale.enabled"
+
     /// Defaults to `false` in production; automatically `true` in DEBUG.
-    public static var isEnabled: Bool = {
+    public static var isEnabled: Bool {
+        get {
+            if let stored = UserDefaults.standard.object(forKey: isEnabledKey) as? Bool {
+                return stored
+            }
 #if DEBUG
-        return true
+            return true
 #else
-        return false
+            return false
 #endif
-    }()
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: isEnabledKey)
+        }
+    }
 
     /// Wraps `string` only when `isEnabled` is `true`.
     ///

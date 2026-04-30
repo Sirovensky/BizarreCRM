@@ -23,14 +23,46 @@ import UIKit
 
 // MARK: - PasteboardCopyHelper
 
+private final class PasteboardDedupeState: @unchecked Sendable {
+    private let dedupeWindow: TimeInterval
+    private let lock = NSLock()
+    private var lastValueHash: Int = 0
+    private var lastWriteAt: Date = .distantPast
+
+    init(dedupeWindow: TimeInterval) {
+        self.dedupeWindow = dedupeWindow
+    }
+
+    func reset() {
+        lock.lock()
+        lastValueHash = 0
+        lastWriteAt = .distantPast
+        lock.unlock()
+    }
+
+    func shouldWrite(_ value: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let hash = value.hashValue
+        let now  = Date()
+        let elapsed = now.timeIntervalSince(lastWriteAt)
+
+        if hash == lastValueHash, elapsed < dedupeWindow {
+            return false
+        }
+        lastValueHash = hash
+        lastWriteAt = now
+        return true
+    }
+}
+
 public enum PasteboardCopyHelper {
 
     // MARK: - Internal de-dupe state
 
     private static let dedupeWindow: TimeInterval = 3
-    private static var lastValueHash: Int = 0
-    private static var lastWriteAt: Date = .distantPast
-    private static let lock = NSLock()
+    private static let dedupeState = PasteboardDedupeState(dedupeWindow: dedupeWindow)
 
     // MARK: - Public API
 
@@ -89,10 +121,7 @@ public enum PasteboardCopyHelper {
     /// sensitive value into our app and we want to remove the residue.
     public static func clear() {
         UIPasteboard.general.items = []
-        lock.lock()
-        lastValueHash = 0
-        lastWriteAt = .distantPast
-        lock.unlock()
+        dedupeState.reset()
     }
 
     // MARK: - Private
@@ -100,19 +129,7 @@ public enum PasteboardCopyHelper {
     /// Returns `true` if `value` is different from the last copy or the
     /// de-dupe window has expired. Updates the de-dupe state on `true`.
     private static func shouldWrite(_ value: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let hash = value.hashValue
-        let now  = Date()
-        let elapsed = now.timeIntervalSince(lastWriteAt)
-
-        if hash == lastValueHash, elapsed < dedupeWindow {
-            return false
-        }
-        lastValueHash = hash
-        lastWriteAt = now
-        return true
+        dedupeState.shouldWrite(value)
     }
 }
 #endif

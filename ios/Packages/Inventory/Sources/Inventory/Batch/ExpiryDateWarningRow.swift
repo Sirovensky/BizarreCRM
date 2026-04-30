@@ -77,7 +77,7 @@ public struct ExpiryDateWarningRow: View {
         }
         .padding(.horizontal, BrandSpacing.sm)
         .padding(.vertical, BrandSpacing.xxs)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: BrandCornerRadius.sm))
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message)
     }

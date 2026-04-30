@@ -29,7 +29,7 @@ struct PrivacyDataRow: Identifiable, Sendable {
 /// Must stay in sync with `App/Resources/PrivacyInfo.xcprivacy`.
 public enum PrivacyNutritionLabelData {
 
-    public static let rows: [PrivacyDataRow] = [
+    static let rows: [PrivacyDataRow] = [
         PrivacyDataRow(
             id: "email",
             category: "Contact Info",

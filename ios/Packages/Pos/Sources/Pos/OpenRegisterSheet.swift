@@ -188,7 +188,7 @@ public struct OpenRegisterSheet: View {
             // §14 — float-confirmation haptic: double-tap success pattern so
             // cashier feels a distinct "drawer opened" confirmation.
             BrandHaptics.success()
-            Task { await HapticCatalog.play(.successConfirm) }
+            Task { await HapticCatalog.play(.drawerKick) }
             AppLog.pos.info("POS drawer opened: session=\(record.id ?? -1) float=\(cents)")
             onOpened(record)
         } catch CashRegisterError.alreadyOpen {

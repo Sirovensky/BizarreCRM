@@ -48,23 +48,12 @@ public struct HoverHighlightModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         #if canImport(UIKit)
-        let highlighted = content
+        content
             .hoverEffect(.highlight)
             .accessibilityAddTraits([])
             // Announce that context menu is available so VoiceOver users know
             // to use "long press" to access it.
             .accessibilityHint("Long press for more options")
-
-        if #available(iOS 17.5, *) {
-            switch pointer {
-            case .default:
-                highlighted.pointerStyle(.automatic)
-            case .link:
-                highlighted.pointerStyle(.link)
-            }
-        } else {
-            highlighted
-        }
         #else
         content
         #endif

@@ -49,7 +49,7 @@ public final class ManagerPinRepromptState {
     public func recordApproval(managerId: Int64) {
         lastApprovalDate = Date()
         approvedManagerId = managerId
-        AppLog.pos.info("Manager PIN re-prompt: approval recorded managerId=\(managerId), window=\(Int(windowSeconds))s")
+        AppLog.pos.info("Manager PIN re-prompt: approval recorded managerId=\(managerId), window=\(Int(self.windowSeconds))s")
     }
 
     /// Explicitly expire the approval (e.g., on register close or role change).
@@ -63,7 +63,11 @@ public final class ManagerPinRepromptState {
 // MARK: - EnvironmentKey
 
 private struct ManagerPinRepromptStateKey: EnvironmentKey {
-    static let defaultValue: ManagerPinRepromptState = ManagerPinRepromptState()
+    @MainActor private static let defaultState = ManagerPinRepromptState()
+
+    static var defaultValue: ManagerPinRepromptState {
+        MainActor.assumeIsolated { defaultState }
+    }
 }
 
 public extension EnvironmentValues {

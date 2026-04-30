@@ -104,7 +104,7 @@ enum AssistantSchemaRegistrar {
 /// Tenants opt-in per-device by setting `automation.arriveClockIn.enabled = true`
 /// via Settings → Automations (§64 settings surface). The geofence centre is the
 /// shop location written by the main app on first login.
-final class IntentAutomationCenter: NSObject, CLLocationManagerDelegate {
+final class IntentAutomationCenter: NSObject, CLLocationManagerDelegate, @unchecked Sendable {
     static let shared = IntentAutomationCenter()
 
     private let locationManager = CLLocationManager()
@@ -194,10 +194,17 @@ struct WidgetShortcutBridge<Wrapped: AppIntent>: AppIntent {
         }
 
         #if canImport(UIKit)
-        await UIApplication.shared.open(url)
+        await openAutomationURL(url)
         #endif
         return .result()
     }
+}
+
+@MainActor
+private func openAutomationURL(_ url: URL) {
+    #if canImport(UIKit)
+    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    #endif
 }
 
 /// §24.10 — Helper for the main app to publish a preconfigured-shortcut payload
@@ -278,10 +285,12 @@ enum SiriRelevanceDonor {
         return intent
     }
 
-    private static func hour(_ h: Int) -> DateComponents {
-        var comps = DateComponents()
+    private static func hour(_ h: Int) -> Date {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         comps.hour = h
-        return comps
+        comps.minute = 0
+        comps.second = 0
+        return Calendar.current.date(from: comps) ?? Date()
     }
 
     private static func arrivalRegion() -> CLRegion? {

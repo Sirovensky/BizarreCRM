@@ -332,11 +332,15 @@ public struct CustomerFilesTabView: View {
                 switch phase {
                 case .success(let img):
                     img.resizable().scaledToFill()
-                default:
-                    // Loading or failure — show shimmer placeholder with MIME icon
+                case .empty:
                     AttachmentThumbnailPlaceholder(
                         mimeType: file.mimeType,
-                        showShimmer: phase == .empty
+                        showShimmer: true
+                    )
+                default:
+                    AttachmentThumbnailPlaceholder(
+                        mimeType: file.mimeType,
+                        showShimmer: false
                     )
                 }
             }

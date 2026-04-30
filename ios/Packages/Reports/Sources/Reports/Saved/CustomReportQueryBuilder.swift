@@ -28,6 +28,10 @@ public struct CustomReportQuery: Codable, Sendable, Identifiable {
     public var isFavorite: Bool
     public let createdAt: Date
 
+    private enum CodingKeys: String, CodingKey {
+        case id, name, entity, measure, groupBy, dateRange, customFrom, customTo, filters, isFavorite, createdAt
+    }
+
     public init(
         id: String = UUID().uuidString,
         name: String = "Custom Report",
@@ -52,6 +56,37 @@ public struct CustomReportQuery: Codable, Sendable, Identifiable {
         self.filters = filters
         self.isFavorite = isFavorite
         self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        entity = try container.decode(ReportEntity.self, forKey: .entity)
+        measure = try container.decode(ReportMeasure.self, forKey: .measure)
+        groupBy = try container.decode(ReportGroupBy.self, forKey: .groupBy)
+        let dateRangeRawValue = try container.decode(String.self, forKey: .dateRange)
+        dateRange = DateRangePreset(rawValue: dateRangeRawValue) ?? .thirtyDays
+        customFrom = try container.decode(String.self, forKey: .customFrom)
+        customTo = try container.decode(String.self, forKey: .customTo)
+        filters = try container.decode([ReportFilter].self, forKey: .filters)
+        isFavorite = try container.decode(Bool.self, forKey: .isFavorite)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(entity, forKey: .entity)
+        try container.encode(measure, forKey: .measure)
+        try container.encode(groupBy, forKey: .groupBy)
+        try container.encode(dateRange.rawValue, forKey: .dateRange)
+        try container.encode(customFrom, forKey: .customFrom)
+        try container.encode(customTo, forKey: .customTo)
+        try container.encode(filters, forKey: .filters)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encode(createdAt, forKey: .createdAt)
     }
 }
 

@@ -58,7 +58,7 @@ public struct DragPreviewCardModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .padding(BrandSpacing.small)
+            .padding(BrandSpacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
                     .fill(cardFill)

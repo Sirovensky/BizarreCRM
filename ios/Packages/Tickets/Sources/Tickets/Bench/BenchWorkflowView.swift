@@ -156,7 +156,7 @@ public struct BenchWorkflowView: View {
     }
 
     private func benchStatusChipContent(_ detail: TicketDetail) -> (String, String, Color) {
-        let name = detail.status?.name?.lowercased() ?? ""
+        let name = detail.status?.name.lowercased() ?? ""
         switch name {
         case let n where n.contains("awaiting parts"):
             return ("Awaiting Parts", "cart.fill", Color.bizarreOrange)
@@ -176,7 +176,7 @@ public struct BenchWorkflowView: View {
     // MARK: §42 — Completed-at copy
 
     private func completedAtText(for detail: TicketDetail) -> String? {
-        guard detail.status?.isClosed == true || detail.status?.name?.lowercased().contains("completed") == true else {
+        guard detail.status?.isClosed == true || detail.status?.name.lowercased().contains("completed") == true else {
             return nil
         }
         // Use updatedAt as a proxy for the last-transition timestamp.

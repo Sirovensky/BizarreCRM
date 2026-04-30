@@ -799,7 +799,7 @@ public struct StockCountHistoryCard: View {
                     }
                 }
                 .frame(height: 110)
-                .accessibilityChartDescriptor(self)
+                .accessibilityChartDescriptor(StockCountHistoryChartDescriptor(history: history))
             }
         }
         .cardBackground()
@@ -821,8 +821,10 @@ public struct StockCountHistoryCard: View {
     }
 }
 
-extension StockCountHistoryCard: AXChartDescriptorRepresentable {
-    public func makeChartDescriptor() -> AXChartDescriptor {
+private struct StockCountHistoryChartDescriptor: AXChartDescriptorRepresentable {
+    let history: [StockCountHistoryCard.StockCountPoint]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
         let xAxis = AXCategoricalDataAxisDescriptor(
             title: "Date",
             categoryOrder: history.map { ISO8601DateFormatter().string(from: $0.date) }
@@ -831,7 +833,7 @@ extension StockCountHistoryCard: AXChartDescriptorRepresentable {
             title: "Quantity on hand",
             range: 0...Double(history.map(\.quantity).max() ?? 1),
             gridlinePositions: []
-        ) { "\($0, specifier: "%.0f") units" }
+        ) { String(format: "%.0f units", $0) }
         let series = AXDataSeriesDescriptor(
             name: "Stock count",
             isContinuous: true,

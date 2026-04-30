@@ -37,6 +37,31 @@ import SwiftUI
 
 // MARK: - ColorMigrationAudit
 
+#if DEBUG
+private final class ColorMigrationAuditState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count: Int = 0
+
+    var warningCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        count = 0
+        lock.unlock()
+    }
+}
+#endif
+
 /// Runtime warn-only audit utilities for inline Color literal usage.
 ///
 /// All methods are no-ops in release builds — guarded by `#if DEBUG`.
@@ -46,7 +71,8 @@ public enum ColorMigrationAudit {
 
     /// Total number of inline-color warnings emitted this process lifetime.
     /// Exposed for snapshot-test assertions.
-    public private(set) static var warningCount: Int = 0
+    private static let state = ColorMigrationAuditState()
+    public static var warningCount: Int { state.warningCount }
 
     /// Emit a runtime warning when an inline `Color(red:green:blue:)` is detected
     /// at `file:line`, suggesting the `suggestedToken` as the migration target.
@@ -64,7 +90,7 @@ public enum ColorMigrationAudit {
         file: StaticString = #file,
         line: UInt = #line
     ) {
-        warningCount += 1
+        state.increment()
         let fileName = URL(fileURLWithPath: "\(file)").lastPathComponent
         print(
             """
@@ -82,7 +108,7 @@ public enum ColorMigrationAudit {
         file: StaticString = #file,
         line: UInt = #line
     ) {
-        warningCount += 1
+        state.increment()
         let fileName = URL(fileURLWithPath: "\(file)").lastPathComponent
         print(
             """
@@ -95,7 +121,7 @@ public enum ColorMigrationAudit {
 
     /// Reset the warning counter — call at the start of each snapshot test case.
     public static func resetCounter() {
-        warningCount = 0
+        state.reset()
     }
 
 #else

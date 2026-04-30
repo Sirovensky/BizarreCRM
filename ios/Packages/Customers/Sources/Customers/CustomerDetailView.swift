@@ -573,7 +573,7 @@ private struct RecommendationBanner: View {
 // MARK: - Recent invoices
 
 private struct RecentInvoicesSection: View {
-    let invoices: [InvoiceSummary]
+    let invoices: [Networking.InvoiceSummary]
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -623,7 +623,7 @@ private struct RecentInvoicesSection: View {
         return f.string(from: NSNumber(value: v)) ?? String(format: "$%.2f", v)
     }
 
-    private func statusColor(_ kind: InvoiceSummary.Status) -> Color {
+    private func statusColor(_ kind: Networking.InvoiceSummary.Status) -> Color {
         switch kind {
         case .paid:    return .bizarreTeal
         case .unpaid:  return .bizarreError

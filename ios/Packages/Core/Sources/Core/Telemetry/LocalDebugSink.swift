@@ -96,14 +96,14 @@ public struct LocalDebugSink: Sendable {
 
     // MARK: Private
 
-    private static let iso8601: ISO8601DateFormatter = {
+    private static func makeISO8601Formatter() -> ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
-    }()
+    }
 
     private func formatLine(_ payload: AnalyticsEventPayload) -> String {
-        let ts = Self.iso8601.string(from: payload.timestamp)
+        let ts = Self.makeISO8601Formatter().string(from: payload.timestamp)
         let propsStr = payload.properties
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\(valueString($0.value))" }

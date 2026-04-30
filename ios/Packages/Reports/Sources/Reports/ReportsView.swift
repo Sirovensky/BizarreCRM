@@ -552,8 +552,8 @@ public struct ReportsView: View {
             }
             // §15.3 Tickets by tech bar
             if !vm.ticketsByTech.isEmpty {
-                TicketsByTechCard(points: vm.ticketsByTech) { techId in
-                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
+                TicketsByTechCard(employees: vm.employeePerf) { techName in
+                    if let row = vm.technicianPerf.first(where: { $0.name == techName }) {
                         selectedTechForDrill = row
                     }
                 }
@@ -749,6 +749,41 @@ public struct ReportsView: View {
     }
 }
 
+// MARK: - TechDetailSheet
+
+private struct TechDetailSheet: View {
+    let row: TechnicianPerfRow
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Technician") {
+                    LabeledContent("Name", value: row.name)
+                    LabeledContent("Close rate", value: String(format: "%.0f%%", row.closeRate))
+                }
+
+                Section("Performance") {
+                    LabeledContent("Assigned", value: "\(row.ticketsAssigned)")
+                    LabeledContent("Closed", value: "\(row.ticketsClosed)")
+                    LabeledContent("Hours", value: String(format: "%.1f", row.hoursWorked))
+                    LabeledContent("Revenue", value: formatCurrency(row.revenueGenerated))
+                    LabeledContent("Commission", value: formatCurrency(row.commissionDollars))
+                }
+            }
+            .navigationTitle(row.name)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.0f", value)
+    }
+}
+
 // MARK: - SparklineView
 
 private struct SparklineView: View {
@@ -787,4 +822,3 @@ private extension View {
 extension DrillThroughContext: Identifiable {
     public var id: String { "\(metric)-\(date)" }
 }
-

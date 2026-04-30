@@ -136,8 +136,10 @@ public final class NFCTagReadService: NSObject, @unchecked Sendable {
                 return url.absoluteString.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             // Text record — first byte is status, then ISO language code, then text.
-            if let (text, _) = record.wellKnownTypeTextPayload(), !text.isEmpty {
-                return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let textPayload = record.wellKnownTypeTextPayload()
+            if let text = textPayload.0 {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
             }
             // Fallback: raw payload as UTF-8.
             if let text = String(data: record.payload, encoding: .utf8) {

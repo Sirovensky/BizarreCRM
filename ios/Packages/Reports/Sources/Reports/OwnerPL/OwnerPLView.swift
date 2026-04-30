@@ -346,15 +346,28 @@ public struct OwnerPLView: View {
                 .strokeBorder(color.opacity(0.25), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(title): \(String(format: "$%.2f", value))"
-            + (marginPct.map { String(format: ", %.1f%% margin", $0 * 100) } ?? "")
-            + (badge.map { ", \($0)" } ?? "")
-            + (yoyPct.map { pct in
-                let sign = pct >= 0 ? "up" : "down"
-                return String(format: ", %@ %.1f%% year over year", sign, abs(pct * 100))
-            } ?? "")
-        )
+        .accessibilityLabel(plKpiAccessibilityLabel(title: title, value: value, marginPct: marginPct, badge: badge, yoyPct: yoyPct))
+    }
+
+    private func plKpiAccessibilityLabel(
+        title: String,
+        value: Double,
+        marginPct: Double?,
+        badge: String?,
+        yoyPct: Double?
+    ) -> String {
+        var label = "\(title): \(String(format: "$%.2f", value))"
+        if let marginPct {
+            label += String(format: ", %.1f%% margin", marginPct * 100)
+        }
+        if let badge {
+            label += ", \(badge)"
+        }
+        if let yoyPct {
+            let sign = yoyPct >= 0 ? "up" : "down"
+            label += String(format: ", %@ %.1f%% year over year", sign, abs(yoyPct * 100))
+        }
+        return label
     }
 
     // MARK: - Expenses breakdown card (pie-like BarChart)
