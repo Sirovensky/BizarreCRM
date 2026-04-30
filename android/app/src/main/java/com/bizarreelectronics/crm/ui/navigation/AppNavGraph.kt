@@ -1363,7 +1363,12 @@ fun AppNavGraph(
             //   600–1239dp → NavigationRail alongside NavHost in a Row (tablet)
             //   ≥ 1240dp   → PermanentNavigationDrawer replaces rail (desktop / Chromebook XL)
             val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
-            val permanentDrawer = com.bizarreelectronics.crm.util.isPermanentDrawerWidth()
+            // §22.2 + iPad-POS-mockup parity: tablet (sw≥600dp) always renders an
+            // icon-only NavigationRail. The previous ≥1240dp `PermanentDrawer` mode
+            // duplicated the section-name top bar (active item is already cream-
+            // highlighted in the rail) and ate ~240dp horizontal space. Force rail
+            // mode at all tablet widths.
+            val permanentDrawer = false
 
             // Reusable click handler for all nav items (drawer + rail share the same logic).
             fun navItemClick(item: BottomNavItem) {
@@ -1425,7 +1430,11 @@ fun AppNavGraph(
                                     selected = isSelected,
                                     onClick = { navItemClick(item) },
                                     icon = item.icon,
-                                    label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                                    // Icon-only rail (iPad-POS-mockup parity). Active item
+                                    // gets the cream container fill which already
+                                    // communicates "you are here"; label text would just
+                                    // duplicate the icon's content description.
+                                    label = null,
                                 )
                             }
                         }
