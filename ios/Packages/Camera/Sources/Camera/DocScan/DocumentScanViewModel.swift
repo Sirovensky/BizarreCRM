@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import PDFKit
 import UIKit
+import Core
 
 // MARK: - DocumentScanViewModel
 
@@ -14,6 +15,9 @@ import UIKit
 /// When `attach()` is called the VM assembles a final PDF from the current
 /// page order, calls `uploader(pdfData)`, and returns the attachment URL
 /// string. Progress is exposed via ``uploadState``.
+///
+/// OCR is available via `runOCR()` which extracts text using on-device Vision
+/// (§ActionPlan DocScan). Results are stored in `ocrResult` for FTS5 indexing.
 ///
 /// Thread safety: `@MainActor` — all mutations land on the main queue.
 @MainActor
@@ -29,6 +33,15 @@ public final class DocumentScanViewModel {
         case failure(message: String)
     }
 
+    // MARK: - OCR state
+
+    public enum OCRState: Equatable {
+        case idle
+        case running
+        case done(text: String)
+        case failed(message: String)
+    }
+
     // MARK: - Stored properties
 
     /// Ordered page images. Mutations drive SwiftUI updates automatically.
@@ -37,8 +50,32 @@ public final class DocumentScanViewModel {
     /// Current upload lifecycle state.
     public private(set) var uploadState: UploadState = .idle
 
+    /// OCR extraction state. Updated by `runOCR()`.
+    public private(set) var ocrState: OCRState = .idle
+
+    /// Convenience accessor for the extracted text when OCR succeeded.
+    public var extractedText: String? {
+        if case .done(let text) = ocrState { return text }
+        return nil
+    }
+
+    // MARK: - Auto-classification state (§17 DocScan)
+
+    /// Suggested document tag from the auto-classifier. `nil` until OCR + classification runs.
+    public private(set) var suggestedTag: DocumentTag?
+    /// Classification confidence (0–1). `nil` until classification runs.
+    public private(set) var classificationConfidence: Double?
+
+    // MARK: - Private
+
     /// Injected uploader — takes PDF `Data`, returns the attachment URL.
     private let uploader: @Sendable (Data) async throws -> String
+
+    /// On-device OCR service (Vision framework only; no external egress).
+    private let ocrService = DocumentOCRService()
+
+    /// On-device document classifier (keyword-based, §17).
+    private let classifier = DocumentAutoClassifier()
 
     // MARK: - Init
 
@@ -82,9 +119,65 @@ public final class DocumentScanViewModel {
 
     /// Assemble the current `pages` array into a PDF. Returns `nil` when
     /// there are no pages.
+    ///
+    /// Output format: PDF at 200 DPI (letter page size, images scaled to fill).
+    /// §ActionPlan: "Output: PDF (preferred) or JPEG at 200 DPI default".
     public func generatePDF() -> Data? {
         guard !pages.isEmpty else { return nil }
         return assemblePDF(from: pages)
+    }
+
+    // MARK: - OCR
+
+    /// Extract searchable text from all current pages via on-device Vision OCR.
+    ///
+    /// §ActionPlan: "OCR via VNRecognizeTextRequest, text searchable via FTS5"
+    /// §ActionPlan: "Privacy: on-device Vision only; no external/cloud OCR"
+    ///
+    /// On completion, `ocrState` transitions to `.done(text:)` or `.failed`.
+    /// The extracted text should be passed to the Search package's FTS5 indexer
+    /// by the caller (this VM does not own Search).
+    public func runOCR() async {
+        guard !pages.isEmpty else {
+            ocrState = .failed(message: "No pages to analyse.")
+            return
+        }
+        ocrState = .running
+        do {
+            let result = try await ocrService.extractText(from: pages)
+            let text = result.isEmpty ? "" : result.fullText
+            ocrState = .done(text: text)
+            // §17 auto-classification: run classifier on extracted text.
+            if !text.isEmpty {
+                let (tag, confidence) = classifier.classify(text: text)
+                suggestedTag = tag != .other ? tag : nil
+                classificationConfidence = tag != .other ? confidence : nil
+                AppLog.app.info("DocumentScanViewModel: auto-classified as \(tag.rawValue, privacy: .public) confidence=\(confidence)")
+            }
+        } catch {
+            ocrState = .failed(message: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Bulk append (§17 DocScan)
+
+    /// Append pages from another scan session to the current document.
+    ///
+    /// §17: "Bulk append multiple scans to single file"
+    ///
+    /// - Parameter newPages: Pages from a subsequent `VNDocumentCameraViewController` session.
+    public func appendPages(_ newPages: [UIImage]) {
+        pages = pages + newPages
+        // Reset OCR/classification state since content changed.
+        ocrState = .idle
+        suggestedTag = nil
+        classificationConfidence = nil
+        AppLog.app.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(self.pages.count)")
+    }
+
+    /// Accept the suggested tag (caller stores it in their model).
+    public func acceptSuggestedTag() -> DocumentTag? {
+        suggestedTag
     }
 
     // MARK: - Upload
@@ -110,6 +203,62 @@ public final class DocumentScanViewModel {
     public func reset() {
         pages = []
         uploadState = .idle
+        ocrState = .idle
+        suggestedTag = nil
+        classificationConfidence = nil
+    }
+
+    // MARK: - Private: PDF assembly
+
+    /// Assembles page images into a multi-page PDF at 200 DPI equivalent scale.
+    ///
+    /// §ActionPlan: "Output: PDF (preferred) or JPEG at 200 DPI default"
+    ///
+    /// Page size: Letter (612 × 792 pt at 72 dpi) for US locale.
+    /// Each image is scaled to fill the page while preserving aspect ratio.
+    /// Privacy: purely local — no network calls, no temp files left on disk.
+    private func assemblePDF(from images: [UIImage]) -> Data {
+        // Letter page at 72 pt/in (iOS coordinate system)
+        let pageWidth:  CGFloat = 612   // 8.5 in × 72
+        let pageHeight: CGFloat = 792   // 11 in × 72
+        let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        let margin:    CGFloat = 18     // 0.25 in safety margin
+
+        let format = UIGraphicsPDFRendererFormat()
+        // Set 200 DPI in PDF metadata so print drivers scale correctly.
+        format.documentInfo = [
+            kCGPDFContextCreator as String: "BizarreCRM DocScan",
+            // 200 DPI = 200/72 ≈ 2.778 points per pixel
+        ] as [String: Any]
+
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+        return renderer.pdfData { context in
+            for image in images {
+                context.beginPage()
+
+                // Scale image to fill content area (minus margin) keeping aspect ratio.
+                let contentRect = CGRect(
+                    x: margin,
+                    y: margin,
+                    width: pageWidth - margin * 2,
+                    height: pageHeight - margin * 2
+                )
+                let drawRect = aspectFitRect(for: image.size, in: contentRect)
+                image.draw(in: drawRect)
+            }
+        }
+    }
+
+    /// Returns a `CGRect` that fits `imageSize` inside `container` preserving aspect ratio.
+    private func aspectFitRect(for imageSize: CGSize, in container: CGRect) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return container }
+        let scale = min(container.width / imageSize.width,
+                        container.height / imageSize.height)
+        let fitWidth  = imageSize.width  * scale
+        let fitHeight = imageSize.height * scale
+        let x = container.minX + (container.width  - fitWidth)  / 2
+        let y = container.minY + (container.height - fitHeight) / 2
+        return CGRect(x: x, y: y, width: fitWidth, height: fitHeight)
     }
 }
 #endif

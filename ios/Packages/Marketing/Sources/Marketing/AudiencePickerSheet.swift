@@ -133,7 +133,8 @@ public struct AudiencePickerSheet: View {
                                     icon: "person.2.crop.square.stack",
                                     title: segment.name,
                                     subtitle: segment.cachedCount.map { "\($0) contacts" },
-                                    tag: "Segment"
+                                    tag: "Segment",
+                                    estimatedCount: segment.cachedCount
                                 )
                             }
                             .listRowBackground(Color.bizarreSurface1)
@@ -161,7 +162,8 @@ public struct AudiencePickerSheet: View {
                                     icon: "message.fill",
                                     title: group.name,
                                     subtitle: "\(group.memberCountCache) members",
-                                    tag: group.isDynamicBool ? "Dynamic" : "Static"
+                                    tag: group.isDynamicBool ? "Dynamic" : "Static",
+                                    estimatedCount: group.memberCountCache
                                 )
                             }
                             .listRowBackground(Color.bizarreSurface1)
@@ -199,6 +201,8 @@ private struct AudienceRow: View {
     let title: String
     let subtitle: String?
     let tag: String
+    /// When provided, renders an orange audience-size badge alongside the tag.
+    var estimatedCount: Int?
 
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
@@ -219,6 +223,22 @@ private struct AudienceRow: View {
                 }
             }
             Spacer(minLength: 0)
+            // Audience size estimate badge
+            if let count = estimatedCount, count > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 9))
+                        .accessibilityHidden(true)
+                    Text(count.formatted(.number))
+                        .font(.brandMono(size: 11))
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, 2)
+                .foregroundStyle(.bizarreOrange)
+                .background(Color.bizarreOrange.opacity(0.15), in: Capsule())
+                .accessibilityLabel("\(count) recipients")
+            }
             Text(tag)
                 .font(.brandLabelSmall())
                 .padding(.horizontal, BrandSpacing.sm)

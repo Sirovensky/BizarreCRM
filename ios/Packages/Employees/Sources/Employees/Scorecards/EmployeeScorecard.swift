@@ -74,6 +74,77 @@ public struct EmployeeScorecard: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
+// MARK: - §46.4 ScorecardMetricKind — objective vs subjective
+
+/// Distinguishes auto-computed hard metrics from manager-rated subjective scores.
+///
+/// Objective metrics derive directly from system events (tickets closed, hours
+/// logged, etc.) and are never editable by humans post-computation.
+/// Subjective metrics are the 1–5 competency ratings from `§46.2` reviews and
+/// may carry the manager's annotation.
+public enum ScorecardMetricKind: String, Sendable, CaseIterable {
+    /// Auto-computed from system events; no human editing allowed after compute.
+    case objective = "objective"
+    /// Manager-rated 1–5 scale from performance review competency grid.
+    case subjective = "subjective"
+}
+
+/// Maps each EmployeeScorecard key path to its ScorecardMetricKind.
+/// Used by `ScorecardView` to render objective metrics differently
+/// (no edit control; sourced badge) from subjective ones (edit pencil; rating badge).
+public enum ScorecardMetricClassifier: Sendable {
+    /// Returns the kind for the given metric label.
+    public static func kind(for metric: ScorecardMetric) -> ScorecardMetricKind {
+        switch metric {
+        case .ticketCloseRate,
+             .slaCompliance,
+             .revenueAttributed,
+             .commissionEarned,
+             .hoursWorked,
+             .breaksTaken,
+             .voidsTriggered,
+             .overridesTriggered:
+            return .objective
+        case .avgCustomerRating:
+            // Customer rating is from survey responses — objective (user-generated).
+            return .objective
+        case .managerRating:
+            // Composite rating from review competency grid — subjective.
+            return .subjective
+        }
+    }
+}
+
+/// Enumeration of all scorecard metrics for classification purposes.
+public enum ScorecardMetric: String, CaseIterable, Sendable {
+    case ticketCloseRate    = "ticket_close_rate"
+    case slaCompliance      = "sla_compliance"
+    case avgCustomerRating  = "avg_customer_rating"
+    case revenueAttributed  = "revenue_attributed"
+    case commissionEarned   = "commission_earned"
+    case hoursWorked        = "hours_worked"
+    case breaksTaken        = "breaks_taken"
+    case voidsTriggered     = "voids_triggered"
+    case overridesTriggered = "overrides_triggered"
+    /// §46.4 Subjective — aggregated from PerformanceReview competency ratings.
+    case managerRating      = "manager_rating"
+
+    public var displayName: String {
+        switch self {
+        case .ticketCloseRate:    return "Ticket Close Rate"
+        case .slaCompliance:      return "SLA Compliance"
+        case .avgCustomerRating:  return "Avg Customer Rating"
+        case .revenueAttributed:  return "Revenue Attributed"
+        case .commissionEarned:   return "Commission Earned"
+        case .hoursWorked:        return "Hours Worked"
+        case .breaksTaken:        return "Breaks Taken"
+        case .voidsTriggered:     return "Voids Triggered"
+        case .overridesTriggered: return "Overrides Triggered"
+        case .managerRating:      return "Manager Rating"
+        }
+    }
+}
+
 // MARK: - ScorecardAggregator
 
 /// Pure stateless aggregation helper. 80%+ test coverage required.

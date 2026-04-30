@@ -22,6 +22,11 @@ struct PosPostSaleView: View {
     @Bindable var vm: PosPostSaleViewModel
     @State private var showingReceiptSummary = false
 
+    // §16.8 — Auto-dismiss after 10 s when cashier does not interact.
+    @State private var autoDismissCountdown: Int = 10
+    @State private var autoDismissTask: Task<Void, Never>?
+    @State private var userInteracted: Bool = false
+
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -33,6 +38,15 @@ struct PosPostSaleView: View {
             }
         }
         .task { await vm.runSpinner() }
+        // §16.8 — Start auto-dismiss countdown once completed phase lands.
+        .onChange(of: vm.phase) { _, newPhase in
+            if newPhase == .completed {
+                startAutoDismissCountdown()
+            }
+        }
+        // §16.8 — Any sheet interaction cancels auto-dismiss.
+        .onChange(of: vm.activeSheet) { _, _ in cancelAutoDismiss() }
+        .onChange(of: showingReceiptSummary) { _, _ in cancelAutoDismiss() }
         .sheet(item: Binding(
             get: { vm.activeSheet },
             set: { vm.activeSheet = $0 }
@@ -49,6 +63,30 @@ struct PosPostSaleView: View {
                 PosReceiptSummaryView(payload: payload)
             }
         }
+    }
+
+    // MARK: - §16.8 Auto-dismiss
+
+    private func startAutoDismissCountdown() {
+        guard !userInteracted else { return }
+        autoDismissCountdown = 10
+        autoDismissTask?.cancel()
+        autoDismissTask = Task { @MainActor in
+            while autoDismissCountdown > 0 && !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                autoDismissCountdown -= 1
+            }
+            guard !Task.isCancelled, !userInteracted else { return }
+            BrandHaptics.lightImpact()
+            vm.triggerNextSale()
+            dismiss()
+        }
+    }
+
+    private func cancelAutoDismiss() {
+        userInteracted = true
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
     }
 
     private var processingContent: some View {
@@ -126,6 +164,25 @@ struct PosPostSaleView: View {
                     .accessibilityIdentifier("pos.postSale.banner")
             }
 
+            // §16.8 — visible auto-dismiss countdown. Hidden once the
+            // cashier interacts with any control (which sets
+            // `userInteracted` via `cancelAutoDismiss`). Tapping the row
+            // itself cancels the timer too.
+            if !userInteracted, vm.phase == .completed, autoDismissCountdown > 0 {
+                Button {
+                    cancelAutoDismiss()
+                } label: {
+                    Text("Starting new sale in \(autoDismissCountdown)s · tap to cancel")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.xs)
+                        .accessibilityIdentifier("pos.postSale.autoDismissCountdown")
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Cancel automatic dismissal")
+            }
+
             HStack(spacing: BrandSpacing.sm) {
                 receiptActionButton(
                     label: "Email",
@@ -165,6 +222,7 @@ struct PosPostSaleView: View {
 
             Button {
                 BrandHaptics.success()
+                cancelAutoDismiss()
                 vm.triggerNextSale()
                 dismiss()
             } label: {
@@ -182,6 +240,17 @@ struct PosPostSaleView: View {
             .controlSize(.large)
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityIdentifier("pos.postSale.nextSale")
+            .simultaneousGesture(TapGesture().onEnded { cancelAutoDismiss() })
+
+            // §16.8 — Auto-dismiss countdown label
+            if !userInteracted, autoDismissCountdown > 0, autoDismissCountdown < 10 {
+                Text("Starting new sale in \(autoDismissCountdown)s…")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("pos.postSale.autoDismissLabel")
+                    .onTapGesture { cancelAutoDismiss() }
+            }
         }
     }
 

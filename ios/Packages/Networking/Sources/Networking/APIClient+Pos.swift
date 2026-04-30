@@ -233,4 +233,96 @@ public extension APIClient {
     func blockChypProcessPayment(_ request: BlockChypPaymentRequest) async throws -> BlockChypPaymentResponse {
         try await post("/api/v1/blockchyp/process-payment", body: request, as: BlockChypPaymentResponse.self)
     }
+
+    /// §16.5 — `GET /api/v1/blockchyp/terminal-status` — heartbeat ping.
+    ///
+    /// Returns `{ online: Bool, terminal_name: String? }` when the server can
+    /// reach the paired terminal. 501 means the route is not yet live
+    /// (caller renders "unknown" state rather than "offline").
+    func getTerminalHeartbeat() async throws -> BlockChypTerminalStatus {
+        // Server route: packages/server/src/routes/blockchyp.routes.ts
+        // Stub until Hardware SDK wiring (Agent 2).
+        throw APITransportError.httpStatus(501, message: "Coming soon — BLOCKCHYP-HEARTBEAT-001")
+        // return try await get("/api/v1/blockchyp/terminal-status", as: BlockChypTerminalStatus.self)
+    }
+
+    // MARK: - Check-in / Ticket draft (§16.25)
+
+    /// `PATCH /api/v1/tickets/:id` — autosave diagnostic notes during check-in.
+    /// Omitted fields left unchanged on server. Server: tickets.routes.ts.
+    @discardableResult
+    func patchTicketDraft(
+        id: Int64,
+        diagnosticNotes: String? = nil,
+        internalNotes: String? = nil
+    ) async throws -> CreatedResource {
+        let body = TicketDraftPatchBody(diagnosticNotes: diagnosticNotes, internalNotes: internalNotes)
+        return try await patch("/api/v1/tickets/\(id)", body: body, as: CreatedResource.self)
+    }
+
+    /// `POST /api/v1/tickets/:id/signatures` — upload base64 PNG signature.
+    /// Server: ticketSignatures.routes.ts:72-87. Max 500 KB enforced server-side.
+    func uploadTicketSignature(ticketId: Int64, base64PNG: String) async throws -> TicketSignatureResponse {
+        let body = TicketSignatureUploadBody(signature: base64PNG, sigFormat: "PNG", sigWidth: 400)
+        return try await post("/api/v1/tickets/\(ticketId)/signatures", body: body, as: TicketSignatureResponse.self)
+    }
+}
+
+// MARK: - POS ticket body helpers
+
+struct TicketDraftPatchBody: Encodable, Sendable {
+    let diagnosticNotes: String?
+    let internalNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case diagnosticNotes = "diagnostic_notes"
+        case internalNotes = "internal_notes"
+    }
+}
+
+struct TicketSignatureUploadBody: Encodable, Sendable {
+    let signature: String
+    let sigFormat: String
+    let sigWidth: Int
+    enum CodingKeys: String, CodingKey {
+        case signature = "signature_data"
+        case sigFormat = "sig_format"
+        case sigWidth = "sig_width"
+    }
+}
+
+// MARK: - Check-in signature response DTO
+
+/// Response from `POST /api/v1/tickets/:id/signatures`.
+/// Server: ticketSignatures.routes.ts:72-87.
+public struct TicketSignatureResponse: Decodable, Sendable {
+    public let signatureId: Int64?
+    public let url: String?
+
+    public init(signatureId: Int64? = nil, url: String? = nil) {
+        self.signatureId = signatureId
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case signatureId = "signature_id"
+        case url
+    }
+}
+
+// MARK: - Terminal status DTO
+
+/// Response from `GET /api/v1/blockchyp/terminal-status`.
+public struct BlockChypTerminalStatus: Decodable, Sendable {
+    public let online: Bool
+    public let terminalName: String?
+
+    public init(online: Bool, terminalName: String? = nil) {
+        self.online = online
+        self.terminalName = terminalName
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case online
+        case terminalName = "terminal_name"
+    }
 }

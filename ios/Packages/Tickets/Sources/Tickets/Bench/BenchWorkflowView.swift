@@ -88,7 +88,17 @@ public struct BenchWorkflowView: View {
         ScrollView {
             VStack(spacing: BrandSpacing.lg) {
                 ticketHeader(detail: detail)
+                // §42 — Photos-needed banner: surface when no photos attached.
+                if detail.photos.isEmpty {
+                    photosNeededBanner
+                }
+                // §42 — Bench status timer chip + stopwatch HUD.
                 BenchTimerView()
+                benchStatusChip(detail: detail)
+                // §42 — Completed-at copy: surface when ticket is done.
+                if let completedAt = completedAtText(for: detail) {
+                    completedAtRow(text: completedAt)
+                }
                 actionSection(detail: detail)
                 if let err = vm.errorMessage {
                     errorBanner(err)
@@ -98,15 +108,138 @@ public struct BenchWorkflowView: View {
         }
     }
 
+    // MARK: §42 — Photos-needed banner
+
+    private var photosNeededBanner: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "camera.fill")
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No photos attached")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Add before-repair photos so the customer can verify device condition.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+        }
+        .padding(BrandSpacing.base)
+        .background(Color.bizarreOrange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Photos needed. No photos attached. Add before-repair photos so the customer can verify device condition.")
+    }
+
+    // MARK: §42 — Bench-status timer chip
+
+    /// A small pill under the timer indicating the current bench phase: Awaiting Parts, In Repair, On Hold.
+    private func benchStatusChip(detail: TicketDetail) -> some View {
+        let (label, icon, tint) = benchStatusChipContent(detail)
+        return HStack(spacing: BrandSpacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(label)
+                .font(.brandLabelSmall())
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(tint.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 0.5))
+        .accessibilityLabel("Bench phase: \(label)")
+    }
+
+    private func benchStatusChipContent(_ detail: TicketDetail) -> (String, String, Color) {
+        let name = detail.status?.name?.lowercased() ?? ""
+        switch name {
+        case let n where n.contains("awaiting parts"):
+            return ("Awaiting Parts", "cart.fill", Color.bizarreOrange)
+        case let n where n.contains("in repair"):
+            return ("In Repair", "wrench.fill", Color.bizarreOrange)
+        case let n where n.contains("on hold"):
+            return ("On Hold", "pause.circle.fill", Color.bizarreOnSurfaceMuted)
+        case let n where n.contains("diagnosing"):
+            return ("Diagnosing", "stethoscope", Color.bizarreTeal)
+        case let n where n.contains("ready"):
+            return ("Ready for Pickup", "hand.raised.fill", Color.bizarreSuccess)
+        default:
+            return (detail.status?.name ?? "Unknown", "circle.fill", Color.bizarreOnSurfaceMuted)
+        }
+    }
+
+    // MARK: §42 — Completed-at copy
+
+    private func completedAtText(for detail: TicketDetail) -> String? {
+        guard detail.status?.isClosed == true || detail.status?.name?.lowercased().contains("completed") == true else {
+            return nil
+        }
+        // Use updatedAt as a proxy for the last-transition timestamp.
+        guard let raw = detail.updatedAt else { return "Completed" }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+        guard let d = date else { return "Completed" }
+        let fmt = DateFormatter()
+        fmt.dateStyle = .medium
+        fmt.timeStyle = .short
+        return "Completed \(fmt.string(from: d))"
+    }
+
+    private func completedAtRow(text: String) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(Color.bizarreSuccess)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer()
+            // §42 — Copy-to-clipboard gesture.
+            Button {
+                UIPasteboard.general.string = text
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .accessibilityLabel("Copy completed date")
+            .accessibilityHint("Copies the completion timestamp to the clipboard")
+        }
+        .padding(BrandSpacing.base)
+        .background(Color.bizarreSuccess.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.bizarreSuccess.opacity(0.35), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(text)
+    }
+
     // MARK: - Ticket header
 
     private func ticketHeader(detail: TicketDetail) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(detail.orderId)
-                        .font(.brandTitleMedium())
-                        .foregroundStyle(.bizarreOnSurface)
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(detail.orderId)
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                        // §42 — Escalation flag UI: flame icon when urgency is high/urgent.
+                        if isEscalated(detail: detail) {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.bizarreError)
+                                .accessibilityLabel("Escalated ticket")
+                                .accessibilityHint("This ticket has high urgency and may need priority attention")
+                        }
+                    }
                     if let name = detail.customer?.displayName {
                         Text(name)
                             .font(.brandBodyMedium())
@@ -229,8 +362,13 @@ public struct BenchWorkflowView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .accessibilityLabel(action.displayName)
-        .accessibilityHint("Tap to \(action.displayName.lowercased())")
+        // §42 — Parts-on-hold a11y: provide a richer hint for the partsOrdered action
+        // so VoiceOver users understand this transitions the ticket into Awaiting Parts.
+        .accessibilityLabel(action == .partsOrdered ? "Parts Ordered — place ticket on hold awaiting parts" : action.displayName)
+        .accessibilityHint(action == .partsOrdered
+            ? "Marks this ticket as waiting for parts. The ticket moves to Awaiting Parts status."
+            : (isDisabled ? "Action unavailable while another action is in progress" : "Tap to \(action.displayName.lowercased())")
+        )
     }
 
     // MARK: - Error banner
@@ -254,6 +392,14 @@ public struct BenchWorkflowView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Error: \(message)")
+    }
+
+    // MARK: - §42 Helpers
+
+    /// Returns true when the ticket urgency field signals high priority.
+    private func isEscalated(detail: TicketDetail) -> Bool {
+        guard let urgency = detail.urgency?.lowercased() else { return false }
+        return urgency == "high" || urgency == "urgent" || urgency == "escalated"
     }
 
     // MARK: - Toolbar

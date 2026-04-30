@@ -72,6 +72,32 @@ public struct TicketEditDeepView: View {
                     .animation(reduceMotion ? .none : BrandMotion.offlineBanner, value: pendingBanner)
             }
         }
+        // §4.4 + §4.13: 409 concurrent-edit conflict banner — "This ticket changed. [Reload]"
+        .overlay(alignment: .bottom) {
+            if vm.hasConcurrentEditConflict {
+                ConcurrentEditConflictBanner {
+                    dismiss()    // Reload = dismiss edit; caller refreshes detail.
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.xl)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(reduceMotion ? .none : BrandMotion.banner, value: vm.hasConcurrentEditConflict)
+            }
+        }
+        // §4.4 optimistic-edit error toast — floats above content so the
+        // form stays readable; auto-dismissed when the VM clears errorMessage.
+        .overlay(alignment: .bottom) {
+            if let err = vm.errorMessage {
+                OptimisticEditErrorToast(message: err)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, vm.hasConcurrentEditConflict
+                                         ? BrandSpacing.xl * 3
+                                         : BrandSpacing.xl)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(reduceMotion ? .none : BrandMotion.snappy, value: err)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+        }
     }
 
     // MARK: — iPhone layout
@@ -259,14 +285,6 @@ public struct TicketEditDeepView: View {
                 }
             }
 
-            // Error display
-            if let err = vm.errorMessage {
-                Section {
-                    Text(err)
-                        .foregroundStyle(.bizarreError)
-                        .accessibilityLabel("Error: \(err)")
-                }
-            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
@@ -371,6 +389,73 @@ private struct LabeledFormField: View {
 extension TicketEditDeepViewModel {
     func autoSaver_cancel() {
         autoSaver.cancelPending()
+    }
+}
+
+// MARK: - §4.13 Concurrent-edit conflict banner
+
+/// Glass pill shown when the server returns 409 (stale `updated_at`).
+/// "This ticket changed. [Reload]"
+private struct ConcurrentEditConflictBanner: View {
+    let onReload: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.bizarreWarning)
+                .accessibilityHidden(true)
+            Text("This ticket changed.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer(minLength: 0)
+            Button("Reload", action: onReload)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityLabel("Reload ticket to see latest changes")
+        }
+        .padding(.horizontal, BrandSpacing.lg)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreWarning.opacity(0.4), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 6, y: 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Conflict: this ticket was changed by someone else. Tap Reload to refresh.")
+    }
+}
+
+// MARK: - §4.4 Optimistic-edit error toast
+
+/// Floating glass pill shown when a PATCH /tickets/:id save fails.
+/// The VM reverts the optimistic local mutation before this is displayed.
+/// Auto-hidden when `vm.errorMessage` clears (e.g. on retry success).
+private struct OptimisticEditErrorToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, BrandSpacing.lg)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreError.opacity(0.5), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Save failed: \(message)")
     }
 }
 #endif

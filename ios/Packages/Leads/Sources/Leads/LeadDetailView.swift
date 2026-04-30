@@ -50,6 +50,8 @@ public struct LeadDetailView: View {
     @State private var showingEdit = false
     @State private var showingConvert = false
     @State private var showingStatusNote = false
+    // §9.3 — Schedule appointment pre-filled from lead
+    @State private var showingScheduleAppointment = false
 
     public init(api: APIClient, id: Int64) {
         self.api = api
@@ -90,6 +92,12 @@ public struct LeadDetailView: View {
                 }
             }
         }
+        // §9.3 — Schedule appointment sheet (pre-filled from lead)
+        .sheet(isPresented: $showingScheduleAppointment) {
+            if case .loaded(let detail) = vm.state {
+                LeadScheduleAppointmentSheet(api: api, lead: detail)
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -117,6 +125,13 @@ public struct LeadDetailView: View {
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                     #endif
                 }
+                // §9.3 Schedule appointment pre-filled from lead.
+                Button {
+                    showingScheduleAppointment = true
+                } label: {
+                    Label("Schedule", systemImage: "calendar.badge.plus")
+                }
+                .accessibilityLabel("Schedule appointment for this lead")
                 Button {
                     showingEdit = true
                 } label: {
@@ -174,11 +189,30 @@ public struct LeadDetailView: View {
                 if !detail.devices.isEmpty { devicesCard(detail.devices) }
                 if !detail.appointments.isEmpty { appointmentsCard(detail.appointments) }
                 metaCard(detail)
+                // §9.3 Related tickets / estimates + convert-to-estimate
+                LeadRelatedRecordsView(leadId: detail.id, api: api)
+                // §9.3 Activity timeline — calls, SMS, email, appointments, property changes
+                activityTimelineSection(detail)
             }
             .padding(BrandSpacing.base)
             .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    @ViewBuilder
+    private func activityTimelineSection(_ detail: LeadDetail) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Activity")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityAddTraits(.isHeader)
+            LeadActivityTimelineView(api: api, leadId: detail.id)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(BrandSpacing.base)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
     private func headerCard(_ detail: LeadDetail) -> some View {

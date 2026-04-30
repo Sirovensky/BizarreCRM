@@ -59,6 +59,9 @@ public struct SmsMessage: Decodable, Sendable, Identifiable, Hashable {
     public let convPhone: String?
     public let messageType: String?
     public let createdAt: String?
+    /// §12.2 Read receipts — ISO-8601 timestamp when the remote party read this
+    /// outbound message. Nil when server does not support read receipts.
+    public let readAt: String?
 
     public var isOutbound: Bool { direction?.lowercased() == "outbound" }
 
@@ -85,10 +88,11 @@ public struct SmsMessage: Decodable, Sendable, Identifiable, Hashable {
         case convPhone = "conv_phone"
         case messageType = "message_type"
         case createdAt = "created_at"
+        case readAt = "read_at"
     }
 }
 
-/// `POST /api/v1/sms/send` body.
+/// `POST /api/v1/sms/send` body (immediate send).
 public struct SmsSendRequest: Encodable, Sendable {
     public let to: String
     public let message: String
@@ -96,6 +100,27 @@ public struct SmsSendRequest: Encodable, Sendable {
     public init(to: String, message: String) {
         self.to = to
         self.message = message
+    }
+}
+
+/// `POST /api/v1/sms/send` body with scheduled delivery (§12.2 Schedule send).
+/// Server: sms.routes.ts — accepts `send_at` as an ISO-8601 string with explicit
+/// timezone offset (e.g. "2026-04-30T14:00:00Z"). Server returns status="scheduled".
+public struct SmsSendScheduledRequest: Encodable, Sendable {
+    public let to: String
+    public let message: String
+    /// ISO-8601 with explicit timezone offset. Required by the server for scheduled sends.
+    public let sendAt: String
+
+    public init(to: String, message: String, sendAt: String) {
+        self.to = to
+        self.message = message
+        self.sendAt = sendAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case to, message
+        case sendAt = "send_at"
     }
 }
 
@@ -109,7 +134,11 @@ public extension APIClient {
         try await post("/api/v1/sms/send", body: SmsSendRequest(to: to, message: message), as: SmsMessage.self)
     }
 
-    // TODO: mark-as-read is PATCH /sms/conversations/:phone/read (no body).
-    // APIClient doesn't have a PATCH helper yet; add when we wire flag/pin
-    // actions too — they're all PATCH on the same resource.
+    /// §12.2 Schedule send — `POST /api/v1/sms/send` with `send_at`.
+    /// Server (sms.routes.ts:565) stores the message with status="scheduled"
+    /// and fires it via the scheduler cron at the specified UTC instant.
+    func sendSmsScheduled(to: String, message: String, sendAt: String) async throws -> SmsMessage {
+        let body = SmsSendScheduledRequest(to: to, message: message, sendAt: sendAt)
+        return try await post("/api/v1/sms/send", body: body, as: SmsMessage.self)
+    }
 }

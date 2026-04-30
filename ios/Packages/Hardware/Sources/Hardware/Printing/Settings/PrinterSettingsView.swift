@@ -96,7 +96,7 @@ public struct PrinterSettingsView: View {
     }
 
     private var addSection: some View {
-        Section("Add Printer") {
+        Section {
             Button {
                 showAddAirPrint = true
             } label: {
@@ -110,6 +110,22 @@ public struct PrinterSettingsView: View {
                 Label("Add ESC/POS Network Printer", systemImage: "network")
             }
             .accessibilityLabel("Add ESC/POS network printer. Enter IP address and port.")
+        } header: {
+            Text("Add Printer")
+        } footer: {
+            // §17 DHCP reservation recommendation (line 2867).
+            // The app shows the printer MAC after first connection (see BluetoothDeviceRow /
+            // PairedDevice.macAddress). Tenants should set a DHCP reservation so the
+            // printer's IP never changes, preventing "printer not found" errors after a
+            // router restart.
+            Text("""
+            For network printers: ask your IT team to set a DHCP reservation for the \
+            printer's MAC address so it always gets the same IP. The app displays the \
+            printer's MAC after first connection — copy it from the device detail to give \
+            to your router admin.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 

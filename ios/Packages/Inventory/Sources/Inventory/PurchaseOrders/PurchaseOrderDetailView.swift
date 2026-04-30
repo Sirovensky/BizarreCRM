@@ -3,6 +3,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import UniformTypeIdentifiers
 
 // MARK: - ViewModel
 
@@ -15,6 +16,9 @@ public final class PurchaseOrderDetailViewModel {
     public private(set) var errorMessage: String?
     public var showReceiveSheet: Bool = false
     public var showCancelConfirm: Bool = false
+    public var showSendConfirm: Bool = false
+    public var showPDFExporter: Bool = false
+    public private(set) var pdfData: Data?
 
     @ObservationIgnored private let repo: PurchaseOrderRepository
     @ObservationIgnored private let supplierRepo: SupplierRepository
@@ -67,6 +71,28 @@ public final class PurchaseOrderDetailViewModel {
             AppLog.ui.error("PO cancel failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// §6.7 Send PO to supplier via email (transitions status to ordered).
+    public func sendToSupplier() async {
+        guard let order, order.status == .draft || order.status == .pending else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            self.order = try await repo.send(id: order.id)
+        } catch {
+            AppLog.ui.error("PO send failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// §6.7 Build PDF for `.fileExporter`. Generates a simple PDF from PO data.
+    @MainActor
+    public func preparePDF(supplier: Supplier?) {
+        guard let order else { return }
+        pdfData = PurchaseOrderPDFRenderer.render(po: order, supplier: supplier)
+        showPDFExporter = pdfData != nil
     }
 }
 
@@ -131,13 +157,69 @@ public struct PurchaseOrderDetailView: View {
         } message: {
             Text("This cannot be undone. The order will be marked as cancelled.")
         }
+        // §6.7 Send to supplier confirm
+        .confirmationDialog(
+            "Send to Supplier",
+            isPresented: $vm.showSendConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Send PO #\(displayOrder.id) by email") {
+                Task {
+                    await vm.sendToSupplier()
+                    onUpdate()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let supplierEmail = vm.supplier?.email {
+                Text("An email will be sent to \(supplierEmail) and the PO will be marked as Ordered.")
+            } else {
+                Text("An email will be sent to the supplier and the PO will be marked as Ordered.")
+            }
+        }
+        // §6.7 PDF export (.fileExporter on iPad/Mac)
+        .fileExporter(
+            isPresented: $vm.showPDFExporter,
+            document: PDFDocument(data: vm.pdfData ?? Data()),
+            contentType: .pdf,
+            defaultFilename: "PO-\(displayOrder.id).pdf"
+        ) { result in
+            if case .failure(let err) = result {
+                AppLog.ui.error("PO PDF export failed: \(err.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     // MARK: Toolbar
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // §6.7 PDF export — always available (any status)
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                vm.preparePDF(supplier: vm.supplier)
+            } label: {
+                Image(systemName: "arrow.down.doc")
+                    .accessibilityLabel("Export PO #\(displayOrder.id) as PDF")
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .hoverEffect(.highlight)
+        }
+
         if displayOrder.status.isOpen {
+            // §6.7 Send to supplier (draft or pending)
+            if displayOrder.status == .draft || displayOrder.status == .pending {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Send") {
+                        vm.showSendConfirm = true
+                    }
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOrange)
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .accessibilityLabel("Send PO #\(displayOrder.id) to supplier by email")
+                    .disabled(vm.isLoading)
+                }
+            }
             // Receive action (non-draft open statuses)
             if !displayOrder.status.canApprove {
                 ToolbarItem(placement: .navigationBarTrailing) {

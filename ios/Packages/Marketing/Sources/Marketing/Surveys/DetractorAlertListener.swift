@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 // MARK: - DetractorAlert model
@@ -160,12 +161,10 @@ public struct DetractorAlertView: View {
                 description: "Open Messages with a pre-filled apology",
                 tint: .bizarreTeal
             ) {
-                let body = "Hi \(alert.customerName), this is [Manager] from BizarreCRM. I saw your recent feedback and I'd like to personally make this right. Can we chat?"
-                let encoded = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                let phone = alert.customerPhone ?? ""
-                if let url = URL(string: "sms:\(phone)&body=\(encoded)") {
-                    openURL(url)
-                }
+                // Route through SMSLauncher so the in-app Communications thread
+                // opens by default. (Pre-filled apology body is dropped on the
+                // in-app path; templates module owns the canned text.)
+                SMSLauncher.open(phone: alert.customerPhone)
             }
 
             recoveryButton(

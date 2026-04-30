@@ -53,6 +53,18 @@ public final class SceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        // §22.4 — Stage Manager scene-restoration: if the system preserved a
+        // state-restoration activity for this session, replay it first so the
+        // window reopens at the same route it was on before eviction.
+        if let restorationActivity = session.stateRestorationActivity,
+           let urlString = SceneStateRestorer.restore(from: restorationActivity),
+           let url = URL(string: urlString) {
+            Task { @MainActor in
+                DeepLinkRouter.shared.handle(url)
+            }
+            return
+        }
+
         // Hand off any user activity that was attached at scene creation
         // (e.g. from MultiWindowCoordinator's NSUserActivity payload).
         if let activity = connectionOptions.userActivities.first {

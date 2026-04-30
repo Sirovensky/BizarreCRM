@@ -153,14 +153,14 @@ public enum ErrorCopy {
             if fields.isEmpty {
                 body = NSLocalizedString(
                     "error.validation.body.generic",
-                    value: "Check the form for errors and try again.",
+                    value: "Fix all form inputs and try again.",
                     comment: "Error copy — validation body without field names"
                 )
             } else {
                 let listed = fields.prefix(3).joined(separator: ", ")
                 let format = NSLocalizedString(
                     "error.validation.body.fields",
-                    value: "Fix the highlighted fields and try again: %@.",
+                    value: "Fix: %@.",
                     comment: "Error copy — validation body with field names (%@ = comma-joined field names)"
                 )
                 body = String(format: format, listed)
@@ -209,7 +209,7 @@ public enum ErrorCopy {
             return Copy(
                 title: NSLocalizedString(
                     "error.unknown.title",
-                    value: "Something Went Wrong",
+                    value: "Unexpected Error",
                     comment: "Error copy — unknown error title"
                 ),
                 body: NSLocalizedString(

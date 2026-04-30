@@ -21,6 +21,10 @@ public struct SyncOp: Sendable {
     public let entityServerId: String?
     public let payload: Data
     public let idempotencyKey: String
+    /// §20.10 — stable per-install device identifier so the server can echo
+    /// WS events back tagged with origin device. Defaults to
+    /// `DeviceIdentity.shared.deviceId` so callers don't need to thread it.
+    public let deviceId: String
 
     public init(
         op: String,
@@ -28,7 +32,8 @@ public struct SyncOp: Sendable {
         entityLocalId: String? = nil,
         entityServerId: String? = nil,
         payload: Data,
-        idempotencyKey: String = UUID().uuidString
+        idempotencyKey: String = UUID().uuidString,
+        deviceId: String = DeviceIdentity.shared.deviceId
     ) {
         self.op = op
         self.entity = entity
@@ -36,6 +41,7 @@ public struct SyncOp: Sendable {
         self.entityServerId = entityServerId
         self.payload = payload
         self.idempotencyKey = idempotencyKey
+        self.deviceId = deviceId
     }
 
     // Legacy convenience: kind-based init (keeps old callers compiling).
@@ -47,6 +53,7 @@ public struct SyncOp: Sendable {
         self.entityServerId = nil
         self.payload = payload
         self.idempotencyKey = UUID().uuidString
+        self.deviceId = DeviceIdentity.shared.deviceId
     }
 
     /// Legacy accessor kept for any call site reading `.kind`.
@@ -228,6 +235,9 @@ public final class SyncManager {
     private func refreshPendingCount() async {
         do {
             pendingCount = try await SyncQueueStore.shared.pendingCount()
+            // Broadcast so PendingActionChip, RetryNowButton, and LastSyncFooter
+            // update without a polling timer (§20.8).
+            postPendingCountChanged()
         } catch {
             AppLog.sync.error("pendingCount refresh failed: \(error, privacy: .public)")
         }

@@ -9,6 +9,15 @@ import Sync
 struct InvoiceCacheFilter: Sendable, Hashable {
     let filter: InvoiceFilter
     let keyword: String?
+    let sort: InvoiceSortOption?
+    let statusTab: InvoiceStatusTab?
+
+    init(filter: InvoiceFilter, keyword: String?, sort: InvoiceSortOption? = nil, statusTab: InvoiceStatusTab? = nil) {
+        self.filter = filter
+        self.keyword = keyword
+        self.sort = sort
+        self.statusTab = statusTab
+    }
 }
 
 // MARK: - InvoiceCachedRepositoryImpl
@@ -40,6 +49,39 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
     public func list(filter: InvoiceFilter, keyword: String?) async throws -> [InvoiceSummary] {
         let result = try await cachedList(filter: filter, keyword: keyword, maxAgeSeconds: 300)
         return result.value
+    }
+
+    public func listExtended(
+        statusTab: InvoiceStatusTab,
+        keyword: String?,
+        sort: InvoiceSortOption,
+        cursor: String?,
+        advancedFilter: InvoiceListFilter
+    ) async throws -> InvoicesListResponse {
+        // Cursor fetches bypass cache (they're paginated)
+        if cursor != nil {
+            return try await underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: cursor, advancedFilter: advancedFilter)
+        }
+        let key = InvoiceCacheFilter(filter: statusTab.legacyFilter, keyword: keyword, sort: sort, statusTab: statusTab)
+        let cached = cache[key] ?? []
+        let lastSync = syncedAt[key]
+        let isStale: Bool
+        if let lastSync {
+            isStale = Date().timeIntervalSince(lastSync) > 300
+        } else {
+            isStale = true
+        }
+        if isStale {
+            Task {
+                do {
+                    let fresh = try await self.underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: nil, advancedFilter: advancedFilter)
+                    await self.updateCache(key: key, items: fresh.invoices)
+                } catch {
+                    AppLog.sync.warning("Invoices extended refresh failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+        return InvoicesListResponse(invoices: cached, pagination: nil)
     }
 
     // MARK: - CachedResult list

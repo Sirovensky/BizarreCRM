@@ -99,6 +99,12 @@ public struct MmsAttachmentPickerSheet: View {
                 )
             }
             .buttonStyle(.plain)
+            // §12 — explicit VoiceOver role + hint so assistive-technology
+            // users know this opens the camera rather than the system
+            // photo picker that precedes it in the list.
+            .accessibilityLabel("Camera")
+            .accessibilityHint("Opens the camera to take a new photo or video")
+            .accessibilityAddTraits(.isButton)
 #endif
 
             Button {

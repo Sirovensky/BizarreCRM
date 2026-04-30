@@ -119,6 +119,26 @@ public final class TicketCreateFlowViewModel {
     public var referralSource: String = ""
     public var statusId: Int64?
 
+    // MARK: - §4.3 Service type + tags + source-ticket link
+
+    /// Service type: walk_in / mail_in / on_site / pick_up / drop_off.
+    public var serviceType: TicketServiceType? = nil
+    /// Multi-chip label tags applied to the ticket.
+    public var tags: [String] = []
+    /// Source ticket / estimate id — set when converting from an estimate.
+    public var sourceTicketId: Int64? = nil
+    /// Optional deposit amount in dollars.
+    public var depositAmount: Double? = nil
+
+    // MARK: - §4.3 Idempotency key
+
+    /// UUID generated once per create session. Reset after successful create.
+    public private(set) var idempotencyKey: String = UUID().uuidString
+
+    public func resetIdempotencyKey() {
+        idempotencyKey = UUID().uuidString
+    }
+
     // MARK: - Submit state
 
     public private(set) var isSubmitting: Bool = false
@@ -129,22 +149,51 @@ public final class TicketCreateFlowViewModel {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored private let api: APIClient
+    // §4.3 — Exposed so DevicesStepView can pass api to service picker sheet.
+    @ObservationIgnored public let api: APIClient
 
-    public init(api: APIClient) {
+    public init(api: APIClient, sourceTicketId: Int64? = nil) {
         self.api = api
+        self.sourceTicketId = sourceTicketId
     }
 
     // MARK: - Navigation
 
+    /// §4.3: inline step validation error message (nil = no error).
+    public private(set) var stepValidationError: String?
+
+    /// Advances to the next step. If the current step is invalid, sets
+    /// `stepValidationError` for the view to render as a glass toast.
     public func next() {
-        guard stepValid, let next = nextStep else { return }
-        currentStep = next
+        if stepValid {
+            stepValidationError = nil
+            guard let next = nextStep else { return }
+            currentStep = next
+        } else {
+            stepValidationError = validationMessage(for: currentStep)
+        }
     }
 
     public func back() {
+        stepValidationError = nil
         guard let prev = prevStep else { return }
         currentStep = prev
+    }
+
+    /// Human-readable validation message for the current step failure.
+    private func validationMessage(for step: CreateFlowStep) -> String {
+        switch step {
+        case .customer: return "Please select a customer before continuing."
+        case .devices:  return "Please enter a device name for every device."
+        case .pricing:
+            if let raw = Double(discountText.replacingOccurrences(of: ",", with: ".")) {
+                if raw < 0 { return "Discount cannot be negative." }
+                if discountMode == .percent && raw > 100 { return "Percentage discount cannot exceed 100%." }
+            }
+            return "Please enter a valid discount amount."
+        case .schedule: return nil ?? ""
+        case .review:   return nil ?? ""
+        }
     }
 
     // MARK: - Device management (immutable updates per §coding-style)
@@ -194,17 +243,20 @@ public final class TicketCreateFlowViewModel {
         queuedOffline = false
         defer { isSubmitting = false }
 
-        let req = buildCreateRequest(customerId: customer.id)
+        // §4.3 — Build full request with idempotency key, service type, tags,
+        //         source-ticket link, and deposit.
+        let req = buildFullCreateRequest(customerId: customer.id)
 
         do {
-            let created = try await api.createTicket(req)
+            let created = try await api.createTicketFull(req)
             createdTicketId = created.id
+            resetIdempotencyKey()  // New key for next create.
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {
-                await enqueueOffline(req)
+                await enqueueOfflineFull(req)
             } else if TicketOfflineQueue.isNetworkError(error) {
-                await enqueueOffline(req)
+                await enqueueOfflineFull(req)
             } else {
                 AppLog.ui.error("Full ticket create failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = appError.errorDescription ?? error.localizedDescription
@@ -215,22 +267,35 @@ public final class TicketCreateFlowViewModel {
     // MARK: - Validation per step
 
     public var stepValid: Bool {
+        stepValidationMessage == nil
+    }
+
+    /// §4.3 — Inline glass error toast text for the current step.
+    /// Returns nil when the step is valid (no toast shown).
+    public var stepValidationMessage: String? {
         switch currentStep {
-        case .customer: return selectedCustomer != nil
+        case .customer:
+            return selectedCustomer == nil ? "Please select or create a customer." : nil
         case .devices:
-            return !devices.isEmpty && devices.allSatisfy { !$0.deviceName.trimmingCharacters(in: .whitespaces).isEmpty }
+            if devices.isEmpty { return "Add at least one device." }
+            if devices.contains(where: { $0.deviceName.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                return "Each device needs a name."
+            }
+            return nil
         case .pricing:
             if !discountText.isEmpty {
-                guard let v = Double(discountText.replacingOccurrences(of: ",", with: ".")), v >= 0 else {
-                    return false
+                if Double(discountText.replacingOccurrences(of: ",", with: ".")) == nil {
+                    return "Discount must be a number."
                 }
-                if discountMode == .percent, let v = Double(discountText.replacingOccurrences(of: ",", with: ".")), v > 100 {
-                    return false
+                if discountMode == .percent,
+                   let v = Double(discountText.replacingOccurrences(of: ",", with: ".")),
+                   v > 100 {
+                    return "Percentage discount cannot exceed 100%."
                 }
             }
-            return true
-        case .schedule: return true
-        case .review:   return true
+            return nil
+        case .schedule: return nil
+        case .review:   return nil
         }
     }
 
@@ -248,7 +313,8 @@ public final class TicketCreateFlowViewModel {
         return all[idx - 1]
     }
 
-    private func buildCreateRequest(customerId: Int64) -> CreateTicketRequest {
+    /// §4.3 — Build full-fidelity create request with all optional fields.
+    private func buildFullCreateRequest(customerId: Int64) -> CreateTicketFullRequest {
         let newDevices = devices.map { d in
             CreateTicketRequest.NewDevice(
                 deviceName: d.deviceName.trimmingCharacters(in: .whitespaces),
@@ -258,18 +324,26 @@ public final class TicketCreateFlowViewModel {
                 price: d.price
             )
         }
-        return CreateTicketRequest(
+        return CreateTicketFullRequest(
             customerId: customerId,
             devices: newDevices,
             statusId: statusId,
-            assignedTo: assignedEmployeeId
+            assignedTo: assignedEmployeeId,
+            serviceType: serviceType?.rawValue,
+            tags: tags.isEmpty ? nil : tags,
+            howDidUFindUs: nilIfEmpty(source),
+            referralSource: nilIfEmpty(referralSource),
+            dueOn: nilIfEmpty(dueOn),
+            deposit: depositAmount,
+            idempotencyKey: idempotencyKey,
+            sourceTicketId: sourceTicketId
         )
     }
 
-    private func enqueueOffline(_ req: CreateTicketRequest) async {
+    private func enqueueOfflineFull(_ req: CreateTicketFullRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(op: "create", payload: payload)
+            await TicketOfflineQueue.enqueue(op: "create_full", payload: payload)
             createdTicketId = PendingSyncTicketId
             queuedOffline = true
             errorMessage = nil

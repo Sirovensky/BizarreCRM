@@ -103,7 +103,7 @@ public final class BarcodeCoordinator: NSObject {
     private var lastScanTime: Date = .distantPast
     private static let debounceDuration: TimeInterval = 0.1
 
-    // Supported symbologies per §17.2 spec.
+    // Supported symbologies per §17.2 spec (all 12 enabled).
     static let recognizedDataTypes: Set<DataScannerViewController.RecognizedDataType> = [
         .barcode(symbologies: [
             .ean13,
@@ -111,6 +111,7 @@ public final class BarcodeCoordinator: NSObject {
             .upce,
             .code128,
             .code39,
+            .code93,
             .qr,
             .pdf417,
             .dataMatrix,
@@ -211,6 +212,37 @@ public final class BarcodeCoordinator: NSObject {
     /// Call after consuming ``lastScanned`` in continuous mode.
     public func resetLastScanned() {
         lastScanned = nil
+    }
+
+    // MARK: - Torch (flashlight)
+
+    /// Toggle the device torch (flashlight). No-op when no torch hardware.
+    public func setTorch(_ on: Bool) {
+        guard let device = AVCaptureDevice.default(for: .video),
+              device.hasTorch else { return }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = on ? .on : .off
+            device.unlockForConfiguration()
+        } catch {
+            AppLog.ui.warning("BarcodeCoordinator: failed to set torch — \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Zoom
+
+    /// Set the camera zoom factor (clamped to device min/max).
+    public func setZoom(_ factor: CGFloat) {
+        guard let device = AVCaptureDevice.default(for: .video) else { return }
+        do {
+            try device.lockForConfiguration()
+            let clamped = max(device.minAvailableVideoZoomFactor,
+                              min(factor, device.maxAvailableVideoZoomFactor))
+            device.videoZoomFactor = clamped
+            device.unlockForConfiguration()
+        } catch {
+            AppLog.ui.warning("BarcodeCoordinator: failed to set zoom — \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

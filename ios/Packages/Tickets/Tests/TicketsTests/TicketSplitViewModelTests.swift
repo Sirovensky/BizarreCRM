@@ -211,12 +211,15 @@ private final class SplitStubRepo: TicketRepository {
         self.shouldFail = shouldFail
     }
 
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] { [] }
+    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] { [] }
     func detail(id: Int64) async throws -> TicketDetail {
         if shouldFail { throw SplitRepoError.boom }
         guard let d = detail else { throw SplitRepoError.boom }
         return d
     }
+    func delete(id: Int64) async throws { throw SplitRepoError.boom }
+    func duplicate(id: Int64) async throws -> DuplicateTicketResponse { throw SplitRepoError.boom }
+    func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse { throw SplitRepoError.boom }
     private enum SplitRepoError: Error { case boom }
 }
 

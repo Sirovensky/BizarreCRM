@@ -34,6 +34,29 @@ import Foundation
 /// await buffer.enqueue(.init(category: .auth, name: "auth.login.succeeded"))
 /// await buffer.flush()   // call on app background
 /// ```
+// MARK: - §32 Batch-flush tuning constants
+
+/// Named tuning knobs for `TelemetryBuffer`.
+///
+/// Centralising these values here makes it easy to adjust pipeline behaviour
+/// without hunting for magic numbers across the codebase.
+public enum TelemetryBufferDefaults {
+    /// Default batch-size threshold: flush when this many events are buffered.
+    /// Chosen to balance request overhead against latency.
+    public static let capacity: Int = 50
+
+    /// Default periodic-flush interval (seconds).
+    /// Events are sent at least this often even when the batch threshold is not reached.
+    public static let flushInterval: TimeInterval = 60
+
+    /// Hard cap on buffered events during repeated flush failures.
+    /// Oldest events are discarded once `capacity * overflowMultiplier` is reached.
+    public static let overflowMultiplier: Int = 2
+
+    /// Minimum flush interval permitted (seconds). Guards against misconfiguration.
+    public static let minimumFlushInterval: TimeInterval = 10
+}
+
 public actor TelemetryBuffer {
 
     // MARK: - Configuration
@@ -61,8 +84,8 @@ public actor TelemetryBuffer {
     ///   - startTimer: Pass `false` in unit tests to disable background timer.
     public init(
         flusher: any TelemetryFlusher,
-        capacity: Int = 50,
-        flushInterval: TimeInterval = 60,
+        capacity: Int = TelemetryBufferDefaults.capacity,
+        flushInterval: TimeInterval = TelemetryBufferDefaults.flushInterval,
         startTimer: Bool = true
     ) {
         self.flusher       = flusher
@@ -120,7 +143,7 @@ public actor TelemetryBuffer {
             // Re-queue failed batch at the front.
             buffer.insert(contentsOf: batch, at: 0)
             // Cap buffer to prevent unbounded growth on repeated failures.
-            let maxRetained = capacity * 2
+            let maxRetained = capacity * TelemetryBufferDefaults.overflowMultiplier
             if buffer.count > maxRetained {
                 buffer.removeFirst(buffer.count - maxRetained)
             }

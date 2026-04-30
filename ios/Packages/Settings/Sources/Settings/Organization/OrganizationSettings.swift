@@ -47,6 +47,27 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
     /// BCP-47 locale identifier, e.g. "en_US".
     public var locale: String
 
+    // MARK: §19.5 Document footers
+
+    /// Footer text printed at the bottom of every receipt.
+    /// Max 300 chars; supports basic line-breaks.
+    public var receiptFooter: String
+
+    /// Footer text printed on invoices and estimates.
+    /// Max 500 chars; markdown bold/italic respected in PDF renderer.
+    public var invoiceFooter: String
+
+    // MARK: §19.5 Terms & policies (printed on receipts)
+
+    /// Warranty policy text printed on receipts.
+    public var warrantyPolicy: String
+
+    /// Return policy text printed on receipts.
+    public var returnPolicy: String
+
+    /// Privacy policy text printed on receipts.
+    public var privacyPolicy: String
+
     // MARK: - Init
 
     public init(
@@ -59,7 +80,12 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
         taxId: String = "",
         currencyCode: String = "USD",
         timezone: String = "America/New_York",
-        locale: String = "en_US"
+        locale: String = "en_US",
+        receiptFooter: String = "",
+        invoiceFooter: String = "",
+        warrantyPolicy: String = "",
+        returnPolicy: String = "",
+        privacyPolicy: String = ""
     ) {
         self.name = name
         self.legalName = legalName
@@ -71,6 +97,11 @@ public struct OrganizationSettings: Codable, Sendable, Equatable {
         self.currencyCode = currencyCode
         self.timezone = timezone
         self.locale = locale
+        self.receiptFooter = receiptFooter
+        self.invoiceFooter = invoiceFooter
+        self.warrantyPolicy = warrantyPolicy
+        self.returnPolicy = returnPolicy
+        self.privacyPolicy = privacyPolicy
     }
 }
 
@@ -82,16 +113,21 @@ extension OrganizationSettings {
     /// `GET /settings/store` / `GET /settings/config`.
     public init(storeConfig cfg: [String: String]) {
         self.init(
-            name:         cfg["store_name"]     ?? "",
-            legalName:    cfg["legal_name"]     ?? "",
-            address:      cfg["address"]        ?? cfg["store_address"] ?? "",
-            phone:        cfg["phone"]          ?? cfg["store_phone"]   ?? "",
-            email:        cfg["email"]          ?? cfg["store_email"]   ?? "",
-            logoUrl:      cfg["logo_url"]       ?? cfg["store_logo"]    ?? "",
-            taxId:        cfg["tax_id"]         ?? cfg["ein"]           ?? "",
-            currencyCode: cfg["currency"]       ?? cfg["store_currency"] ?? "USD",
-            timezone:     cfg["timezone"]       ?? cfg["store_timezone"] ?? "",
-            locale:       cfg["locale"]         ?? ""
+            name:          cfg["store_name"]      ?? "",
+            legalName:     cfg["legal_name"]      ?? "",
+            address:       cfg["address"]         ?? cfg["store_address"] ?? "",
+            phone:         cfg["phone"]           ?? cfg["store_phone"]   ?? "",
+            email:         cfg["email"]           ?? cfg["store_email"]   ?? "",
+            logoUrl:       cfg["logo_url"]        ?? cfg["store_logo"]    ?? "",
+            taxId:         cfg["tax_id"]          ?? cfg["ein"]           ?? "",
+            currencyCode:  cfg["currency"]        ?? cfg["store_currency"] ?? "USD",
+            timezone:      cfg["timezone"]        ?? cfg["store_timezone"] ?? "",
+            locale:        cfg["locale"]          ?? "",
+            receiptFooter: cfg["receipt_footer"]  ?? "",
+            invoiceFooter: cfg["invoice_footer"]  ?? "",
+            warrantyPolicy: cfg["warranty_policy"] ?? "",
+            returnPolicy:   cfg["return_policy"]   ?? "",
+            privacyPolicy:  cfg["privacy_policy"]  ?? ""
         )
     }
 
@@ -109,6 +145,11 @@ extension OrganizationSettings {
             "currency":       currencyCode,
             "timezone":       timezone,
             "locale":         locale,
+            "receipt_footer": receiptFooter,
+            "invoice_footer": invoiceFooter,
+            "warranty_policy": warrantyPolicy,
+            "return_policy":   returnPolicy,
+            "privacy_policy":  privacyPolicy,
         ]
     }
 }

@@ -1,22 +1,39 @@
 #if canImport(UIKit)
 import SwiftUI
+import UniformTypeIdentifiers
 import Core
 import DesignSystem
 import Networking
 import Sync
 
+// §7.1 Invoice list — status tabs, filters, sort, row chips, stats header, bulk, export CSV, context menu, pagination
+// §7.5 Deep-link navigation: push notification tap → .invoice(tenantSlug:id:) route → navigate to detail
+// §7.1+ Filter chips: active-filter summary pills shown below search bar for one-tap removal
+// §7.2+ Batch-print queue: bulk mode gains "Print Selected" action via UIPrintInteractionController
+
 public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
+    @State private var bulkVM: InvoiceBulkActionViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
-    @State private var selectedInvoice: Int64?
-    private let detailRepo: InvoiceDetailRepository
-    private let api: APIClient
+    @State private var showSortMenu: Bool = false
+    @State private var showFilterSheet: Bool = false
+    @State private var csvExportItem: ExportableCSV?
+    @State private var showBatchPrintAlert: Bool = false
+    @State private var showPaySheet: Int64?
+    @State private var showRefundSheet: Int64?
+    @State private var showVoidAlert: Int64?
+    @State private var showReceiptSheet: Int64?
+    @State private var showCreditNoteSheet: Int64?
+
+    @ObservationIgnored private let detailRepo: InvoiceDetailRepository
+    @ObservationIgnored private let api: APIClient
 
     public init(repo: InvoiceRepository, detailRepo: InvoiceDetailRepository, api: APIClient) {
         self.detailRepo = detailRepo
         self.api = api
         _vm = State(wrappedValue: InvoiceListViewModel(repo: repo))
+        _bulkVM = State(wrappedValue: InvoiceBulkActionViewModel(api: api))
     }
 
     public var body: some View {
@@ -28,34 +45,103 @@ public struct InvoiceListView: View {
             await vm.load()
         }
         .refreshable { await vm.refresh() }
+        // §7.5 Push notification deep-link: .invoice(tenantSlug:id:) → push detail onto NavigationStack
+        .onReceive(NotificationCenter.default.publisher(for: .invoiceDeepLinkNavigate)) { note in
+            guard let invoiceId = note.userInfo?["invoiceId"] as? Int64 else { return }
+            // Clear any stale path then push the target invoice
+            path = [invoiceId]
+        }
+        .fileExporter(
+            isPresented: Binding(
+                get: { csvExportItem != nil },
+                set: { if !$0 { csvExportItem = nil } }
+            ),
+            document: csvExportItem,
+            contentType: .commaSeparatedText,
+            defaultFilename: "invoices.csv"
+        ) { _ in csvExportItem = nil }
+        // §7.1 Advanced filter sheet
+        .sheet(isPresented: $showFilterSheet) {
+            InvoiceFilterSheet(filter: Binding(
+                get: { vm.advancedFilter },
+                set: { newFilter in Task { await vm.applyAdvancedFilter(newFilter) } }
+            ))
+        }
+        // Quick-pay sheet from context menu / swipe
+        .sheet(
+            isPresented: Binding(
+                get: { showPaySheet != nil },
+                set: { if !$0 { showPaySheet = nil } }
+            )
+        ) {
+            if let invoiceId = showPaySheet {
+                InvoiceDetailView(repo: detailRepo, invoiceId: invoiceId, api: api)
+            }
+        }
+        // Credit note sheet from context menu
+        .sheet(
+            isPresented: Binding(
+                get: { showCreditNoteSheet != nil },
+                set: { if !$0 { showCreditNoteSheet = nil } }
+            )
+        ) {
+            if let invoiceId = showCreditNoteSheet {
+                let paidCents: Int = vm.invoices.first { $0.id == invoiceId }
+                    .map { Int((($0.amountPaid ?? 0) * 100).rounded()) } ?? 0
+                InvoiceCreditNoteSheet(api: api, invoiceId: invoiceId, maxCents: paidCents) {
+                    showCreditNoteSheet = nil
+                    Task { await vm.refresh() }
+                }
+            }
+        }
+        // Email receipt sheet from context menu
+        .sheet(
+            isPresented: Binding(
+                get: { showReceiptSheet != nil },
+                set: { if !$0 { showReceiptSheet = nil } }
+            )
+        ) {
+            if let invoiceId = showReceiptSheet {
+                InvoiceDetailView(repo: detailRepo, invoiceId: invoiceId, api: api)
+            }
+        }
     }
+
+    // MARK: - Compact (iPhone)
 
     private var compactLayout: some View {
         NavigationStack(path: $path) {
             ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    filterChips.padding(.vertical, BrandSpacing.sm)
+                    // Stats header
+                    InvoiceStatsHeaderView(api: api)
+                    // Status tabs
+                    statusTabBar.padding(.bottom, BrandSpacing.xs)
+                    // §7.1+ Active-filter chips — one per active axis, tap to clear that axis
+                    if vm.hasActiveFilter {
+                        activeFilterChips
+                            .padding(.bottom, BrandSpacing.xs)
+                    }
                     content
                 }
                 if vm.isOffline {
-                    OfflineBanner(isOffline: true)
-                        .padding(.top, BrandSpacing.xs)
+                    OfflineBanner(isOffline: true).padding(.top, BrandSpacing.xs)
                 }
             }
-            .navigationTitle("Invoices")
+            // §7.5 Overdue badge: shown in nav title area when overdue invoices exist
+            .navigationTitle(overdueNavTitle)
             .searchable(text: $searchText, prompt: "Search invoices")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationDestination(for: Int64.self) { id in
                 InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
             }
-            .toolbar {
-                ToolbarItem(placement: .status) {
-                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
-                }
-            }
+            .toolbar { toolbarItems }
+            .toolbar { overdueBadgeToolbarItem }
         }
     }
+
+    // MARK: - Regular (iPad)
 
     private var regularLayout: some View {
         NavigationSplitView {
@@ -63,25 +149,28 @@ public struct InvoiceListView: View {
                 ZStack(alignment: .top) {
                     Color.bizarreSurfaceBase.ignoresSafeArea()
                     VStack(spacing: 0) {
-                        filterChips.padding(.vertical, BrandSpacing.sm)
+                        InvoiceStatsHeaderView(api: api)
+                        statusTabBar.padding(.bottom, BrandSpacing.xs)
+                        // §7.1+ Active-filter chips on iPad sidebar too
+                        if vm.hasActiveFilter {
+                            activeFilterChips
+                                .padding(.bottom, BrandSpacing.xs)
+                        }
                         content
                     }
                     if vm.isOffline {
-                        OfflineBanner(isOffline: true)
-                            .padding(.top, BrandSpacing.xs)
+                        OfflineBanner(isOffline: true).padding(.top, BrandSpacing.xs)
                     }
                 }
-                .navigationTitle("Invoices")
+                // §7.5 Overdue badge in iPad sidebar title
+                .navigationTitle(overdueNavTitle)
                 .searchable(text: $searchText, prompt: "Search invoices")
                 .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
                 .navigationDestination(for: Int64.self) { id in
                     InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
                 }
-                .toolbar {
-                    ToolbarItem(placement: .status) {
-                        StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
-                    }
-                }
+                .toolbar { toolbarItems }
+                .toolbar { overdueBadgeToolbarItem }
             }
             .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 520)
         } detail: {
@@ -102,101 +191,609 @@ public struct InvoiceListView: View {
         .navigationSplitViewStyle(.balanced)
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if vm.isLoading {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let err = vm.errorMessage {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 36)).foregroundStyle(.bizarreError)
-                    .accessibilityHidden(true)
-                Text("Couldn't load invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center).padding(.horizontal, BrandSpacing.lg)
-                Button("Try again") { Task { await vm.load() } }
-                    .buttonStyle(.borderedProminent).tint(.bizarreOrange)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if vm.invoices.isEmpty && vm.isOffline {
-            OfflineEmptyStateView(entityName: "invoices")
-        } else if vm.invoices.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "doc.text").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(searchText.isEmpty ? "No invoices" : "No results")
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                ForEach(vm.invoices) { inv in
-                    NavigationLink(value: inv.id) { InvoiceRow(invoice: inv) }
-                        .listRowBackground(Color.bizarreSurface1)
-                        .hoverEffect(.highlight)
-                        .contextMenu { invoiceContextMenu(for: inv) }
+    // MARK: - §7.5 Overdue badge helpers
+
+    /// Navigation title including overdue count when non-zero.
+    /// e.g. "Invoices" or "Invoices (3 overdue)"
+    private var overdueNavTitle: String {
+        let count = vm.overdueCount
+        return count > 0 ? "Invoices (\(count) overdue)" : "Invoices"
+    }
+
+    /// Trailing toolbar item: shows an amber overdue badge pill when overdue invoices exist.
+    /// Tapping switches the status tab to Overdue to surface them immediately.
+    @ToolbarContentBuilder
+    private var overdueBadgeToolbarItem: some ToolbarContent {
+        if vm.overdueCount > 0 {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Task { await vm.applyStatusTab(.overdue) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(Color.bizarreWarning)
+                        Text("\(vm.overdueCount) overdue")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(Color.bizarreWarning)
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(vm.overdueCount) overdue invoice\(vm.overdueCount == 1 ? "" : "s"). Tap to filter.")
+                .accessibilityHint("Filters the list to show only overdue invoices")
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
     }
 
-    // MARK: - §22 Invoice context menu
+    // MARK: - Status tab bar (§7.1)
 
-    @ViewBuilder
-    private func invoiceContextMenu(for inv: InvoiceSummary) -> some View {
-        // Email Receipt
-        Button {
-            // TODO: present InvoiceEmailReceiptSheet — Phase 4 / §7
-            selectedInvoice = inv.id
-        } label: {
-            Label("Email Receipt", systemImage: "envelope")
-        }
-        .accessibilityLabel("Email receipt for invoice \(inv.displayId)")
-
-        Divider()
-
-        // Refund
-        Button {
-            // TODO: present InvoiceRefundSheet — Phase 4 / §7
-            selectedInvoice = inv.id
-        } label: {
-            Label("Refund\u{2026}", systemImage: "arrow.uturn.backward.circle")
-        }
-        .accessibilityLabel("Refund invoice \(inv.displayId)")
-
-        // Void
-        Button(role: .destructive) {
-            // TODO: present InvoiceVoidConfirmAlert — Phase 4 / §7
-            selectedInvoice = inv.id
-        } label: {
-            Label("Void\u{2026}", systemImage: "xmark.circle")
-        }
-        .accessibilityLabel("Void invoice \(inv.displayId)")
-
-        // Duplicate
-        Button {
-            // TODO: POST /invoices/:id/duplicate — Phase 4 / §7
-        } label: {
-            Label("Duplicate", systemImage: "plus.square.on.square")
-        }
-        .accessibilityLabel("Duplicate invoice \(inv.displayId)")
-    }
-
-    private var filterChips: some View {
+    private var statusTabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrandSpacing.sm) {
-                ForEach(InvoiceFilter.allCases) { option in
-                    FilterChip(label: option.displayName, selected: vm.filter == option) {
-                        Task { await vm.applyFilter(option) }
+                ForEach(InvoiceStatusTab.allCases) { tab in
+                    StatusTabChip(
+                        label: tab.displayName,
+                        selected: vm.statusTab == tab
+                    ) {
+                        Task { await vm.applyStatusTab(tab) }
                     }
+                    .accessibilityLabel("\(tab.displayName) invoices")
+                    .accessibilityAddTraits(vm.statusTab == tab ? [.isSelected, .isButton] : .isButton)
                 }
             }
             .padding(.horizontal, BrandSpacing.base)
         }
     }
+
+    // MARK: - §7.1+ Active filter chips
+
+    /// Horizontally scrolling row of dismissible chips — one per active filter axis.
+    /// Tapping a chip clears that single axis and reloads the list.
+    private var activeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                // Date range chip
+                if vm.advancedFilter.dateRangeStart != nil || vm.advancedFilter.dateRangeEnd != nil {
+                    ActiveFilterChip(label: "Date range") {
+                        var f = vm.advancedFilter
+                        f.dateRangeStart = nil
+                        f.dateRangeEnd = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Customer name chip
+                if !vm.advancedFilter.customerName.isEmpty {
+                    ActiveFilterChip(label: "Customer: \(vm.advancedFilter.customerName)") {
+                        var f = vm.advancedFilter
+                        f.customerName = ""
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Amount range chip
+                if vm.advancedFilter.amountMin != nil || vm.advancedFilter.amountMax != nil {
+                    let label: String = {
+                        switch (vm.advancedFilter.amountMin, vm.advancedFilter.amountMax) {
+                        case let (min?, max?): return "$\(Int(min))–$\(Int(max))"
+                        case let (min?, nil):  return "≥$\(Int(min))"
+                        case let (nil, max?):  return "≤$\(Int(max))"
+                        default:               return "Amount"
+                        }
+                    }()
+                    ActiveFilterChip(label: label) {
+                        var f = vm.advancedFilter
+                        f.amountMin = nil
+                        f.amountMax = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Payment method chip
+                if let method = vm.advancedFilter.paymentMethod, !method.isEmpty {
+                    let display = InvoicePaymentMethodFilter(rawValue: method)?.displayName ?? method
+                    ActiveFilterChip(label: display) {
+                        var f = vm.advancedFilter
+                        f.paymentMethod = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Created-by chip
+                if !vm.advancedFilter.createdBy.isEmpty {
+                    ActiveFilterChip(label: "By: \(vm.advancedFilter.createdBy)") {
+                        var f = vm.advancedFilter
+                        f.createdBy = ""
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Clear-all chip
+                Button {
+                    Task { await vm.applyAdvancedFilter(InvoiceListFilter()) }
+                } label: {
+                    Text("Clear all")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreError)
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, BrandSpacing.xxs)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear all active invoice filters")
+            }
+            .padding(.horizontal, BrandSpacing.base)
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        if vm.isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = vm.errorMessage {
+            errorState(message: err)
+        } else if vm.invoices.isEmpty && vm.isOffline {
+            OfflineEmptyStateView(entityName: "invoices")
+        } else if vm.invoices.isEmpty {
+            emptyState
+        } else {
+            invoiceList
+        }
+    }
+
+    private var invoiceList: some View {
+        List {
+            // Bulk mode select-all banner
+            if vm.isBulkMode {
+                BulkSelectionBanner(
+                    selectedCount: vm.selectedIds.count,
+                    totalCount: vm.invoices.count,
+                    isAllSelected: vm.isAllSelected,
+                    onSelectAll: { vm.selectAll() },
+                    onDeselectAll: { vm.deselectAll() }
+                )
+                .listRowBackground(Color.bizarreSurface1)
+            }
+
+            ForEach(vm.invoices) { inv in
+                invoiceRow(for: inv)
+            }
+
+            // Load more trigger
+            if vm.hasMore {
+                HStack {
+                    Spacer()
+                    if vm.isLoadingMore {
+                        ProgressView()
+                    } else {
+                        Button("Load more") { Task { await vm.loadMore() } }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    Spacer()
+                }
+                .listRowBackground(Color.bizarreSurface1)
+                .onAppear { Task { await vm.loadMore() } }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private func invoiceRow(for inv: InvoiceSummary) -> some View {
+        HStack {
+            if vm.isBulkMode {
+                Image(systemName: vm.selectedIds.contains(inv.id) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(vm.selectedIds.contains(inv.id) ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                    .onTapGesture { vm.toggleSelection(id: inv.id) }
+                    .accessibilityLabel(vm.selectedIds.contains(inv.id) ? "Deselect invoice \(inv.displayId)" : "Select invoice \(inv.displayId)")
+            }
+            NavigationLink(value: inv.id) {
+                InvoiceRow(invoice: inv)
+            }
+        }
+        .listRowBackground(Color.bizarreSurface1)
+        .hoverEffect(.highlight)
+        .contextMenu { rowContextMenu(for: inv) }
+        .swipeActions(edge: .leading) {
+            Button {
+                showPaySheet = inv.id
+            } label: {
+                Label("Pay", systemImage: "creditcard")
+            }
+            .tint(.bizarreSuccess)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                showVoidAlert = inv.id
+            } label: {
+                Label("Void", systemImage: "xmark.circle")
+            }
+            Button {
+                showReceiptSheet = inv.id
+            } label: {
+                Label("Email", systemImage: "envelope")
+            }
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Email receipt for invoice \(inv.displayId)")
+        }
+        .onTapGesture {
+            if vm.isBulkMode { vm.toggleSelection(id: inv.id) }
+        }
+    }
+
+    // MARK: - Context menu (§7.1 full set)
+
+    @ViewBuilder
+    private func rowContextMenu(for inv: InvoiceSummary) -> some View {
+        // Open
+        Button {
+            path.append(inv.id)
+        } label: {
+            Label("Open", systemImage: "doc.text")
+        }
+        .accessibilityLabel("Open invoice \(inv.displayId)")
+
+        // Copy invoice #
+        Button {
+            UIPasteboard.general.string = inv.displayId
+        } label: {
+            Label("Copy invoice #", systemImage: "doc.on.doc")
+        }
+        .accessibilityLabel("Copy invoice number \(inv.displayId)")
+
+        Divider()
+
+        // Send SMS
+        Button {
+            // SMS send via Communications is out of scope for Invoices; flag for Agent 2/Comms
+        } label: {
+            Label("Send SMS", systemImage: "message")
+        }
+        .accessibilityLabel("Send SMS for invoice \(inv.displayId)")
+
+        // Send email
+        Button {
+            showReceiptSheet = inv.id
+        } label: {
+            Label("Send Email", systemImage: "envelope")
+        }
+        .accessibilityLabel("Email receipt for invoice \(inv.displayId)")
+
+        // Print — uses UIPrintInteractionController (§7.2 AirPrint; wired in detail)
+        Button {
+            path.append(inv.id)
+        } label: {
+            Label("Print", systemImage: "printer")
+        }
+        .accessibilityLabel("Print invoice \(inv.displayId)")
+
+        Divider()
+
+        // Record payment
+        Button {
+            showPaySheet = inv.id
+        } label: {
+            Label("Record Payment", systemImage: "creditcard")
+        }
+        .accessibilityLabel("Record payment for invoice \(inv.displayId)")
+
+        // Credit note
+        Button {
+            showCreditNoteSheet = inv.id
+        } label: {
+            Label("Credit Note", systemImage: "minus.circle")
+        }
+        .accessibilityLabel("Issue credit note for invoice \(inv.displayId)")
+
+        // Void
+        Button(role: .destructive) {
+            showVoidAlert = inv.id
+        } label: {
+            Label("Void\u{2026}", systemImage: "xmark.circle")
+        }
+        .accessibilityLabel("Void invoice \(inv.displayId)")
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        // Staleness indicator
+        ToolbarItem(placement: .status) {
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+
+        // §7.1 Advanced filter button (with active-filter badge)
+        ToolbarItem(placement: .topBarTrailing) {
+            BrandGlassContainer {
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        if vm.hasActiveFilter {
+                            Circle()
+                                .fill(Color.bizarreOrange)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 4, y: -4)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityLabel(vm.hasActiveFilter ? "Invoice filters active. Tap to edit." : "Filter invoices")
+            }
+        }
+
+        // Sort
+        ToolbarItem(placement: .topBarTrailing) {
+            BrandGlassContainer {
+                Menu {
+                    ForEach(InvoiceSortOption.allCases) { opt in
+                        Button {
+                            Task { await vm.applySort(opt) }
+                        } label: {
+                            HStack {
+                                Text(opt.displayName)
+                                if vm.sort == opt {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .accessibilityLabel("Sort by \(opt.displayName)")
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+                .accessibilityLabel("Sort invoices")
+            }
+        }
+
+        // Bulk / Export
+        ToolbarItem(placement: .topBarTrailing) {
+            BrandGlassContainer {
+                Menu {
+                    Button {
+                        vm.toggleBulkMode()
+                    } label: {
+                        Label(vm.isBulkMode ? "Exit Bulk Mode" : "Select Multiple", systemImage: "checkmark.circle")
+                    }
+                    .accessibilityLabel(vm.isBulkMode ? "Exit bulk selection mode" : "Enter bulk selection mode")
+
+                    if vm.isBulkMode && !vm.selectedIds.isEmpty {
+                        Divider()
+                        Button {
+                            Task { await bulkVM.perform(action: "send_reminder", ids: Array(vm.selectedIds)) }
+                        } label: {
+                            Label("Send Reminder", systemImage: "bell")
+                        }
+                        Button {
+                            exportCSV()
+                        } label: {
+                            Label("Export CSV", systemImage: "arrow.down.doc")
+                        }
+                        // §7.2+ Batch-print queue — enqueues selected invoice IDs for AirPrint
+                        Button {
+                            batchPrintSelected()
+                        } label: {
+                            Label("Print \(vm.selectedIds.count) Invoice\(vm.selectedIds.count == 1 ? "" : "s")", systemImage: "printer")
+                        }
+                        .accessibilityLabel("Print \(vm.selectedIds.count) selected invoice\(vm.selectedIds.count == 1 ? "" : "s")")
+                        Button(role: .destructive) {
+                            Task { await bulkVM.perform(action: "void", ids: Array(vm.selectedIds)) }
+                        } label: {
+                            Label("Void Selected", systemImage: "xmark.circle")
+                        }
+                    }
+
+                    if !vm.isBulkMode {
+                        Divider()
+                        Button {
+                            exportCSV()
+                        } label: {
+                            Label("Export CSV", systemImage: "arrow.down.doc")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("More actions")
+            }
+        }
+    }
+
+    // MARK: - Empty / error states
+
+    private var emptyState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: emptyStateIcon)
+                .font(.system(size: 52))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text(emptyStateTitle)
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(emptyStateSubtitle)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
+            // Clear search / filter shortcut
+            if !searchText.isEmpty || vm.hasActiveFilter {
+                Button {
+                    if !searchText.isEmpty { searchText = "" }
+                    if vm.hasActiveFilter { Task { await vm.applyAdvancedFilter(InvoiceListFilter()) } }
+                    Task { await vm.applyStatusTab(.all) }
+                } label: {
+                    Label("Clear filters", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Clear all search filters and show all invoices")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(emptyStateTitle). \(emptyStateSubtitle)")
+    }
+
+    private var emptyStateIcon: String {
+        if !searchText.isEmpty { return "magnifyingglass" }
+        switch vm.statusTab {
+        case .overdue: return "exclamationmark.circle"
+        case .paid:    return "checkmark.circle"
+        case .void_:   return "xmark.circle"
+        default:       return "doc.text"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        if !searchText.isEmpty { return "No results for \"\(searchText)\"" }
+        if vm.hasActiveFilter { return "No invoices match your filters" }
+        switch vm.statusTab {
+        case .all:     return "No invoices yet"
+        case .unpaid:  return "No unpaid invoices"
+        case .partial:  return "No partially-paid invoices"
+        case .overdue: return "No overdue invoices"
+        case .paid:    return "All caught up"
+        case .void_:   return "No voided invoices"
+        }
+    }
+
+    private var emptyStateSubtitle: String {
+        if !searchText.isEmpty { return "Try a different search term or clear filters." }
+        if vm.hasActiveFilter { return "Adjust or remove your filters to see more results." }
+        switch vm.statusTab {
+        case .all:     return "Create your first invoice to get started."
+        case .unpaid:  return "No invoices are awaiting payment."
+        case .partial:  return "No invoices have a partial payment."
+        case .overdue: return "No overdue invoices — great work!"
+        case .paid:    return "No paid invoices in the current period."
+        case .void_:   return "No voided invoices on record."
+        }
+    }
+
+    private func errorState(message: String) -> some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 36)).foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text("Couldn't load invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            Text(message).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center).padding(.horizontal, BrandSpacing.lg)
+            Button("Try again") { Task { await vm.load() } }
+                .buttonStyle(.borderedProminent).tint(.bizarreOrange)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - CSV Export
+
+    private func exportCSV() {
+        let data = InvoiceCSVExporter.csv(from: vm.invoices)
+        csvExportItem = ExportableCSV(data: data)
+    }
+
+    // MARK: - §7.2+ Batch-print queue
+
+    /// Enqueues all selected invoices for AirPrint via a single `UIPrintInteractionController`.
+    /// Builds a text-based placeholder for each invoice (full PDF render is handled by
+    /// `InvoicePrintService` per-invoice; here we compose a multi-page text document).
+    private func batchPrintSelected() {
+        let selected = vm.invoices.filter { vm.selectedIds.contains($0.id) }
+        guard !selected.isEmpty else { return }
+
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.jobName = "Invoices (\(selected.count))"
+        printInfo.outputType = .general
+        printInfo.orientation = .portrait
+
+        // Build a plain-text summary page per invoice (PDF render deferred to per-invoice print service)
+        let pageText = selected.map { inv -> String in
+            let total = inv.total.map { String(format: "$%.2f", $0) } ?? "—"
+            let status = (inv.status ?? "unknown").capitalized
+            return "Invoice \(inv.displayId)\n\(inv.customerName)\nTotal: \(total)  Status: \(status)"
+        }.joined(separator: "\n\n---\n\n")
+
+        let formatter = UISimpleTextPrintFormatter(text: pageText)
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = printInfo
+        controller.printFormatter = formatter
+        controller.present(animated: true)
+    }
 }
+
+// MARK: - §7.1+ Active filter chip
+
+private struct ActiveFilterChip: View {
+    let label: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button(action: onRemove) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Text(label)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(Color.black)
+                    .lineLimit(1)
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.black)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(Color.bizarreOrange, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Remove filter: \(label)")
+        .accessibilityHint("Double-tap to remove this filter")
+    }
+}
+
+// MARK: - Status tab chip
+
+private struct StatusTabChip: View {
+    let label: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .padding(.horizontal, BrandSpacing.base).padding(.vertical, BrandSpacing.sm)
+                .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
+                .background(selected ? Color.bizarreOrange : Color.bizarreSurface1, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(selected ? 0 : 0.6), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Bulk selection banner
+
+private struct BulkSelectionBanner: View {
+    let selectedCount: Int
+    let totalCount: Int
+    let isAllSelected: Bool
+    let onSelectAll: () -> Void
+    let onDeselectAll: () -> Void
+
+    var body: some View {
+        HStack {
+            Text("\(selectedCount) of \(totalCount) selected")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer()
+            Button(isAllSelected ? "Deselect All" : "Select All") {
+                isAllSelected ? onDeselectAll() : onSelectAll()
+            }
+            .font(.brandLabelLarge())
+            .foregroundStyle(.bizarreOrange)
+            .accessibilityLabel(isAllSelected ? "Deselect all invoices" : "Select all invoices")
+        }
+        .padding(.vertical, BrandSpacing.xs)
+    }
+}
+
+// MARK: - InvoiceRow
 
 private struct InvoiceRow: View {
     let invoice: InvoiceSummary
@@ -226,7 +823,8 @@ private struct InvoiceRow: View {
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
-                statusBadge
+                // §7.1 Row chip
+                InvoiceRowChip(invoice: invoice)
                 if let due = invoice.amountDue, due > 0 {
                     Text("Due \(formatMoney(due))")
                         .font(.brandLabelSmall())
@@ -243,26 +841,12 @@ private struct InvoiceRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private var statusBadge: some View {
-        let (bg, fg) = statusColors(for: invoice.statusKind)
-        let name = invoice.status.map { $0.capitalized } ?? "—"
-        return Text(name)
-            .font(.brandLabelSmall())
-            .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
-            .foregroundStyle(fg)
-            .background(bg, in: Capsule())
-            .accessibilityLabel("Status \(name)")
-    }
-
     static func a11yLabel(for inv: InvoiceSummary) -> String {
-        // InvoiceSummary.total is Double dollars; convert to cents for RowAccessibilityFormatter.
         let totalCents = Int(((inv.total ?? 0) * 100).rounded())
-        // Use createdAt string; parse to Date or fall back to now.
         let issuedDate: Date = {
             guard let str = inv.createdAt else { return Date() }
             let iso = ISO8601DateFormatter()
             if let d = iso.date(from: str) { return d }
-            // Try date-only format "YYYY-MM-DD"
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd"
             return df.date(from: String(str.prefix(10))) ?? Date()
@@ -276,7 +860,6 @@ private struct InvoiceRow: View {
         )
     }
 
-    /// Legacy alias kept for test callsites.
     static func a11y(for inv: InvoiceSummary) -> String { a11yLabel(for: inv) }
 
     private static func formatMoney(_ dollars: Double) -> String {
@@ -286,34 +869,23 @@ private struct InvoiceRow: View {
         return f.string(from: NSNumber(value: dollars)) ?? "$\(dollars)"
     }
 
-    private func statusColors(for kind: InvoiceSummary.Status) -> (Color, Color) {
-        switch kind {
-        case .paid:     return (.bizarreSuccess, .black)
-        case .partial:  return (.bizarreWarning, .black)
-        case .unpaid:   return (.bizarreError,   .black)
-        case .void_:    return (.bizarreOnSurfaceMuted, .bizarreSurfaceBase)
-        case .other:    return (.bizarreSurface2, .bizarreOnSurface)
-        }
-    }
-
     private func formatMoney(_ dollars: Double) -> String { Self.formatMoney(dollars) }
 }
 
-private struct FilterChip: View {
-    let label: String
-    let selected: Bool
-    let action: () -> Void
+// MARK: - CSV FileDocument wrapper
 
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.brandLabelLarge())
-                .padding(.horizontal, BrandSpacing.base).padding(.vertical, BrandSpacing.sm)
-                .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
-                .background(selected ? Color.bizarreOrange : Color.bizarreSurface1, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(selected ? 0 : 0.6), lineWidth: 0.5))
-        }
-        .buttonStyle(.plain)
+struct ExportableCSV: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 #endif

@@ -7,19 +7,48 @@ import DesignSystem
 // Wired to GET /api/v1/reports/sales.
 // Shows AreaMark + LineMark (period mode) or BarMark (bar mode) toggled by
 // the user on iPhone. iPad shows 3 columns: trend chart | bar-by-period | KPI panel.
+//
+// §91.12 (1): The card is context-aware. When displayed inside the Inventory tab,
+// pass `.inventory` so the title and data reflect inventory revenue only.
+// Pass `.hidden` to suppress the card entirely from the Inventory tab when no
+// inventory-specific revenue series is available.
+
+public enum RevenueCardContext: Sendable {
+    /// Standard sales-tab revenue (default).
+    case sales
+    /// Inventory-tab revenue — title changes and a note is shown.
+    case inventory
+    /// Card is fully suppressed; callers should not render it at all.
+    case hidden
+}
 
 public struct RevenueChartCard: View {
     public let points: [RevenuePoint]
     /// Period-over-period change % from server totals (nil when unavailable).
     public let periodChangePct: Double?
+    /// Which dashboard tab is hosting this card (§91.12 item 1).
+    public let context: RevenueCardContext
     public let onDrillThrough: (RevenuePoint) -> Void
 
     public init(points: [RevenuePoint],
                 periodChangePct: Double? = nil,
+                context: RevenueCardContext = .sales,
                 onDrillThrough: @escaping (RevenuePoint) -> Void) {
         self.points = points
         self.periodChangePct = periodChangePct
+        self.context = context
         self.onDrillThrough = onDrillThrough
+    }
+
+    /// Returns `nil` (suppress card) when context is `.hidden`.
+    public var isVisible: Bool { context != .hidden }
+
+    private var cardTitle: String {
+        switch context {
+        case .sales:      return "Revenue"
+        case .inventory:  return "Inventory Revenue"
+        case .hidden:     return "Revenue"
+        }
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -45,10 +74,19 @@ public struct RevenueChartCard: View {
             modeToggle
             chartContent
                 .frame(height: 180)
+                .brandChartAxisStyle()
                 .chartXAxisLabel("Date", alignment: .center)
                 .chartYAxisLabel("Revenue ($K)", position: .leading)
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                        AxisGridLine()
+                    }
+                }
                 .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                 .chartOverlay { proxy in drillOverlay(proxy: proxy) }
+            if !points.isEmpty { revenueLegendRow }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -68,10 +106,19 @@ public struct RevenueChartCard: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     lineChart
                         .frame(height: 200)
+                        .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                                AxisGridLine()
+                            }
+                        }
                         .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                         .chartOverlay { proxy in drillOverlay(proxy: proxy) }
+                    if !points.isEmpty { revenueLegendRow }
                 }
                 .frame(maxWidth: .infinity)
 
@@ -82,8 +129,16 @@ public struct RevenueChartCard: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     barChart
                         .frame(height: 200)
+                        .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
                         .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                                AxisGridLine()
+                            }
+                        }
                         .accessibilityLabel("Revenue bar chart by period")
                 }
                 .frame(maxWidth: .infinity)
@@ -120,11 +175,13 @@ public struct RevenueChartCard: View {
             Divider()
             if let p = peak {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    // §91.10: label primary, value uses unified brandKpiValue
                     Text("Peak")
                         .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .foregroundStyle(.bizarreOnSurface)
                     Text(p.amountDollars, format: .currency(code: "USD"))
-                        .font(.brandTitleSmall())
+                        .font(.brandKpiValue())
+                        .monospacedDigit()
                         .foregroundStyle(.bizarreSuccess)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -144,11 +201,13 @@ public struct RevenueChartCard: View {
 
     private func revenueKpiCell(label: String, value: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            // §91.10: label = primary text, value = semantic color (not reversed)
             Text(label)
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .foregroundStyle(.bizarreOnSurface)
             Text(value, format: .currency(code: "USD"))
-                .font(.brandTitleSmall())
+                .font(.brandKpiValue())
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -175,7 +234,7 @@ public struct RevenueChartCard: View {
     @ViewBuilder
     private var chartContent: some View {
         if points.isEmpty {
-            emptyState
+            ChartDashedSilhouette(systemImage: "chart.line.uptrend.xyaxis", label: "No revenue data for this period.")
         } else {
             switch chartMode {
             case .line: lineChart
@@ -186,10 +245,24 @@ public struct RevenueChartCard: View {
 
     // MARK: - Line chart (AreaMark + LineMark)
 
+    private var revenueLegendRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle().fill(Color.bizarreOrange).frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text("Revenue $K")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend: Revenue in thousands of dollars")
+    }
+
     private var lineChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                ChartDashedSilhouette(systemImage: "chart.line.uptrend.xyaxis", label: "No revenue data for this period.")
             } else {
                 Chart(points) { pt in
                     AreaMark(
@@ -231,7 +304,7 @@ public struct RevenueChartCard: View {
     private var barChart: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                ChartDashedSilhouette(systemImage: "chart.bar", label: "No revenue data for this period.")
             } else {
                 Chart(points) { pt in
                     BarMark(
@@ -254,31 +327,50 @@ public struct RevenueChartCard: View {
 
     @ViewBuilder
     private var cardHeader: some View {
-        HStack {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .foregroundStyle(.bizarreOrange)
-                .accessibilityHidden(true)
-            Text("Revenue")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Spacer()
-            // Period-over-period badge when available
-            if let pct = periodChangePct {
-                periodBadge(pct: pct)
-            } else if let pt = selectedPoint {
-                Text(pt.amountDollars, format: .currency(code: "USD"))
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreTeal)
-                    .transition(.opacity)
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            HStack {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                Text(cardTitle)
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                // Period-over-period badge when available
+                if let pct = periodChangePct {
+                    periodBadge(pct: pct)
+                } else if let pt = selectedPoint {
+                    Text(pt.amountDollars, format: .currency(code: "USD"))
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreTeal)
+                        .transition(.opacity)
+                }
+            }
+            // §91.12 (1): inventory-tab note so users know this is scoped revenue
+            if context == .inventory {
+                Text("Showing inventory product revenue only — not service revenue.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Revenue chart. Tap a data point to drill through.")
+        .accessibilityLabel("\(cardTitle) chart. Tap a data point to drill through.")
     }
 
     @ViewBuilder
     private func periodBadge(pct: Double) -> some View {
-        let isUp = pct >= 0
+        // §91.6 fix: exact zero delta must NOT show an up-arrow + green pill — it's
+        // not a gain. Render a neutral em-dash pill matching AvgTicketValueCard treatment.
+        if pct == 0 {
+            Text("–")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreOnSurfaceMuted.opacity(0.10), in: Capsule())
+                .accessibilityLabel("No change vs prior period")
+        } else {
+        let isUp = pct > 0
         HStack(spacing: BrandSpacing.xxs) {
             Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
                 .imageScale(.small)
@@ -292,6 +384,7 @@ public struct RevenueChartCard: View {
         .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
         .accessibilityLabel(isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
                                  : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
+        } // end else (pct != 0)
     }
 
     // MARK: - Drill overlay
@@ -315,12 +408,6 @@ public struct RevenueChartCard: View {
     }
 
     // MARK: - Shared helpers
-
-    private var emptyState: some View {
-        ContentUnavailableView("No Revenue Data",
-                               systemImage: "chart.line.uptrend.xyaxis",
-                               description: Text("No revenue data for this period."))
-    }
 
     private var strokeBorder: some View {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)

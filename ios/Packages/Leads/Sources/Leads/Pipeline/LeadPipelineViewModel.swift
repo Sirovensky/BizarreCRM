@@ -141,6 +141,45 @@ public final class LeadPipelineViewModel {
         }
     }
 
+    // MARK: - §9.2 Bulk archive won/lost
+
+    /// Bulk-archive all leads in the `.won` or `.lost` stage.
+    /// Optimistically clears the column, then patches each lead to `status=archived`.
+    /// On error, reloads to restore correct state.
+    public func bulkArchive(stage: PipelineStage) async {
+        guard stage == .won || stage == .lost else { return }
+        let targets = leads(in: stage)
+        guard !targets.isEmpty else { return }
+
+        // Optimistic: clear the column.
+        var updated = grouped
+        updated[stage] = []
+        grouped = updated
+        allLeads = allLeads.filter { lead in
+            !targets.contains(where: { $0.id == lead.id })
+        }
+
+        // Persist: patch each lead to archived status.
+        await withTaskGroup(of: Void.self) { group in
+            for lead in targets {
+                group.addTask { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let body = LeadStatusUpdateBody(status: "archived")
+                        _ = try await self.api.updateLeadStatus(id: lead.id, body: body)
+                    } catch {
+                        AppLog.ui.error(
+                            "Bulk archive lead \(lead.id) failed: \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                }
+            }
+        }
+
+        // Reload to reconcile server state.
+        await load()
+    }
+
     // MARK: - Helpers
 
     public func leads(in stage: PipelineStage) -> [Lead] {

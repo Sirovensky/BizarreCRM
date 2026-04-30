@@ -27,6 +27,21 @@ public struct SetupWizardView: View {
             }
         }
         .task { await vm.loadServerState() }
+        // §36.4 Setup wizard metrics — track step entry times and drop-off
+        .onAppear {
+            SetupMetrics.shared.stepEntered(vm.currentStep.rawValue)
+        }
+        .onChange(of: vm.currentStep) { old, new in
+            SetupMetrics.shared.onStepChange(from: old.rawValue, to: new.rawValue)
+        }
+        .onChange(of: vm.isDismissed) { _, dismissed in
+            if dismissed {
+                SetupMetrics.shared.wizardDeferred(
+                    atStep: vm.currentStep.rawValue,
+                    completedSteps: vm.completedSteps
+                )
+            }
+        }
     }
 
     // MARK: - Adaptive layout dispatcher
@@ -49,9 +64,15 @@ public struct SetupWizardView: View {
     // MARK: - iPhone layout
 
     private var iPhoneLayout: some View {
+        // §22.7 — Safe area: use .keyboardSafeBottomAction to keep the
+        // navigation bar (Next / Back) pinned above the software keyboard
+        // when a form field is focused in a step. Without this the navBar
+        // would hide behind the keyboard frame on iPhone.
         VStack(spacing: 0) {
             indicatorBar
             stepBody
+        }
+        .keyboardSafeBottomAction {
             navBar
         }
     }
@@ -267,6 +288,10 @@ public struct SetupWizardView: View {
         case .businessHours:
             BusinessHoursStepView(
                 onValidityChanged: { valid in stepValid = valid },
+                onDaysChanged: { days in
+                    // Persist hours draft on every edit so Skip/Back don't lose it.
+                    vm.wizardPayload.hours = days
+                },
                 onNext: { days in
                     vm.wizardPayload.hours = days
                     Task { await vm.goNext() }
@@ -313,11 +338,13 @@ public struct SetupWizardView: View {
                         vm.wizardPayload.firstEmployeeLastName  = p.lastName
                         vm.wizardPayload.firstEmployeeEmail     = p.email
                         vm.wizardPayload.firstEmployeeRole      = p.role.rawValue
+                        vm.wizardPayload.firstEmployeeSendSMS   = p.sendSMSInvite
                     } else {
                         vm.wizardPayload.firstEmployeeFirstName = nil
                         vm.wizardPayload.firstEmployeeLastName  = nil
                         vm.wizardPayload.firstEmployeeEmail     = nil
                         vm.wizardPayload.firstEmployeeRole      = nil
+                        vm.wizardPayload.firstEmployeeSendSMS   = false
                     }
                     Task { await vm.goNext() }
                 }
@@ -378,6 +405,7 @@ public struct SetupWizardView: View {
         case .complete:
             DoneStepView(
                 completedSteps: vm.completedSteps,
+                mvpStepsRemaining: vm.mvpStepsRemaining,
                 onOpenDashboard: {
                     Task { await vm.goNext() }
                 }

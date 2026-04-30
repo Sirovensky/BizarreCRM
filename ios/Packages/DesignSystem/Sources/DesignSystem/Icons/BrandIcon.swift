@@ -353,6 +353,20 @@ public enum BrandIcon: String, CaseIterable, Sendable {
     case checkmarkShieldFill            = "checkmark.shield.fill"
 }
 
+// MARK: - §30.8 Icon role (fill vs outline)
+
+/// Semantic role that governs the fill/outline choice per §30.8.
+///
+/// - `navigation`: outline (standard unselected nav / toolbar icons).
+/// - `active`: fill (selected tab, active toggle, currently-open item).
+///
+/// Use `BrandIcon.resolvedSymbolName(for:)` to automatically pick the
+/// correct SF Symbol variant.
+public enum BrandIconRole: Sendable {
+    case navigation
+    case active
+}
+
 // MARK: - SwiftUI accessors
 
 public extension BrandIcon {
@@ -360,6 +374,111 @@ public extension BrandIcon {
     /// A SwiftUI `Image` wrapping the corresponding SF Symbol.
     var image: Image {
         Image(systemName: systemName)
+    }
+
+    // MARK: — §27 RTL flip support
+
+    /// Whether this icon is directional and should mirror in RTL layouts.
+    ///
+    /// Directional icons are those whose meaning changes when flipped (arrows,
+    /// chevrons pointing left/right, backspace, back-arrow).  Non-directional
+    /// icons (clock, info, lock, camera …) must never flip.
+    ///
+    /// SF Symbols 4+ ships built-in directionality metadata, but we also maintain
+    /// this explicit list so that custom brand icons and future additions default
+    /// to the safe choice (non-directional) until explicitly opted in.
+    public var isDirectional: Bool {
+        switch self {
+        case .chevronRight, .chevronLeft,
+             .arrowRight, .arrowUpRight, .arrowDownRight,
+             .shippingBoxReturn,
+             .deleteLeft,
+             .squarePencil,
+             .paperPlane,
+             .refresh, .refreshCounterclockwise, .sync:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Returns a SwiftUI `Image` that automatically mirrors this icon when the
+    /// active layout direction is RTL, iff `isDirectional` is `true`.
+    ///
+    /// Use this instead of `image` whenever an icon is placed in a directional
+    /// context (e.g. a back-button, a "next" arrow, a send icon).
+    ///
+    /// ```swift
+    /// BrandIcon.arrowRight.directionalImage()
+    ///     .accessibilityLabel(BrandIcon.arrowRight.accessibilityLabel)
+    /// ```
+    public func directionalImage() -> some View {
+        Image(systemName: systemName)
+            .flipsForRightToLeftLayoutDirection(isDirectional)
+    }
+
+    /// Returns a role-sensitive directional image.
+    ///
+    /// Combines the fill/outline role resolution with RTL flipping in one call.
+    public func directionalImage(for role: BrandIconRole) -> some View {
+        Image(systemName: resolvedSymbolName(for: role))
+            .flipsForRightToLeftLayoutDirection(isDirectional)
+    }
+
+    // MARK: — §30.8 Role-sensitive symbol name
+
+    /// Returns the correct SF Symbol variant for `role`:
+    /// - `.navigation` → outline (no `.fill` suffix where the pair exists).
+    /// - `.active`     → fill.
+    ///
+    /// Falls back to `systemName` when the icon does not have a distinct
+    /// fill/outline pair.
+    public func resolvedSymbolName(for role: BrandIconRole) -> String {
+        switch role {
+        case .active: return filledSystemName
+        case .navigation: return outlineSystemName
+        }
+    }
+
+    /// SF Symbol name for the outline (navigation) variant.
+    private var outlineSystemName: String {
+        // Symbols that have both outline and fill forms.
+        switch self {
+        case .customer:         return "person.circle"
+        case .invoice:          return "doc.text"
+        case .message:          return "message"
+        case .envelope:         return "envelope"
+        case .bell:             return "bell"
+        case .calendar:         return "calendar"
+        case .clock:            return "clock"
+        case .lock:             return "lock"
+        case .star:             return "star"
+        case .heart:            return "heart"
+        case .checkmarkCircle:  return "checkmark.circle"
+        case .checkmarkSeal:    return "checkmark.seal"
+        case .buildingFill:     return "building.2"
+        default:                return systemName
+        }
+    }
+
+    /// SF Symbol name for the fill (active) variant.
+    private var filledSystemName: String {
+        switch self {
+        case .customer:         return "person.circle.fill"
+        case .invoice:          return "doc.text.fill"
+        case .message:          return "message.fill"
+        case .envelope:         return "envelope.fill"
+        case .bell:             return "bell.fill"
+        case .calendar:         return "calendar.fill"
+        case .clock:            return "clock.fill"
+        case .lock:             return "lock.fill"
+        case .star:             return "star.fill"
+        case .heart:            return "heart.fill"
+        case .checkmarkCircle:  return "checkmark.circle.fill"
+        case .checkmarkSeal:    return "checkmark.seal.fill"
+        case .building:         return "building.2.fill"
+        default:                return systemName
+        }
     }
 
     /// The raw SF Symbol name string.
@@ -371,6 +490,59 @@ public extension BrandIcon {
         case .commission: return "dollarsign.circle.fill"
         case .settings:   return "wrench.and.screwdriver"
         default:          return rawValue
+        }
+    }
+
+    /// Alternative spoken / typed names for Voice Control — §26.8.
+    ///
+    /// Voice Control lets users interact by speaking element names. When the
+    /// primary `accessibilityLabel` is verbose (e.g. "Filter Active") users
+    /// may prefer shorter synonyms. This list is fed to
+    /// `.accessibilityInputLabels(_:)` on every `IconButton`; the label list
+    /// always includes the primary label so "Filter Active" still works.
+    ///
+    /// Rules:
+    /// - First element MUST equal `accessibilityLabel` (primary).
+    /// - Keep synonyms short and unambiguous within a single screen context.
+    /// - Add new entries only when a synonym is genuinely useful; don't pad.
+    var voiceControlLabels: [String] {
+        let primary = accessibilityLabel
+        switch self {
+        // Actions — these are the most frequently spoken via Voice Control
+        case .plus, .plusCircleFill, .plusRectangleFolder:
+            return [primary, "new", "create", "add"]
+        case .trash:
+            return [primary, "delete", "remove"]
+        case .xmark, .xmarkCircleFill, .xmarkBinFill:
+            return [primary, "dismiss", "cancel"]
+        case .pencil, .squarePencil:
+            return [primary, "edit"]
+        case .magnifyingGlass, .magnifyingGlassCircle:
+            return [primary, "find", "look up"]
+        case .filter, .filterFill:
+            return [primary, "filter"]
+        case .refresh:
+            return [primary, "reload", "refresh"]
+        case .sync:
+            return [primary, "sync", "reload"]
+        case .barcode, .barcodeScanner:
+            return [primary, "scan", "barcode"]
+        case .paperPlane:
+            return [primary, "send"]
+        case .checkmarkCircleFill, .checkmarkCircle:
+            return [primary, "done", "complete"]
+        case .ellipsisCircle:
+            return [primary, "more", "actions"]
+        case .message, .messageFill, .messageBadgeCircle, .messageBadgeFill:
+            return [primary, "message", "sms"]
+        case .bell, .bellBadge:
+            return [primary, "notifications", "alerts"]
+        case .calendarBadgePlus:
+            return [primary, "add appointment", "schedule"]
+        case .cameraBadgePlus:
+            return [primary, "add photo", "camera"]
+        default:
+            return [primary]
         }
     }
 

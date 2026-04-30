@@ -266,16 +266,31 @@ public struct NotificationMatrixView: View {
     @ViewBuilder
     private func channelToggleButton(row: MatrixRow, channel: MatrixChannel) -> some View {
         let isOn = row.isEnabled(channel)
+        // §70.1 — show "(default)" label greyed when value has not been changed from shipped default
+        let atDefault = row.isAtDefault(for: channel)
         Button {
             Task { await vm.toggle(event: row.event, channel: channel) }
         } label: {
-            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isOn ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
-                .font(.title3)
-                .frame(minWidth: 44, minHeight: 44)
+            VStack(spacing: 2) {
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(
+                        atDefault
+                            ? (isOn ? Color.bizarreOrange.opacity(0.5) : Color.bizarreOnSurfaceMuted.opacity(0.5))
+                            : (isOn ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                    )
+                    .font(.title3)
+                if atDefault {
+                    Text("default")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.6))
+                        .lineLimit(1)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(channel.displayLabel) for \(row.event.displayName): \(isOn ? "on" : "off")")
+        .accessibilityLabel("\(channel.displayLabel) for \(row.event.displayName): \(isOn ? "on" : "off")\(atDefault ? " (default)" : "")")
         .accessibilityHint("Double-tap to \(isOn ? "disable" : "enable")")
         .accessibilityIdentifier("matrix.\(row.event.rawValue).\(channel.rawValue)")
     }

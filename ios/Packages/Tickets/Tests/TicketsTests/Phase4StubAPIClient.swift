@@ -112,7 +112,12 @@ actor Phase4StubAPIClient: APIClient {
         }
     }
 
-    func delete(_ path: String) async throws {}
+    func delete(_ path: String) async throws {
+        // Route archive/delete via archiveResult so tests can inject failures.
+        if path.contains("/tickets/") {
+            if case .failure(let e) = archiveResult { throw e }
+        }
+    }
 
     func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
         throw APITransportError.noBaseURL

@@ -28,6 +28,20 @@ public struct PreviewCustomerRepository: CustomerRepository {
         throw URLError(.unsupportedURL) // not needed in gate previews
     }
 
+    public func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        CustomerCursorPage(customers: summaries, nextCursor: nil)
+    }
+
+    public func createFromContact(_ req: ContactImportCreateRequest) async throws {}
+
+    public func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
+    }
+
+    public func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
+    }
+
     static let sampleData: [CustomerSummary] = [
         CustomerSummary(
             id: 1, firstName: "Sarah", lastName: "Mullen",
@@ -59,6 +73,22 @@ public struct FailingCustomerRepository: CustomerRepository {
     }
 
     public func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        throw error
+    }
+
+    public func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        throw error
+    }
+
+    public func createFromContact(_ req: ContactImportCreateRequest) async throws {
+        throw error
+    }
+
+    public func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        throw error
+    }
+
+    public func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
         throw error
     }
 }

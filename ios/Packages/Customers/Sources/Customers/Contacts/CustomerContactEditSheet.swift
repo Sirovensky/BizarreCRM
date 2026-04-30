@@ -62,6 +62,7 @@ struct CustomerContactEditSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .sheetKeyboardSafe()   // §30 — interactive keyboard dismissal + ignore keyboard safe area
     }
 }
 #endif

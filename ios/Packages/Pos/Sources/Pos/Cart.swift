@@ -49,7 +49,7 @@ public struct PosCustomer: Equatable, Sendable {
 @MainActor
 @Observable
 public final class Cart {
-    public private(set) var items: [CartItem] = []
+    public internal(set) var items: [CartItem] = []
 
     /// Currently attached customer (nil = no customer chosen yet — the
     /// empty-state CTAs surface walk-in / find / create).
@@ -142,9 +142,41 @@ public final class Cart {
     /// Total savings from pricing rules (computed by engine).
     public private(set) var pricingSavingCents: Int = 0
 
+    // MARK: - §16.3 — Linked ticket
+
+    /// Server-assigned ticket id linked to this cart (e.g. repair ticket).
+    /// Nil = not linked. Set via `linkToTicket(id:)`. Drives the
+    /// "Link to Ticket #NNNN" chip in `PosCartPanel`.
+    public private(set) var linkedTicketId: Int64? = nil
+
+    // MARK: - §16 Sale note
+
+    /// Optional cashier-entered note attached to the whole sale (not a line).
+    /// Prints on the receipt below the totals section. 500-char hard cap.
+    public private(set) var saleNote: String? = nil
+
+    // MARK: - §16 Recurring charge
+
+    /// When non-nil this cart will be submitted as the first charge of a
+    /// recurring series. The `PosRecurringChargeSheet` writes this value;
+    /// the Charge flow passes it to `POST /invoices` as `recurring_rule`.
+    public private(set) var recurringRule: RecurringChargeRule? = nil
+
     public init(items: [CartItem] = [], customer: PosCustomer? = nil) {
         self.items = items
         self.customer = customer
+    }
+
+    // MARK: - §16.3 — Linked ticket mutations
+
+    /// Attach or update the linked repair ticket.
+    public func linkToTicket(id: Int64) {
+        linkedTicketId = id
+    }
+
+    /// Remove the linked ticket association.
+    public func unlinkTicket() {
+        linkedTicketId = nil
     }
 
     // MARK: - Mutations (always replace, never in-place edit)
@@ -305,6 +337,8 @@ public final class Cart {
         couponDiscountCents = 0
         pricingAdjustments = [:]
         pricingSavingCents = 0
+        saleNote = nil
+        recurringRule = nil
     }
 
     // MARK: - §16 Discount engine integration
@@ -390,6 +424,23 @@ public final class Cart {
     public func setFees(cents: Int, label: String? = nil) {
         feesCents = max(0, cents)
         feesLabel = label
+    }
+
+    // MARK: - §16 Recurring charge mutators
+
+    /// Mark this cart as the first occurrence of a recurring charge.
+    public func setRecurringRule(_ rule: RecurringChargeRule?) {
+        recurringRule = rule
+    }
+
+    // MARK: - §16 Sale note mutator
+
+    /// Set the cart-level sale note. Whitespace-only strings collapse to `nil`.
+    /// Hard-capped at 500 characters to match the receipt renderer budget.
+    public func setSaleNote(_ text: String?) {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else { saleNote = nil; return }
+        saleNote = String(trimmed.prefix(500))
     }
 
     // MARK: - §16.3 — Hold support

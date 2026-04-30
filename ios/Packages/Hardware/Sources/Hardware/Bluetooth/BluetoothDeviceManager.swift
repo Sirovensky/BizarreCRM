@@ -13,22 +13,42 @@ public struct PairedDevice: Identifiable, Sendable, Codable, Hashable {
     public let name: String
     public let kind: DeviceKind?
     public let pairedAt: Date
+    /// MAC address (colon-separated hex, e.g. "AA:BB:CC:DD:EE:FF").
+    /// Populated on first connection where available via CoreBluetooth advertisement data.
+    /// `nil` when the platform does not expose the MAC (iOS hides MAC by default post iOS 13).
+    /// For printers, the manufacturer typically prints the MAC on the label; we display it
+    /// when available so admins can configure DHCP reservations. §17: "App shows printer
+    /// MAC after first connection."
+    public let macAddress: String?
 
-    public init(id: UUID, name: String, kind: DeviceKind?, pairedAt: Date = Date()) {
+    public init(
+        id: UUID,
+        name: String,
+        kind: DeviceKind?,
+        pairedAt: Date = Date(),
+        macAddress: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.pairedAt = pairedAt
+        self.macAddress = macAddress
     }
 
     /// Returns a new `PairedDevice` with an updated name (immutable update).
     public func withName(_ newName: String) -> PairedDevice {
-        PairedDevice(id: id, name: newName, kind: kind, pairedAt: pairedAt)
+        PairedDevice(id: id, name: newName, kind: kind, pairedAt: pairedAt, macAddress: macAddress)
     }
 
     /// Returns a new `PairedDevice` with an updated kind (immutable update).
     public func withKind(_ newKind: DeviceKind?) -> PairedDevice {
-        PairedDevice(id: id, name: name, kind: newKind, pairedAt: pairedAt)
+        PairedDevice(id: id, name: name, kind: newKind, pairedAt: pairedAt, macAddress: macAddress)
+    }
+
+    /// Returns a new `PairedDevice` with an updated MAC address.
+    /// Called on first connection when advertisement data contains the address.
+    public func withMACAddress(_ mac: String) -> PairedDevice {
+        PairedDevice(id: id, name: name, kind: kind, pairedAt: pairedAt, macAddress: mac)
     }
 }
 

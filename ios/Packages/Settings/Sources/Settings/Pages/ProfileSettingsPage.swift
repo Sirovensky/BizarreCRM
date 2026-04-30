@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Observation
 import Core
 import DesignSystem
@@ -17,11 +18,34 @@ public final class ProfileSettingsViewModel: Sendable {
     var email: String = ""
     var phone: String = ""
     var jobTitle: String = ""
+    /// §19.1 — read-only unless admin; comes from server `/auth/me`.
+    var username: String = ""
+    var isAdmin: Bool = false
+    /// §19 — role-based permission badge; read-only; e.g. "admin", "manager", "technician".
+    var role: String = ""
+    /// §19 batch2 — transient copy-confirmation state for the slug copy button.
+    var slugCopied: Bool = false
+
+    // MARK: §19.1 Avatar
+    var avatarURL: String?
+    var selectedAvatarItem: PhotosPickerItem?
+    var avatarImage: Image?
+    var showAvatarActionSheet = false
+    var showPhotoPicker = false
+    var isCameraSource = false
 
     // MARK: Password change
     var currentPassword: String = ""
     var newPassword: String = ""
     var confirmPassword: String = ""
+
+    // MARK: §19.1 Change email
+    var showChangeEmailSheet: Bool = false
+    /// Non-nil when a change-email verification is pending (user submitted but hasn't clicked link yet).
+    var pendingEmailChange: String? {
+        get { UserDefaults.standard.string(forKey: "profile.pendingEmailChange") }
+        set { UserDefaults.standard.set(newValue, forKey: "profile.pendingEmailChange") }
+    }
 
     // MARK: State
     var isLoading: Bool = false
@@ -42,11 +66,25 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 
     var passwordsMatch: Bool { newPassword == confirmPassword && !newPassword.isEmpty }
+
+    // Tracks the server-side last-loaded state to compute true dirty flag.
+    private var savedFirstName: String = ""
+    private var savedLastName: String = ""
+    private var savedDisplayName: String = ""
+    private var savedEmail: String = ""
+    private var savedPhone: String = ""
+    private var savedJobTitle: String = ""
+
     var isDirty: Bool {
-        !firstName.isEmpty || !lastName.isEmpty || !displayName.isEmpty
+        firstName != savedFirstName ||
+        lastName != savedLastName ||
+        displayName != savedDisplayName ||
+        email != savedEmail ||
+        phone != savedPhone ||
+        jobTitle != savedJobTitle
     }
 
-    private let api: APIClient?
+    let api: APIClient?
 
     public init(api: APIClient? = nil) {
         self.api = api
@@ -57,13 +95,24 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let profile: UserProfileResponse = try await api.get("/auth/me", as: UserProfileResponse.self)
+            let profile = try await api.fetchUserProfile()
             firstName = profile.firstName ?? ""
             lastName = profile.lastName ?? ""
             displayName = profile.displayName ?? ""
             email = profile.email ?? ""
             phone = profile.phone ?? ""
             jobTitle = profile.jobTitle ?? ""
+            // §19.1 — username/slug: read-only display from server
+            username = profile.username ?? ""
+            isAdmin = profile.isAdmin ?? false
+            role = profile.role ?? ""
+            // Snapshot loaded state for dirty tracking
+            savedFirstName = firstName
+            savedLastName = lastName
+            savedDisplayName = displayName
+            savedEmail = email
+            savedPhone = phone
+            savedJobTitle = jobTitle
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -74,7 +123,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = UserProfileUpdateRequest(
+            let body = UserProfileUpdateDTO(
                 firstName: firstName,
                 lastName: lastName,
                 displayName: displayName,
@@ -82,12 +131,22 @@ public final class ProfileSettingsViewModel: Sendable {
                 phone: phone,
                 jobTitle: jobTitle
             )
-            _ = try await api.patch("/auth/me", body: body, as: UserProfileResponse.self)
+            _ = try await api.updateUserProfile(body)
             successMessage = "Profile saved."
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func discardChanges() {
+        firstName = savedFirstName
+        lastName = savedLastName
+        displayName = savedDisplayName
+        email = savedEmail
+        phone = savedPhone
+        jobTitle = savedJobTitle
+        errorMessage = nil
     }
 
     func changePassword() async {
@@ -99,11 +158,11 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = ChangePasswordRequest(
+            let body = ChangePasswordDTO(
                 currentPassword: currentPassword,
                 newPassword: newPassword
             )
-            _ = try await api.put("/auth/change-password", body: body, as: EmptyResponse.self)
+            try await api.changePassword(body)
             successMessage = "Password updated."
             currentPassword = ""
             newPassword = ""
@@ -114,39 +173,66 @@ public final class ProfileSettingsViewModel: Sendable {
             errorMessage = error.localizedDescription
         }
     }
+
+    // §19.1 Avatar helpers
+    func loadSelectedAvatar() async {
+        guard let item = selectedAvatarItem else { return }
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let uiImage = UIImage(data: data) {
+            avatarImage = Image(uiImage: uiImage)
+            await uploadAvatar(data: data)
+        }
+    }
+
+    private func uploadAvatar(data: Data) async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let result = try await api.settingsUploadAvatar(data: data)
+            avatarURL = result.url
+            successMessage = "Avatar updated."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeAvatar() async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await api.settingsRemoveAvatar()
+            avatarURL = nil
+            avatarImage = nil
+            successMessage = "Avatar removed."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // §19.1 Sign out everywhere — delegates to settingsRevokeAllSessions()
+    func signOutEverywhere() async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await api.settingsRevokeAllSessions()
+            successMessage = "Signed out from all devices."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
-
-// MARK: - Response models
-
-struct UserProfileResponse: Decodable, Sendable {
-    var firstName: String?
-    var lastName: String?
-    var displayName: String?
-    var email: String?
-    var phone: String?
-    var jobTitle: String?
-}
-
-struct UserProfileUpdateRequest: Encodable, Sendable {
-    var firstName: String
-    var lastName: String
-    var displayName: String
-    var email: String
-    var phone: String
-    var jobTitle: String
-}
-
-struct ChangePasswordRequest: Encodable, Sendable {
-    var currentPassword: String
-    var newPassword: String
-}
-
-// Note: EmptyResponse is provided by the Networking package.
 
 // MARK: - View
 
 public struct ProfileSettingsPage: View {
     @State private var vm: ProfileSettingsViewModel
+    @State private var showAvatarPicker: Bool = false
 
     public init(api: APIClient? = nil) {
         _vm = State(initialValue: ProfileSettingsViewModel(api: api))
@@ -154,6 +240,66 @@ public struct ProfileSettingsPage: View {
 
     public var body: some View {
         Form {
+            // §19.1 Avatar — circular tap → sheet (Camera / Library / Remove)
+            Section {
+                HStack {
+                    Spacer()
+                    Button {
+                        showAvatarPicker = true
+                    } label: {
+                        Circle()
+                            .fill(Color.bizarreSurface1)
+                            .frame(width: 80, height: 80)
+                            .overlay {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.bizarreOrange)
+                                    .background(Color.bizarreSurfaceBase, in: Circle())
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change profile photo")
+                    .accessibilityHint("Opens photo picker")
+                    Spacer()
+                }
+            }
+            .listRowBackground(Color.clear)
+
+            // §19 — role-based permission badge
+            if !vm.role.isEmpty {
+                Section {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Image(systemName: RolePermissionBadge.icon(for: vm.role))
+                            .foregroundStyle(RolePermissionBadge.color(for: vm.role))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Role")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Text(RolePermissionBadge.label(for: vm.role))
+                                .font(.brandBodyMedium().bold())
+                                .foregroundStyle(RolePermissionBadge.color(for: vm.role))
+                        }
+                        Spacer()
+                        Text(RolePermissionBadge.accessLevel(for: vm.role))
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .padding(.horizontal, BrandSpacing.sm)
+                            .padding(.vertical, BrandSpacing.xxs)
+                            .background(Color.bizarreSurface2, in: Capsule())
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Role: \(RolePermissionBadge.label(for: vm.role)). Access level: \(RolePermissionBadge.accessLevel(for: vm.role)).")
+                    .accessibilityIdentifier("profile.roleBadge")
+                }
+                .listRowBackground(Color.bizarreSurface1)
+            }
+
             Section("Identity") {
                 TextField("First name", text: $vm.firstName)
                     #if canImport(UIKit)
@@ -173,17 +319,76 @@ public struct ProfileSettingsPage: View {
                 TextField("Job title", text: $vm.jobTitle)
                     .accessibilityLabel("Job title")
                     .accessibilityIdentifier("profile.jobTitle")
+
+                // §19.1 Username / slug — read-only unless admin.
+                // §19 batch2: copy-to-clipboard button for quick slug sharing.
+                if !vm.username.isEmpty {
+                    HStack {
+                        Text("Username")
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        if vm.isAdmin {
+                            TextField("Username", text: $vm.username)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.bizarreOnSurface)
+                                .accessibilityLabel("Username, editable (admin)")
+                                .accessibilityIdentifier("profile.username")
+                        } else {
+                            Text(vm.username)
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .textSelection(.enabled)
+                                .accessibilityLabel("Username: \(vm.username), read-only")
+                                .accessibilityIdentifier("profile.username")
+                        }
+                        // Copy slug to clipboard — useful for sharing tenant URLs.
+                        Button {
+                            #if canImport(UIKit)
+                            UIPasteboard.general.string = vm.username
+                            #endif
+                            vm.slugCopied = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                vm.slugCopied = false
+                            }
+                        } label: {
+                            Image(systemName: vm.slugCopied ? "checkmark" : "doc.on.doc")
+                                .foregroundStyle(vm.slugCopied ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+                                .font(.system(size: 14))
+                                .animation(BrandMotion.snappy, value: vm.slugCopied)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(vm.slugCopied ? "Copied" : "Copy username")
+                        .accessibilityIdentifier("profile.copyUsername")
+                    }
+                }
             }
 
             Section("Contact") {
-                TextField("Email", text: $vm.email)
-                    #if canImport(UIKit)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    #endif
-                    .accessibilityLabel("Email")
-                    .accessibilityIdentifier("profile.email")
+                // §19.1 Email — read-only display; tap "Change email" to start flow
+                HStack {
+                    Text(vm.email.isEmpty ? "No email set" : vm.email)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(vm.email.isEmpty ? .bizarreOnSurfaceMuted : .bizarreOnSurface)
+                    Spacer()
+                    Button("Change") {
+                        vm.showChangeEmailSheet = true
+                    }
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityLabel("Change email address")
+                    .accessibilityIdentifier("profile.changeEmail")
+                }
+                .accessibilityElement(children: .combine)
+
+                // §19.1 Pending verification banner
+                if let pending = vm.pendingEmailChange {
+                    PendingEmailVerificationBanner(newEmail: pending) {
+                        // Resend: re-show the sheet pre-filled
+                        vm.showChangeEmailSheet = true
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                }
+
                 TextField("Phone", text: $vm.phone)
                     #if canImport(UIKit)
                     .textContentType(.telephoneNumber)
@@ -191,6 +396,17 @@ public struct ProfileSettingsPage: View {
                     #endif
                     .accessibilityLabel("Phone")
                     .accessibilityIdentifier("profile.phone")
+            }
+            .sheet(isPresented: $vm.showChangeEmailSheet) {
+                if let api = vm.api {
+                    ChangeEmailSheet(api: api) { success in
+                        if success {
+                            // Store pending state; banner appears until verify link clicked
+                            vm.pendingEmailChange = vm.email   // placeholder until user types new email
+                            vm.successMessage = "Verification email sent. Check your inbox."
+                        }
+                    }
+                }
             }
 
             Section {
@@ -239,6 +455,22 @@ public struct ProfileSettingsPage: View {
                 }
             }
 
+            // §19.1 Sign out everywhere (cross-link to §19.2 Security — revokes all other sessions)
+            Section {
+                Button(role: .destructive) {
+                    Task { await vm.signOutEverywhere() }
+                } label: {
+                    Label("Sign out everywhere", systemImage: "rectangle.portrait.and.arrow.right")
+                        .foregroundStyle(.bizarreError)
+                }
+                .disabled(vm.isSaving)
+                .accessibilityLabel("Sign out from all devices. This revokes all active sessions.")
+                .accessibilityIdentifier("profile.signOutEverywhere")
+            } footer: {
+                Text("Signs out this device and all other devices where you are currently logged in.")
+                    .font(.brandLabelSmall())
+            }
+
             if let msg = vm.errorMessage {
                 Section {
                     Label(msg, systemImage: "exclamationmark.triangle")
@@ -261,14 +493,17 @@ public struct ProfileSettingsPage: View {
         #endif
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await vm.save() } }
-                    .disabled(vm.isSaving)
-                    .accessibilityIdentifier("profile.save")
+        .unsavedChangesBanner(
+            isDirty: vm.isDirty,
+            onSave: { await vm.save() },
+            onDiscard: { vm.discardChanges() }
+        )
+        .task { await vm.load() }
+        .sheet(isPresented: $showAvatarPicker) {
+            AvatarPickerSheet(currentAvatarUrl: nil) { _ in
+                // Upload endpoint not yet available — sheet shows "coming soon" internally.
             }
         }
-        .task { await vm.load() }
         .overlay {
             if vm.isLoading {
                 ProgressView()

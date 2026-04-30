@@ -21,9 +21,21 @@ public struct Appointment: Decodable, Sendable, Identifiable, Hashable {
     public let notes: String?
     public let customerFirstName: String?
     public let customerLastName: String?
+    /// Customer phone — returned when appointment is fetched with customer join.
+    public let customerPhone: String?
+    /// Customer email — returned when appointment is fetched with customer join.
+    public let customerEmail: String?
     public let assignedFirstName: String?
     public let assignedLastName: String?
+    /// User id of the staff member this appointment is assigned to. Used by Kanban view.
+    public let assignedTo: Int64?
     public let createdAt: String?
+    /// §10.2 — location the appointment is booked at (location_id join gives name via server).
+    public let locationId: Int64?
+    /// §10.2 — appointment type: drop-off / pickup / consult / on-site / delivery.
+    public let appointmentType: String?
+    /// §10.2 — recurrence rule string (ISO 8601 / server format).
+    public let recurrence: String?
 
     public var customerName: String? {
         let parts = [customerFirstName, customerLastName]
@@ -37,17 +49,27 @@ public struct Appointment: Decodable, Sendable, Identifiable, Hashable {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
+    /// §10.2 Display label for the appointment type (capitalised, dash→space).
+    public var typeDisplayName: String? {
+        appointmentType.map { $0.replacingOccurrences(of: "-", with: " ").capitalized }
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, title, status, notes
+        case id, title, status, notes, recurrence
         case leadId = "lead_id"
         case customerId = "customer_id"
         case startTime = "start_time"
         case endTime = "end_time"
         case customerFirstName = "customer_first_name"
         case customerLastName = "customer_last_name"
+        case customerPhone = "customer_phone"
+        case customerEmail = "customer_email"
         case assignedFirstName = "assigned_first_name"
         case assignedLastName = "assigned_last_name"
+        case assignedTo = "assigned_to"
         case createdAt = "created_at"
+        case locationId = "location_id"
+        case appointmentType = "appointment_type"
     }
 }
 

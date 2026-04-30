@@ -35,6 +35,15 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
     public let openTicketCount: Int?
     public let complaintCount: Int?
 
+    /// True when the customer has opted out of SMS marketing (server field `sms_opt_out`).
+    /// Displayed as a read-only badge in the detail view; edit via the edit form.
+    public let smsOptOut: Bool?
+
+    /// Structured tags with optional server-supplied hex accent color.
+    /// Populated by GET /customers/:id when the tenant has a tag-color palette configured.
+    /// Falls back to `customerTags` comma-string when absent.
+    public let tagItems: [CustomerTagItem]?
+
     public let phones: [CustomerPhoneRow]?
     public let emails: [CustomerEmailRow]?
 
@@ -65,8 +74,17 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
     }
 
     public var tagList: [String] {
+        // Prefer structured tag items when available; fall back to comma-string.
+        if let items = tagItems, !items.isEmpty { return items.map(\.name) }
         guard let raw = customerTags else { return [] }
         return raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    public struct CustomerTagItem: Decodable, Sendable, Hashable {
+        public let name: String
+        /// 6-digit RGB hex string from server, e.g. `"FF8C00"` (no leading `#`).
+        /// Nil when the tenant has not assigned a color to this tag.
+        public let color: String?
     }
 
     public struct CustomerPhoneRow: Decodable, Sendable, Identifiable, Hashable {
@@ -91,6 +109,7 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         case customerTags = "customer_tags"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case tagItems = "tag_items"
         // §44
         case healthScore = "health_score"
         case healthLabel = "health_label"
@@ -99,6 +118,7 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         case totalSpentCents = "total_spent_cents"
         case openTicketCount = "open_ticket_count"
         case complaintCount = "complaint_count"
+        case smsOptOut = "sms_opt_out"
     }
 }
 
@@ -254,6 +274,86 @@ public struct CustomerMergeRequest: Codable, Sendable {
 // so it does not create a Networking→Customers dependency cycle.
 // The server merge endpoint does not accept per-field preferences.
 
+// MARK: - Invoice summary (§5.2 Invoices tab)
+
+/// Minimal invoice row for the customer detail Invoices tab.
+/// Full invoice detail lives in the Invoices package.
+public struct CustomerInvoiceSummary: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let invoiceNumber: String?
+    public let status: String?
+    public let totalCents: Int?
+    public let issuedAt: String?
+    public let paidAt: String?
+
+    public init(id: Int64, invoiceNumber: String? = nil, status: String? = nil,
+                totalCents: Int? = nil, issuedAt: String? = nil, paidAt: String? = nil) {
+        self.id = id
+        self.invoiceNumber = invoiceNumber
+        self.status = status
+        self.totalCents = totalCents
+        self.issuedAt = issuedAt
+        self.paidAt = paidAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case invoiceNumber = "invoice_number"
+        case totalCents = "total_cents"
+        case issuedAt = "issued_at"
+        case paidAt = "paid_at"
+    }
+}
+
+// MARK: - Communications entry (§5.2 Communications tab)
+
+/// Unified communications timeline row (SMS / email / call log).
+/// `GET /api/v1/customers/:id/communications`
+public struct CustomerCommEntry: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    /// "sms" | "email" | "call"
+    public let kind: String
+    /// Message body / subject / call notes.
+    public let body: String?
+    /// Direction: "inbound" | "outbound"
+    public let direction: String?
+    public let createdAt: String?
+
+    public init(id: Int64, kind: String, body: String? = nil,
+                direction: String? = nil, createdAt: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.body = body
+        self.direction = direction
+        self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, body, direction
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Store credit balance (§5.2 Balance/credit)
+
+public struct CustomerCreditBalance: Decodable, Sendable {
+    public let customerId: Int64
+    public let balanceCents: Int
+    public let expiresAt: String?
+
+    public init(customerId: Int64, balanceCents: Int, expiresAt: String? = nil) {
+        self.customerId = customerId
+        self.balanceCents = balanceCents
+        self.expiresAt = expiresAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case customerId = "customer_id"
+        case balanceCents = "balance_cents"
+        case expiresAt = "expires_at"
+    }
+}
+
 // MARK: - Tag autosuggest (§5.9)
 
 public struct TagSuggestionsResponse: Decodable, Sendable {
@@ -282,6 +382,12 @@ public extension APIClient {
 
     func customerNotes(id: Int64) async throws -> [CustomerNote] {
         try await get("/api/v1/customers/\(id)/notes", as: [CustomerNote].self)
+    }
+
+    /// `GET /api/v1/customers/:id/invoices` — recent invoices for the customer detail card.
+    func customerRecentInvoices(id: Int64, pageSize: Int = 5) async throws -> [InvoiceSummary] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/invoices", query: items, as: InvoicesListResponse.self).invoices
     }
 
     // MARK: — Merge (§5.5)
@@ -330,5 +436,52 @@ public extension APIClient {
     func suggestCustomerTags(query: String) async throws -> [String] {
         let items = [URLQueryItem(name: "q", value: query)]
         return try await get("/api/v1/customers/tags", query: items, as: TagSuggestionsResponse.self).tags
+    }
+
+    // MARK: — Invoices tab (§5.2)
+
+    /// `GET /api/v1/customers/:id/invoices` — invoice list for the customer detail Invoices tab.
+    func customerInvoices(id: Int64, pageSize: Int = 50) async throws -> [CustomerInvoiceSummary] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/invoices", query: items, as: [CustomerInvoiceSummary].self)
+    }
+
+    // MARK: — Communications tab (§5.2)
+
+    /// `GET /api/v1/customers/:id/communications` — unified SMS/email/call timeline.
+    func customerCommunications(id: Int64, pageSize: Int = 50) async throws -> [CustomerCommEntry] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/communications", query: items, as: [CustomerCommEntry].self)
+    }
+
+    // MARK: — Store credit / balance (§5.2)
+
+    /// `GET /api/v1/refunds/credits/:customerId` — store credit balance for this customer.
+    func customerCreditBalance(customerId: Int64) async throws -> CustomerCreditBalance {
+        try await get("/api/v1/refunds/credits/\(customerId)", as: CustomerCreditBalance.self)
+    }
+
+    // MARK: — Customer portal magic-link (§7.2+ / §53)
+
+    /// `GET /api/v1/customers/:id/portal-link` — generate a single-use login URL for the
+    /// customer self-service portal.  Moved here from Customers package so InvoiceDetailView
+    /// can call it without a cross-package dependency on Customers.
+    public func customerPortalLink(customerId: Int64) async throws -> CustomerPortalLinkResponse {
+        try await get("/api/v1/customers/\(customerId)/portal-link", as: CustomerPortalLinkResponse.self)
+    }
+}
+
+// MARK: - CustomerPortalLinkResponse
+
+/// Response DTO for `GET /api/v1/customers/:id/portal-link`.
+public struct CustomerPortalLinkResponse: Decodable, Sendable {
+    /// Fully-qualified URL the customer can open to log into the self-service portal.
+    public let url: String
+    /// ISO-8601 expiry; typically 24 h from generation.
+    public let expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case expiresAt = "expires_at"
     }
 }

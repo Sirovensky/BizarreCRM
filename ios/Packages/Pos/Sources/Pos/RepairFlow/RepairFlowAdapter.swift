@@ -100,10 +100,11 @@ public enum PosRepairRouter {
         customerId: Int64,
         customerDisplayName: String? = nil,
         api: any APIClient,
+        isWalkIn: Bool = false,
         onCancel: @escaping () -> Void,
         onComplete: @escaping (Int64) -> Void
     ) -> PosRepairFlowCoordinator {
-        let coordinator = PosRepairFlowCoordinator(customerId: customerId, api: api)
+        let coordinator = PosRepairFlowCoordinator(customerId: customerId, api: api, isWalkIn: isWalkIn)
         coordinator.customerDisplayName = customerDisplayName
         coordinator.onCancel = onCancel
         coordinator.onComplete = onComplete

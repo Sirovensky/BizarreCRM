@@ -77,4 +77,32 @@ public final class BadgeManager {
     public func clearBadge() async {
         await updateBadgeCount(unreadCount: 0)
     }
+
+    // MARK: - Cold-launch badge clear (§13.4)
+
+    /// Call once during cold launch — before the first sync — to reset a stale
+    /// badge that may have been set by a previous session and never reconciled.
+    ///
+    /// The badge is immediately zeroed so the user sees a clean state while the
+    /// app fetches the authoritative unread count from the server.  Once the
+    /// sync completes callers must call `updateBadgeCount(unreadCount:)` with
+    /// the live count to restore the correct value.
+    ///
+    /// This prevents the app icon from showing a stale number after:
+    /// - A reinstall (Keychain tokens survived but badge count did not reset).
+    /// - A force-quit while the badge counter was elevated.
+    /// - A notification that was read on another device / web but the badge
+    ///   never decremented locally.
+    ///
+    /// Should be invoked from the app's cold-start path (e.g. `AppState.init`
+    /// or `SessionBootstrapper.coldStart()`) before any network calls complete.
+    public func clearBadgeOnColdLaunch() async {
+        // Guard: skip if badge is already 0 to avoid a redundant system call.
+        guard currentBadgeCount != 0 else {
+            AppLog.ui.debug("BadgeManager.clearBadgeOnColdLaunch: badge already 0, skip")
+            return
+        }
+        AppLog.ui.info("BadgeManager.clearBadgeOnColdLaunch: clearing stale badge (\(self.currentBadgeCount, privacy: .public))")
+        await clearBadge()
+    }
 }

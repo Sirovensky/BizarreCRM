@@ -60,6 +60,27 @@ public final class TenantAdminViewModel: Sendable {
         }
     }
 
+    // MARK: - Sample data management
+
+    public var isDeletingSampleData: Bool = false
+    public var sampleDataError: String?
+    public var sampleDataDeleted: Bool = false
+
+    /// Removes all demo / sample data that was loaded during setup opt-in.
+    /// Calls `DELETE /api/v1/onboarding/sample-data`.
+    public func removeSampleData() async {
+        guard let api else { return }
+        isDeletingSampleData = true
+        sampleDataError = nil
+        defer { isDeletingSampleData = false }
+        do {
+            try await api.deleteOnboardingSampleData()
+            sampleDataDeleted = true
+        } catch {
+            sampleDataError = error.localizedDescription
+        }
+    }
+
     // MARK: - Impersonation
 
     public func impersonate(userId: String, reason: String, managerPin: String) async -> Bool {

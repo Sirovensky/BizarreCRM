@@ -103,6 +103,22 @@
                 <string>35F9.1</string>
             </array>
         </dict>
+        <!-- Active keyboards: accessed when reading UITextInputMode.activeInputModes
+             to adapt layout hints for barcode-entry and POS numeric fields. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryActiveKeyboards</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <!-- 3EC4.1: App provides a custom keyboard extension to the user -->
+                <!-- 54BD.1: App accesses active keyboards to adjust text field behaviour -->
+                <string>54BD.1</string>
+            </array>
+        </dict>
     </array>
+    <!-- Revision history:
+         2026-04-29 — added NSPrivacyAccessedAPICategoryActiveKeyboards (54BD.1)
+                      for POS / barcode-entry keyboard-mode adaptation.
+    -->
 </dict>
 </plist>

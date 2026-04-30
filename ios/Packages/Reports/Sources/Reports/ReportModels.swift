@@ -322,25 +322,32 @@ public struct NPSScore: Codable, Sendable {
     public let promoterPct: Double
     public let detractorPct: Double
     public let themes: [String]
+    /// Number of survey respondents. Scores with fewer than 10 respondents are
+    /// statistically unreliable and the card renders "Not enough data" instead.
+    public let respondentCount: Int
 
     public var passivePct: Double { max(0, 100.0 - promoterPct - detractorPct) }
+    /// True when the sample is large enough to display a meaningful NPS.
+    public var hasEnoughData: Bool { respondentCount >= 10 }
 
     enum CodingKeys: String, CodingKey {
         case current
         case previous
-        case promoterPct   = "promoter_pct"
-        case detractorPct  = "detractor_pct"
+        case promoterPct      = "promoter_pct"
+        case detractorPct     = "detractor_pct"
         case themes
+        case respondentCount  = "respondent_count"
     }
 
     public init(current: Int, previous: Int,
                 promoterPct: Double, detractorPct: Double,
-                themes: [String]) {
+                themes: [String], respondentCount: Int = 0) {
         self.current = current
         self.previous = previous
         self.promoterPct = promoterPct
         self.detractorPct = detractorPct
         self.themes = themes
+        self.respondentCount = respondentCount
     }
 }
 
@@ -509,6 +516,15 @@ public struct InventoryReport: Sendable {
         self.valueSummary = valueSummary
         self.topMoving = topMoving
     }
+
+    /// Zero-filled placeholder used when the tenant has no inventory data yet (§91.16).
+    /// Lets InventoryStockCard render its empty-state CTA rather than disappearing.
+    public static let empty = InventoryReport(
+        outOfStockCount: 0,
+        lowStockCount: 0,
+        valueSummary: [],
+        topMoving: []
+    )
 }
 
 public struct InventoryValueEntry: Codable, Sendable, Identifiable {

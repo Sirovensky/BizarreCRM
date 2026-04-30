@@ -79,6 +79,14 @@ public final class PeerFeedbackPromptSheetViewModel {
             errorMessage = "Select a colleague."
             return
         }
+        // §46.5 — Frequency cap: max 1 request per peer per quarter.
+        if let capMessage = PeerFeedbackFrequencyCap.checkCap(
+            fromEmployeeId: fromEmployeeId,
+            toEmployeeId: selectedColleagueId
+        ) {
+            errorMessage = capMessage
+            return
+        }
         guard !whatWentWell.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Please answer \"What went well?\"."
             return
@@ -96,6 +104,11 @@ public final class PeerFeedbackPromptSheetViewModel {
                 isAnonymous: isAnonymous
             )
             let saved = try await repo.submitFeedback(fb)
+            // Record successful request for frequency cap tracking.
+            PeerFeedbackFrequencyCap.recordRequest(
+                fromEmployeeId: fromEmployeeId,
+                toEmployeeId: selectedColleagueId
+            )
             onSaved(saved)
         } catch {
             AppLog.ui.error("PeerFeedback submit failed: \(error.localizedDescription, privacy: .public)")
@@ -144,21 +157,21 @@ public struct PeerFeedbackPromptSheet: View {
                 }
 
                 Section("What did they do well?") {
-                    TextEditor(text: $vm.whatWentWell)
-                        .frame(minHeight: 72)
-                        .accessibilityLabel("What went well")
+                    DictationTextEditor(text: $vm.whatWentWell,
+                                        placeholder: "What went well?",
+                                        minHeight: 72)
                 }
 
                 Section("Growth suggestion") {
-                    TextEditor(text: $vm.growthSuggestion)
-                        .frame(minHeight: 72)
-                        .accessibilityLabel("Growth suggestion")
+                    DictationTextEditor(text: $vm.growthSuggestion,
+                                        placeholder: "One area to grow…",
+                                        minHeight: 72)
                 }
 
                 Section("Anything else?") {
-                    TextEditor(text: $vm.freeformNote)
-                        .frame(minHeight: 56)
-                        .accessibilityLabel("Additional comments")
+                    DictationTextEditor(text: $vm.freeformNote,
+                                        placeholder: "Optional note…",
+                                        minHeight: 56)
                 }
 
                 if let err = vm.errorMessage {
@@ -186,5 +199,44 @@ public struct PeerFeedbackPromptSheet: View {
             }
         }
         .presentationDetents([.large])
+    }
+}
+
+// MARK: - DictationTextEditor
+//
+// §46.5 — Long-form text field with voice dictation microphone button.
+// Available on iOS 17+ where SFSpeechRecognizer is stable for on-device use.
+// Falls back to plain TextEditor on older OS versions.
+
+private struct DictationTextEditor: View {
+    @Binding var text: String
+    let placeholder: String
+    let minHeight: CGFloat
+
+    var body: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            if text.isEmpty {
+                TextEditor(text: $text)
+                    .frame(minHeight: minHeight)
+                    .overlay(alignment: .topLeading) {
+                        if text.isEmpty {
+                            Text(placeholder)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .padding(.top, 8).padding(.leading, 4)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .accessibilityLabel(placeholder)
+            } else {
+                TextEditor(text: $text)
+                    .frame(minHeight: minHeight)
+                    .accessibilityLabel(placeholder)
+            }
+            if #available(iOS 17.0, *) {
+                VoiceDictationButton(text: $text)
+                    .padding(.top, BrandSpacing.xs)
+            }
+        }
     }
 }

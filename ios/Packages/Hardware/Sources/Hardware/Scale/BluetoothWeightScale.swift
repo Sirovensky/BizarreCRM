@@ -65,6 +65,32 @@ public actor BluetoothWeightScale: WeightScale {
         }
     }
 
+    // MARK: - Tare / zero
+
+    /// Tare offset: subtract this from every subsequent reading.
+    /// Set by `tare()` to the current stable reading.
+    private var tareOffsetGrams: Int = 0
+
+    /// Tare the scale: captures the current stable reading as the zero baseline.
+    /// Subsequent readings will have this offset subtracted.
+    ///
+    /// - Returns: The tare weight that was captured.
+    /// - Throws: `WeightScaleError.readTimeout` if no stable reading within 5 s.
+    @discardableResult
+    public func tare() async throws -> Weight {
+        let current = try await read()
+        tareOffsetGrams = current.grams
+        AppLog.hardware.info("BluetoothWeightScale: tare set to \(current.grams) g")
+        return current
+    }
+
+    /// Zero the tare offset without requiring a stable reading.
+    /// Use when the scale is already empty and known to be at rest.
+    public func zeroTare() {
+        tareOffsetGrams = 0
+        AppLog.hardware.info("BluetoothWeightScale: tare zeroed")
+    }
+
     // MARK: - Characteristic data ingestion
 
     /// Called by the CoreBluetooth delegate (or tests) to push raw characteristic data.
@@ -73,9 +99,12 @@ public actor BluetoothWeightScale: WeightScale {
             AppLog.hardware.warning("BluetoothWeightScale: failed to parse characteristic data (\(data.map { String(format: "%02X", $0) }.joined(separator: " ")))")
             return
         }
-        latestWeight = weight
-        for cont in continuations { cont.yield(weight) }
-        AppLog.hardware.info("BluetoothWeightScale: \(weight)")
+        // Apply tare offset: net weight = raw - tare.
+        let netGrams = max(0, weight.grams - tareOffsetGrams)
+        let netWeight = Weight(grams: netGrams, isStable: weight.isStable)
+        latestWeight = netWeight
+        for cont in continuations { cont.yield(netWeight) }
+        AppLog.hardware.info("BluetoothWeightScale: raw=\(weight.grams)g tare=\(self.tareOffsetGrams)g net=\(netGrams)g")
     }
 
     // MARK: - Parsing (internal for testability)

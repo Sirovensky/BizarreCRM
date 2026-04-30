@@ -77,4 +77,38 @@ public enum BrandTransition {
             removal:    .opacity.combined(with: .scale(scale: 1.15, anchor: .center))
         )
     }
+
+    // MARK: - Opacity + transform (§29.8 perf-preferred)
+
+    /// Opacity + transform (scale) only — never animates layout-affecting
+    /// properties. Per §29.8 Animations: opacity + transform is preferred
+    /// over layout changes because transforms are GPU-composited and don't
+    /// invalidate sibling layout, while animated heights / widths force a
+    /// layout pass on every frame which thrashes on long lists.
+    ///
+    /// Use this for any "appear / disappear" effect inside a parent that
+    /// itself scrolls or whose siblings would otherwise re-flow.
+    ///
+    /// Reduce Motion fallback: `.opacity` (transform suppressed).
+    public static func opacityTransform(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
+    }
+
+    // MARK: - Page transition (§30 spring)
+
+    /// Spring-driven page push: enters from trailing, exits to leading.
+    ///
+    /// Paired animation: `BrandMotion.pageTransition` (response 0.36, damping 0.82).
+    /// Use with `.transition(BrandTransition.page(reduceMotion:))` inside a
+    /// `NavigationStack` custom column or a `ZStack`-based paged view.
+    ///
+    /// Reduce Motion fallback: `.opacity`.
+    public static func page(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion:  .move(edge: .trailing).combined(with: .opacity),
+            removal:    .move(edge: .leading).combined(with: .opacity)
+        )
+    }
 }

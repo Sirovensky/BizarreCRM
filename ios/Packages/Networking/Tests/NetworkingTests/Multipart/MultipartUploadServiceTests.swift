@@ -165,10 +165,10 @@ final class StubURLProtocol: URLProtocol {
 
     // MARK: Shared stub configuration
 
-    private static var stubbedStatusCode: Int = 200
-    private static var stubbedData: Data = Data()
-    private static var stubbedError: Error? = nil
-    private(set) static var lastRequest: URLRequest? = nil
+    nonisolated(unsafe) private static var stubbedStatusCode: Int = 200
+    nonisolated(unsafe) private static var stubbedData: Data = Data()
+    nonisolated(unsafe) private static var stubbedError: Error? = nil
+    nonisolated(unsafe) private(set) static var lastRequest: URLRequest? = nil
 
     static func stub(statusCode: Int, data: Data, error: Error? = nil) {
         stubbedStatusCode = statusCode

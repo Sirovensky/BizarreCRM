@@ -1,9 +1,33 @@
 import SwiftUI
 import Observation
+import UniformTypeIdentifiers
 import Core
 import DesignSystem
 import Networking
 import Sync
+
+// MARK: - §11.1 Sort option
+
+/// Client-side sort applied after data loads from cache/server.
+public enum ExpenseSortOption: String, CaseIterable, Identifiable, Sendable {
+    case dateDesc     = "date_desc"
+    case dateAsc      = "date_asc"
+    case amountDesc   = "amount_desc"
+    case amountAsc    = "amount_asc"
+    case categoryAsc  = "category_asc"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .dateDesc:    return "Newest first"
+        case .dateAsc:     return "Oldest first"
+        case .amountDesc:  return "Amount (high)"
+        case .amountAsc:   return "Amount (low)"
+        case .categoryAsc: return "Category A→Z"
+        }
+    }
+}
 
 @MainActor
 @Observable
@@ -13,6 +37,8 @@ public final class ExpenseListViewModel {
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    // §11.1 sort
+    public var sortOption: ExpenseSortOption = .dateDesc
     /// Active filter — drives server-side filtering via query params.
     public var filter: ExpenseListFilter = .init()
     /// Exposed for `StalenessIndicator` chip in toolbar.
@@ -96,6 +122,24 @@ public final class ExpenseListViewModel {
         filter = .init()
     }
 
+    // MARK: - §11.1 Sorted items
+
+    /// Returns `items` sorted per `sortOption`. Pure derivation — no network call.
+    public var sortedItems: [Expense] {
+        switch sortOption {
+        case .dateDesc:
+            return items.sorted { ($0.date ?? "") > ($1.date ?? "") }
+        case .dateAsc:
+            return items.sorted { ($0.date ?? "") < ($1.date ?? "") }
+        case .amountDesc:
+            return items.sorted { ($0.amount ?? 0) > ($1.amount ?? 0) }
+        case .amountAsc:
+            return items.sorted { ($0.amount ?? 0) < ($1.amount ?? 0) }
+        case .categoryAsc:
+            return items.sorted { ($0.category ?? "") < ($1.category ?? "") }
+        }
+    }
+
     /// Optimistically removes an expense from the in-memory list after a
     /// successful delete from the detail or via swipe/context-menu.
     public func removeItem(id: Int64) {
@@ -111,6 +155,8 @@ public struct ExpenseListView: View {
     /// Tracks which expense is pending delete confirmation from swipe/context menu.
     @State private var pendingDeleteId: Int64?
     @State private var showDeleteConfirm: Bool = false
+    // §11.1 CSV export
+    @State private var csvExportItem: ExportableExpenseCSV?
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: ExpenseCachedRepository? = nil) {
@@ -150,6 +196,18 @@ public struct ExpenseListView: View {
         .onChange(of: vm.filter) { _, _ in
             Task { await vm.load() }
         }
+        // §11.1 CSV export via fileExporter
+        .fileExporter(
+            isPresented: Binding(get: { csvExportItem != nil }, set: { if !$0 { csvExportItem = nil } }),
+            document: csvExportItem,
+            contentType: .commaSeparatedText,
+            defaultFilename: "expenses.csv"
+        ) { result in
+            switch result {
+            case .success: AppLog.ui.info("Expenses CSV exported successfully")
+            case .failure(let error): AppLog.ui.error("Expenses CSV export failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     // MARK: - Delete from list
@@ -176,6 +234,8 @@ public struct ExpenseListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .toolbar {
                 filterButton
+                sortButton
+                exportButton
                 newButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
@@ -199,6 +259,8 @@ public struct ExpenseListView: View {
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .toolbar {
                 filterButton
+                sortButton
+                exportButton
                 newButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
@@ -251,6 +313,44 @@ public struct ExpenseListView: View {
         }
     }
 
+    /// §11.1 Sort menu — client-side sort applied to loaded items.
+    private var sortButton: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                ForEach(ExpenseSortOption.allCases) { opt in
+                    Button {
+                        vm.sortOption = opt
+                    } label: {
+                        if vm.sortOption == opt {
+                            Label(opt.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(opt.displayName)
+                        }
+                    }
+                    .accessibilityLabel("Sort by \(opt.displayName)")
+                }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down.circle")
+            }
+            .accessibilityLabel("Sort expenses")
+            .accessibilityIdentifier("expenses.sort")
+        }
+    }
+
+    /// §11.1 Export CSV — exports current sorted list.
+    private var exportButton: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                let data = ExpenseBulkCSVExporter.csv(from: vm.sortedItems)
+                csvExportItem = ExportableExpenseCSV(data: data)
+            } label: {
+                Label("Export CSV", systemImage: "arrow.down.doc")
+            }
+            .accessibilityLabel("Export all expenses as CSV")
+            .accessibilityIdentifier("expenses.export")
+        }
+    }
+
     // MARK: - Content states
 
     @ViewBuilder
@@ -270,21 +370,86 @@ public struct ExpenseListView: View {
         } else if vm.items.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "expenses")
         } else if vm.items.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "dollarsign.circle").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(vm.isFiltered ? "No results for this filter" : (searchText.isEmpty ? "No expenses" : "No results"))
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                if vm.isFiltered {
-                    Button("Clear filter") { vm.clearFilter() }
-                        .buttonStyle(.bordered)
-                        .tint(.bizarreOrange)
-                        .accessibilityLabel("Clear expense filter")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // §11 Expense list empty state — distinct messaging for each scenario
+            expenseEmptyState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             expenseList
+        }
+    }
+
+    /// §11 Expense list empty state — three distinct scenarios each get a
+    /// dedicated icon + headline + body + optional CTA.
+    @ViewBuilder
+    private var expenseEmptyState: some View {
+        if !searchText.isEmpty {
+            // Search returned nothing
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No results for \"\(searchText)\"")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .multilineTextAlignment(.center)
+                Text("Try a different vendor, category, or date range.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No results for \(searchText). Try a different search term.")
+        } else if vm.isFiltered {
+            // Filter active, nothing matches
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No expenses match this filter")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Adjust or clear the filter to see all expenses.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+                Button("Clear filter") { vm.clearFilter() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Clear expense filter")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No expenses match the current filter. Double-tap to clear.")
+        } else {
+            // No expenses at all — encourage the user to add one
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "dollarsign.circle")
+                    .font(.system(size: 52, weight: .ultraLight))
+                    .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.55))
+                    .accessibilityHidden(true)
+                Text("No expenses yet")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Track your first business expense to keep your books up to date.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+                Button {
+                    showingCreate = true
+                } label: {
+                    Label("Add expense", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Add first expense")
+                .accessibilityIdentifier("expenses.emptyState.add")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("No expenses yet. Double-tap the Add expense button to get started.")
         }
     }
 
@@ -308,7 +473,7 @@ public struct ExpenseListView: View {
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
             }
             Section {
-                ForEach(vm.items) { exp in
+                ForEach(vm.sortedItems) { exp in
                     NavigationLink(value: exp.id) {
                         Row(expense: exp)
                     }
@@ -316,7 +481,7 @@ public struct ExpenseListView: View {
                     #if canImport(UIKit)
                     .hoverEffect(.highlight)
                     #endif
-                    // MARK: Swipe actions
+                    // MARK: §11.1 Swipe actions — leading: Edit; trailing: Delete
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
                             pendingDeleteId = exp.id
@@ -328,25 +493,21 @@ public struct ExpenseListView: View {
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                         NavigationLink(value: exp.id) {
-                            Label("Open", systemImage: "arrow.up.forward.square")
+                            Label("Open", systemImage: "pencil")
                         }
                         .tint(.bizarreOrange)
-                        .accessibilityLabel("Open expense detail")
+                        .accessibilityLabel("Open expense to edit")
                     }
-                    // MARK: Context menu
+                    // MARK: §11.1 Context menu — Open / Duplicate / Export / Delete
                     .contextMenu {
-                        NavigationLink(value: exp.id) {
-                            Label("Open", systemImage: "arrow.up.forward.square")
-                        }
-                        .accessibilityLabel("Open expense")
-                        Divider()
-                        Button(role: .destructive) {
-                            pendingDeleteId = exp.id
-                            showDeleteConfirm = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .accessibilityLabel("Delete expense")
+                        ExpenseContextMenu(
+                            expense: exp,
+                            api: api,
+                            onDuplicated: { _ in Task { await vm.load() } },
+                            onDeleted: {
+                                vm.removeItem(id: exp.id)
+                            }
+                        )
                     }
                 }
             }
@@ -427,12 +588,66 @@ public struct ExpenseListView: View {
             return parts.joined(separator: ". ")
         }
 
+        /// §11 Amount format — uses device locale so non-USD tenants see their
+        /// local currency symbol instead of a hard-coded "$".
         private static func formatMoney(_ v: Double) -> String {
-            let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
-            return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+            let f = NumberFormatter()
+            f.numberStyle = .currency
+            f.locale = .current
+            return f.string(from: NSNumber(value: v)) ?? String(format: "%.2f", v)
         }
 
         private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
+    }
+}
+
+// MARK: - §11.1 Bulk CSV export
+
+/// RFC-4180 CSV builder for an array of expenses.
+public enum ExpenseBulkCSVExporter {
+    private static let header = "id,category,amount,date,description,vendor,status,payment_method,notes,reimbursable"
+
+    public static func csv(from expenses: [Expense]) -> Data {
+        var lines: [String] = [header]
+        for exp in expenses {
+            let row = [
+                "\(exp.id)",
+                escape(exp.category),
+                exp.amount.map { String(format: "%.2f", $0) } ?? "",
+                escape(exp.date),
+                escape(exp.description),
+                escape(exp.vendor),
+                escape(exp.status),
+                escape(exp.paymentMethod),
+                escape(exp.notes),
+                exp.isReimbursable == true ? "true" : "false"
+            ].joined(separator: ",")
+            lines.append(row)
+        }
+        return lines.joined(separator: "\r\n").data(using: .utf8) ?? Data()
+    }
+
+    private static func escape(_ value: String?) -> String {
+        guard let v = value, !v.isEmpty else { return "" }
+        let escaped = v.replacingOccurrences(of: "\"", with: "\"\"")
+        let needsQuotes = escaped.contains(",") || escaped.contains("\"") || escaped.contains("\n") || escaped.contains("\r")
+        return needsQuotes ? "\"\(escaped)\"" : escaped
+    }
+}
+
+/// `FileDocument` wrapper for `.fileExporter`.
+public struct ExportableExpenseCSV: FileDocument {
+    public static let readableContentTypes = [UTType.commaSeparatedText]
+    public let data: Data
+
+    public init(data: Data) { self.data = data }
+
+    public init(configuration: ReadConfiguration) throws {
+        self.data = configuration.file.regularFileContents ?? Data()
+    }
+
+    public func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

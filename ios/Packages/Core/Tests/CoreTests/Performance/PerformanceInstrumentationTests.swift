@@ -109,13 +109,16 @@ final class TraceSessionTests: XCTestCase {
 
     func test_inflightCount_incrementsOnBegin_decrementsOnEnd() async {
         let session = TraceSession()
-        XCTAssertEqual(await session.inflightCount, 0)
+        var count = await session.inflightCount
+        XCTAssertEqual(count, 0)
 
         let token = await session.begin(.smsSendMs)
-        XCTAssertEqual(await session.inflightCount, 1)
+        count = await session.inflightCount
+        XCTAssertEqual(count, 1)
 
         await session.end(.smsSendMs, token: token)
-        XCTAssertEqual(await session.inflightCount, 0)
+        count = await session.inflightCount
+        XCTAssertEqual(count, 0)
     }
 
     func test_end_withUnknownToken_returnsNil() async {
@@ -155,19 +158,23 @@ final class TraceSessionTests: XCTestCase {
         }
         let remaining = await session.inflightCount
         XCTAssertEqual(remaining, 0, "All in-flight intervals should be ended")
+        // Note: remaining is already extracted from the actor before the assert.
     }
 
     func test_multipleOperations_trackedIndependently() async {
         let session = TraceSession()
         let t1 = await session.begin(.launchTTI)
         let t2 = await session.begin(.smsSendMs)
-        XCTAssertEqual(await session.inflightCount, 2)
+        var count = await session.inflightCount
+        XCTAssertEqual(count, 2)
 
         await session.end(.launchTTI, token: t1)
-        XCTAssertEqual(await session.inflightCount, 1)
+        count = await session.inflightCount
+        XCTAssertEqual(count, 1)
 
         await session.end(.smsSendMs, token: t2)
-        XCTAssertEqual(await session.inflightCount, 0)
+        count = await session.inflightCount
+        XCTAssertEqual(count, 0)
     }
 }
 

@@ -11,6 +11,7 @@ import SwiftUI
 // SwiftUI views are value types so `body` is computed lazily. We verify the
 // init contract: all stored properties are non-nil / valid after construction.
 
+@MainActor
 final class ViewInitTests: XCTestCase {
 
     // MARK: — CoreErrorStateView

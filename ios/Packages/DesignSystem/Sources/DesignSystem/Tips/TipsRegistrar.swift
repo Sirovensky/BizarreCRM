@@ -65,5 +65,23 @@ public enum TipsRegistrar: Sendable {
     public static func donateSkuFieldViewed() {
         Task { await ScanBarcodeTip.skuFieldViewed.donate(TipEventPayload()) }
     }
+
+    /// Donates a "POS quick-start" app-launch event.
+    /// Call once per app launch after `registerAll()`, alongside `donateAppLaunch()`.
+    public static func donatePosQuickStartLaunch() {
+        Task { await PosQuickStartTip.appLaunched.donate(TipEventPayload()) }
+    }
+
+    /// Donates a "hardware keyboard connected" event.
+    /// Call from the keyboard-connection notification handler (GCKeyboard / UIKeyboard).
+    public static func donateHardwareKeyboardConnected() {
+        Task { await NewTicketKeyboardTip.hardwareKeyboardConnected.donate(TipEventPayload()) }
+    }
+
+    /// Donates a "reports tab opened" event.
+    /// Call from `ReportsViewModel` `onAppear` (or the Reports tab `task` modifier).
+    public static func donateReportsTabOpened() {
+        Task { await ReportsExportTip.reportsTabOpened.donate(TipEventPayload()) }
+    }
 }
 #endif // canImport(TipKit)

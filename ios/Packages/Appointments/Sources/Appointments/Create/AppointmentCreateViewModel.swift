@@ -26,13 +26,29 @@ public final class AppointmentCreateFullViewModel {
 
     public var customerId: Int64?
     public var customerDisplayName: String = ""
-    public var serviceType: AppointmentServiceType = .dropOff
+    public var serviceType: AppointmentServiceType = .dropOff {
+        didSet {
+            // §10 — auto-apply type policy: update default duration and required resources.
+            let policy = AppointmentTypePolicy.policy(for: serviceType.rawValue)
+            // Only auto-update if user hasn't manually changed duration (still at previous policy default).
+            let prevPolicy = AppointmentTypePolicy.policy(for: oldValue.rawValue)
+            if duration == prevPolicy.defaultDurationSeconds {
+                duration = policy.defaultDurationSeconds
+            }
+            requiredResources = policy.requiredResources
+        }
+    }
+    /// §10 — resource categories required for the selected appointment type.
+    public var requiredResources: [String] = AppointmentTypePolicy.policy(for: "Drop-off").requiredResources
     public var technicianId: Int64?
     public var technicianDisplayName: String = ""
     public var selectedSlot: AvailabilitySlot?
-    public var duration: TimeInterval = 60 * 60   // 1 hour default
+    public var duration: TimeInterval = AppointmentTypePolicy.policy(for: "Drop-off").defaultDurationSeconds
     public var notes: String = ""
     public var repeatRule: RepeatRule?
+    /// §10.2 Reminder offsets — minutes before the appointment.
+    /// Default: 15 min + 1 day (60*24 min). User can toggle each.
+    public var reminderOffsets: Set<Int> = [15, 60, 1440]  // 15 min, 1h, 1 day
 
     // MARK: - Availability
 
@@ -52,6 +68,8 @@ public final class AppointmentCreateFullViewModel {
     public private(set) var errorMessage: String?
     public private(set) var createdId: Int64?
     public private(set) var conflictWarning: Bool = false
+    /// §10.3 offline temp-id — set to -1 when network unavailable; list reconciles on next sync.
+    public private(set) var queuedOffline: Bool = false
 
     // MARK: - Draft auto-save (stored as title/notes/dates)
 
@@ -60,11 +78,19 @@ public final class AppointmentCreateFullViewModel {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var draftTask: Task<Void, Never>?
     @ObservationIgnored private var slotLoadTask: Task<Void, Never>?
+    /// §10.3 idempotency key — generated once per create session; re-used on retry.
+    @ObservationIgnored private var idempotencyKey: String = UUID().uuidString
 
     // MARK: - Init
 
     public init(api: APIClient) {
         self.api = api
+    }
+
+    /// Reset idempotency key — call when the user explicitly starts a new attempt
+    /// (e.g. after fixing a conflict rather than retrying the same submission).
+    public func resetIdempotencyKey() {
+        idempotencyKey = UUID().uuidString
     }
 
     // MARK: - Validation
@@ -173,13 +199,24 @@ public final class AppointmentCreateFullViewModel {
             startTime: slot.start,
             endTime: slot.end,
             customerId: cid,
-            notes: notes.isEmpty ? nil : notes
+            notes: notes.isEmpty ? nil : notes,
+            idempotencyKey: idempotencyKey,
+            reminderOffsets: reminderOffsets.isEmpty ? nil : reminderOffsets.sorted()
         )
 
         do {
             let created = try await api.createAppointment(req)
             createdId = created.id
+            queuedOffline = false
             draftSavedAt = nil
+            // New key so a subsequent create (different appointment) is fresh
+            idempotencyKey = UUID().uuidString
+        } catch let urlErr as URLError
+            where urlErr.code == .notConnectedToInternet || urlErr.code == .networkConnectionLost {
+            // §10.3 offline temp-id — assign sentinel -1 and mark for later sync
+            AppLog.ui.notice("Appointment create queued offline (idempotencyKey=\(self.idempotencyKey))")
+            createdId = -1
+            queuedOffline = true
         } catch {
             let appError = AppError.from(error)
             errorMessage = Self.message(for: appError)

@@ -112,4 +112,62 @@ public enum FieldLocationPolicy: Sendable {
     public static func isWithinCheckInRange(distanceMeters: CLLocationDistance) -> Bool {
         distanceMeters < 100
     }
+
+    // MARK: - Indoor fallback
+
+    /// §57 Indoor fallback source — describes which positioning technology
+    /// a `CLLocation` was derived from so callers can degrade gracefully.
+    public enum PositioningSource: Sendable {
+        /// GPS fix with accuracy ≤ indoorGPSThreshold (20 m).
+        case gps
+        /// Cell-tower / Wi-Fi derived position (horizontalAccuracy > 20 m but
+        /// `CLLocation` has no dedicated property; inferred from accuracy bucket).
+        case cellAndWifi
+        /// No fix available — caller should show "Location unavailable" instead
+        /// of silently failing.
+        case unavailable
+    }
+
+    /// §57 Indoor GPS threshold: accuracy > 20 m signals weak / indoor GPS.
+    public static let indoorGPSThresholdMeters: CLLocationAccuracy = 20
+
+    /// Classify the positioning source from a `CLLocation`.
+    ///
+    /// CoreLocation doesn't expose the physical radio used, but horizontal-
+    /// accuracy buckets are reliable proxies:
+    /// - ≤ 20 m  → GPS lock (outdoor / clear sky)
+    /// - 21–200 m → cell-tower + Wi-Fi assisted (typical indoors)
+    /// - > 200 m or negative → unavailable / invalid
+    ///
+    /// Callers should call `isWithinCheckInRange` only when the source is
+    /// `.gps`; for `.cellAndWifi` they should show a banner "Using approximate
+    /// location" and still allow manual check-in override.
+    public static func positioningSource(from location: CLLocation) -> PositioningSource {
+        let accuracy = location.horizontalAccuracy
+        guard accuracy >= 0 else { return .unavailable }
+        if accuracy <= indoorGPSThresholdMeters { return .gps }
+        if accuracy <= 200 { return .cellAndWifi }
+        return .unavailable
+    }
+
+    /// Whether a location fix is good enough for on-site check-in.
+    ///
+    /// Returns `true` for GPS fixes within the 100 m range.
+    /// Returns `false` for cell/Wi-Fi (accuracy > 20 m) so the caller can
+    /// fall back to a manual check-in confirmation sheet instead of hard-
+    /// failing the check-in.
+    public static func canAutoCheckIn(location: CLLocation, jobCoordinate: CLLocationCoordinate2D) -> Bool {
+        guard positioningSource(from: location) == .gps else { return false }
+        let jobLocation = CLLocation(latitude: jobCoordinate.latitude, longitude: jobCoordinate.longitude)
+        return isWithinCheckInRange(distanceMeters: location.distance(from: jobLocation))
+    }
+
+    /// Banner copy for degraded positioning. Returns `nil` when GPS is fine.
+    public static func indoorBannerMessage(source: PositioningSource) -> String? {
+        switch source {
+        case .gps:         return nil
+        case .cellAndWifi: return "Using approximate location (indoors). Check-in manually if needed."
+        case .unavailable: return "Location unavailable. Check-in manually."
+        }
+    }
 }

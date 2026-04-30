@@ -201,6 +201,99 @@ public actor BlockChypTerminal: CardTerminal {
         return TerminalPingResult(ok: ok, latencyMs: latency)
     }
 
+    // MARK: - Tip adjust (§17.3)
+
+    /// Pre-batch-close tip adjustment. Bar/restaurant tenants only.
+    public func tipAdjust(
+        transactionId: String,
+        newTipCents: Int
+    ) async throws -> TipAdjustResult {
+        let credentials = try loadCredentials()
+        guard let name = UserDefaults.standard.string(forKey: Self.keychainTerminalNameKey) else {
+            throw TerminalError.notPaired
+        }
+
+        AppLog.hardware.info("BlockChypTerminal: tipAdjust txn=\(transactionId, privacy: .private) newTip=\(newTipCents)¢")
+
+        let tip = formatCents(newTipCents)
+        let requestBody = TipAdjustRequest(
+            terminalName: name,
+            transactionId: transactionId,
+            tipAmount: tip
+        )
+        let response = try await post(
+            path: "/api/tip-adjust",
+            body: requestBody,
+            credentials: credentials,
+            responseType: TipAdjustResponse.self
+        )
+
+        return TipAdjustResult(
+            transactionId: response.transactionId ?? transactionId,
+            adjustedTipCents: newTipCents,
+            approved: response.approved ?? false,
+            approvalCode: response.authCode
+        )
+    }
+
+    // MARK: - Batch management (§17.3)
+
+    /// Force-close the current batch. Runs on a configurable schedule (default after-hours).
+    ///
+    /// - Parameter terminalName: Optional override; uses `pairedTerminalName` when `nil`.
+    /// - Returns: The batch-close response summary.
+    public func closeBatch(terminalName: String? = nil) async throws -> BatchCloseResult {
+        let credentials = try loadCredentials()
+        guard let name = terminalName
+                ?? UserDefaults.standard.string(forKey: Self.keychainTerminalNameKey) else {
+            throw TerminalError.notPaired
+        }
+
+        AppLog.hardware.info("BlockChypTerminal: closeBatch on terminal '\(name, privacy: .public)'")
+
+        let requestBody = BatchCloseRequest(terminalName: name)
+        let response = try await post(
+            path: "/api/close-batch",
+            body: requestBody,
+            credentials: credentials,
+            responseType: BatchCloseResponse.self
+        )
+
+        return BatchCloseResult(
+            batchId: response.batchId,
+            transactionCount: response.transactionCount ?? 0,
+            totalSalesCents: response.totalSales.flatMap { parseCentsFromDecimal($0) } ?? 0,
+            closedAt: Date()
+        )
+    }
+
+    // MARK: - Connectivity mode (§17.3 offline behavior)
+
+    /// Queries the BlockChyp API for the terminal's current relay mode.
+    /// Returns `.cloudRelay` when `cloudRelayEnabled == true`, otherwise `.local`.
+    public func terminalRelayMode() async throws -> BlockChypRelayMode {
+        // `/api/terminal-locate` includes `cloudRelayEnabled`; re-request for fresh value.
+        let credentials = try loadCredentials()
+        guard let name = UserDefaults.standard.string(forKey: Self.keychainTerminalNameKey) else {
+            throw TerminalError.notPaired
+        }
+        let requestBody = PingRequest(terminalName: name)
+        let response = try await post(
+            path: "/api/terminal-locate",
+            body: requestBody,
+            credentials: credentials,
+            responseType: PingResponse.self
+        )
+        return (response.cloudRelayEnabled == true) ? .cloudRelay : .local
+    }
+
+    // MARK: - Private helpers
+
+    private func parseCentsFromDecimal(_ value: String) -> Int? {
+        guard let d = Double(value) else { return nil }
+        return Int((d * 100).rounded())
+    }
+
     // MARK: - CardTerminal: unpair
 
     public func unpair() async {
@@ -342,4 +435,69 @@ private struct PingResponse: Decodable {
     let success: Bool?
     let ipAddress: String?
     let cloudRelayEnabled: Bool?
+}
+
+// MARK: - Tip adjust DTOs
+
+private struct TipAdjustRequest: Encodable {
+    let terminalName: String
+    let transactionId: String
+    let tipAmount: String
+}
+
+private struct TipAdjustResponse: Decodable {
+    let approved: Bool?
+    let authCode: String?
+    let transactionId: String?
+    let responseDescription: String?
+}
+
+// MARK: - Batch close DTOs
+
+private struct BatchCloseRequest: Encodable {
+    let terminalName: String
+}
+
+private struct BatchCloseResponse: Decodable {
+    let batchId: String?
+    let transactionCount: Int?
+    let totalSales: String?
+    let responseDescription: String?
+}
+
+// MARK: - Public result types (§17.3)
+
+/// Result of a `closeBatch` call.
+public struct BatchCloseResult: Sendable, Equatable {
+    public let batchId: String?
+    public let transactionCount: Int
+    public let totalSalesCents: Int
+    public let closedAt: Date
+
+    public init(batchId: String?, transactionCount: Int, totalSalesCents: Int, closedAt: Date) {
+        self.batchId = batchId
+        self.transactionCount = transactionCount
+        self.totalSalesCents = totalSalesCents
+        self.closedAt = closedAt
+    }
+}
+
+/// BlockChyp terminal communication relay mode.
+public enum BlockChypRelayMode: String, Sendable, Equatable, CaseIterable {
+    /// Terminal talks to BlockChyp gateway / card network directly over LAN.
+    /// Preferred for countertop POS. Survives internet blip while terminal's uplink is OK.
+    case local = "Local"
+    /// Requests routed via BlockChyp cloud (`api.blockchyp.com`).
+    /// Required when iPad + terminal are on different networks.
+    case cloudRelay = "Cloud Relay"
+
+    /// Cashier-facing description of what "offline" means for each mode.
+    public var offlineImplication: String {
+        switch self {
+        case .local:
+            return "Local mode: charges work if the terminal's internet is up, even if this iPad is offline."
+        case .cloudRelay:
+            return "Cloud relay mode: charges require internet on this iPad. If offline, card payments are unavailable."
+        }
+    }
 }

@@ -34,6 +34,10 @@ public protocol WeightScale: Sendable {
     func read() async throws -> Weight
     /// Stream live readings (useful for animated display chips).
     func stream() -> AsyncStream<Weight>
+    /// Zero the tare offset (captures current stable reading as baseline).
+    /// Throws `WeightScaleError.readTimeout` if no stable reading within 5 s.
+    @discardableResult
+    func tare() async throws -> Weight
 }
 
 // MARK: - NullWeightScale
@@ -48,5 +52,9 @@ public struct NullWeightScale: WeightScale {
 
     public func stream() -> AsyncStream<Weight> {
         AsyncStream { continuation in continuation.finish() }
+    }
+
+    public func tare() async throws -> Weight {
+        throw WeightScaleError.notConnected
     }
 }

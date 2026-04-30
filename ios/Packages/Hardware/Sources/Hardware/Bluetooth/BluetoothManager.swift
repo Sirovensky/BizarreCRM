@@ -98,7 +98,18 @@ public actor BluetoothManager: NSObject {
             // `CBCentralManager` calls delegate on main queue by default; we
             // create it with a nil queue so CoreBluetooth assigns the main thread,
             // matching the expected dispatch behaviour on real hardware.
-            let real = CBCentralManager()
+            //
+            // Pass `CBCentralManagerOptionRestoreIdentifierKey` so CoreBluetooth
+            // can relaunch the app in background after termination and call
+            // `centralManager(_:willRestoreState:)`. The restore identifier must
+            // match `BluetoothBackgroundManager.restoreIdentifier`.
+            // The `bluetooth-central` UIBackgroundModes entry is managed by
+            // `scripts/write-info-plist.sh` (Agent 10 — see Discovered in agents.md).
+            let real = CBCentralManager(
+                delegate: nil,
+                queue: nil,
+                options: [CBCentralManagerOptionRestoreIdentifierKey: BluetoothBackgroundManager.restoreIdentifier]
+            )
             self.central = real
         }
         super.init()
@@ -257,6 +268,33 @@ extension BluetoothManager: CBCentralManagerDelegate {
         let desc = error?.localizedDescription ?? "unknown"
         AppLog.hardware.error("BluetoothManager: failed to connect \(peripheralId) — \(desc)")
         Task { await _didDisconnect(peripheralId: peripheralId) }
+    }
+
+    /// State restoration entry-point.
+    ///
+    /// Called when the OS relaunches the app in background after termination while
+    /// a Bluetooth connection was active. Delegates to `BluetoothBackgroundManager`
+    /// so subscribers (POS, printer queue) can re-hydrate their state.
+    ///
+    /// The `CBCentralManagerOptionRestoreIdentifierKey` passed in `init` enables
+    /// this callback (see `BluetoothManager.init` comment above). The
+    /// `UIBackgroundModes` plist entry `bluetooth-central` is required at runtime
+    /// (Agent 10 / `scripts/write-info-plist.sh`).
+    public nonisolated func centralManager(
+        _ central: CBCentralManager,
+        willRestoreState dict: [String: Any]
+    ) {
+        let peripherals = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+        // Store peripheral references on the actor so callers can reconnect.
+        let wrapped = UncheckedSendable(peripherals)
+        Task {
+            for peripheral in wrapped.value {
+                await _storePeripheral(peripheral)
+            }
+        }
+        // Notify the background manager so POS / printer queue handlers can run.
+        BluetoothBackgroundManager.shared.handleWillRestoreState(dict, manager: central)
+        AppLog.hardware.info("BluetoothManager: willRestoreState — \(peripherals.count) peripheral(s) restored")
     }
 }
 

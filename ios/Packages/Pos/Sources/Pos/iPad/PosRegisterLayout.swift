@@ -77,36 +77,33 @@ public struct PosRegisterLayout<
     // MARK: - Body
 
     public var body: some View {
+        // The outer iPadShell already supplies the 64pt custom rail. Drawing
+        // another 64pt rail here doubled the leading inset and pushed the
+        // inspector pane off-screen during the repair flow ("blurred items
+        // + cart + no device picker"). Render only the catalog / cart /
+        // inspector columns; the rail stays an iPadShell concern.
         GeometryReader { proxy in
             let totalWidth = proxy.size.width
             let totalHeight = proxy.size.height
             let topbarHeight: CGFloat = 60
-            let railWidth: CGFloat = 64
 
-            // Content width excluding rail
-            let contentWidth = totalWidth - railWidth
-            // Cart is fixed; catalog takes whatever is left
-            let effectiveCartWidth = min(cartWidth, contentWidth * 0.38)
-            let catalogContentWidth = contentWidth - effectiveCartWidth
-            // When inspector is active, catalog gets narrower
-            let effectiveInspectorWidth = inspectorActive ? min(inspectorWidth, contentWidth * 0.32) : 0
+            // Cart is fixed; catalog takes whatever is left after the cart
+            // and the inspector (when active) reserve their column widths.
+            let effectiveCartWidth = min(cartWidth, totalWidth * 0.38)
+            let effectiveInspectorWidth = inspectorActive ? min(inspectorWidth, totalWidth * 0.32) : 0
+            let catalogContentWidth = max(0, totalWidth - effectiveCartWidth - effectiveInspectorWidth)
 
             ZStack(alignment: .topLeading) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
 
-                // ─── Rail (leftmost column, full height)
-                railColumn
-                    .frame(width: railWidth, height: totalHeight)
-                    .position(x: railWidth / 2, y: totalHeight / 2)
-
-                // ─── Topbar (spans across catalog + cart + inspector)
+                // ─── Topbar (spans the whole width)
                 topbar()
-                    .frame(width: contentWidth, height: topbarHeight)
-                    .position(x: railWidth + contentWidth / 2, y: topbarHeight / 2)
+                    .frame(width: totalWidth, height: topbarHeight)
+                    .position(x: totalWidth / 2, y: topbarHeight / 2)
                     .zIndex(10)
 
                 // ─── Catalog area (below topbar)
-                let catalogX = railWidth + catalogContentWidth / 2
+                let catalogX = catalogContentWidth / 2
                 let catalogY = topbarHeight + (totalHeight - topbarHeight) / 2
                 let catalogH = totalHeight - topbarHeight
 
@@ -123,10 +120,10 @@ public struct PosRegisterLayout<
                 // Glass divider between catalog and cart
                 divider
                     .frame(width: 1, height: catalogH)
-                    .position(x: railWidth + catalogContentWidth, y: catalogY)
+                    .position(x: catalogContentWidth, y: catalogY)
 
                 // ─── Cart column
-                let cartX = railWidth + catalogContentWidth + 1 + effectiveCartWidth / 2
+                let cartX = catalogContentWidth + 1 + effectiveCartWidth / 2
                 let cartY = topbarHeight + (totalHeight - topbarHeight) / 2
                 let cartH = totalHeight - topbarHeight
 
@@ -142,14 +139,14 @@ public struct PosRegisterLayout<
 
                 // ─── Inspector pane (slides in from right)
                 if inspectorActive {
-                    let inspX = railWidth + catalogContentWidth + 1 + effectiveCartWidth + effectiveInspectorWidth / 2
+                    let inspX = catalogContentWidth + 1 + effectiveCartWidth + effectiveInspectorWidth / 2
                     let inspY = topbarHeight + (totalHeight - topbarHeight) / 2
                     let inspH = totalHeight - topbarHeight
 
                     // Glass divider between cart and inspector
                     divider
                         .frame(width: 1, height: inspH)
-                        .position(x: railWidth + catalogContentWidth + 1 + effectiveCartWidth, y: inspY)
+                        .position(x: catalogContentWidth + 1 + effectiveCartWidth, y: inspY)
                         .transition(.opacity)
 
                     inspectorColumn
@@ -166,21 +163,6 @@ public struct PosRegisterLayout<
             .animation(BrandMotion.snappy, value: inspectorActive)
         }
         .ignoresSafeArea(edges: .horizontal)
-    }
-
-    // MARK: - Rail
-
-    private var railColumn: some View {
-        ZStack {
-            Color.bizarreSurface1.opacity(0.55)
-                .background(.ultraThinMaterial)
-            Rectangle()
-                .fill(Color.bizarreOutline.opacity(0.35))
-                .frame(width: 1)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .accessibilityHidden(true)
-        .accessibilityIdentifier("pos.ipad.rail")
     }
 
     // MARK: - Glass divider

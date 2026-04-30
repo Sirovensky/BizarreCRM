@@ -33,9 +33,12 @@ public actor Database {
     /// Integration tests hand in a temp directory so they don't clobber
     /// the user's on-device DB. Also used by `reopen(at:)` below.
     public func open(at url: URL) async throws {
-        // Fetch (or generate) the 256-bit passphrase from the Keychain.
-        // `dbPassphrase()` creates a new random key on first launch and
-        // returns the cached one on every subsequent launch.
+        // §1.3 Fetch (or generate) the 256-bit passphrase from the Keychain.
+        // `DatabasePassphrase.loadOrCreate()` creates a new random hex key on
+        // first launch (via `SecRandomCopyBytes`) and returns the cached
+        // Keychain value on every subsequent launch. The Keychain item is
+        // gated by `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` so it
+        // survives lock-screen but never leaves the device via iCloud backup.
         //
         // Migration path for existing installs that ran without a passphrase:
         // If GRDB opens an unencrypted file with `usePassphrase`, it will
@@ -44,11 +47,14 @@ public actor Database {
         // schema-version table (`grdb_migrations`) survives a wipe because
         // Migrator.register re-creates it from scratch; only local offline
         // data is lost, which is also what would happen on a re-install.
-        // SEC-1 (partial): passphrase is generated + stored via KeychainStore.
+        //
         // GRDB.SQLCipher dep addition pending — for now we rely on iOS Data
-        // Protection (FileProtectionType.complete on the SQLite file).
+        // Protection (FileProtectionType.complete on the SQLite file). When
+        // SQLCipher lands, swap to `config.prepareDatabase { db in try
+        // db.usePassphrase("x'\(hex)'") }` (the hex form sidesteps SQL string
+        // escaping for the random key bytes).
         // TODO: add `grdb-sqlcipher` SPM dep and re-enable `db.usePassphrase(_:)`.
-        _ = try KeychainStore.shared.dbPassphrase()
+        _ = try DatabasePassphrase.loadOrCreate()
 
         var config = Configuration()
         config.label = "bizarrecrm"
@@ -57,7 +63,19 @@ public actor Database {
         }
 
         let pool = try DatabasePool(path: url.path, configuration: config)
+
+        // §1.6 Forward-only migration guard: detect if on-disk DB is ahead of
+        // this binary. Throws `DatabaseVersionError.databaseNewerThanApp` which
+        // `SessionBootstrapper` catches and shows an upgrade-required alert.
+        try DatabaseVersionGuard.checkCompatibility(pool: pool, appVersion: Migrator.schemaVersion)
+
         try Migrator.register(on: pool)
+
+        // §1.6 Migration integrity guard — verifies every known SQL migration
+        // was applied. Throws `MigrationIntegrityError.missingMigrations` if
+        // any bundle SQL file is absent from `grdb_migrations`.
+        try MigrationIntegrityGuard.verify(pool: pool)
+
         self._pool = pool
 
         AppLog.persistence.info("GRDB opened at \(url.path, privacy: .public)")

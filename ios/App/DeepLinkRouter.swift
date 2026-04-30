@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // Re-export the route enum so callers only need to import the App target.
 @_exported import enum   Core.DeepLinkRoute    // DeepLinkRoute enum lives in Core
@@ -78,6 +79,17 @@ public final class DeepLinkRouter {
     /// Called synchronously after `pending` is set.
     public var onRoute: (@MainActor (DeepLinkRoute) -> Void)?
 
+    /// Called when an inbound URL resolves to `.unknown`.
+    ///
+    /// The default implementation logs at `.warning` level.
+    /// The App layer can replace this with a toast/snackbar dismissal:
+    /// ```swift
+    /// DeepLinkRouter.shared.onUnknownRoute = { url in
+    ///     ToastManager.shared.show("Unknown deep link: \(url.path)", style: .warning)
+    /// }
+    /// ```
+    public var onUnknownRoute: (@MainActor (URL) -> Void)?
+
     /// Custom path handlers registered by feature modules via
     /// `DeepLinkRouter.register(path:handler:)`.  Key is a lowercase path
     /// prefix, e.g. `"pos"` or `"tickets/new"`.
@@ -96,7 +108,21 @@ public final class DeepLinkRouter {
             handler(url)
             return
         }
-        let route = DeepLinkParser.parse(url)
+        let route = Core.DeepLinkParser.parse(url)
+
+        // Unknown-route fallback: log + invoke `onUnknownRoute` instead of
+        // silently setting `pending` to an unroutable `.unknown` value.
+        if case .unknown = route {
+            AppLog.routing.warning(
+                "DeepLinkRouter: unrecognised route — \(url.absoluteString, privacy: .public)"
+            )
+            if let fallback = onUnknownRoute {
+                fallback(url)
+            }
+            // Do not set `pending` — the UI has nothing to navigate to.
+            return
+        }
+
         pending = route
         onRoute?(route)
     }

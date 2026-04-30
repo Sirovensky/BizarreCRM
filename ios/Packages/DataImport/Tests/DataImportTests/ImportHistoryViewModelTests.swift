@@ -159,12 +159,127 @@ final class ImportHistoryViewModelTests: XCTestCase {
         await vm.load()
         XCTAssertEqual(vm.jobs.first?.status, .failed)
     }
+
+    // MARK: - §48.4 Rollback
+
+    func testInitiallyNotRollingBack() {
+        let vm = ImportHistoryViewModel(repository: MockImportRepository())
+        XCTAssertFalse(vm.isRollingBack)
+    }
+
+    func testInitiallyNoRollbackResult() {
+        let vm = ImportHistoryViewModel(repository: MockImportRepository())
+        XCTAssertNil(vm.rollbackResult)
+    }
+
+    func testRollback_success_setsSuccessResult() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+
+        await vm.rollback(job: job)
+
+        if case .success(let msg) = vm.rollbackResult {
+            XCTAssertFalse(msg.isEmpty)
+        } else {
+            XCTFail("Expected .success rollback result")
+        }
+    }
+
+    func testRollback_success_callsRepositoryOnce() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+
+        await vm.rollback(job: job)
+
+        let count = await repo.rollbackCallCount
+        XCTAssertEqual(count, 1)
+    }
+
+    func testRollback_success_reloadsJobs() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+
+        // After rollback the server would return rolled-back status
+        let rolledBack = ImportJob.fixture(id: "job-rb", status: .rolledBack)
+        await repo.set(listResult: .success([rolledBack]))
+
+        await vm.rollback(job: job)
+
+        XCTAssertEqual(vm.jobs.first?.status, .rolledBack)
+    }
+
+    func testRollback_failure_setsFailureResult() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        await repo.set(rollbackResult: .failure(MockImportRepository.Failure.simulated))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+
+        await vm.rollback(job: job)
+
+        if case .failure(let msg) = vm.rollbackResult {
+            XCTAssertFalse(msg.isEmpty)
+        } else {
+            XCTFail("Expected .failure rollback result")
+        }
+    }
+
+    func testRollback_nonRollbackableJob_doesNothing() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.fixture(status: .failed) // canRollback = false
+        let vm = ImportHistoryViewModel(repository: repo)
+
+        await vm.rollback(job: job)
+
+        let count = await repo.rollbackCallCount
+        XCTAssertEqual(count, 0)
+        XCTAssertNil(vm.rollbackResult)
+    }
+
+    func testRollback_notRollingBackAfterCompletion() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+
+        await vm.rollback(job: job)
+
+        XCTAssertFalse(vm.isRollingBack)
+    }
+
+    func testClearRollbackResult_nilsResult() async {
+        let repo = MockImportRepository()
+        let job = ImportJob.completedWithRollback()
+        await repo.set(listResult: .success([job]))
+        let vm = ImportHistoryViewModel(repository: repo)
+        await vm.load()
+        await vm.rollback(job: job)
+        XCTAssertNotNil(vm.rollbackResult)
+
+        vm.clearRollbackResult()
+
+        XCTAssertNil(vm.rollbackResult)
+    }
 }
 
-// MARK: - MockImportRepository.set(listResult:) helper
+// MARK: - MockImportRepository helpers
 
 extension MockImportRepository {
     func set(listResult: Result<[ImportJob], Error>) {
         self.listResult = listResult
+    }
+    func set(rollbackResult: Result<RollbackImportResponse, Error>) {
+        self.rollbackResult = rollbackResult
     }
 }

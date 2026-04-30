@@ -1,5 +1,9 @@
 import SwiftUI
 
+public enum DesignSystemBundle {
+    public static var bundle: Bundle { .main }
+}
+
 /// §80 Master design tokens. Single source.
 ///
 /// **Hard rule** (per `ios/agent-ownership.md` → Independence rules):
@@ -24,7 +28,7 @@ public enum DesignTokens {
         public static let huge: CGFloat = 48
     }
 
-    // MARK: - Radius (§80.2)
+    // MARK: - Radius (§80.2 / §30.3)
     public enum Radius {
         public static let xs: CGFloat = 4       // small chip
         public static let sm: CGFloat = 8       // button
@@ -32,6 +36,80 @@ public enum DesignTokens {
         public static let lg: CGFloat = 16      // card
         public static let xl: CGFloat = 24      // sheet
         public static let pill: CGFloat = 999   // fully rounded
+        /// Alias for `pill` — use `.clipShape(Capsule())` in SwiftUI; this value
+        /// is for contexts that require a numeric CGFloat (e.g. UIKit, CGPath).
+        public static let capsule: CGFloat = 999
+    }
+
+    // MARK: - Density mode tokens (§30.2 / §80 — §571)
+    //
+    // Three named density levels feed the spacing rhythm throughout the app.
+    // Views read `@Environment(\.densityMode)` and multiply spacing tokens
+    // with `Density.spacing(base:)` so a single env change reflows the whole UI.
+    //
+    // Orthogonal to Reduce Motion — density controls spatial rhythm, not
+    // animation presence.
+    //
+    // Usage:
+    //   @Environment(\.densityMode) private var density
+    //   let pad = DesignTokens.Density.spacing(base: DesignTokens.Spacing.md, mode: density)
+    public enum Density {
+        // MARK: Named levels
+
+        /// Three supported density levels — stored in UserDefaults via DensityModeKey.
+        public enum Mode: String, CaseIterable, Sendable {
+            /// Relaxed layout — 15% more breathing room than default.
+            case comfortable
+            /// Standard iOS HIG baseline (default).
+            case `default`
+            /// 15% tighter — useful on small screens or information-dense contexts.
+            case compact
+        }
+
+        // MARK: Multipliers
+
+        /// Scale factor to apply to all spacing tokens at this density level.
+        public static func multiplier(for mode: Mode) -> CGFloat {
+            switch mode {
+            case .comfortable: return 1.15
+            case .default:     return 1.00
+            case .compact:     return 0.85
+            }
+        }
+
+        // MARK: Token helpers
+
+        /// Returns `base` scaled for the given density `mode`.
+        public static func spacing(base: CGFloat, mode: Mode) -> CGFloat {
+            (base * multiplier(for: mode)).rounded()
+        }
+
+        /// Returns `base` scaled for the compact legacy flag (backwards compat).
+        ///
+        /// Prefer `spacing(base:mode:)` for new call-sites.
+        public static func scaled(_ value: CGFloat, compact isCompact: Bool) -> CGFloat {
+            spacing(base: value, mode: isCompact ? .compact : .default)
+        }
+
+        // MARK: Compact multiplier (legacy alias — kept for existing call-sites)
+
+        /// Compact multiplier — multiply all spacing tokens by this in compact mode.
+        ///
+        /// Prefer `multiplier(for:)` for new call-sites.
+        public static let compactMultiplier: CGFloat = 0.85
+    }
+
+    // MARK: - DensityMode environment key (§30.2)
+    //
+    // Views inject `.densityMode` from the app root once the user preference
+    // is loaded. Child views that need density-aware spacing read this env key.
+    //
+    // Root injection (AppRootView):
+    //   .environment(\.densityMode, userDensity)
+
+    /// SwiftUI environment key for the active density mode.
+    public struct DensityModeKey: EnvironmentKey {
+        public static let defaultValue: Density.Mode = .default
     }
 
     // MARK: - Shadow (§80.3)
@@ -72,6 +150,21 @@ public enum DesignTokens {
         /// Max concurrent `.brandGlass` instances per screen. Debug-build
         /// assertion in `BrandGlassModifier` trips when exceeded.
         public static let maxPerScreen: Int = 6
+    }
+
+    // MARK: - Icon sizes (§30.8)
+    //
+    // Three canonical sizes aligned to the iOS HIG tap-target grid.
+    // Rule: navigation bar icons → .medium; tab bar → .medium;
+    //       inline row leading icons → .small; hero / FAB → .large.
+    // Fill vs outline rule: navigation = outline; active/selected = fill.
+    public enum Icon {
+        /// 16 pt — tight contexts: chips, row trailing badges, sub-labels.
+        public static let small:  CGFloat = 16
+        /// 20 pt — standard row leading icon, nav bar, tab bar.
+        public static let medium: CGFloat = 20
+        /// 24 pt — hero cards, FABs, empty-state illustration supplements.
+        public static let large:  CGFloat = 24
     }
 
     // MARK: - Z-index rhythm (§80.x overlay hierarchy)
@@ -123,5 +216,132 @@ public enum DesignTokens {
         public static let errorLight:    UInt32 = 0xB72A3E  // --error (light)
         public static let teal:          UInt32 = 0x4DB8C9  // --teal (dark)
         public static let tealLight:     UInt32 = 0x0B5260  // --teal (light)
+    }
+
+    // MARK: - §80.9 Semantic color aliases
+    //
+    // These `Color` shorthands are additive — they point to the existing
+    // asset-catalog colors defined in BrandColors.swift / Assets.xcassets.
+    // Use these names in views instead of raw `.bizarreX` names so a palette
+    // swap only touches BrandColors.swift, not every call site.
+    //
+    // Contrast guarantee: every token below tests ≥ 4.5:1 on its paired surface
+    // in both light and dark mode (see §80.4 / §80.5 tables).
+    public enum SemanticColor {
+        // Accent
+        public static let accent   = Color("bizarrePrimary",  bundle: DesignSystemBundle.bundle)
+        public static let danger   = Color("bizarreDanger",   bundle: DesignSystemBundle.bundle)
+        public static let warning  = Color("bizarreWarning",  bundle: DesignSystemBundle.bundle)
+        public static let success  = Color("bizarreSuccess",  bundle: DesignSystemBundle.bundle)
+        public static let info     = Color("bizarreInfo",     bundle: DesignSystemBundle.bundle)
+
+        // Surfaces
+        // Elevation ladder (warm-zinc ramp, §91.16 audit):
+        //  surfaceBase   → page background (SurfaceBase asset)
+        //  cardSurface   → report/dashboard cards one step above page (Surface1 asset)
+        //  surfaceRaised → popovers/chips one step above cards (Surface2 / SurfaceElevated asset)
+        //  surfaceInset  → inset wells inside cards (SurfaceDepth asset)
+        public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: DesignSystemBundle.bundle)
+        /// Canonical card background. Migrate from `Color.bizarreSurface1` to this token
+        /// so a palette swap only requires changing the `Surface1` asset entry.
+        public static let cardSurface    = Color("Surface1",               bundle: DesignSystemBundle.bundle)
+        public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: DesignSystemBundle.bundle)
+        public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: DesignSystemBundle.bundle)
+
+        // Text
+        public static let textPrimary   = Color("bizarreText",          bundle: DesignSystemBundle.bundle)
+        public static let textSecondary = Color("bizarreTextSecondary", bundle: DesignSystemBundle.bundle)
+        public static let textMuted     = Color("bizarreTextMuted",     bundle: DesignSystemBundle.bundle)
+        public static let textInverse   = Color("bizarreTextOnBrand",   bundle: DesignSystemBundle.bundle)
+
+        // Borders
+        public static let borderSubtle = Color("bizarreDivider",       bundle: DesignSystemBundle.bundle)
+        public static let borderStrong = Color("bizarreDividerStrong", bundle: DesignSystemBundle.bundle)
+        public static let borderAccent = Color("bizarrePrimary",       bundle: DesignSystemBundle.bundle)
+
+        // MARK: Toast tint colors (§30 — visual / motion / haptics)
+        //
+        // Icon + accent tint for BrandToast chips; map onto existing semantic
+        // palette entries so a palette swap propagates automatically.
+        // Text inside toasts stays `textPrimary` (dark glass surface);
+        // all four tokens are ≥ 4.5:1 on `bizarreSurfaceBase` (§80.4).
+
+        /// Icon/accent tint for a success toast — maps to `bizarreSuccess`.
+        public static let toastSuccess = Color.bizarreSuccess
+
+        /// Icon/accent tint for an error toast — maps to `bizarreError`.
+        public static let toastError   = Color.bizarreError
+
+        /// Icon/accent tint for a warning toast — maps to `bizarreWarning`.
+        public static let toastWarning = Color.bizarreWarning
+
+        /// Icon/accent tint for an info toast — maps to `bizarreInfo`.
+        public static let toastInfo    = Color.bizarreInfo
+    }
+
+    // MARK: - List-section divider tokens (§91.16)
+    //
+    // Three divider weights used across Settings, list views, and section
+    // separators. All three share the same base color (`bizarreDivider` asset)
+    // but differ in opacity so a palette swap propagates automatically.
+    //
+    // Usage:
+    //   SectionDivider()              // default (.subtle)
+    //   SectionDivider(.strong)       // after a major section break
+    //   SectionDivider(.inset, leadingInset: 52)  // under a list row with icon
+    public enum SectionDividerWeight {
+        /// Hairline — used inside card bodies and between tight rows (0.4 opacity).
+        case hairline
+        /// Subtle — default inter-section separator (0.6 opacity).
+        case subtle
+        /// Strong — major section breaks, e.g. between Settings sections (0.9 opacity).
+        case strong
+
+        public var opacity: Double {
+            switch self {
+            case .hairline: return 0.40
+            case .subtle:   return 0.60
+            case .strong:   return 0.90
+            }
+        }
+    }
+
+    // MARK: - Skeleton tokens (§30.9 / §29 loading states)
+    //
+    // Used by `SkeletonShape` shimmer and `SkeletonListRow` components.
+    // Dark / light color pair — SwiftUI checks `.colorScheme` at render time.
+    // Named after their role, not their color, so they stay stable across
+    // palette updates.
+    //
+    // Usage:
+    //   Rectangle()
+    //     .fill(DesignTokens.Skeleton.base)           // base layer
+    //     .overlay(DesignTokens.Skeleton.highlight)   // shimmer gradient sweep
+    public enum Skeleton {
+        /// Base fill for skeleton placeholders.
+        /// Dark mode: warm zinc; light mode: neutral grey.
+        public static let base      = Color("SkeletonBase",      bundle: DesignSystemBundle.bundle)
+        /// Highlight gradient for the shimmer sweep.
+        /// Slightly lighter than `base` in both color schemes.
+        public static let highlight = Color("SkeletonHighlight", bundle: DesignSystemBundle.bundle)
+
+        // Fallback values when asset catalog entries are missing (CI / SPM preview builds).
+        public static let baseFallbackDark      = Color(white: 0.18)
+        public static let baseFallbackLight     = Color(white: 0.88)
+        public static let highlightFallbackDark = Color(white: 0.24)
+        public static let highlightFallbackLight = Color(white: 0.94)
+    }
+}
+
+// MARK: - EnvironmentValues — density mode
+
+public extension EnvironmentValues {
+    /// The active density mode for the current view subtree.
+    ///
+    /// Default: `.default`. Inject from the app root after reading
+    /// the user's Settings → Appearance → Dashboard density preference.
+    var densityMode: DesignTokens.Density.Mode {
+        get { self[DesignTokens.DensityModeKey.self] }
+        set { self[DesignTokens.DensityModeKey.self] = newValue }
     }
 }

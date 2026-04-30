@@ -186,7 +186,7 @@ final class TicketEditDeepViewModelTests: XCTestCase {
             ticket: makeTicket()
         )
         vm.discountText = "15,50"
-        XCTAssertEqual(vm.parsedDiscount, 15.5, accuracy: 0.001)
+        XCTAssertEqual(vm.parsedDiscount ?? 0, 15.5, accuracy: 0.001)
     }
 
     // MARK: - Submit happy path

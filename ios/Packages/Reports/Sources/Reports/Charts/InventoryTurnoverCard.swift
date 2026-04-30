@@ -21,9 +21,7 @@ public struct InventoryTurnoverCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if slowestMovers.isEmpty {
-                ContentUnavailableView("No Inventory Data",
-                                       systemImage: "shippingbox",
-                                       description: Text("No inventory turnover data for this period."))
+                ChartDashedSilhouette(systemImage: "shippingbox", label: "No inventory turnover data for this period.")
             } else {
                 tableHeader
                 ForEach(slowestMovers) { row in

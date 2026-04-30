@@ -62,7 +62,7 @@ public enum MembershipPerkApplier {
             guard cents > 0 else { return nil }
             return cents
 
-        case .freeService, .exclusiveAccess:
+        case .freeService, .exclusiveAccess, .priorityQueue:
             // These perks have no direct POS cash value — handled elsewhere.
             return nil
         }

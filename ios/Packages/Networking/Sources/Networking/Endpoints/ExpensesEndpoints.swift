@@ -297,6 +297,18 @@ public extension APIClient {
         try await delete("/api/v1/expenses/\(id)")
     }
 
+    // MARK: §11.2 Approval workflow
+
+    /// `POST /api/v1/expenses/:id/approve` — manager approves an expense.
+    func approveExpense(id: Int64) async throws {
+        _ = try await post("/api/v1/expenses/\(id)/approve", body: EmptyBody(), as: _ExpenseStatusPayload.self)
+    }
+
+    /// `POST /api/v1/expenses/:id/deny` — manager denies an expense with a reason.
+    func denyExpense(id: Int64, reason: String) async throws {
+        _ = try await post("/api/v1/expenses/\(id)/deny", body: _ExpenseDenyRequest(reason: reason), as: _ExpenseStatusPayload.self)
+    }
+
     /// `GET /api/v1/expenses/:id/receipt` — fetch current receipt status.
     func getExpenseReceiptStatus(expenseId: Int64) async throws -> ExpenseReceiptStatusResponse {
         try await get("/api/v1/expenses/\(expenseId)/receipt", as: ExpenseReceiptStatusResponse.self)
@@ -382,6 +394,11 @@ public extension APIClient {
         return upload
     }
 }
+
+// MARK: - §11.2 File-local types for approval endpoints
+
+private struct _ExpenseStatusPayload: Decodable, Sendable { let status: String? }
+private struct _ExpenseDenyRequest: Encodable, Sendable { let reason: String }
 
 // MARK: - Private helpers (file-local, no protocol requirements)
 

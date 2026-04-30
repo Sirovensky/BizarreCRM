@@ -20,9 +20,7 @@ public struct TopEmployeesCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if topEmployees.isEmpty {
-                ContentUnavailableView("No Employee Data",
-                                       systemImage: "person.3",
-                                       description: Text("No employee performance data for this period."))
+                ChartDashedSilhouette(systemImage: "person.3", label: "No employee performance data for this period.")
             } else {
                 ForEach(topEmployees.indices, id: \.self) { idx in
                     employeeRow(topEmployees[idx], rank: idx + 1)

@@ -11,17 +11,21 @@ public struct ExpenseListFilter: Sendable, Equatable {
     public var fromDate: String?
     public var toDate: String?
     public var status: String?
+    /// §11.1 reimbursable flag filter — nil means "show all"
+    public var isReimbursable: Bool?
 
     public init(
         category: String? = nil,
         fromDate: String? = nil,
         toDate: String? = nil,
-        status: String? = nil
+        status: String? = nil,
+        isReimbursable: Bool? = nil
     ) {
         self.category = category
         self.fromDate = fromDate
         self.toDate = toDate
         self.status = status
+        self.isReimbursable = isReimbursable
     }
 
     public var isEmpty: Bool {
@@ -29,6 +33,7 @@ public struct ExpenseListFilter: Sendable, Equatable {
             && (fromDate?.isEmpty ?? true)
             && (toDate?.isEmpty ?? true)
             && (status?.isEmpty ?? true)
+            && isReimbursable == nil
     }
 }
 

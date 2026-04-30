@@ -48,11 +48,14 @@ public actor FTSIndexStore {
     }
 
     public func indexCustomer(_ customer: Customer) async throws {
+        // §18.8 SSN / tax-ID — scrub sensitive digit runs from notes before
+        // they reach the FTS5 body so a search for "123-45-6789" never hits.
+        let scrubbedNotes = customer.notes.map(SensitiveDataScrubber.scrub)
         let row = FTSIndex.IndexRow(
             entity:    "customers",
             entityId:  String(customer.id),
             title:     customer.displayName,
-            body:      [customer.phone, customer.email, customer.notes]
+            body:      [customer.phone, customer.email, scrubbedNotes]
                            .compactMap { $0 }.joined(separator: " "),
             tags:      "",
             updatedAt: ISO8601DateFormatter().string(from: customer.updatedAt)

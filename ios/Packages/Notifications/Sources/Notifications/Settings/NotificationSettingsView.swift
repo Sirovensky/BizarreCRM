@@ -23,6 +23,7 @@ public struct CategoryPreference: Identifiable, Sendable, Equatable {
         case .lowStock:            return "Low Stock Alerts"
         case .appointmentReminder: return "Appointment Reminders"
         case .paymentReceived:     return "Payments"
+        case .paymentFailed:       return "Payment Failed"
         case .deadLetterAlert:     return "Sync Alerts"
         case .mention:             return "Mentions"
         case .scheduleChange:      return "Schedule Changes"
@@ -36,6 +37,7 @@ public struct CategoryPreference: Identifiable, Sendable, Equatable {
         case .lowStock:            return "shippingbox.fill"
         case .appointmentReminder: return "calendar.badge.clock"
         case .paymentReceived:     return "creditcard.fill"
+        case .paymentFailed:       return "creditcard.trianglebadge.exclamationmark"
         case .deadLetterAlert:     return "exclamationmark.triangle.fill"
         case .mention:             return "at"
         case .scheduleChange:      return "calendar.badge.exclamationmark"
@@ -92,6 +94,27 @@ public final class NotificationSettingsViewModel {
 
     /// True when the user has denied push at the system level.
     public var isDenied: Bool { systemAuthorizationStatus == .denied }
+
+    // MARK: - Re-prompt copy (§13.2)
+
+    /// Short rationale shown before the system permission sheet re-prompt.
+    ///
+    /// Displayed in the in-app rationale sheet (`PermissionRationaleSheet`) that
+    /// appears before calling `UNUserNotificationCenter.requestAuthorization()` a
+    /// second time.  Must be concise and explain the concrete benefit so users opt in.
+    public static let repromptTitle = "Stay on top of your shop"
+
+    /// Body text for the re-prompt rationale sheet.
+    public static let repromptBody =
+        "Enable notifications to get instant alerts for new SMS messages, " +
+        "ticket updates, payment receipts, and appointment reminders — " +
+        "so nothing slips through while you're away from the desk."
+
+    /// CTA label on the rationale sheet's primary button (leads to system prompt).
+    public static let repromptCTA = "Enable Notifications"
+
+    /// Label for the secondary "maybe later" button on the rationale sheet.
+    public static let repromptSkip = "Not Now"
 }
 
 // MARK: - View
@@ -223,6 +246,119 @@ public struct NotificationSettingsView: View {
     }
 }
 
+// MARK: - PermissionRationaleSheet (§13.2 re-prompt copy)
+
+/// Modal rationale sheet shown before re-requesting notification permission.
+///
+/// Present this as a `.sheet` when the user taps a contextual prompt
+/// (e.g. a banner inside the ticket list) and their current auth status is
+/// `.notDetermined` or `.denied`.  The sheet explains the value, then either
+/// opens the system prompt (`.notDetermined`) or Settings (`.denied`).
+///
+/// ```swift
+/// .sheet(isPresented: $showRationale) {
+///     PermissionRationaleSheet { granted in
+///         // handle outcome
+///     }
+/// }
+/// ```
+public struct PermissionRationaleSheet: View {
+
+    public var onDismiss: ((_ granted: Bool) -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isRequesting = false
+
+    public init(onDismiss: ((_ granted: Bool) -> Void)? = nil) {
+        self.onDismiss = onDismiss
+    }
+
+    public var body: some View {
+        VStack(spacing: BrandSpacing.lg) {
+            Spacer()
+
+            Image(systemName: "bell.badge.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+
+            VStack(spacing: BrandSpacing.sm) {
+                Text(NotificationSettingsViewModel.repromptTitle)
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .multilineTextAlignment(.center)
+
+                Text(NotificationSettingsViewModel.repromptBody)
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, BrandSpacing.xl)
+
+            Spacer()
+
+            VStack(spacing: BrandSpacing.sm) {
+                Button {
+                    Task { await requestOrOpenSettings() }
+                } label: {
+                    if isRequesting {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    } else {
+                        Text(NotificationSettingsViewModel.repromptCTA)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .disabled(isRequesting)
+                .accessibilityIdentifier("notifRationale.enableButton")
+
+                Button(NotificationSettingsViewModel.repromptSkip) {
+                    dismiss()
+                    onDismiss?(false)
+                }
+                .buttonStyle(.plain)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityIdentifier("notifRationale.skipButton")
+            }
+            .padding(.horizontal, BrandSpacing.xl)
+            .padding(.bottom, BrandSpacing.xl)
+        }
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Helpers
+
+    private func requestOrOpenSettings() async {
+        isRequesting = true
+        defer { isRequesting = false }
+
+        let center = UNUserNotificationCenter.current()
+        let current = await center.notificationSettings()
+
+        if current.authorizationStatus == .denied {
+            // Cannot re-prompt; guide user to Settings.
+#if canImport(UIKit)
+            await MainActor.run {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+#endif
+            dismiss()
+            onDismiss?(false)
+        } else {
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            dismiss()
+            onDismiss?(granted)
+        }
+    }
+}
+
 // MARK: - Preview
 
 #if DEBUG
@@ -230,5 +366,12 @@ public struct NotificationSettingsView: View {
     NavigationStack {
         NotificationSettingsView()
     }
+}
+
+#Preview("Rationale Sheet") {
+    Color.bizarreSurfaceBase
+        .sheet(isPresented: .constant(true)) {
+            PermissionRationaleSheet()
+        }
 }
 #endif

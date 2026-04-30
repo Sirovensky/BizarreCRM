@@ -2,40 +2,120 @@ import SwiftUI
 import Core
 import DesignSystem
 
+// MARK: - OnboardingConfettiView
+// §36.2 Step 13 — multi-particle full-screen confetti burst.
+// Respects Reduce Motion: when enabled the view renders nothing so callers
+// can omit it entirely (the static party-popper icon remains).
+
+private struct OnboardingConfettiParticle: Identifiable {
+    let id = UUID()
+    // Particles start at a central point and scatter outward.
+    let startX: CGFloat = 0.5
+    let startY: CGFloat = 0.35
+    let endX:   CGFloat = CGFloat.random(in: 0.05...0.95)
+    let endY:   CGFloat = CGFloat.random(in: 0.15...1.05)
+    let size:   CGFloat = CGFloat.random(in: 5...13)
+    let delay:  Double  = Double.random(in: 0...0.35)
+    let rotation: Double = Double.random(in: 0...360)
+    let isRect: Bool    = Bool.random()
+    let color: Color    = [
+        Color.bizarreOrange, Color.bizarreTeal, Color.bizarreMagenta,
+        .yellow, .mint, .indigo, .pink
+    ].randomElement()!
+}
+
+private struct OnboardingConfettiView: View {
+    @State private var particles: [OnboardingConfettiParticle] =
+        (0..<55).map { _ in OnboardingConfettiParticle() }
+    @State private var animate = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ForEach(particles) { p in
+                Group {
+                    if p.isRect {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(p.color)
+                            .frame(width: p.size, height: p.size * 0.55)
+                            .rotationEffect(.degrees(animate ? p.rotation + 180 : p.rotation))
+                    } else {
+                        Circle()
+                            .fill(p.color)
+                            .frame(width: p.size, height: p.size)
+                    }
+                }
+                .position(
+                    x: animate ? p.endX * geo.size.width  : p.startX * geo.size.width,
+                    y: animate ? p.endY * geo.size.height : p.startY * geo.size.height
+                )
+                .opacity(animate ? 0 : 1)
+                .animation(
+                    .easeOut(duration: 0.8).delay(p.delay),
+                    value: animate
+                )
+            }
+        }
+        .onAppear { animate = true }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - DoneStepView  (§36.2 Step 13 — Done)
 
 @MainActor
 public struct DoneStepView: View {
     let completedSteps: Set<Int>
+    /// §36.3 — Steps still required to unlock POS (0 = MVP complete, POS unlocked).
+    let mvpStepsRemaining: Int
     let onOpenDashboard: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showSparkles: Bool = false
 
-    public init(completedSteps: Set<Int>, onOpenDashboard: @escaping () -> Void) {
+    public init(
+        completedSteps: Set<Int>,
+        mvpStepsRemaining: Int = 0,
+        onOpenDashboard: @escaping () -> Void
+    ) {
         self.completedSteps = completedSteps
+        self.mvpStepsRemaining = mvpStepsRemaining
         self.onOpenDashboard = onOpenDashboard
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(spacing: BrandSpacing.xl) {
-                Spacer(minLength: BrandSpacing.xxl)
+        ZStack {
+            ScrollView {
+                VStack(spacing: BrandSpacing.xl) {
+                    Spacer(minLength: BrandSpacing.xxl)
 
-                celebrationIcon
+                    celebrationIcon
 
-                headlineSection
+                    headlineSection
 
-                completionChecklist
+                    // §36.3 MVP gate — warn when core steps are missing.
+                    if mvpStepsRemaining > 0 {
+                        mvpGateBanner
+                    }
 
-                dashboardCTA
+                    completionChecklist
 
-                Spacer(minLength: BrandSpacing.xxl)
+                    dashboardCTA
+
+                    Spacer(minLength: BrandSpacing.xxl)
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.xxl)
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.bottom, BrandSpacing.xxl)
+            .scrollBounceBehavior(.basedOnSize)
+
+            // §36.2 Confetti burst — Reduce Motion: omit entirely per §26.3
+            if !reduceMotion && showSparkles {
+                OnboardingConfettiView()
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
         .onAppear {
             if !reduceMotion {
                 withAnimation(.spring(duration: 0.6, bounce: 0.4).delay(0.2)) {
@@ -48,49 +128,16 @@ public struct DoneStepView: View {
     // MARK: Sub-views
 
     private var celebrationIcon: some View {
-        ZStack {
-            if !reduceMotion && showSparkles {
-                sparklesBackground
-            }
-
-            Image(systemName: "party.popper.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(Color.bizarreOrange)
-                .scaleEffect(showSparkles || reduceMotion ? 1.0 : 0.5)
-                .animation(
-                    reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.4).delay(0.15),
-                    value: showSparkles
-                )
-                .accessibilityHidden(true)
-        }
-        .frame(height: 120)
-    }
-
-    @ViewBuilder
-    private var sparklesBackground: some View {
-        ForEach(sparkleOffsets.indices, id: \.self) { idx in
-            let offset = sparkleOffsets[idx]
-            Image(systemName: "sparkle")
-                .font(.system(size: CGFloat.random(in: 12...24)))
-                .foregroundStyle(sparkleColors[idx % sparkleColors.count])
-                .offset(x: offset.x, y: offset.y)
-                .opacity(showSparkles ? 1 : 0)
-                .scaleEffect(showSparkles ? 1 : 0)
-                .animation(
-                    .spring(duration: 0.5, bounce: 0.3).delay(Double(idx) * 0.05 + 0.2),
-                    value: showSparkles
-                )
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var sparkleOffsets: [(x: CGFloat, y: CGFloat)] {
-        [(-60, -50), (60, -50), (-80, -10), (80, -10),
-         (-40, 30), (40, 30), (0, -70), (-20, 60), (20, 60)]
-    }
-
-    private var sparkleColors: [Color] {
-        [.bizarreOrange, .bizarreTeal, .bizarreMagenta, .yellow, .mint]
+        Image(systemName: "party.popper.fill")
+            .font(.system(size: 72))
+            .foregroundStyle(Color.bizarreOrange)
+            .scaleEffect(showSparkles || reduceMotion ? 1.0 : 0.5)
+            .animation(
+                reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.4).delay(0.15),
+                value: showSparkles
+            )
+            .accessibilityHidden(true)
+            .frame(height: 120)
     }
 
     private var headlineSection: some View {
@@ -145,6 +192,47 @@ public struct DoneStepView: View {
             Spacer()
         }
         .accessibilityLabel("\(step.title) — completed")
+    }
+
+    // MARK: §36.3 MVP gate banner
+
+    /// Shown when required POS-unlock steps (1–7 + 13) are not yet complete.
+    private var mvpGateBanner: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(Color.bizarreWarning)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("POS not yet unlocked")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(Color.bizarreOnSurface)
+
+                Text(mvpStepsRemaining == 1
+                     ? "1 required step is still missing. Complete it in Settings to take payments."
+                     : "\(mvpStepsRemaining) required steps are still missing. Complete them in Settings to take payments.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.bizarreWarning.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            mvpStepsRemaining == 1
+            ? "POS not unlocked. 1 required step is still missing."
+            : "POS not unlocked. \(mvpStepsRemaining) required steps are still missing."
+        )
     }
 
     private var dashboardCTA: some View {

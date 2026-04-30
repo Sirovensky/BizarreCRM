@@ -73,6 +73,28 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// confirmation banner (iPad only). Nil on iPhone or when unsigned.
     public let signedTicketId: Int64?
 
+    // MARK: - §16.24 — Repair ticket linkage
+
+    /// Linked repair ticket identifier (from `Cart.linkedTicketId` at sale close).
+    /// When non-nil, the §16.24 receipt screen shows "Parts reserved to Ticket #NNNN"
+    /// in teal and an "Open ticket #NNNN" secondary CTA button.
+    public let linkedRepairTicketId: Int64?
+
+    // MARK: - §16.12 — Offline sale watermark
+
+    /// `true` when this sale was captured while the device was offline.
+    /// The receipt screen shows an amber "OFFLINE" watermark and the message
+    /// "Sent when reconnected" until `syncedAt` is non-nil.
+    ///
+    /// The watermark is cleared (set to `false`) when the sync drain loop
+    /// confirms the server received the sale and sets `syncedAt`.
+    public let capturedOffline: Bool
+
+    /// UTC timestamp set by the sync drain loop when the server confirms the
+    /// sale. When non-nil the "OFFLINE" watermark is replaced with
+    /// "Synced \(syncedAt.formatted())". Nil means the sale has not yet synced.
+    public let syncedAt: Date?
+
     // MARK: - Init
 
     public init(
@@ -88,7 +110,10 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyTierAfter: String? = nil,
         loyaltyPointsTotal: Int? = nil,
         loyaltyNextTierPoints: Int? = nil,
-        signedTicketId: Int64? = nil
+        signedTicketId: Int64? = nil,
+        linkedRepairTicketId: Int64? = nil,
+        capturedOffline: Bool = false,
+        syncedAt: Date? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
@@ -103,5 +128,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyPointsTotal = loyaltyPointsTotal
         self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
+        self.linkedRepairTicketId = linkedRepairTicketId
+        self.capturedOffline = capturedOffline
+        self.syncedAt = syncedAt
     }
 }

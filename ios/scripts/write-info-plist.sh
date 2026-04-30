@@ -62,8 +62,9 @@ cat > "${PLIST}" <<'PLIST_EOF'
                     <string>Default Configuration</string>
                     <key>UISceneClassName</key>
                     <string>UIWindowScene</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string></string>
+                    <!-- §1.6 — UISceneDelegateClassName omitted: SwiftUI App lifecycle provides
+                         the scene delegate automatically. An empty string here prints a
+                         "can't find class (null)" console warning every launch. -->
                 </dict>
             </array>
         </dict>
@@ -71,9 +72,10 @@ cat > "${PLIST}" <<'PLIST_EOF'
 
     <key>UIBackgroundModes</key>
     <array>
-        <string>remote-notification</string>
+        <!-- remote-notification + voip stripped for personal-team dev signing (free Apple ID can't sign these caps) -->
         <string>processing</string>
         <string>fetch</string>
+        <string>bluetooth-central</string>
     </array>
 
     <key>UILaunchScreen</key>
@@ -105,7 +107,7 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Save ticket photos to your library.</string>
     <key>NSFaceIDUsageDescription</key>
-    <string>Authenticate to unlock Bizarre CRM.</string>
+    <string>Unlock BizarreCRM with Face ID.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Connect to Bluetooth receipt printers and card readers.</string>
     <key>NSContactsUsageDescription</key>
@@ -116,9 +118,36 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <string>Verify you are at the shop when clocking in.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Discover your shop server and payment terminal on the local network.</string>
+    <!-- §28.5 NFC — device serial / waiver tag scanning -->
+    <key>NFCReaderUsageDescription</key>
+    <string>Read device serial tags attached to items under repair.</string>
+    <!-- §17 / Discovered[Agent 2→10]: NWBrowser requires NSBonjourServices on iOS 14+ -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_ipp._tcp</string>
+        <string>_printer._tcp</string>
+        <string>_bizarre._tcp</string>
+    </array>
     <!-- §10.9 Calendar integration — required iOS 17+ -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Add appointments directly to your iOS Calendar.</string>
+
+    <!-- §28.3 App Transport Security — HTTPS only. NSAllowsArbitraryLoads is
+         explicitly NOT set, so it defaults to false (ATS enforced). This means
+         every outbound connection must use TLS. Self-hosted tenants must have
+         a valid cert; the app will refuse plaintext HTTP connections to their
+         server. PinnedURLSessionDelegate provides optional SPKI pinning on
+         top of ATS for cloud-hosted tenants that request it (§1.2). -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- NSAllowsArbitraryLoads intentionally omitted (defaults false). -->
+        <!-- NSAllowsLocalNetworking: allow http:// to LAN-only addresses so
+             self-hosted tenants on e.g. 192.168.x.x can still be reached
+             without a cert. The server URL the user enters IS the API peer;
+             see §32 sovereignty — all traffic goes to that single peer. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
@@ -145,16 +174,20 @@ cat > "${PLIST}" <<'PLIST_EOF'
         </dict>
     </array>
 
+    <!-- §30.4 Brand fonts: Bebas Neue (display) + League Spartan (accent) + Roboto (body) + Roboto Mono (mono) + Roboto Slab (slab accent) -->
+    <!-- Fetched by scripts/fetch-fonts.sh; fall back to SF Pro if missing (no crash) -->
     <key>UIAppFonts</key>
     <array>
-        <string>Inter-Regular.ttf</string>
-        <string>Inter-Medium.ttf</string>
-        <string>Inter-SemiBold.ttf</string>
-        <string>Inter-Bold.ttf</string>
-        <string>BarlowCondensed-SemiBold.ttf</string>
-        <string>BarlowCondensed-Bold.ttf</string>
-        <string>JetBrainsMono-Regular.ttf</string>
-        <string>JetBrainsMono-Medium.ttf</string>
+        <string>BebasNeue-Regular.ttf</string>
+        <string>LeagueSpartan-Medium.ttf</string>
+        <string>LeagueSpartan-SemiBold.ttf</string>
+        <string>LeagueSpartan-Bold.ttf</string>
+        <string>Roboto-Regular.ttf</string>
+        <string>Roboto-Medium.ttf</string>
+        <string>Roboto-SemiBold.ttf</string>
+        <string>Roboto-Bold.ttf</string>
+        <string>RobotoMono-Regular.ttf</string>
+        <string>RobotoSlab-SemiBold.ttf</string>
     </array>
 
     <!-- §24 Live Activities — required for ActivityKit -->

@@ -37,7 +37,9 @@ public struct ConflictDiffView: View {
             }
         }
         .navigationTitle("Review Conflict")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar { toolbarItems }
         .sheet(isPresented: $showResolutionSheet) {
             resolutionSheet
@@ -247,7 +249,9 @@ public struct ConflictDiffView: View {
             }
             .padding(BrandSpacing.xl)
             .navigationTitle("Confirm")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showResolutionSheet = false }

@@ -52,6 +52,35 @@ public struct PosAuditLogView: View {
 
     private var auditList: some View {
         List {
+            // §16 — manager override summary row: surfaces today's count so a
+            // loss-prevention manager sees unusual overrides at a glance.
+            let todayOverrides = managerOverrideCountToday
+            if todayOverrides > 0 {
+                Section {
+                    managerOverrideSummaryRow(count: todayOverrides)
+                        .listRowBackground(Color.bizarreWarning.opacity(0.08))
+                } header: {
+                    Text("Today's manager overrides")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+
+            // §39 — no-sale summary row: a dedicated header section that
+            // surfaces today's no-sale count at a glance for loss prevention,
+            // even before the manager scrolls into the chronological log.
+            let todayNoSales = noSaleCountToday
+            if todayNoSales > 0 {
+                Section {
+                    noSaleSummaryRow(count: todayNoSales)
+                        .listRowBackground(Color.bizarreWarning.opacity(0.08))
+                } header: {
+                    Text("Today's no-sale activity")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+
             ForEach(groupedByDay, id: \.day) { group in
                 Section(group.dayLabel) {
                     ForEach(group.entries) { entry in
@@ -63,6 +92,84 @@ public struct PosAuditLogView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - §16 Manager override summary row
+
+    /// Count of manager_override events from today.
+    private var managerOverrideCountToday: Int {
+        let calendar = Calendar.current
+        return entries.filter {
+            $0.eventType == PosAuditEntry.EventType.managerOverride &&
+            calendar.isDateInToday($0.date)
+        }.count
+    }
+
+    /// Prominent summary row shown when there are manager override events today.
+    private func managerOverrideSummaryRow(count: Int) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "person.badge.shield.checkmark.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(Color.bizarreWarning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Manager overrides today")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("A manager bypassed a system limit or policy.")
+                    .font(.brandBodySmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(count > 2 ? Color.bizarreError : Color.bizarreWarning)
+                .monospacedDigit()
+                .accessibilityLabel("\(count) manager override events today")
+        }
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pos.auditLog.managerOverrideSummary")
+    }
+
+    // MARK: - §39 No-sale summary row
+
+    /// Count of no-sale events from today (calendar day of the device).
+    private var noSaleCountToday: Int {
+        let calendar = Calendar.current
+        return entries.filter {
+            $0.eventType == PosAuditEntry.EventType.noSale &&
+            calendar.isDateInToday($0.date)
+        }.count
+    }
+
+    /// Prominent summary row shown at the top of the audit list when there
+    /// are no-sale events today. Highlights the count with the warning color
+    /// and uses an SF Symbol for quick scanability.
+    private func noSaleSummaryRow(count: Int) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(Color.bizarreWarning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No-sale drawer opens today")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Cashier opened drawer without completing a sale.")
+                    .font(.brandBodySmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(count > 2 ? Color.bizarreError : Color.bizarreWarning)
+                .monospacedDigit()
+                .accessibilityLabel("\(count) no-sale events today")
+        }
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pos.auditLog.noSaleSummary")
     }
 
     private var emptyView: some View {
@@ -210,23 +317,31 @@ private struct AuditEntryRow: View {
 
     private var badgeLabel: String {
         switch entry.eventType {
-        case "void_line":           return "VOID"
-        case "no_sale":             return "NO SALE"
-        case "discount_override":   return "DISC OVR"
-        case "price_override":      return "PRICE OVR"
-        case "delete_line":         return "DELETE"
-        default:                    return entry.eventType.uppercased()
+        case "void_line":               return "VOID"
+        case "no_sale":                 return "NO SALE"
+        case "discount_override":       return "DISC OVR"
+        case "price_override":          return "PRICE OVR"
+        case "delete_line":             return "DELETE"
+        case "manager_approved_refund": return "REFUND"
+        case "cash_drop":               return "DROP"
+        case "drawer_open":             return "DRAWER"
+        case "manager_override":        return "MGR OVR"
+        default:                        return entry.eventType.uppercased()
         }
     }
 
     private var badgeColor: Color {
         switch entry.eventType {
-        case "void_line":           return .red
-        case "no_sale":             return .orange
-        case "discount_override":   return .purple
-        case "price_override":      return .indigo
-        case "delete_line":         return .red
-        default:                    return .gray
+        case "void_line":               return .red
+        case "no_sale":                 return .bizarreWarning
+        case "discount_override":       return .purple
+        case "price_override":          return .indigo
+        case "delete_line":             return .red
+        case "manager_approved_refund": return .orange
+        case "cash_drop":               return .teal
+        case "drawer_open":             return .teal
+        case "manager_override":        return .bizarreWarning
+        default:                        return .gray
         }
     }
 }

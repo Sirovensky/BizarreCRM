@@ -19,20 +19,27 @@ public struct EmployeeListFilter: Equatable, Sendable {
     public var locationId: Int64?
     public var showInactive: Bool
     public var searchQuery: String
+    /// When true, only show employees that are currently clocked in.
+    /// Requires the employee list to contain presence data (`is_clocked_in`).
+    /// The employee list screen adds a "Clocked In" link to open `ClockedInNowView`
+    /// which handles the presence-aware fetch; this flag is a quick filter hint.
+    public var clockedInOnly: Bool
 
     public init(
         role: String? = nil,
         locationId: Int64? = nil,
         showInactive: Bool = false,
-        searchQuery: String = ""
+        searchQuery: String = "",
+        clockedInOnly: Bool = false
     ) {
         self.role = role
         self.locationId = locationId
         self.showInactive = showInactive
         self.searchQuery = searchQuery
+        self.clockedInOnly = clockedInOnly
     }
 
     public var isDefault: Bool {
-        role == nil && locationId == nil && !showInactive && searchQuery.isEmpty
+        role == nil && locationId == nil && !showInactive && searchQuery.isEmpty && !clockedInOnly
     }
 }

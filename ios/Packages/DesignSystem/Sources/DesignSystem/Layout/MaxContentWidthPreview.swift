@@ -43,7 +43,7 @@ anim id est laborum.
         }
         .padding(.vertical, BrandSpacing.base)
     }
-    .background(Color(.systemGroupedBackground))
+    .background(Color.primary.opacity(0.04))
 }
 
 #Preview("AdaptiveContentWidth — env-driven") {
@@ -66,7 +66,7 @@ anim id est laborum.
         }
         .padding(.vertical, BrandSpacing.base)
     }
-    .background(Color(.systemGroupedBackground))
+    .background(Color.primary.opacity(0.04))
 }
 
 #endif

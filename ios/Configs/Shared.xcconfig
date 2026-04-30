@@ -4,6 +4,22 @@
 // Base URL — point Debug at dev server, Release at shop-specific tenant URL.
 BZ_API_BASE_URL = https://dev.bizarrecrm.com
 
-// Comma-separated base64 SHA-256 hashes of server public keys.
-// Leave empty for CA-trusted (Let's Encrypt) endpoints.
+// Comma-separated base64 SHA-256 hashes of server public keys (§1.2).
+//
+// Decision (2026-04-29): pins are LEFT EMPTY for bizarrecrm.com.
+//
+// Rationale:
+//   • bizarrecrm.com uses Let's Encrypt certificates which rotate every 90 days.
+//     Pinning to the leaf cert would require an app update every rotation cycle —
+//     a reliability risk with no meaningful security gain for a known-CA chain.
+//   • Pinning to Let's Encrypt intermediates (ISRG Root X1 / E5 / E6 / R10 / R11)
+//     is feasible but Let's Encrypt periodically rotates intermediates too.
+//   • Self-hosted tenants (custom domains, private CAs): populate BZ_SPKI_PINS
+//     via a per-tenant Xcode configuration overlay or MDM profile, not here.
+//     The `PinnedURLSessionDelegate` reads this key at runtime and enforces pins
+//     only when the value is non-empty — zero cost for the hosted fleet.
+//
+// To enable for a specific build: set BZ_SPKI_PINS in the xcconfig for that
+// target config, e.g.:
+//   BZ_SPKI_PINS = sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 BZ_SPKI_PINS =

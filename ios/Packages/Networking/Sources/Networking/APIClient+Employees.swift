@@ -296,6 +296,56 @@ public extension APIClient {
     func listAllUsers() async throws -> [Employee] {
         try await get("/api/v1/settings/users", as: [Employee].self)
     }
+
+    // MARK: - Invite / create employee (admin only)
+
+    /// POST /api/v1/settings/users — creates a new employee account (admin only).
+    /// §14.4 Invite — the server creates the account and (if email provided)
+    /// can send a welcome email containing login credentials.
+    /// If the server is self-hosted and has no email configured, the account
+    /// is still created — admin must share credentials manually.
+    func inviteEmployee(_ body: CreateEmployeeBody) async throws -> Employee {
+        try await post("/api/v1/settings/users", body: body, as: Employee.self)
+    }
+
+    /// PUT /api/v1/settings/users/:id — resend invite / reset password for employee.
+    /// Equivalent to updating the employee with a freshly-generated password
+    /// so the server can re-email credentials.
+    /// Note: the server currently does not have a dedicated resend-invite endpoint.
+    /// This sends a PUT with `resend_invite: true`; if the server does not support
+    /// this flag it falls back to a no-op update (the caller handles the UX).
+    func resendEmployeeInvite(userId: Int64) async throws -> Employee {
+        let body = ResendInviteBody(resendInvite: true)
+        return try await put("/api/v1/settings/users/\(userId)", body: body, as: Employee.self)
+    }
+
+    // MARK: - Time-off approve / deny (manager)
+
+    /// POST /api/v1/time-off/:id/approve — approve a time-off request (manager only).
+    func approveTimeOff(id: Int64) async throws -> TimeOffRequest {
+        try await post(
+            "/api/v1/time-off/\(id)/approve",
+            body: EmptyBody(),
+            as: TimeOffRequest.self
+        )
+    }
+
+    /// POST /api/v1/time-off/:id/deny — deny a time-off request (manager only).
+    /// - Parameter reason: Optional denial reason surfaced to the employee.
+    func denyTimeOff(id: Int64, reason: String?) async throws -> TimeOffRequest {
+        let body = DenyTimeOffBody(reason: reason)
+        return try await post(
+            "/api/v1/time-off/\(id)/deny",
+            body: body,
+            as: TimeOffRequest.self
+        )
+    }
+}
+
+private struct DenyTimeOffBody: Encodable, Sendable {
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey { case reason }
 }
 
 // MARK: - Employee detail model
@@ -399,3 +449,127 @@ struct SetActiveBody: Encodable, Sendable {
         case isActive = "is_active"
     }
 }
+
+// MARK: - Create employee (invite) body
+
+/// POST /api/v1/settings/users request body.
+/// Server (settings.routes.ts:869) requires: username, first_name, last_name.
+/// email, role, password, pin are optional.
+/// §14.4: email is optional because self-hosted servers may have no SMTP configured.
+public struct CreateEmployeeBody: Encodable, Sendable {
+    /// Required: unique login username.
+    public let username: String
+    public let firstName: String
+    public let lastName: String
+    /// Optional — omit for self-hosted installs without SMTP.
+    public let email: String?
+    /// Role key (technician / cashier / manager / admin). Defaults to "technician".
+    public let role: String
+    /// Optional initial password. If omitted, admin sets one later.
+    public let password: String?
+
+    public init(
+        username: String,
+        firstName: String,
+        lastName: String,
+        email: String? = nil,
+        role: String = "technician",
+        password: String? = nil
+    ) {
+        self.username = username
+        self.firstName = firstName
+        self.lastName = lastName
+        self.email = email
+        self.role = role
+        self.password = password
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case username, email, role, password
+        case firstName = "first_name"
+        case lastName  = "last_name"
+    }
+}
+
+// MARK: - Resend invite body
+
+struct ResendInviteBody: Encodable, Sendable {
+    let resendInvite: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case resendInvite = "resend_invite"
+    }
+}
+
+// MARK: - §14.3 PIN verification
+
+/// Body for `POST /api/v1/auth/verify-pin`.
+public struct VerifyPinRequest: Encodable, Sendable {
+    public let userId: Int64
+    public let pin: String
+
+    public init(userId: Int64, pin: String) {
+        self.userId = userId
+        self.pin = pin
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case pin
+    }
+}
+
+/// Response from `POST /api/v1/auth/verify-pin`.
+public struct VerifyPinResponse: Decodable, Sendable {
+    public let valid: Bool
+    public let message: String?
+}
+
+public extension APIClient {
+    /// `POST /api/v1/auth/verify-pin` — verify an employee PIN.
+    /// Used before privileged clock-in / PIN-gated actions.
+    /// Returns `true` when the PIN matches; `false` on mismatch (no error thrown).
+    func verifyPin(userId: Int64, pin: String) async throws -> Bool {
+        let resp = try await post(
+            "/api/v1/auth/verify-pin",
+            body: VerifyPinRequest(userId: userId, pin: pin),
+            as: VerifyPinResponse.self
+        )
+        return resp.valid
+    }
+
+    // MARK: - §14.2 PIN management
+
+    /// `GET /api/v1/employees/:id/pin-status` — whether a PIN is set for this employee.
+    func getPinStatus(employeeId: Int64) async throws -> PinStatusResponse {
+        try await get("/api/v1/employees/\(employeeId)/pin-status", as: PinStatusResponse.self)
+    }
+
+    /// `POST /api/v1/employees/:id/pin` — set or change the employee PIN.
+    func setEmployeePin(employeeId: Int64, pin: String) async throws {
+        _ = try await post(
+            "/api/v1/employees/\(employeeId)/pin",
+            body: SetPinBody(pin: pin),
+            as: SetPinResponse.self
+        )
+    }
+
+    /// `DELETE /api/v1/employees/:id/pin` — clear the employee PIN.
+    func clearEmployeePin(employeeId: Int64) async throws {
+        try await delete("/api/v1/employees/\(employeeId)/pin")
+    }
+}
+
+// MARK: - PIN management types
+
+struct SetPinBody: Encodable, Sendable { let pin: String }
+struct SetPinResponse: Decodable, Sendable { let success: Bool? }
+
+public struct PinStatusResponse: Decodable, Sendable {
+    public let isSet: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isSet = "is_set"
+    }
+}
+

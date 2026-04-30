@@ -142,7 +142,7 @@ public struct MembershipTierProgressView: View {
             ZStack(alignment: .leading) {
                 // Track
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.white.opacity(reduceTransparency ? 0.18 : 0.10))
+                    .fill(Color.bizarreOnSurface.opacity(reduceTransparency ? 0.18 : 0.10))
                     .frame(height: 5)
 
                 // Fill

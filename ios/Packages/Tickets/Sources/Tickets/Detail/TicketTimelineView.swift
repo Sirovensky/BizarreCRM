@@ -256,6 +256,27 @@ private struct TimelineEventRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // §16.25 / §4 — "Ready for pickup" accent pill on the
+                // timeline row that represents the pickup-ready transition.
+                // Detects the transition by checking either a status diff
+                // containing "ready" or a message containing "pickup" so it
+                // works with both server-driven events and synthetic fallback.
+                if isPickupReadyEvent {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                        Text("Ready for pickup")
+                            .font(.brandLabelLarge())
+                    }
+                    .foregroundStyle(Color.bizarreSuccess)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .background(Color.bizarreSuccess.opacity(0.12), in: Capsule())
+                    .padding(.top, 2)
+                    .accessibilityLabel("Status: Ready for pickup")
+                }
+
                 // Diff chips (status change from → to)
                 if let diff = event.diff, !diff.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -277,6 +298,21 @@ private struct TimelineEventRow: View {
 
     // MARK: — Private
 
+    /// True when this event represents a transition to "Ready for pickup".
+    /// Matches on either a diff `to` value containing "ready" (case-insensitive)
+    /// or the message containing "pickup" (covers synthetic fallback events).
+    private var isPickupReadyEvent: Bool {
+        guard event.kind == .statusChange else { return false }
+        if let diff = event.diff {
+            for entry in diff {
+                if let to = entry.to, to.localizedCaseInsensitiveContains("ready") {
+                    return true
+                }
+            }
+        }
+        return event.message.localizedCaseInsensitiveContains("pickup")
+    }
+
     private var dotColor: Color {
         switch event.kind {
         case .statusChange:  return .bizarreOrange
@@ -290,23 +326,60 @@ private struct TimelineEventRow: View {
         }
     }
 
+    // §4.4 audit-log: combine actor, event kind label, message and a
+    // verbose timestamp for VoiceOver — improves on the previous
+    // "<actor> — <message> — at 2026-04-20T14:32" raw-ISO form.
     private var accessibilityDescription: String {
         var parts: [String] = []
         if let actor = event.actorName, !actor.isEmpty {
             parts.append(actor)
         }
+        parts.append(event.kind.accessibilityLabel)
         if !event.message.isEmpty {
             parts.append(event.message)
         }
-        parts.append("at \(shortTimestamp(event.createdAt))")
-        return parts.joined(separator: " — ")
+        parts.append("at \(verboseTimestamp(event.createdAt))")
+        return parts.joined(separator: ". ")
     }
 
+    // §4.4 audit-log: produce a human-readable short form "Apr 20, 14:32"
+    // using DateFormatter instead of raw ISO string slicing.
     private func shortTimestamp(_ iso: String) -> String {
-        // Try to produce a short "Apr 20, 14:32" format.
-        let prefix = String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
-        return prefix
+        guard let date = Self.parseISO(iso) else {
+            // Fallback: strip the T and truncate.
+            return String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        }
+        return Self.shortFormatter.string(from: date)
     }
+
+    private func verboseTimestamp(_ iso: String) -> String {
+        guard let date = Self.parseISO(iso) else { return iso }
+        return Self.verboseFormatter.string(from: date)
+    }
+
+    private static func parseISO(_ iso: String) -> Date? {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: iso) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: iso)
+    }
+
+    private static let shortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.doesRelativeDateFormatting = true
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static let verboseFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 // MARK: - Diff chip

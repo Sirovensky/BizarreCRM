@@ -106,9 +106,13 @@ public struct CustomerDetailView: View {
                         RecentTicketsSection(tickets: tickets)
                     }
 
+                    if let invoices = vm.snapshot.recentInvoices, !invoices.isEmpty {
+                        RecentInvoicesSection(invoices: invoices)
+                    }
+
                     // §5.9 Tags section
                     TagsCard(
-                        tags: detail.tagList,
+                        tagItems: detail.tagItems ?? detail.tagList.map { CustomerDetail.CustomerTagItem(name: $0, color: nil) },
                         onEditTags: api != nil ? { showingTagEditor = true } : nil
                     )
 
@@ -131,6 +135,9 @@ public struct CustomerDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
+                // §22.1 — detail panes cap at 720 pt on wide iPad screens so
+                // long lines stay readable; on iPhone (<720 pt) it's a no-op.
+                .maxContentWidth()
             }
         }
     }
@@ -183,6 +190,9 @@ private struct Header: View {
                     LTVTierBadge(tier: tier, ltvDollars: ltvDollars)
                 }
             }
+
+            // §5 Customer-since badge — localised "Member since {date}" label.
+            CustomerSinceBadge(createdAt: detail.createdAt)
 
             // §44.3 Churn risk badge — shown below the tier row
             let churnInput = ChurnInput(
@@ -294,15 +304,33 @@ private struct ContactInfo: View {
                 row(icon: "envelope", label: "Email", value: email)
             }
             if let addr = detail.addressLine {
-                row(icon: "mappin.and.ellipse", label: "Address", value: addr)
+                addressRow(addr: addr)
             }
             if let org = detail.organization, !org.isEmpty {
                 row(icon: "building.2", label: "Organization", value: org)
+            }
+
+            // §5 blocklist toggle copy — SMS opt-out badge (read-only in detail; edit via Edit form).
+            if detail.smsOptOut == true {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("SMS marketing opt-out")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreSurface2, in: Capsule())
+                .accessibilityLabel("SMS marketing opt-out: customer has opted out of promotional messages")
             }
         }
         .cardBackground()
     }
 
+    /// Standard text row with textSelection enabled.
     private func row(icon: String, label: String, value: String, mono: Bool = false) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.sm) {
             Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
@@ -314,6 +342,34 @@ private struct ContactInfo: View {
                     .textSelection(.enabled)
             }
             Spacer(minLength: 0)
+        }
+        .padding(.vertical, BrandSpacing.xxs)
+    }
+
+    /// Address row with a copy-to-clipboard chip alongside the text.
+    @MainActor
+    private func addressRow(addr: String) -> some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: "mappin.and.ellipse").foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Address").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(addr)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+            // §5 address copy chip
+            Button {
+                UIPasteboard.general.string = addr
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(BrandSpacing.xs)
+                    .background(Color.bizarreOrange.opacity(0.10), in: Circle())
+            }
+            .accessibilityLabel("Copy address")
         }
         .padding(.vertical, BrandSpacing.xxs)
     }
@@ -329,21 +385,31 @@ private struct RecentTicketsSection: View {
             Text("Recent tickets").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             VStack(spacing: BrandSpacing.xs) {
                 ForEach(tickets.prefix(10)) { t in
+                    let deviceName = t.firstDevice?.deviceName ?? ""
+                    let statusName = t.status?.name ?? ""
+                    let a11yLabel: String = {
+                        var parts = ["Ticket \(t.orderId)"]
+                        if !deviceName.isEmpty { parts.append(deviceName) }
+                        if !statusName.isEmpty { parts.append("Status: \(statusName)") }
+                        return parts.joined(separator: ", ")
+                    }()
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(t.orderId).font(.brandMono(size: 14)).foregroundStyle(.bizarreOnSurface)
-                            if let device = t.firstDevice?.deviceName, !device.isEmpty {
-                                Text(device).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
+                            if !deviceName.isEmpty {
+                                Text(deviceName).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted).lineLimit(1)
                             }
                         }
                         Spacer()
-                        if let status = t.status?.name {
-                            Text(status).font(.brandLabelSmall())
+                        if !statusName.isEmpty {
+                            Text(statusName).font(.brandLabelSmall())
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.bizarreSurface2, in: Capsule())
                                 .foregroundStyle(.bizarreOnSurface)
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(a11yLabel)
                 }
             }
         }
@@ -354,7 +420,7 @@ private struct RecentTicketsSection: View {
 // MARK: - Tags / Comments / Notes
 
 private struct TagsCard: View {
-    let tags: [String]
+    let tagItems: [CustomerDetail.CustomerTagItem]
     let onEditTags: (() -> Void)?
 
     var body: some View {
@@ -372,12 +438,13 @@ private struct TagsCard: View {
                     .accessibilityLabel("Edit tags")
                 }
             }
-            if tags.isEmpty {
+            if tagItems.isEmpty {
                 Text("No tags.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             } else {
-                FlowTags(tags: tags)
+                // §5 Accessibility-labelled tag chips
+                AccessibleTagChips(tagItems: tagItems)
             }
         }
         .cardBackground()
@@ -385,19 +452,21 @@ private struct TagsCard: View {
 }
 
 private struct FlowTags: View {
-    let tags: [String]
+    let tagItems: [CustomerDetail.CustomerTagItem]
 
     var body: some View {
         // Simple wrapping via LazyVGrid; flow layout would be prettier but not critical.
         let columns = [GridItem(.adaptive(minimum: 80), spacing: BrandSpacing.xs)]
         LazyVGrid(columns: columns, alignment: .leading, spacing: BrandSpacing.xs) {
-            ForEach(tags, id: \.self) { tag in
-                Text(tag)
+            ForEach(tagItems, id: \.name) { item in
+                let accent = item.color.flatMap { Color(hexString: $0) } ?? Color.bizarreSurface2
+                Text(item.name)
                     .font(.brandLabelLarge())
                     .padding(.horizontal, BrandSpacing.sm)
                     .padding(.vertical, BrandSpacing.xxs)
-                    .foregroundStyle(.bizarreOnSurface)
-                    .background(Color.bizarreSurface2, in: Capsule())
+                    .foregroundStyle(item.color != nil ? .white : .bizarreOnSurface)
+                    .background(accent.opacity(item.color != nil ? 0.85 : 1), in: Capsule())
+                    .accessibilityLabel("Tag: \(item.name)")
             }
         }
     }
@@ -501,6 +570,70 @@ private struct RecommendationBanner: View {
     }
 }
 
+// MARK: - Recent invoices
+
+private struct RecentInvoicesSection: View {
+    let invoices: [InvoiceSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Recent invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            VStack(spacing: BrandSpacing.xs) {
+                ForEach(invoices.prefix(5)) { inv in
+                    let totalFormatted = formattedTotal(inv.total)
+                    let statusName = inv.status?.capitalized ?? "Unknown"
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(inv.displayId)
+                                .font(.brandMono(size: 14))
+                                .foregroundStyle(.bizarreOnSurface)
+                            if let date = inv.createdAt.map({ String($0.prefix(10)) }) {
+                                Text(date)
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(totalFormatted)
+                                .font(.brandTitleMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Text(statusName)
+                                .font(.brandLabelSmall())
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(statusColor(inv.statusKind).opacity(0.15), in: Capsule())
+                                .foregroundStyle(statusColor(inv.statusKind))
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Invoice \(inv.displayId), \(totalFormatted), \(statusName)")
+                }
+            }
+        }
+        .cardBackground()
+    }
+
+    private func formattedTotal(_ value: Double?) -> String {
+        guard let v = value else { return "—" }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        return f.string(from: NSNumber(value: v)) ?? String(format: "$%.2f", v)
+    }
+
+    private func statusColor(_ kind: InvoiceSummary.Status) -> Color {
+        switch kind {
+        case .paid:    return .bizarreTeal
+        case .unpaid:  return .bizarreError
+        case .partial: return .bizarreWarning
+        case .void_:   return .bizarreOnSurfaceMuted
+        case .other:   return .bizarreOnSurfaceMuted
+        }
+    }
+}
+
 // MARK: - Card helper
 
 private struct CardBackgroundModifier: ViewModifier {
@@ -515,5 +648,20 @@ private struct CardBackgroundModifier: ViewModifier {
 
 private extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
+}
+
+// MARK: - Hex color helper
+
+private extension Color {
+    /// Parse a 6-digit RGB hex string (with or without leading `#`) into a SwiftUI Color.
+    /// Returns nil when the string is not a valid 6-digit hex.
+    init?(hexString: String) {
+        let stripped = hexString.hasPrefix("#") ? String(hexString.dropFirst()) : hexString
+        guard stripped.count == 6, let value = UInt32(stripped, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255
+        let g = Double((value >>  8) & 0xFF) / 255
+        let b = Double( value        & 0xFF) / 255
+        self.init(red: r, green: g, blue: b)
+    }
 }
 #endif

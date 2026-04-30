@@ -102,7 +102,15 @@ struct TicketStatusChangeSheet: View {
                     Button {
                         Task { await vm.commit(status.id) }
                     } label: {
-                        HStack {
+                        HStack(spacing: BrandSpacing.sm) {
+                            // §4.7 / §4.13: render server-provided hex color as a
+                            // filled circle dot. Falls back to a neutral gray when
+                            // no color is supplied (e.g. legacy tenants).
+                            Circle()
+                                .fill(color(from: status.colorHex))
+                                .frame(width: 10, height: 10)
+                                .accessibilityHidden(true)
+
                             Text(status.name)
                                 .font(.brandBodyLarge())
                                 .foregroundStyle(.bizarreOnSurface)
@@ -119,7 +127,7 @@ struct TicketStatusChangeSheet: View {
                             if status.id == vm.currentStatusId {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.bizarreOrange)
-                                    .accessibilityLabel("Current")
+                                    .accessibilityLabel("Current status")
                             }
                         }
                         .contentShape(Rectangle())
@@ -127,6 +135,7 @@ struct TicketStatusChangeSheet: View {
                     .buttonStyle(.plain)
                     .listRowBackground(Color.bizarreSurface1)
                     .disabled(vm.isSubmitting)
+                    .accessibilityLabel(statusRowA11yLabel(status))
                     .accessibilityIdentifier("ticket.status.\(status.id)")
                 }
             }
@@ -140,6 +149,31 @@ struct TicketStatusChangeSheet: View {
                 }
             }
         }
+    }
+
+    // §4.7: resolve a server hex string (e.g. "#3A8FC5" or "3A8FC5") to a
+    // SwiftUI Color. Returns a neutral gray when the hex is absent or malformed
+    // so the dot is always visible.
+    private func color(from hex: String?) -> Color {
+        guard let hex else { return Color.bizarreOnSurfaceMuted.opacity(0.4) }
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard cleaned.count == 6,
+              let value = UInt64(cleaned, radix: 16) else {
+            return Color.bizarreOnSurfaceMuted.opacity(0.4)
+        }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8)  & 0xFF) / 255.0
+        let b = Double( value        & 0xFF) / 255.0
+        return Color(red: r, green: g, blue: b)
+    }
+
+    private func statusRowA11yLabel(_ status: TicketStatusRow) -> String {
+        var parts = [status.name]
+        if status.closed     { parts.append("closed status") }
+        if status.cancelled  { parts.append("cancelled status") }
+        if status.id == vm.currentStatusId { parts.append("current") }
+        return parts.joined(separator: ", ")
     }
 
     private func errorPane(_ err: String) -> some View {

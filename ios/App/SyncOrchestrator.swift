@@ -64,7 +64,21 @@ final class SyncOrchestrator {
         }
         lastFlushAt = Date()
         AppLog.sync.info("flush triggered by \(reason, privacy: .public)")
-        await SyncFlusher.shared.flush()
+        let outcome = await SyncFlusher.shared.flush()
+        // SyncStatusBadge + StalenessIndicator both poll
+        // `UserDefaults.standard.object(forKey: "sync.lastSyncedAt")` to
+        // render "Just synced / N min ago / Never synced". Without this
+        // write the badge stays "Never synced" forever. Only advance the
+        // watermark on a clean run (or a no-op pass) so the UI doesn't lie
+        // when individual records failed.
+        switch outcome {
+        case .allOK, .empty:
+            UserDefaults.standard.set(Date(), forKey: "sync.lastSyncedAt")
+        case .partial, .readError:
+            // Leave the previous timestamp in place — badge will keep showing
+            // the older, accurate "N min ago" reading until the next clean run.
+            break
+        }
     }
 
     // MARK: - Watchers

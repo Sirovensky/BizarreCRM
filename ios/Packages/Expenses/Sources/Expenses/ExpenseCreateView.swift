@@ -33,6 +33,8 @@ public final class ExpenseCreateViewModel {
     public private(set) var isOCRRunning: Bool = false
     /// Controls the camera receipt picker sheet.
     public var showingCameraReceiptPicker: Bool = false
+    /// §11.3 offline create — set `true` when network unavailable; temp-id sentinel.
+    public private(set) var queuedOffline: Bool = false
 
     @ObservationIgnored private let api: APIClient
 
@@ -129,6 +131,12 @@ public final class ExpenseCreateViewModel {
         do {
             let created = try await api.createExpense(req)
             createdId = created.id
+            queuedOffline = false
+        } catch let urlErr as URLError where urlErr.code == .notConnectedToInternet || urlErr.code == .networkConnectionLost {
+            // §11.3 offline create — assign temp sentinel ID and mark as queued
+            AppLog.ui.notice("Expense create queued offline")
+            createdId = -1
+            queuedOffline = true
         } catch {
             AppLog.ui.error("Expense create failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

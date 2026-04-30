@@ -14,6 +14,8 @@ public protocol PurchaseOrderRepository: Sendable {
     /// Transition a PO to cancelled status.
     func cancel(id: Int64, reason: String?) async throws -> PurchaseOrder
     func receive(id: Int64, _ body: ReceivePORequest) async throws -> PurchaseOrder
+    /// Email PO to the supplier. Server transitions status to "ordered".
+    func send(id: Int64) async throws -> PurchaseOrder
 }
 
 // MARK: - LivePurchaseOrderRepository
@@ -49,5 +51,9 @@ public actor LivePurchaseOrderRepository: PurchaseOrderRepository {
 
     public func receive(id: Int64, _ body: ReceivePORequest) async throws -> PurchaseOrder {
         try await api.receivePurchaseOrder(id: id, body)
+    }
+
+    public func send(id: Int64) async throws -> PurchaseOrder {
+        try await api.sendPurchaseOrder(id: id)
     }
 }

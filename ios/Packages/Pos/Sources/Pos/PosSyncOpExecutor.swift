@@ -129,15 +129,12 @@ public struct CashOpeningPayload: Codable, Sendable {
     }
 }
 
-// MARK: - Sentinel decodable used when only success/failure matters
-
-private struct EmptyResponse: Decodable, Sendable {}
-
 // MARK: - PosSyncOpExecutor
 
 /// Concrete `SyncOpExecutor` for the POS domain. Dispatches `pos.sale.finalize`,
-/// `pos.return.create`, and `pos.cash.opening` to the server. Unknown op kinds
-/// throw `AppError.syncDeadLetter` so the drain loop moves them to DLQ.
+/// `pos.return.create`, `pos.cash.opening`, and `invoice.payment` (offline card
+/// tenders — §16.23) to the server. Unknown op kinds throw `AppError.syncDeadLetter`
+/// so the drain loop moves them to DLQ.
 ///
 /// 409 on `pos.sale.finalize` means "items already sold by another terminal" —
 /// non-retriable: executor throws `AppError.conflict` and the drain loop dead-
@@ -148,8 +145,11 @@ private struct EmptyResponse: Decodable, Sendable {}
 /// let posExecutor = PosSyncOpExecutor(api: apiClient)
 /// SyncManager.shared.executor = posExecutor
 /// ```
-public final class PosSyncOpExecutor: SyncOpExecutor {
+public final class PosSyncOpExecutor: SyncOpExecutor, @unchecked Sendable {
     private let api: APIClient
+
+    /// §16.23 — handler for offline-queued card tenders.
+    private lazy var cardTenderHandler = PosCardTenderSyncHandler(api: api)
 
     public init(api: APIClient) {
         self.api = api
@@ -159,6 +159,7 @@ public final class PosSyncOpExecutor: SyncOpExecutor {
         let kind = record.kind ?? "\(record.entity ?? "unknown").\(record.op ?? "unknown")"
         let payloadData = Data(record.payload.utf8)
 
+        // All API calls go through typed APIClient+CashRegister wrappers (§20 containment).
         switch kind {
         case "pos.sale.finalize":
             let body = try decodedPayload(PosSalePayload.self, from: payloadData, kind: kind)
@@ -166,11 +167,16 @@ public final class PosSyncOpExecutor: SyncOpExecutor {
 
         case "pos.return.create":
             let body = try decodedPayload(PosReturnPayload.self, from: payloadData, kind: kind)
-            _ = try await api.post("/pos/returns", body: body, as: EmptyResponse.self)
+            try await api.posCreateReturn(body)
 
         case "pos.cash.opening":
             let body = try decodedPayload(CashOpeningPayload.self, from: payloadData, kind: kind)
-            _ = try await api.post("/pos/cash/sessions/open", body: body, as: EmptyResponse.self)
+            try await api.posCashSessionOpen(body)
+
+        // §16.23 — offline-queued card tender. Enqueued by OfflineCardTenderService
+        // when the device is offline after BlockChyp terminal approval.
+        case "invoice.payment":
+            try await cardTenderHandler.execute(record)
 
         default:
             throw AppError.syncDeadLetter(
@@ -192,12 +198,12 @@ public final class PosSyncOpExecutor: SyncOpExecutor {
         }
     }
 
-    /// POST /pos/sale/finalize. A 409 means items were already sold by another
-    /// terminal — catch and rethrow as `AppError.conflict` so the drain loop
-    /// dead-letters the op without retrying (per §16.12 conflict path).
+    /// Finalize sale via typed wrapper. A 409 means items were already sold by
+    /// another terminal — catch and rethrow as `AppError.conflict` so the drain
+    /// loop dead-letters the op without retrying (per §16.12 conflict path).
     private func finalizeSale(_ body: PosSalePayload) async throws {
         do {
-            _ = try await api.post("/pos/sale/finalize", body: body, as: EmptyResponse.self)
+            try await api.posFinalizeSale(body)
         } catch APITransportError.httpStatus(409, let message) {
             throw AppError.conflict(reason: message ?? "Cart items already sold by another terminal.")
         }

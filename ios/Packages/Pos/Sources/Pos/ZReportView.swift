@@ -3,11 +3,22 @@ import Persistence
 
 #if canImport(UIKit)
 import SwiftUI
+import QuickLook
 import Core
 import DesignSystem
 
-/// §39.2 — end-of-shift Z-Report summary view. PDF + print disabled
-/// pending §17.4.
+/// Identifiable wrapper for a PDF URL so it can drive `.sheet(item:)`.
+struct ZReportPDFItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// §39.2 — end-of-shift Z-Report summary view.
+///
+/// PDF preview uses `ImageRenderer` to render the summary body on-device into
+/// a temporary PDF file, then presents it with `QuickLookPreview`. No server
+/// round-trip; all data comes from the local session record + aggregates.
+/// Print continues to show a "coming soon" alert pending §17.4 MFi pipeline.
 public struct ZReportView: View {
     public let session: CashSessionRecord
     public let aggregates: ZReportAggregates
@@ -15,6 +26,10 @@ public struct ZReportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingPrintAlert: Bool = false
     @State private var showingPdfAlert: Bool = false
+    /// §39 PDF preview state
+    @State private var pdfPreviewItem: ZReportPDFItem? = nil
+    @State private var isPdfLoading: Bool = false
+    @State private var pdfError: String? = nil
 
     public init(session: CashSessionRecord, aggregates: ZReportAggregates = .empty) {
         self.session = session
@@ -47,6 +62,18 @@ public struct ZReportView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("PDF archive ships with §17.4 (document renderer).")
+        }
+        // §39 — PDF preview sheet. Shown after on-device render completes.
+        .sheet(item: $pdfPreviewItem) { item in
+            ZReportPDFPreview(url: item.url)
+        }
+        .alert("PDF error", isPresented: .init(
+            get: { pdfError != nil },
+            set: { if !$0 { pdfError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(pdfError ?? "")
         }
     }
 
@@ -178,11 +205,38 @@ public struct ZReportView: View {
             }
             .buttonStyle(.bordered).controlSize(.large).disabled(true)
             .accessibilityIdentifier("pos.zReport.print")
-            Button { showingPdfAlert = true } label: {
-                Label("PDF", systemImage: "doc.richtext").frame(maxWidth: .infinity)
+
+            // §39 — PDF preview: renders Z-report body on-device with
+            // ImageRenderer, writes to a temp file, then presents QuickLook.
+            Button {
+                Task { await generateAndPreviewPDF() }
+            } label: {
+                if isPdfLoading {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    Label("PDF", systemImage: "doc.richtext").frame(maxWidth: .infinity)
+                }
             }
-            .buttonStyle(.bordered).controlSize(.large).disabled(true)
+            .buttonStyle(.bordered).controlSize(.large)
+            .disabled(isPdfLoading)
             .accessibilityIdentifier("pos.zReport.pdf")
+        }
+    }
+
+    // MARK: - §39 PDF generation
+
+    @MainActor
+    private func generateAndPreviewPDF() async {
+        isPdfLoading = true
+        defer { isPdfLoading = false }
+        do {
+            let url = try await ZReportPDFRenderer.render(
+                session: session,
+                aggregates: aggregates
+            )
+            pdfPreviewItem = ZReportPDFItem(url: url)
+        } catch {
+            pdfError = error.localizedDescription
         }
     }
 
@@ -303,3 +357,171 @@ public struct ZReportAggregates: Equatable, Sendable {
         )
     }
 }
+
+// MARK: - §39 PDF renderer (on-device, no server)
+
+/// Renders `ZReportView` content into a temporary PDF file using
+/// `ImageRenderer`. Returns the file URL for QuickLook preview or sharing.
+///
+/// Sovereignty: no data leaves the device; the PDF is written to
+/// `tmp/<sessionId>-zreport.pdf` and never uploaded here.
+@available(iOS 16.0, *)
+public enum ZReportPDFRenderer {
+
+    public static func render(
+        session: CashSessionRecord,
+        aggregates: ZReportAggregates
+    ) async throws -> URL {
+        let filename = "\(session.id ?? 0)-zreport.pdf"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(filename)
+
+        // Build a printable summary view — self-contained, no nav chrome.
+        let printable = ZReportPrintBody(session: session, aggregates: aggregates)
+
+        // ImageRenderer must run on the main actor.
+        let pdfData: Data = await MainActor.run {
+            let renderer = ImageRenderer(content: printable)
+            renderer.proposedSize = ProposedViewSize(width: 595, height: nil) // A4 width pts
+
+            var data = Data()
+            renderer.render { size, ctx in
+                var box = CGRect(origin: .zero, size: CGSize(width: size.width, height: size.height))
+                guard let pdf = CGContext(data as CFMutableData, mediaBox: &box, nil) else { return }
+                pdf.beginPDFPage(nil)
+                ctx(pdf)
+                pdf.endPDFPage()
+                pdf.closePDF()
+            }
+            return data
+        }
+
+        guard !pdfData.isEmpty else {
+            throw ZReportPDFError.renderFailed
+        }
+        try pdfData.write(to: url, options: .atomic)
+        return url
+    }
+}
+
+public enum ZReportPDFError: LocalizedError {
+    case renderFailed
+    public var errorDescription: String? { "Z-report PDF could not be rendered." }
+}
+
+// MARK: - §39 printable body (used by renderer — no navigation chrome)
+
+#if canImport(UIKit)
+/// Standalone printable representation of the Z-report used by
+/// `ZReportPDFRenderer`. Mirrors the same data tiles as `ZReportView` but
+/// without navigation bars or interactive controls so the PDF page is clean.
+private struct ZReportPrintBody: View {
+    let session: CashSessionRecord
+    let aggregates: ZReportAggregates
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Title header
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Z-Report")
+                    .font(.system(size: 22, weight: .bold))
+                Text(ZReportView.formatRange(session))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // Financial summary
+            let items: [(String, Int?)] = [
+                ("Sales",     aggregates.salesCents),
+                ("Tax",       aggregates.taxCents),
+                ("Tips",      aggregates.tipsCents),
+                ("Refunds",   aggregates.refundCents),
+                ("Discounts", aggregates.discountCents),
+                ("Opening float", session.openingFloat),
+            ]
+            ForEach(items, id: \.0) { label, cents in
+                HStack {
+                    Text(label).font(.system(size: 13))
+                    Spacer()
+                    Text(cents.map { CartMath.formatCents($0) } ?? "—")
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                }
+            }
+
+            Divider()
+
+            // Variance
+            let variance = session.varianceCents ?? 0
+            HStack {
+                Text("Variance").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text(CloseRegisterSheet.formatSigned(cents: variance))
+                    .font(.system(size: 13, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(CashVariance.band(cents: variance).color)
+            }
+
+            // Loss prevention
+            let lpItems: [(String, Int?)] = [
+                ("Voids",             aggregates.voidCount),
+                ("No sales",          aggregates.noSaleCount),
+                ("Discount overrides", aggregates.discountOverrideCount),
+            ]
+            ForEach(lpItems, id: \.0) { label, count in
+                HStack {
+                    Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(count.map(String.init) ?? "—")
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 595)
+        .background(Color.white)
+    }
+}
+
+extension ZReportView {
+    /// Helper for `ZReportPrintBody` to format the shift date range.
+    static func formatRange(_ session: CashSessionRecord) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        let start = f.string(from: session.openedAt)
+        guard let to = session.closedAt else { return start }
+        return "\(start) → \(f.string(from: to))"
+    }
+}
+
+// MARK: - §39 QuickLook PDF preview sheet
+
+/// Wraps `QLPreviewController` for presenting a locally rendered Z-report PDF.
+struct ZReportPDFPreview: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let ql = ZReportQLController(url: url)
+        return UINavigationController(rootViewController: ql)
+    }
+
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+
+    final class ZReportQLController: QLPreviewController, QLPreviewControllerDataSource {
+        private let url: URL
+        init(url: URL) {
+            self.url = url
+            super.init(nibName: nil, bundle: nil)
+            dataSource = self
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController,
+                               previewItemAt index: Int) -> any QLPreviewItem { url as NSURL }
+    }
+}
+#endif // canImport(UIKit) — printable body + QuickLook

@@ -31,6 +31,10 @@ public struct PosCashAmountView: View {
     public let onCancel: () -> Void
 
     @State private var digits: String = ""
+    /// §16.6 — tracks whether change was already positive so we only fire the
+    /// "change due" haptic + pop animation once when the threshold is first crossed.
+    @State private var changePopScale: CGFloat = 1.0
+    @State private var didCrossChangeDue: Bool = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.posTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -118,7 +122,7 @@ public struct PosCashAmountView: View {
                     .shadow(color: theme.primary.opacity(0.22), radius: 5, x: 0, y: 4)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.6), lineWidth: 0.5)
+                            .strokeBorder(Color.bizarreOnSurface.opacity(0.6), lineWidth: 0.5)
                             .blendMode(.overlay)
                     )
                 Text("💵")
@@ -219,7 +223,10 @@ public struct PosCashAmountView: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: false))
+                    // §16.6 — pop scale animation when change becomes positive.
+                    .scaleEffect(changePopScale)
                     .animation(reduceMotion ? .none : .spring(duration: 0.2), value: changeCents)
+                    .animation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.55), value: changePopScale)
                     .minimumScaleFactor(0.65)
                     .lineLimit(1)
             }
@@ -227,6 +234,23 @@ public struct PosCashAmountView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Change due: \(receivedCents >= dueCents ? CartMath.formatCents(changeCents) : "none")")
             .accessibilityIdentifier("pos.cashAmountV2.change")
+            // §16.6 — fire haptic + scale pop when received amount first reaches due.
+            .onChange(of: canConfirm) { _, nowCanConfirm in
+                if nowCanConfirm && !didCrossChangeDue {
+                    didCrossChangeDue = true
+                    BrandHaptics.success()
+                    if !reduceMotion {
+                        changePopScale = 1.18
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 160_000_000)
+                            changePopScale = 1.0
+                        }
+                    }
+                } else if !nowCanConfirm {
+                    // Reset so re-entry can trigger haptic again.
+                    didCrossChangeDue = false
+                }
+            }
         }
         .padding(.vertical, BrandSpacing.md)
         .padding(.horizontal, BrandSpacing.base)
@@ -315,12 +339,12 @@ public struct PosCashAmountView: View {
                         .fill(
                             selected
                             ? AnyShapeStyle(theme.primary.opacity(0.06))
-                            : AnyShapeStyle(Color.white.opacity(0.04))
+                            : AnyShapeStyle(Color.bizarreOnSurface.opacity(0.04))
                         )
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        selected ? theme.primary.opacity(0.40) : Color.white.opacity(0.11),
+                        selected ? theme.primary.opacity(0.40) : Color.bizarreOnSurface.opacity(0.11),
                         lineWidth: 1
                     )
                 )
@@ -424,13 +448,13 @@ public struct PosCashAmountView: View {
 
     private var numKeyBackground: some View {
         RoundedRectangle(cornerRadius: 14)
-            .fill(Color.white.opacity(0.055))
+            .fill(Color.bizarreOnSurface.opacity(0.055))
             .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 4)
     }
 
     private var numKeyBorder: some View {
         RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+            .strokeBorder(Color.bizarreOnSurface.opacity(0.13), lineWidth: 1)
     }
 
     // MARK: - Confirm footer
@@ -456,6 +480,8 @@ public struct PosCashAmountView: View {
                 // Primary CTA
                 Button {
                     guard canConfirm else { return }
+                    // §16.6 — tactile confirm so cashier feels the sale land.
+                    BrandHaptics.success()
                     onConfirm(receivedCents)
                 } label: {
                     HStack(spacing: 10) {
@@ -522,7 +548,7 @@ public struct PosCashAmountView: View {
 
     private var confirmBorder: some View {
         RoundedRectangle(cornerRadius: 18)
-            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
+            .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1)
     }
 
     // MARK: - Digit management

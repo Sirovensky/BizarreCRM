@@ -129,19 +129,24 @@ public struct LoyaltyBalanceView: View {
     }
 
     private func pointsRow(_ points: Int) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: BrandSpacing.xs) {
-            Text(points.formatted(.number))
-                .font(.brandMono(size: 36))
-                .foregroundStyle(.bizarreOnSurface)
-                .animation(
-                    reduceMotion ? .none : BrandMotion.statusChange,
-                    value: points
-                )
-                .accessibilityLabel("\(points) loyalty points")
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: BrandSpacing.xs) {
+                Text(points.formatted(.number))
+                    .font(.brandMono(size: 36))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .animation(
+                        reduceMotion ? .none : BrandMotion.statusChange,
+                        value: points
+                    )
+                    .accessibilityLabel("\(points) loyalty points")
 
-            Text("pts")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text("pts")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+
+            // Copy chip — lets staff paste the balance into comms or POS notes.
+            PointsBalanceCopyChip(points: points)
         }
         .padding(.top, BrandSpacing.sm)
     }
@@ -259,5 +264,57 @@ public struct LoyaltyBalanceView: View {
         let spend = String(format: "%.2f", dollars)
         return "\(tier.displayName) loyalty member. \(balance.points) points. " +
                "Lifetime spend $\(spend). Member since \(formattedDate(balance.memberSince))."
+    }
+}
+
+// MARK: - Points balance copy chip
+
+/// Compact tappable chip that copies the formatted points balance to the clipboard.
+///
+/// Tapping briefly shows a "Copied!" confirmation then resets.
+private struct PointsBalanceCopyChip: View {
+    let points: Int
+
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            copyToPasteboard()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .medium))
+                    .accessibilityHidden(true)
+                Text(copied ? "Copied!" : "\(points.formatted(.number)) pts")
+                    .font(.brandMono(size: 11))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, 3)
+            .foregroundStyle(copied ? .bizarreSuccess : .bizarreOrange)
+            .background(
+                (copied ? Color.bizarreSuccess : Color.bizarreOrange).opacity(0.12),
+                in: Capsule()
+            )
+            .animation(.easeInOut(duration: 0.15), value: copied)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copied ? "Points balance copied" : "Copy points balance: \(points) points")
+        .accessibilityHint(copied ? "" : "Double-tap to copy to clipboard")
+    }
+
+    private func copyToPasteboard() {
+        let text = "\(points) pts"
+#if canImport(UIKit)
+        UIPasteboard.general.string = text
+#elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+#endif
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
     }
 }

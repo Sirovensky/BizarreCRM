@@ -38,4 +38,14 @@ public extension APIClient {
             as: ReminderResponseEmpty.self
         )
     }
+
+    /// `GET /api/v1/invoices/:invoiceId/installment-plans`
+    /// Returns the active installment plan for an invoice.
+    /// Throws (typically 404) when no plan has been set up yet.
+    func invoiceInstallmentPlan(invoiceId: Int64) async throws -> InstallmentPlan {
+        try await get(
+            "/api/v1/invoices/\(invoiceId)/installment-plans",
+            as: InstallmentPlan.self
+        )
+    }
 }

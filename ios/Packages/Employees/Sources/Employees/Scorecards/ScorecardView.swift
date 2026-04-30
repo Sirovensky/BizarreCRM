@@ -5,6 +5,19 @@ import Core
 import DesignSystem
 import Networking
 
+// MARK: - ScorecardVisibility
+//
+// §46.4 — Scorecard private by default: only self + direct manager see it;
+// owner sees all. This enum is set by the caller based on the current
+// viewer's role; ScorecardViewModel enforces access before showing data.
+
+public enum ScorecardVisibilityRole: Sendable {
+    case `self`     // Viewing own scorecard — always allowed.
+    case manager    // Manager viewing their direct report — allowed.
+    case owner      // Owner / admin — sees all.
+    case other      // No access — shows access-denied state.
+}
+
 // MARK: - ScorecardViewModel
 
 @MainActor
@@ -14,16 +27,24 @@ public final class ScorecardViewModel {
     public private(set) var scorecard: EmployeeScorecard?
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?
+    /// Viewer role gate — set by the host before calling `load()`.
+    public var visibilityRole: ScorecardVisibilityRole = .self
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let employeeId: String
 
-    public init(api: APIClient, employeeId: String) {
+    public init(api: APIClient, employeeId: String, visibilityRole: ScorecardVisibilityRole = .self) {
         self.api = api
         self.employeeId = employeeId
+        self.visibilityRole = visibilityRole
     }
 
     public func load() async {
+        // §46.4 — Private by default: block access for 'other' roles.
+        guard visibilityRole != .other else {
+            errorMessage = "You don't have permission to view this scorecard."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil

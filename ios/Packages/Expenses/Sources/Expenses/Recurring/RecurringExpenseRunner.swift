@@ -4,21 +4,27 @@ import Core
 
 // MARK: - RecurringExpenseRunner
 
-/// Client-side runner: fetches recurring rules and tells the UI which one
-/// is due next. Server generates actual expense records; this just surfaces
-/// "Next recurring expense: Rent on Dec 1" in the dashboard.
+/// Client-side runner: fetches recurring rules via the repository and surfaces
+/// which one is due next — e.g. "Next recurring expense: Rent on Dec 1".
+/// Server generates actual expense records; this only drives dashboard UX.
 public actor RecurringExpenseRunner {
 
     // MARK: - Properties
 
-    private let api: APIClient
+    private let repository: any RecurringExpenseRepository
     private var cachedRules: [RecurringExpenseRule] = []
     private var lastFetchedAt: Date?
 
     // MARK: - Init
 
+    /// Primary init — inject a pre-built repository (testable).
+    public init(repository: any RecurringExpenseRepository) {
+        self.repository = repository
+    }
+
+    /// Convenience init for callers that hold an `APIClient` directly.
     public init(api: APIClient) {
-        self.api = api
+        self.repository = LiveRecurringExpenseRepository(api: api)
     }
 
     // MARK: - Public API
@@ -31,20 +37,18 @@ public actor RecurringExpenseRunner {
 
     /// The full list of rules (for `RecurringExpenseListView`).
     public func fetchRules() async throws -> [RecurringExpenseRule] {
-        let rules: [RecurringExpenseRule] = try await api.get(
-            "/api/v1/expenses/recurring", as: [RecurringExpenseRule].self
-        )
+        let rules = try await repository.fetchRules()
         cachedRules = rules
         lastFetchedAt = Date()
         return rules
     }
 
     public func createRule(_ body: CreateRecurringExpenseBody) async throws -> RecurringExpenseRule {
-        try await api.post("/api/v1/expenses/recurring", body: body, as: RecurringExpenseRule.self)
+        try await repository.createRule(body)
     }
 
     public func deleteRule(id: Int64) async throws {
-        try await api.delete("/api/v1/expenses/recurring/\(id)")
+        try await repository.deleteRule(id: id)
     }
 
     // MARK: - Private

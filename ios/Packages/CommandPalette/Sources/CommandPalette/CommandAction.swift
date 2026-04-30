@@ -18,6 +18,29 @@ public enum EntitySuggestion: Sendable, Equatable {
     case sku(value: String)
 }
 
+// MARK: - KeyboardShortcutHint
+
+/// Human-readable description of a keyboard shortcut shown in result rows.
+///
+/// Examples: `⌘N`, `⌘⇧F`, `⌘,`
+/// Set `modifiers` from most to least significant: ⌘ → ⌃ → ⌥ → ⇧.
+public struct KeyboardShortcutHint: Sendable, Equatable {
+    /// Modifier glyphs in display order (e.g. ["⌘", "⇧"]).
+    public let modifiers: [String]
+    /// The base key glyph (e.g. "N", "F", ",").
+    public let key: String
+
+    /// Compact display string, e.g. "⌘⇧F".
+    public var displayString: String {
+        modifiers.joined() + key
+    }
+
+    public init(modifiers: [String] = [], key: String) {
+        self.modifiers = modifiers
+        self.key = key
+    }
+}
+
 // MARK: - CommandAction
 
 /// A single action the user can execute from the Command Palette.
@@ -31,6 +54,10 @@ public struct CommandAction: Identifiable, Sendable {
     public let icon: String
     /// Additional terms used for fuzzy matching (not displayed).
     public let keywords: [String]
+    /// Optional keyboard shortcut hint displayed in the result row.
+    /// Purely decorative — the actual shortcut registration is the host app's
+    /// responsibility via `.keyboardShortcut(_:modifiers:)` on a Menu command.
+    public let shortcutHint: KeyboardShortcutHint?
     /// Executed when the user selects this action.
     public let handler: @Sendable () -> Void
 
@@ -39,12 +66,14 @@ public struct CommandAction: Identifiable, Sendable {
         title: String,
         icon: String,
         keywords: [String] = [],
+        shortcutHint: KeyboardShortcutHint? = nil,
         handler: @escaping @Sendable () -> Void
     ) {
         self.id = id
         self.title = title
         self.icon = icon
         self.keywords = keywords
+        self.shortcutHint = shortcutHint
         self.handler = handler
     }
 }
@@ -78,6 +107,7 @@ public enum CommandCatalog {
                 title: "New Ticket",
                 icon: "ticket",
                 keywords: ["create", "repair", "job", "add"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "N"),
                 handler: newTicket
             ),
             CommandAction(
@@ -85,6 +115,7 @@ public enum CommandCatalog {
                 title: "New Customer",
                 icon: "person.badge.plus",
                 keywords: ["create", "add", "client", "contact"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘", "⇧"], key: "N"),
                 handler: newCustomer
             ),
             CommandAction(
@@ -99,6 +130,7 @@ public enum CommandCatalog {
                 title: "Find Customer by Name",
                 icon: "person.fill.viewfinder",
                 keywords: ["search", "lookup", "client"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "F"),
                 handler: findCustomerName
             ),
             CommandAction(
@@ -106,6 +138,7 @@ public enum CommandCatalog {
                 title: "Open Dashboard",
                 icon: "gauge",
                 keywords: ["home", "overview", "main", "hub"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "1"),
                 handler: openDashboard
             ),
             CommandAction(
@@ -113,6 +146,7 @@ public enum CommandCatalog {
                 title: "Open POS",
                 icon: "cart.fill",
                 keywords: ["sale", "register", "checkout", "payment"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "2"),
                 handler: openPOS
             ),
             CommandAction(
@@ -134,6 +168,7 @@ public enum CommandCatalog {
                 title: "Open Tickets",
                 icon: "list.bullet.clipboard",
                 keywords: ["repair", "jobs", "queue", "work"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "3"),
                 handler: openTickets
             ),
             CommandAction(
@@ -141,6 +176,7 @@ public enum CommandCatalog {
                 title: "Open Inventory",
                 icon: "shippingbox.fill",
                 keywords: ["parts", "stock", "items", "catalog"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: "4"),
                 handler: openInventory
             ),
             CommandAction(
@@ -148,6 +184,7 @@ public enum CommandCatalog {
                 title: "Settings: Tax",
                 icon: "percent",
                 keywords: ["tax", "vat", "config", "preferences", "rate"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘"], key: ","),
                 handler: settingsTax
             ),
             CommandAction(
@@ -162,6 +199,7 @@ public enum CommandCatalog {
                 title: "Reports: Revenue This Month",
                 icon: "chart.bar.fill",
                 keywords: ["revenue", "sales", "income", "analytics", "monthly"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘", "⇧"], key: "R"),
                 handler: reportsRevenue
             ),
             CommandAction(
@@ -169,6 +207,7 @@ public enum CommandCatalog {
                 title: "Send SMS",
                 icon: "message.fill",
                 keywords: ["text", "message", "customer", "notify"],
+                shortcutHint: KeyboardShortcutHint(modifiers: ["⌘", "⇧"], key: "M"),
                 handler: sendSMS
             ),
             CommandAction(

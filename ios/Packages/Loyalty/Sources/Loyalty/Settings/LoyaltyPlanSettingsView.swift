@@ -39,7 +39,7 @@ public final class LoyaltyPlanSettingsViewModel {
             //   GET /api/v1/membership/tiers  → active tier list
             //   GET /api/v1/settings/loyalty/rule  → earn rule (if endpoint exists)
             async let tiersTask = api.listMembershipTiers()
-            async let ruleTask  = api.get("/settings/loyalty/rule", as: LoyaltyRule.self)
+            async let ruleTask  = api.getLoyaltyRule()
             let (tiers, fetchedRule) = try await (tiersTask, ruleTask)
             // Map MembershipTierDTO → MembershipPlan for the shared form
             plans = tiers.map { tier in
@@ -85,7 +85,7 @@ public final class LoyaltyPlanSettingsViewModel {
         defer { isSaving = false }
         do {
             // Server route: DELETE /api/v1/membership/tiers/:id (soft-delete)
-            try await api.delete("/membership/tiers/\(plan.id)")
+            try await api.deleteMembershipTier(id: plan.id)
             plans.removeAll { $0.id == plan.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -99,35 +99,11 @@ public final class LoyaltyPlanSettingsViewModel {
         do {
             if plans.contains(where: { $0.id == plan.id }) {
                 // Server route: PUT /api/v1/membership/tiers/:id
-                let dto = try await api.put(
-                    "/membership/tiers/\(plan.id)",
-                    body: MembershipPlanRequest(plan),
-                    as: MembershipTierDTO.self
-                )
-                let updated = MembershipPlan(
-                    id: String(dto.id),
-                    name: dto.name,
-                    pricePerPeriodCents: Int(dto.monthlyPrice * 100),
-                    periodDays: 30,
-                    perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
-                    signupBonusPoints: 0
-                )
+                let updated = try await api.updateMembershipTier(id: plan.id, plan: plan)
                 plans = plans.map { $0.id == plan.id ? updated : $0 }
             } else {
                 // Server route: POST /api/v1/membership/tiers
-                let dto = try await api.post(
-                    "/membership/tiers",
-                    body: MembershipPlanRequest(plan),
-                    as: MembershipTierDTO.self
-                )
-                let created = MembershipPlan(
-                    id: String(dto.id),
-                    name: dto.name,
-                    pricePerPeriodCents: Int(dto.monthlyPrice * 100),
-                    periodDays: 30,
-                    perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
-                    signupBonusPoints: 0
-                )
+                let created = try await api.createMembershipTier(plan)
                 plans.append(created)
             }
             showPlanEditor = false
@@ -141,11 +117,7 @@ public final class LoyaltyPlanSettingsViewModel {
         isSaving = true
         defer { isSaving = false }
         do {
-            let saved = try await api.put(
-                "/settings/loyalty/rule",
-                body: newRule,
-                as: LoyaltyRule.self
-            )
+            let saved = try await api.updateLoyaltyRule(newRule)
             rule = saved
             showRuleEditor = false
         } catch {
@@ -609,29 +581,3 @@ struct RuleEditorSheet: View {
     }
 }
 
-// MARK: - Request DTO
-
-private struct MembershipPlanRequest: Encodable, Sendable {
-    let id: String
-    let name: String
-    let pricePerPeriodCents: Int
-    let periodDays: Int
-    let perks: [MembershipPerk]
-    let signupBonusPoints: Int
-
-    init(_ plan: MembershipPlan) {
-        self.id = plan.id
-        self.name = plan.name
-        self.pricePerPeriodCents = plan.pricePerPeriodCents
-        self.periodDays = plan.periodDays
-        self.perks = plan.perks
-        self.signupBonusPoints = plan.signupBonusPoints
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, perks
-        case pricePerPeriodCents = "price_per_period_cents"
-        case periodDays          = "period_days"
-        case signupBonusPoints   = "signup_bonus_points"
-    }
-}

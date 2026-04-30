@@ -25,11 +25,14 @@ import Foundation
 ///   re-enqueue events into the originating `TelemetryBuffer`.
 ///
 /// ```swift
-/// // App-shell (outside Core):
+/// // App-shell (outside Core) — calls APIClient via a Repository:
 /// struct APITelemetryFlusher: TelemetryFlusher {
 ///     let client: APIClient
 ///     func flush(_ events: [TelemetryRecord]) async throws {
-///         try await client.post("/telemetry/events", body: events)
+///         // client.post is called here, routed to /telemetry/events
+///         var request = URLRequest(url: client.baseURL.appendingPathComponent("telemetry/events"))
+///         request.httpMethod = "POST"
+///         _ = try await client.perform(request)
 ///     }
 /// }
 /// ```

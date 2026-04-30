@@ -104,11 +104,21 @@ public struct ScheduledReportsSettingsView: View {
             ProgressView("Loading…")
                 .accessibilityLabel("Loading scheduled reports")
         } else if vm.schedules.isEmpty {
-            ContentUnavailableView(
-                "No Scheduled Reports",
-                systemImage: "clock",
-                description: Text("Tap + to schedule a recurring report email.")
-            )
+            ContentUnavailableView {
+                Label("No Scheduled Reports", systemImage: "clock.badge.checkmark")
+            } description: {
+                Text("Automatically receive reports by email on a daily, weekly, or monthly cadence.")
+            } actions: {
+                Button {
+                    vm.showAddSheet = true
+                } label: {
+                    Label("Schedule a Report", systemImage: "plus.circle.fill")
+                        .font(.brandLabelLarge())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Schedule a new recurring report")
+            }
         } else {
             List {
                 ForEach(vm.schedules) { schedule in

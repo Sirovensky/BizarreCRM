@@ -18,6 +18,7 @@ public struct AppointmentCreateFullView: View {
     @State private var vm: AppointmentCreateFullViewModel
     @State private var showRepeatSheet = false
     @State private var showConflictAlert = false
+    @State private var showConflictToast = false
 
     public init(api: APIClient) {
         _vm = State(wrappedValue: AppointmentCreateFullViewModel(api: api))
@@ -42,6 +43,14 @@ public struct AppointmentCreateFullView: View {
         .onChange(of: vm.createdId) { _, id in
             if id != nil { dismiss() }
         }
+        .onChange(of: vm.conflictWarning) { _, hasConflict in
+            // Show toast whenever a conflict is detected (e.g. slot tapped).
+            if hasConflict { showConflictToast = true }
+        }
+        .appointmentConflictToast(
+            isVisible: $showConflictToast,
+            onResolve: { showConflictAlert = true }
+        )
     }
 
     // MARK: - iPhone layout
@@ -83,6 +92,7 @@ public struct AppointmentCreateFullView: View {
                     Form {
                         slotSection
                         notesSection
+                        reminderSection
                         repeatSection
                         errorSection
                     }
@@ -103,6 +113,7 @@ public struct AppointmentCreateFullView: View {
         technicianSection
         slotSection
         notesSection
+        reminderSection
         repeatSection
         errorSection
     }
@@ -276,6 +287,28 @@ public struct AppointmentCreateFullView: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
+    // MARK: - §10.2 Reminder offsets
+
+    private var reminderSection: some View {
+        Section("Reminders") {
+            ReminderOffsetRow(
+                label: "15 minutes before",
+                minutes: 15,
+                selection: $vm.reminderOffsets
+            )
+            ReminderOffsetRow(
+                label: "1 hour before",
+                minutes: 60,
+                selection: $vm.reminderOffsets
+            )
+            ReminderOffsetRow(
+                label: "1 day before",
+                minutes: 1440,
+                selection: $vm.reminderOffsets
+            )
+        }
+    }
+
     private var notesSection: some View {
         Section("Notes") {
             TextField("Optional notes", text: $vm.notes, axis: .vertical)
@@ -367,5 +400,36 @@ public struct AppointmentCreateFullView: View {
         }
         // fallback: return last portion of ISO string
         return String(iso.suffix(8).prefix(5))
+    }
+}
+
+// MARK: - §10.2 ReminderOffsetRow
+
+/// A form toggle row that adds/removes a minute-offset from the
+/// `reminderOffsets` set on the create view model.
+private struct ReminderOffsetRow: View {
+    let label: String
+    let minutes: Int
+    @Binding var selection: Set<Int>
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { selection.contains(minutes) },
+            set: { isOn in
+                if isOn { selection.insert(minutes) } else { selection.remove(minutes) }
+            }
+        )) {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "bell")
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+        }
+        .tint(.bizarreOrange)
+        .listRowBackground(Color.bizarreSurface1)
+        .accessibilityLabel("Reminder: \(label). \(selection.contains(minutes) ? "Enabled" : "Disabled")")
     }
 }

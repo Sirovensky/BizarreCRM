@@ -139,4 +139,18 @@ public extension APIClient {
         throw APITransportError.httpStatus(501, message: "Coming soon — POS-SESSIONS-001")
         // return try await get("/api/v1/pos/cash-sessions/\(sessionId)/z-report", as: ZReportDTO.self)
     }
+
+    /// §39.3 — `GET /cash-register/x-report` — peek current shift without closing.
+    ///
+    /// X-report = mid-shift totals view. Server route: `/cash-register/x-report`.
+    /// Status: endpoint exists (per `docs/ios-api-gap-audit.md`).
+    ///
+    /// The response shape mirrors `ZReportDTO` but the session stays open.
+    func getXReport() async throws -> ZReportDTO {
+        // Route confirmed at packages/server/src/routes/pos.routes.ts — uses the
+        // same DTO shape as Z-report but session status stays "open".
+        // Stub until server-side ticket POS-XREPORT-001 is merged.
+        throw APITransportError.httpStatus(501, message: "Coming soon — POS-XREPORT-001")
+        // return try await get("/api/v1/cash-register/x-report", as: ZReportDTO.self)
+    }
 }

@@ -80,14 +80,54 @@ public struct PosRepairQuoteView: View {
         self.coordinator = coordinator
     }
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
     public var body: some View {
+        // iPad: parent inspector pane provides step indicator + Cancel /
+        // Skip / Continue footer. Render content only.
+        // iPhone: full screen with progress strip + ctaBar.
+        if hSizeClass == .regular {
+            iPadBody
+        } else {
+            iPhoneBody
+        }
+    }
+
+    private var iPadBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            diagnosticNotesSection
+            partsLaborSection.padding(.top, 8)
+            estimateHeroCard.padding(.top, 10)
+            Spacer().frame(height: 16)
+
+            // "Add line" button surfaced inline since iPad has no nav-bar
+            // toolbar to host it.
+            Button {
+                showingAddLine = true
+            } label: {
+                Label("Add line", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.bizarreOrange)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .accessibilityLabel("Add parts/labor line")
+            .accessibilityIdentifier("repairFlow.quote.addLine")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showingAddLine) {
+            addLineSheet
+        }
+    }
+
+    private var iPhoneBody: some View {
         VStack(spacing: 0) {
             // Step 3/4 progress bar pinned below nav (66%)
             // Gradient: primary (orange) → primary-bright, left → right per mockup.
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color(white: 1, opacity: 0.06))
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
                     Rectangle()
                         .fill(
                             LinearGradient(
@@ -169,7 +209,7 @@ public struct PosRepairQuoteView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(10)
-                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 12))
+                .background(Color.bizarreOnSurface.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
                 .padding(.horizontal, 16)
                 .accessibilityLabel("Diagnostic notes")
@@ -229,7 +269,7 @@ public struct PosRepairQuoteView: View {
                             .foregroundStyle(Color.black.opacity(0.7))
                     } else {
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color(white: 1, opacity: 0.2), lineWidth: 1.5)
+                            .stroke(Color.bizarreOnSurface.opacity(0.2), lineWidth: 1.5)
                             .frame(width: 22, height: 22)
                     }
                 }
@@ -267,7 +307,7 @@ public struct PosRepairQuoteView: View {
                         .stroke(
                             isIncluded
                                 ? Color.bizarreOrange.opacity(0.35)
-                                : Color(white: 1, opacity: 0.07),
+                                : Color.bizarreOnSurface.opacity(0.07),
                             lineWidth: isIncluded ? 1.5 : 1
                         )
                 )

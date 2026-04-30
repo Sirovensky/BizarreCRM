@@ -2,8 +2,10 @@ import Foundation
 
 // MARK: - Receipt Payload
 
-/// Full data needed to render a receipt on-device. Model is self-contained
-/// (zero deferred network reads inside render) so printing works fully offline.
+/// Full data needed to render a receipt on-device. Model is self-contained:
+/// every value required by the renderer is embedded (including `logoData` as
+/// raw PNG/JPEG bytes), so printing works fully offline with zero deferred
+/// network reads inside the render pipeline. §17.4 compliance.
 public struct ReceiptPayload: Sendable, Codable {
     public struct Line: Sendable, Codable {
         public let label: String
@@ -14,6 +16,10 @@ public struct ReceiptPayload: Sendable, Codable {
         }
     }
 
+    /// Business logo as raw image bytes (PNG or JPEG).
+    /// `nil` → no logo rendered. Never a URL — must be pre-fetched and embedded
+    /// before constructing the payload so the renderer stays offline-capable.
+    public let logoData: Data?
     public let tenantName: String
     public let tenantAddress: String
     public let tenantPhone: String
@@ -25,11 +31,14 @@ public struct ReceiptPayload: Sendable, Codable {
     public let tipCents: Int
     public let totalCents: Int
     public let paymentTender: String
+    /// Auth code / last-4 from payment terminal. Stored as a token; raw PAN never stored.
+    public let paymentAuthLast4: String?
     public let cashierName: String
     public let footerMessage: String?
     public let qrContent: String?
 
     public init(
+        logoData: Data? = nil,
         tenantName: String,
         tenantAddress: String,
         tenantPhone: String,
@@ -41,10 +50,12 @@ public struct ReceiptPayload: Sendable, Codable {
         tipCents: Int,
         totalCents: Int,
         paymentTender: String,
+        paymentAuthLast4: String? = nil,
         cashierName: String,
         footerMessage: String? = nil,
         qrContent: String? = nil
     ) {
+        self.logoData = logoData
         self.tenantName = tenantName
         self.tenantAddress = tenantAddress
         self.tenantPhone = tenantPhone
@@ -56,6 +67,7 @@ public struct ReceiptPayload: Sendable, Codable {
         self.tipCents = tipCents
         self.totalCents = totalCents
         self.paymentTender = paymentTender
+        self.paymentAuthLast4 = paymentAuthLast4
         self.cashierName = cashierName
         self.footerMessage = footerMessage
         self.qrContent = qrContent
@@ -147,6 +159,89 @@ public struct BarcodePayload: Sendable, Codable {
     }
 }
 
+// MARK: - PrintDocumentType
+//
+// §17 "Doc types" — inventory of every printable document type the app supports.
+//
+// Matching between doc type and print medium:
+//   • thermal80mm / thermal58mm  → receipt, giftReceipt, refundReceipt, zReport
+//   • letter / a4 / legal        → invoice, quote, workOrder, waiver, laborCertificate,
+//                                   arStatement, taxSummary, zReport
+//   • label2x4 / label2x1 / etc  → ticketTag (small bag tag)
+//
+// All doc types are rendered fully on-device from local model data. None use
+// a URL-based pipeline (§17.4 lesson from Android regression).
+
+/// The category of document to be printed.
+///
+/// Use this alongside `PrintMedium` to pick the correct paper preset and
+/// SwiftUI view variant.
+public enum PrintDocumentType: String, Sendable, CaseIterable, Codable {
+
+    // MARK: - POS / transaction documents
+
+    /// Standard point-of-sale receipt (thermal 80mm + A4 letter).
+    case receipt             = "Receipt"
+    /// Gift receipt — price-hidden variant.
+    case giftReceipt         = "Gift Receipt"
+    /// Refund receipt (thermal or letter).
+    case refundReceipt       = "Refund Receipt"
+    /// Z-report / end-of-day summary (thermal or letter).
+    case zReport             = "Z-Report"
+
+    // MARK: - Customer-facing documents
+
+    /// Customer invoice with itemised line items, taxes, payment status.
+    case invoice             = "Invoice"
+    /// Estimate / quote for approval.
+    case quote               = "Quote"
+
+    // MARK: - Repair workflow documents
+
+    /// Work order ticket — device + services authorised by customer.
+    case workOrder           = "Work Order"
+    /// Device intake form — pre-conditions checklist + customer signature.
+    case intakeForm          = "Intake Form"
+    /// Customer waiver — liability / data-loss / diagnostic-fee agreement + signature.
+    case waiver              = "Waiver"
+    /// Labor certificate — describes completed work for customer records.
+    case laborCertificate    = "Labor Certificate"
+
+    // MARK: - Accounting documents
+
+    /// A/R statement — open balances for a customer.
+    case arStatement         = "A/R Statement"
+    /// Per-transaction or period tax summary.
+    case taxSummary          = "Tax Summary"
+
+    // MARK: - Helpers
+
+    /// Human-readable display name (identical to rawValue here but exposed explicitly
+    /// so callers don't depend on rawValue stability).
+    public var displayName: String { rawValue }
+
+    /// The preferred `PrintMedium` for this document type when no tenant override is set.
+    public var defaultMedium: PrintMedium {
+        switch self {
+        case .receipt, .giftReceipt, .refundReceipt, .zReport:
+            return .thermal80mm
+        case .invoice, .quote, .workOrder, .intakeForm, .waiver,
+             .laborCertificate, .arStatement, .taxSummary:
+            return PrintMedium.tenantDefault
+        }
+    }
+
+    /// True when this document type supports being paginated across multiple pages.
+    public var supportsPagination: Bool {
+        switch self {
+        case .receipt, .giftReceipt, .refundReceipt, .zReport:
+            return false   // thermal roll — continuous, not paginated
+        default:
+            return true
+        }
+    }
+}
+
 // MARK: - Job Payload (sum type)
 
 public enum JobPayload: Sendable {
@@ -154,4 +249,17 @@ public enum JobPayload: Sendable {
     case label(LabelPayload)
     case ticketTag(TicketTagPayload)
     case barcode(BarcodePayload)
+
+    // MARK: - Convenience
+
+    /// The preferred `PrintDocumentType` for this payload.
+    /// Used by `PrintService` to pre-select the paper size in `PrintOptionsSheet`.
+    public var documentType: PrintDocumentType {
+        switch self {
+        case .receipt:    return .receipt
+        case .label:      return .invoice   // label stock for shelf tags
+        case .ticketTag:  return .workOrder
+        case .barcode:    return .receipt   // barcode slips are small; thermal default
+        }
+    }
 }

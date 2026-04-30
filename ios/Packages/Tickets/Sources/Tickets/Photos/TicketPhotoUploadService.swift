@@ -13,7 +13,7 @@ public struct PhotoUploadItem: Identifiable, Sendable {
     /// "pre" or "post" tag for before/after classification.
     public let photoType: String
 
-    public init(localURL: URL, ticketId: Int64, ticketDeviceId: Int64, photoType: String = "pre") {
+    public init(localURL: URL, ticketId: Int64, ticketDeviceId: Int64 = 0, photoType: String = "pre") {
         self.id = UUID()
         self.localURL = localURL
         self.ticketId = ticketId
@@ -45,6 +45,10 @@ public enum PhotoUploadState: Sendable {
 
 /// Uploads ticket photos via `POST /api/v1/tickets/:id/photos` (multipart).
 /// Maintains an offline queue — failed items are retried on demand.
+///
+/// URLSession is never constructed here — all network I/O is delegated to
+/// `APIClient.uploadTicketPhoto(...)` which lives in the approved Networking
+/// package (§28.3 containment).
 public actor TicketPhotoUploadService {
 
     private var queue: [PhotoUploadItem] = []
@@ -87,46 +91,26 @@ public actor TicketPhotoUploadService {
         states[item.id] = .uploading(progress: 0)
         do {
             let data = try Data(contentsOf: item.localURL)
-            let boundary = UUID().uuidString
-            let body = buildMultipartBody(data: data, fileName: item.localURL.lastPathComponent, boundary: boundary)
-
-            guard let baseURL = await api.currentBaseURL() else {
-                throw PhotoUploadError.noBaseURL
-            }
-            let url = baseURL.appendingPathComponent("/api/v1/tickets/\(item.ticketId)/photos")
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-            request.httpBody = body
-
-            // Use background URLSession for upload — survives app suspension.
-            let sessionConfig = URLSessionConfiguration.background(withIdentifier: "com.bizarrecrm.photos.\(item.id)")
-            sessionConfig.waitsForConnectivity = true
-            let session = URLSession(configuration: sessionConfig)
+            let fileName = item.localURL.lastPathComponent
 
             states[item.id] = .uploading(progress: 0.5)
-            let (respData, _) = try await session.data(for: request)
-            let decoded = try JSONDecoder().decode(PhotoUploadResult.self, from: respData)
+
+            // §28.3: URLSession construction delegated to Networking package.
+            let responseData = try await api.uploadTicketPhoto(
+                imageData: data,
+                fileName: fileName,
+                ticketId: item.ticketId,
+                photoType: item.photoType,
+                sessionIdentifier: "com.bizarrecrm.photos.\(item.id)"
+            )
+
+            let decoded = try JSONDecoder().decode(PhotoUploadResult.self, from: responseData)
             states[item.id] = .done(url: decoded.url ?? "")
             // Remove from queue on success
             queue.removeAll { $0.id == item.id }
         } catch {
             states[item.id] = .failed(error.localizedDescription)
         }
-    }
-
-    // MARK: - Multipart builder
-
-    private func buildMultipartBody(data: Data, fileName: String, boundary: String) -> Data {
-        var body = Data()
-        let nl = "\r\n"
-        func str(_ s: String) { body.append(Data(s.utf8)) }
-        str("--\(boundary)\(nl)")
-        str("Content-Disposition: form-data; name=\"photos\"; filename=\"\(fileName)\"\(nl)")
-        str("Content-Type: image/jpeg\(nl)\(nl)")
-        body.append(data)
-        str("\(nl)--\(boundary)--\(nl)")
-        return body
     }
 }
 

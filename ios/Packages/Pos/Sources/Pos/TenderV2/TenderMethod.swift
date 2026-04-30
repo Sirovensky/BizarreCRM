@@ -10,28 +10,65 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     case cash
     case giftCard
     case storeCredit
+    /// §16.6 — Paper check: check # + bank + memo; no payment auth; goes to A/R.
+    case check
+    /// §16.6 — Account credit / net-30: role-gated; only if customer has terms set;
+    /// adds the full amount to the customer's open balance (A/R). No payment auth.
+    case accountCredit
+    /// §16.6 — Financing partner link (Affirm / Klarna). Opens a QR / deep-link
+    /// for the customer to complete on their own device. Webhook confirms sale.
+    case financing
 
     public var id: String { rawValue }
 
     /// Human-readable label shown in method picker tiles and receipts.
     public var displayName: String {
         switch self {
-        case .card:        return "Card"
-        case .cash:        return "Cash"
-        case .giftCard:    return "Gift card"
-        case .storeCredit: return "Store credit"
+        case .card:          return "Card"
+        case .cash:          return "Cash"
+        case .giftCard:      return "Gift card"
+        case .storeCredit:   return "Store credit"
+        case .check:         return "Check"
+        case .accountCredit: return "Account / Net-30"
+        case .financing:     return "Financing"
         }
     }
 
+    // MARK: - §16 Payment method icon SF Symbols
+
     /// SF Symbol name for the tile icon.
-    /// Mockup screen 5a: 💳 card, 💵 cash, 🎁 gift card, 💸 store credit.
-    /// `.fill` variants match the mockup's solid emoji weight.
+    ///
+    /// Symbol choices (all `.fill` weight for visual consistency):
+    /// - card          → `creditcard.fill`          — industry-standard card icon
+    /// - cash          → `banknote.fill`             — paper-money icon
+    /// - giftCard      → `giftcard.fill`             — SF6+ gift card icon
+    /// - storeCredit   → `dollarsign.circle.fill`    — dollar-in-circle (store value)
+    /// - check         → `checkmark.rectangle.fill`  — rectangle matches check shape
+    /// - accountCredit → `building.columns.fill`     — bank / A/R connotation
+    /// - financing     → `clock.arrow.circlepath`    — deferred / installment connotation
     public var systemImage: String {
         switch self {
-        case .card:        return "creditcard.fill"
-        case .cash:        return "banknote.fill"
-        case .giftCard:    return "giftcard.fill"
-        case .storeCredit: return "dollarsign.circle.fill"
+        case .card:          return "creditcard.fill"
+        case .cash:          return "banknote.fill"
+        case .giftCard:      return "giftcard.fill"
+        case .storeCredit:   return "dollarsign.circle.fill"
+        case .check:         return "checkmark.rectangle.fill"
+        case .accountCredit: return "building.columns.fill"
+        case .financing:     return "clock.arrow.circlepath"
+        }
+    }
+
+    /// Accessible label used when the icon is the only visual indicator
+    /// (e.g. applied-tender chips on the receipt summary row).
+    public var iconAccessibilityLabel: String {
+        switch self {
+        case .card:          return "Credit or debit card"
+        case .cash:          return "Cash"
+        case .giftCard:      return "Gift card"
+        case .storeCredit:   return "Store credit"
+        case .check:         return "Check"
+        case .accountCredit: return "Account credit or net 30"
+        case .financing:     return "Financing"
         }
     }
 
@@ -39,10 +76,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// These must match rows in the `payment_methods` table.
     public var apiValue: String {
         switch self {
-        case .card:        return "credit_card"
-        case .cash:        return "cash"
-        case .giftCard:    return "gift_card"
-        case .storeCredit: return "store_credit"
+        case .card:          return "credit_card"
+        case .cash:          return "cash"
+        case .giftCard:      return "gift_card"
+        case .storeCredit:   return "store_credit"
+        case .check:         return "check"
+        case .accountCredit: return "account_credit"
+        case .financing:     return "financing"
         }
     }
 
@@ -53,10 +93,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// integration pending — see `PosCardAmountView.swift`).
     public var isReady: Bool {
         switch self {
-        case .cash:        return true
-        case .giftCard:    return true
-        case .storeCredit: return true
-        case .card:        return false  // TODO: ProximityReader entitlement pending
+        case .cash:          return true
+        case .giftCard:      return true
+        case .storeCredit:   return true
+        case .check:         return true
+        case .accountCredit: return true   // §16.6 role-gated at call site
+        case .financing:     return true   // §16.6 partner link — no SDK dep
+        case .card:          return false  // TODO: ProximityReader entitlement pending
         }
     }
 
@@ -65,18 +108,27 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// `tileSubtitle` to match the mockup layout exactly.
     public var notReadyHint: String? {
         switch self {
-        case .card: return "Tap to Pay — coming soon"
+        case .card: return "Tap to Pay requires a paired terminal. Pair in Settings → Hardware."
         default:    return nil
         }
+    }
+
+    /// Whether this method requires manager PIN / role check before display.
+    /// The caller is responsible for gating; this flag drives UI hints only.
+    public var requiresRoleGate: Bool {
+        self == .accountCredit
     }
 
     /// Subtitle shown on every method tile (ready or not) — matching mockup 5a/4a.
     public var tileSubtitle: String {
         switch self {
-        case .card:        return "Tap to Pay"
-        case .cash:        return "Enter amount"
-        case .giftCard:    return "Scan / enter"
-        case .storeCredit: return "Avail. balance"
+        case .card:          return "Tap to Pay"
+        case .cash:          return "Enter amount"
+        case .giftCard:      return "Scan / enter"
+        case .storeCredit:   return "Avail. balance"
+        case .check:         return "Check # + bank"
+        case .accountCredit: return "Net-30 · A/R"
+        case .financing:     return "Affirm · Klarna"
         }
     }
 
@@ -89,5 +141,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// preserve that display and only grey-out the tile slightly.
     public var isReadySoon: Bool {
         self == .card
+    }
+
+    /// Whether this method requires an additional details sheet rather than
+    /// a simple numeric amount entry.
+    /// - Note: `.accountCredit` uses `PosAccountCreditTenderSheet`; `.check`
+    ///   uses `PosCheckTenderSheet`; `.financing` uses `PosFinancingLinkSheet`.
+    public var requiresDetailsSheet: Bool {
+        self == .check || self == .accountCredit || self == .financing
     }
 }

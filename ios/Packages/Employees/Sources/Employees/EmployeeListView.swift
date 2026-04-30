@@ -108,7 +108,12 @@ public struct EmployeeListView: View {
     @State private var vm: EmployeeListViewModel
     @State private var showCommissionRules: Bool = false
     @State private var showFilters: Bool = false
+    @State private var showClockedInNow: Bool = false
+    @State private var showTeamChat: Bool = false  // §14.5 Team chat
     @State private var selectedEmployee: Employee?
+    @State private var showInvite: Bool = false    // §14.4 Invite
+    /// §14.1 iPad/Mac — toggle between sidebar-list and Table view
+    @State private var useTableView: Bool = false
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: EmployeeCachedRepository? = nil) {
@@ -140,42 +145,143 @@ public struct EmployeeListView: View {
             .sheet(isPresented: $showFilters) {
                 EmployeeFilterSheet(vm: vm)
             }
+            .sheet(isPresented: $showClockedInNow) {
+                NavigationStack {
+                    ClockedInNowView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showClockedInNow = false }
+                            }
+                        }
+                }
+            }
+            .sheet(isPresented: $showTeamChat) {
+                NavigationStack {
+                    TeamChatView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showTeamChat = false }
+                            }
+                        }
+                }
+            }
             .task { await vm.load() }
             .refreshable { await vm.forceRefresh() }
         }
     }
 
-    // MARK: - iPad Layout (NavigationSplitView)
+    // MARK: - iPad Layout (NavigationSplitView or full Table)
 
     private var iPadLayout: some View {
-        NavigationSplitView {
-            ZStack {
-                Color.bizarreSurfaceBase.ignoresSafeArea()
-                sidebarContent
-            }
-            .navigationTitle("Employees")
-            .toolbar { toolbarItems }
-            .sheet(isPresented: $showCommissionRules) {
-                CommissionRulesListView(api: api)
-            }
-            .sheet(isPresented: $showFilters) {
-                EmployeeFilterSheet(vm: vm)
-            }
-            .task { await vm.load() }
-            .refreshable { await vm.forceRefresh() }
-        } detail: {
-            if let emp = selectedEmployee {
-                EmployeeDetailView(
-                    employeeId: emp.id,
-                    displayName: emp.displayName,
-                    api: api
-                )
+        Group {
+            if useTableView {
+                // §14.1 Mac/iPad Table mode — sortable columns, no split
+                NavigationStack {
+                    ZStack {
+                        Color.bizarreSurfaceBase.ignoresSafeArea()
+                        iPadTableContent
+                    }
+                    .navigationTitle("Employees")
+                    .toolbar { toolbarItems }
+                    .task { await vm.load() }
+                    .refreshable { await vm.forceRefresh() }
+                    .sheet(isPresented: $showCommissionRules) { CommissionRulesListView(api: api) }
+                    .sheet(isPresented: $showFilters) { EmployeeFilterSheet(vm: vm) }
+                    .sheet(isPresented: $showClockedInNow) {
+                        NavigationStack {
+                            ClockedInNowView(api: api)
+                                .toolbar {
+                                    ToolbarItem(placement: .cancellationAction) {
+                                        Button("Done") { showClockedInNow = false }
+                                    }
+                                }
+                        }
+                    }
+                    .sheet(isPresented: $showTeamChat) {
+                        NavigationStack {
+                            TeamChatView(api: api)
+                                .toolbar {
+                                    ToolbarItem(placement: .cancellationAction) {
+                                        Button("Done") { showTeamChat = false }
+                                    }
+                                }
+                        }
+                    }
+                }
             } else {
-                ContentUnavailableView(
-                    "Select an employee",
-                    systemImage: "person.crop.circle",
-                    description: Text("Choose an employee from the list to view their details.")
-                )
+                NavigationSplitView {
+                    ZStack {
+                        Color.bizarreSurfaceBase.ignoresSafeArea()
+                        sidebarContent
+                    }
+                    .navigationTitle("Employees")
+                    .toolbar { toolbarItems }
+                    .sheet(isPresented: $showCommissionRules) {
+                        CommissionRulesListView(api: api)
+                    }
+                    .sheet(isPresented: $showFilters) {
+                        EmployeeFilterSheet(vm: vm)
+                    }
+                    .sheet(isPresented: $showClockedInNow) {
+                        NavigationStack {
+                            ClockedInNowView(api: api)
+                                .toolbar {
+                                    ToolbarItem(placement: .cancellationAction) {
+                                        Button("Done") { showClockedInNow = false }
+                                    }
+                                }
+                        }
+                    }
+                    .sheet(isPresented: $showTeamChat) {
+                        NavigationStack {
+                            TeamChatView(api: api)
+                                .toolbar {
+                                    ToolbarItem(placement: .cancellationAction) {
+                                        Button("Done") { showTeamChat = false }
+                                    }
+                                }
+                        }
+                    }
+                    .task { await vm.load() }
+                    .refreshable { await vm.forceRefresh() }
+                } detail: {
+                    if let emp = selectedEmployee {
+                        EmployeeDetailView(
+                            employeeId: emp.id,
+                            displayName: emp.displayName,
+                            api: api
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "Select an employee",
+                            systemImage: "person.crop.circle",
+                            description: Text("Choose an employee from the list to view their details.")
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - iPad Table content
+
+    @ViewBuilder
+    private var iPadTableContent: some View {
+        if vm.isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = vm.errorMessage {
+            errorState(err)
+        } else {
+            VStack(spacing: 0) {
+                if !vm.filter.isDefault { activeFiltersBanner }
+                EmployeeTableView(employees: vm.filteredItems, selection: $selectedEmployee)
+                    .background(Color.bizarreSurface1)
+            }
+            // Navigate to detail on row tap
+            .sheet(item: $selectedEmployee) { emp in
+                NavigationStack {
+                    EmployeeDetailView(employeeId: emp.id, displayName: emp.displayName, api: api)
+                }
             }
         }
     }
@@ -329,11 +435,41 @@ public struct EmployeeListView: View {
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
+                showInvite = true
+            } label: {
+                Image(systemName: "person.badge.plus")
+            }
+            .accessibilityLabel("Invite employee (admin)")
+            .keyboardShortcut("n", modifiers: [.command])
+            .sheet(isPresented: $showInvite) {
+                InviteEmployeeSheet(api: api) { newEmployee in
+                    Task { await vm.load() }
+                }
+            }
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
                 showCommissionRules = true
             } label: {
                 Image(systemName: "percent")
             }
             .accessibilityLabel("Commission Rules (admin)")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
+                showClockedInNow = true
+            } label: {
+                Image(systemName: "clock.badge.checkmark")
+            }
+            .accessibilityLabel("Who's clocked in now")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
+                showTeamChat = true
+            } label: {
+                Image(systemName: "bubble.left.and.bubble.right")
+            }
+            .accessibilityLabel("Open team chat")
         }
         ToolbarItem(placement: .automatic) {
             Button {
@@ -344,6 +480,18 @@ public struct EmployeeListView: View {
             }
             .accessibilityLabel(vm.filter.isDefault ? "Filter employees" : "Filters active")
             .keyboardShortcut("f", modifiers: [.command])
+        }
+        // §14.1 iPad/Mac — toggle List ↔ Table
+        if !Platform.isCompact {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    withAnimation { useTableView.toggle() }
+                } label: {
+                    Image(systemName: useTableView ? "list.bullet" : "tablecells")
+                }
+                .accessibilityLabel(useTableView ? "Switch to list view" : "Switch to table view")
+                .keyboardShortcut("t", modifiers: [.command, .option])
+            }
         }
         ToolbarItem(placement: .automatic) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
@@ -430,6 +578,8 @@ struct EmployeeFilterSheet: View {
                 Section("Status") {
                     Toggle("Show inactive employees", isOn: $vm.filter.showInactive)
                         .accessibilityLabel("Include inactive employees in list")
+                    Toggle("Clocked in now only", isOn: $vm.filter.clockedInOnly)
+                        .accessibilityLabel("Show only employees currently clocked in")
                 }
 
                 Section("Search") {

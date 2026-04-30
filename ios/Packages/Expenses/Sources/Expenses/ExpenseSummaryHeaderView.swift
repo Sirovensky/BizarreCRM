@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import Core
 import DesignSystem
 import Networking
@@ -146,16 +147,22 @@ public struct ExpenseSummaryHeaderView: View {
     }
 
     private var categoryBreakdownColumn: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Text("By Category")
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .tracking(0.6)
-                .textCase(.uppercase)
-                .accessibilityAddTraits(.isHeader)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: BrandSpacing.sm) {
-                    ForEach(categoryTotals.prefix(8)) { cat in
+        HStack(alignment: .top, spacing: BrandSpacing.lg) {
+            // §11.1 Category breakdown pie (iPad/Mac)
+            if categoryTotals.count >= 2 {
+                CategoryPieChart(categoryTotals: Array(categoryTotals.prefix(6)))
+                    .frame(width: 120, height: 120)
+                    .accessibilityLabel("Category breakdown pie chart")
+            }
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text("By Category")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .tracking(0.6)
+                    .textCase(.uppercase)
+                    .accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    ForEach(categoryTotals.prefix(6)) { cat in
                         CategoryChip(category: cat)
                     }
                 }
@@ -174,6 +181,62 @@ public struct ExpenseSummaryHeaderView: View {
 }
 
 // MARK: - CategoryChip
+
+// MARK: - §11.1 Category Pie Chart (iPad/Mac)
+
+/// `Chart.SectorMark` pie showing spend share by category.
+/// `AXChartDescriptorRepresentable` provides a11y description.
+private struct CategoryPieChart: View {
+    let categoryTotals: [ExpenseSummaryHeaderView.CategoryTotal]
+
+    private static let palette: [Color] = [
+        .bizarreOrange,
+        .bizarreSuccess,
+        .bizarreWarning,
+        .bizarreError,
+        Color(red: 0.4, green: 0.6, blue: 0.9),
+        Color(red: 0.7, green: 0.4, blue: 0.9)
+    ]
+
+    var body: some View {
+        Chart(Array(categoryTotals.enumerated()), id: \.element.id) { idx, cat in
+            SectorMark(
+                angle: .value("Amount", cat.total),
+                innerRadius: .ratio(0.55),
+                angularInset: 1.5
+            )
+            .foregroundStyle(Self.palette[idx % Self.palette.count])
+            .accessibilityLabel("\(cat.id.capitalized): \(Int(cat.total)) dollars")
+        }
+        .accessibilityChartDescriptor(PieChartDescriptor(categoryTotals: categoryTotals))
+    }
+}
+
+private struct PieChartDescriptor: AXChartDescriptorRepresentable {
+    let categoryTotals: [ExpenseSummaryHeaderView.CategoryTotal]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let series = AXDataSeriesDescriptor(
+            name: "Expenses by category",
+            isContinuous: false,
+            dataPoints: categoryTotals.map { cat in
+                AXDataPoint(
+                    x: cat.id.capitalized,
+                    y: cat.total,
+                    additionalValues: [],
+                    label: "\(cat.id.capitalized): \(Int(cat.total)) dollars"
+                )
+            }
+        )
+        return AXChartDescriptor(
+            title: "Expenses by category",
+            summary: "Pie chart of spending by category",
+            xAxis: AXCategoricalDataAxisDescriptor(title: "Category", categoryOrder: categoryTotals.map { $0.id.capitalized }),
+            yAxis: AXNumericDataAxisDescriptor(title: "Amount", range: 0...((categoryTotals.max(by: { $0.total < $1.total })?.total ?? 1) * 1.1), gridlinePositions: []) { v in "$\(Int(v))" },
+            series: [series]
+        )
+    }
+}
 
 private struct CategoryChip: View {
     let category: ExpenseSummaryHeaderView.CategoryTotal

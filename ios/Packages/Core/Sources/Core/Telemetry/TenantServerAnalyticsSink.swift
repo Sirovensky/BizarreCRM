@@ -16,7 +16,12 @@ public actor TenantServerAnalyticsSink {
 
     // MARK: — Dependencies
 
-    private let endpoint: URL
+    /// Resolves the destination URL at send-time so we always egress to the
+    /// tenant the user is currently signed in to (§32.0 single-sink rule).
+    /// Returning `nil` means "no tenant configured yet" — the batch is dropped.
+    public typealias EndpointProvider = @Sendable () -> URL?
+
+    private let endpointProvider: EndpointProvider
     private let consentManager: AnalyticsConsentManager
     private let session: any AnalyticsURLSessionProtocol
     private let batchSize: Int
@@ -33,16 +38,53 @@ public actor TenantServerAnalyticsSink {
 
     // MARK: — Init
 
+    /// Static-endpoint init (legacy / tests). Prefer the `endpointProvider:`
+    /// overload in production so the sink follows tenant switches.
     public init(
         endpoint: URL,
         consentManager: AnalyticsConsentManager,
         session: any AnalyticsURLSessionProtocol = URLSession.shared,
         batchSize: Int = 50
     ) {
-        self.endpoint = endpoint
+        self.endpointProvider = { endpoint }
         self.consentManager = consentManager
         self.session = session
         self.batchSize = batchSize
+    }
+
+    /// §32.0 single-sink init — resolves the destination URL **at every flush**
+    /// so when the user switches tenants (or signs in for the first time), all
+    /// subsequent telemetry egresses to the new `APIClient.baseURL`.  Pass a
+    /// closure that reads the canonical base URL (e.g. from `UserDefaults` key
+    /// `com.bizarrecrm.apiBaseURL` and appends `/telemetry/events`).
+    public init(
+        endpointProvider: @escaping EndpointProvider,
+        consentManager: AnalyticsConsentManager,
+        session: any AnalyticsURLSessionProtocol = URLSession.shared,
+        batchSize: Int = 50
+    ) {
+        self.endpointProvider = endpointProvider
+        self.consentManager = consentManager
+        self.session = session
+        self.batchSize = batchSize
+    }
+
+    // MARK: — §32.0 Default endpoint provider
+
+    /// Default §32.0 provider — reads the same `UserDefaults` key the rest of
+    /// the app (`CrashReporter`, etc.) uses for the tenant base URL and appends
+    /// `/telemetry/events`. Returns `nil` when no tenant has been configured;
+    /// callers must guard for that case (the sink will simply drop the batch).
+    public static func defaultEndpointProvider(
+        userDefaults: UserDefaults = .standard,
+        baseURLKey: String = "com.bizarrecrm.apiBaseURL",
+        path: String = "telemetry/events"
+    ) -> EndpointProvider {
+        return {
+            guard let raw = userDefaults.string(forKey: baseURLKey),
+                  let base = URL(string: raw) else { return nil }
+            return base.appendingPathComponent(path)
+        }
     }
 
     // MARK: — Public API
@@ -68,6 +110,10 @@ public actor TenantServerAnalyticsSink {
     // MARK: — Private
 
     private func post(_ batch: [AnalyticsEventPayload]) async {
+        // §32.0 — Resolve the egress URL at send-time so tenant switches take
+        // effect immediately. If no tenant is configured, drop the batch
+        // (better than POSTing to a stale or hardcoded URL).
+        guard let endpoint = endpointProvider() else { return }
         guard let body = try? Self.encoder.encode(batch) else { return }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"

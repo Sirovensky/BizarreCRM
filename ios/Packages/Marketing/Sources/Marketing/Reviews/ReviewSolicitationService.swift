@@ -28,10 +28,7 @@ public actor ReviewSolicitationService {
     ///   within the last 180 days. Throws an `Error` from the network layer on failure.
     public func sendReviewRequest(customerId: String, platform: ReviewPlatform?) async throws {
         // 1. Rate-limit check
-        let lastRequest = try await api.get(
-            "reviews/last-request/\(customerId)",
-            as: ReviewLastRequestResponse.self
-        )
+        let lastRequest = try await api.reviewLastRequest(customerId: customerId)
 
         if let lastDate = lastRequest.lastRequestedAt {
             let daysSince = Calendar.current.dateComponents([.day], from: lastDate, to: Date()).day ?? 0
@@ -47,7 +44,7 @@ public actor ReviewSolicitationService {
         let body = ReviewRequestBody(customerId: customerId, platform: platform, template: template)
 
         // 3. POST
-        _ = try await api.post("reviews/request", body: body, as: ReviewRequestResponse.self)
+        _ = try await api.sendReviewRequest(body)
     }
 
     // MARK: - Helpers

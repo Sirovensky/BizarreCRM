@@ -60,8 +60,11 @@ public struct OfflineBanner: View {
             .padding(.vertical, BrandSpacing.sm)
             .brandGlass(.regular, tint: tint)
             .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(BrandMotion.offlineBanner, value: isOffline)
-            .animation(BrandMotion.offlineBanner, value: pendingCount)
+            // §26.3 — `brandSpring` reads `\.accessibilityReduceMotion` and
+            // swaps the bouncy banner spring for a 0.15s cross-fade when the
+            // user has Reduce Motion enabled.
+            .brandSpring(BrandMotion.offlineBanner, value: isOffline)
+            .brandSpring(BrandMotion.offlineBanner, value: pendingCount)
         } else {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
@@ -70,8 +73,9 @@ public struct OfflineBanner: View {
                 .brandGlass(.regular, tint: tint)
                 .clipShape(Circle())
                 .transition(.scale.combined(with: .opacity))
-                .animation(BrandMotion.offlineBanner, value: isOffline)
-                .animation(BrandMotion.offlineBanner, value: pendingCount)
+                // §26.3 — same OS-flag-aware spring/cross-fade swap.
+                .brandSpring(BrandMotion.offlineBanner, value: isOffline)
+                .brandSpring(BrandMotion.offlineBanner, value: pendingCount)
         }
     }
 }

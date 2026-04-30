@@ -43,6 +43,8 @@ public struct CameraCaptureView: View {
     @State private var service = CameraService()
     @State private var authStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var torchOn: Bool = false
+    @State private var showGrid: Bool = false
+    @State private var isFrontCamera: Bool = false
     @State private var capturedFrames: [Data] = []
     @State private var isCapturing: Bool = false
     @State private var captureError: String?
@@ -78,6 +80,14 @@ public struct CameraCaptureView: View {
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
 
+            // Rule-of-thirds grid overlay.
+            if showGrid {
+                cameraGrid
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
             // Error toast
             if let err = captureError {
                 Text(err)
@@ -96,6 +106,30 @@ public struct CameraCaptureView: View {
             }
 
             bottomBar
+        }
+    }
+
+    // MARK: - Rule-of-thirds grid
+
+    /// Renders a 3×3 rule-of-thirds grid overlay over the camera preview.
+    /// §4.8 — "Camera — AVCaptureSession with flash toggle, flip, grid, shutter haptic."
+    private var cameraGrid: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            Path { p in
+                // Two vertical lines at 1/3 and 2/3 width.
+                p.move(to: CGPoint(x: w / 3, y: 0))
+                p.addLine(to: CGPoint(x: w / 3, y: h))
+                p.move(to: CGPoint(x: 2 * w / 3, y: 0))
+                p.addLine(to: CGPoint(x: 2 * w / 3, y: h))
+                // Two horizontal lines at 1/3 and 2/3 height.
+                p.move(to: CGPoint(x: 0, y: h / 3))
+                p.addLine(to: CGPoint(x: w, y: h / 3))
+                p.move(to: CGPoint(x: 0, y: 2 * h / 3))
+                p.addLine(to: CGPoint(x: w, y: 2 * h / 3))
+            }
+            .stroke(Color.bizarreOnSurface.opacity(0.4), lineWidth: 0.5)
         }
     }
 
@@ -130,7 +164,7 @@ public struct CameraCaptureView: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.white)
                     .frame(width: 48, height: 48)
-                    .background(Color.white.opacity(0.2), in: Circle())
+                    .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close camera")
@@ -147,7 +181,7 @@ public struct CameraCaptureView: View {
                         .strokeBorder(.white, lineWidth: 3)
                         .frame(width: 72, height: 72)
                     Circle()
-                        .fill(isCapturing ? Color.white.opacity(0.6) : Color.white)
+                        .fill(isCapturing ? Color.bizarreOnSurface.opacity(0.6) : Color.white)
                         .frame(width: 60, height: 60)
                         .scaleEffect(isCapturing && !reduceMotion ? 0.9 : 1.0)
                         .animation(
@@ -163,19 +197,53 @@ public struct CameraCaptureView: View {
 
             Spacer()
 
-            // Torch toggle
-            Button {
-                torchOn.toggle()
-            } label: {
-                Image(systemName: torchOn ? "bolt.fill" : "bolt.slash.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(torchOn ? Color.bizarreOrange : .white)
-                    .frame(width: 48, height: 48)
-                    .background(Color.white.opacity(0.2), in: Circle())
+            // Right-side controls: torch + grid + flip (vertical stack so they don't crowd)
+            VStack(spacing: BrandSpacing.sm) {
+                // Torch toggle (disabled on front camera — no front torch on any supported device)
+                Button {
+                    torchOn.toggle()
+                } label: {
+                    Image(systemName: torchOn ? "bolt.fill" : "bolt.slash.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(torchOn ? Color.bizarreOrange : .white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isFrontCamera)  // front camera has no torch
+                .accessibilityLabel(torchOn ? "Turn torch off" : "Turn torch on")
+                .accessibilityIdentifier("camera.torch")
+
+                // Grid overlay toggle
+                // §4.8 — "Camera — grid"
+                Button {
+                    showGrid.toggle()
+                } label: {
+                    Image(systemName: "grid")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(showGrid ? Color.bizarreOrange : .white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
+                .accessibilityIdentifier("camera.grid")
+
+                // Camera flip (front/rear)
+                // §4.8 — "Camera — flip"
+                Button {
+                    Task { await flipCamera() }
+                } label: {
+                    Image(systemName: "camera.rotate")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isFrontCamera ? "Switch to rear camera" : "Switch to front camera")
+                .accessibilityIdentifier("camera.flip")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(torchOn ? "Turn torch off" : "Turn torch on")
-            .accessibilityIdentifier("camera.torch")
         }
         .padding(.horizontal, BrandSpacing.xl)
         .padding(.bottom, BrandSpacing.xxl)
@@ -262,12 +330,26 @@ public struct CameraCaptureView: View {
         }
     }
 
+    private func flipCamera() async {
+        do {
+            try await service.switchCamera()
+            isFrontCamera = await service.isFrontCamera
+            // Turn torch off when switching to front (front has no torch).
+            if isFrontCamera { torchOn = false }
+        } catch {
+            captureError = "Could not switch camera: \(error.localizedDescription)"
+            AppLog.ui.error("CameraCaptureView flip failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func capture() async {
         guard !isCapturing else { return }
         isCapturing = true
         defer { isCapturing = false }
         captureError = nil
-        BrandHaptics.tap()
+        // §4.8 — "Camera — shutter haptic": use medium impact for the tactile
+        // shutter feel, distinct from navigation taps.
+        BrandHaptics.tapMedium()
 
         do {
             let data = try await service.capturePhoto()

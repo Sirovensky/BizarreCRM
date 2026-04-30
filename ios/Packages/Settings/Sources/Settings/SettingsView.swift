@@ -97,28 +97,43 @@ public struct SettingsView: View {
     }
 
     private var iPadSections: [SettingsSection] {
+        // §19.0 role gating: non-admins see only Account, Integrations (Notifications only),
+        // Display, Help, App. Admin sections (Organization, Locations, Payments, Admin) hidden.
         var sections: [SettingsSection] = [
             SettingsSection(id: "account", title: "Account", pages: [
                 SettingsPageEntry(id: "settings.profile",       title: "Profile",           icon: "person.circle"),
+                SettingsPageEntry(id: "settings.security",      title: "Security",          icon: "lock.shield"),
                 SettingsPageEntry(id: "settings.preferences",   title: "Preferences",       icon: "slider.horizontal.3"),
             ]),
-            SettingsSection(id: "organization", title: "Organization", pages: [
-                SettingsPageEntry(id: "settings.businessProfile", title: "Business Profile", icon: "building"),
-                SettingsPageEntry(id: "settings.companyInfo",   title: "Company Info",      icon: "building.2"),
-                SettingsPageEntry(id: "settings.tax",           title: "Tax Settings",      icon: "percent"),
-                SettingsPageEntry(id: "settings.hours",         title: "Business Hours",    icon: "clock"),
-                SettingsPageEntry(id: "settings.languageRegion", title: "Language & Region", icon: "globe"),
-            ]),
-            SettingsSection(id: "locations", title: "Locations", pages: [
-                SettingsPageEntry(id: "settings.locations",     title: "Locations",         icon: "mappin.and.ellipse"),
-            ]),
-            SettingsSection(id: "payments", title: "Payments", pages: [
-                SettingsPageEntry(id: "settings.paymentMethods", title: "Payment Methods",  icon: "creditcard"),
-            ]),
-            SettingsSection(id: "integrations", title: "Integrations", pages: [
-                SettingsPageEntry(id: "settings.notifications", title: "Notifications",     icon: "bell"),
-                SettingsPageEntry(id: "settings.smsProvider",   title: "SMS Provider",      icon: "message"),
-            ]),
+        ]
+        if isAdmin {
+            sections += [
+                SettingsSection(id: "organization", title: "Organization", pages: [
+                    SettingsPageEntry(id: "settings.businessProfile", title: "Business Profile", icon: "building"),
+                    SettingsPageEntry(id: "settings.companyInfo",   title: "Company Info",      icon: "building.2"),
+                    SettingsPageEntry(id: "settings.tax",           title: "Tax Settings",      icon: "percent"),
+                    SettingsPageEntry(id: "settings.hours",         title: "Business Hours",    icon: "clock"),
+                    SettingsPageEntry(id: "settings.languageRegion", title: "Language & Region", icon: "globe"),
+                ]),
+                SettingsSection(id: "locations", title: "Locations", pages: [
+                    SettingsPageEntry(id: "settings.locations",     title: "Locations",         icon: "mappin.and.ellipse"),
+                ]),
+                SettingsSection(id: "payments", title: "Payments", pages: [
+                    SettingsPageEntry(id: "settings.paymentMethods", title: "Payment Methods",  icon: "creditcard"),
+                ]),
+            ]
+        }
+        // Integrations: Notifications always visible; SMS + printer only for admins
+        var integrationPages: [SettingsPageEntry] = [
+            SettingsPageEntry(id: "settings.notifications", title: "Notifications", icon: "bell"),
+        ]
+        if isAdmin {
+            integrationPages += [
+                SettingsPageEntry(id: "settings.smsProvider", title: "SMS Provider", icon: "message"),
+            ]
+        }
+        sections.append(SettingsSection(id: "integrations", title: "Integrations", pages: integrationPages))
+        sections += [
             SettingsSection(id: "display", title: "Display", pages: [
                 SettingsPageEntry(id: "settings.appearance",    title: "Appearance",        icon: "paintbrush"),
             ]),
@@ -176,6 +191,8 @@ public struct SettingsView: View {
             NotificationsPage()
         case "settings.smsProvider":
             SmsProviderPage(api: APIClientHolder.current)
+        case "settings.security":
+            SecuritySettingsPage()
         case "settings.appearance":
             AppearancePage()
         case "settings.helpCenter":
@@ -272,45 +289,48 @@ public struct SettingsView: View {
                 .accessibilityIdentifier("settings.preferences")
             }
 
-            // §19.5 Organization
-            Section("Organization") {
-                NavigationLink {
-                    BusinessProfilePage(api: APIClientHolder.current)
-                } label: {
-                    Label("Business Profile", systemImage: "building")
-                }
-                .accessibilityIdentifier("settings.businessProfile")
+            // §19.5 Organization — admin-only
+            // §19.0: non-admins see only Profile / Security / Notifications / Appearance / About
+            if isAdmin {
+                Section("Organization") {
+                    NavigationLink {
+                        BusinessProfilePage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Business Profile", systemImage: "building")
+                    }
+                    .accessibilityIdentifier("settings.businessProfile")
 
-                NavigationLink {
-                    CompanyInfoPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Company Info", systemImage: "building.2")
-                }
-                .accessibilityIdentifier("settings.companyInfo")
+                    NavigationLink {
+                        CompanyInfoPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Company Info", systemImage: "building.2")
+                    }
+                    .accessibilityIdentifier("settings.companyInfo")
 
-                NavigationLink {
-                    TaxSettingsPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Tax Settings", systemImage: "percent")
-                }
-                .accessibilityIdentifier("settings.tax")
+                    NavigationLink {
+                        TaxSettingsPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Tax Settings", systemImage: "percent")
+                    }
+                    .accessibilityIdentifier("settings.tax")
 
-                NavigationLink {
-                    LanguageRegionPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Language & Region", systemImage: "globe")
+                    NavigationLink {
+                        LanguageRegionPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Language & Region", systemImage: "globe")
+                    }
+                    .accessibilityIdentifier("settings.languageRegion")
                 }
-                .accessibilityIdentifier("settings.languageRegion")
-            }
 
-            // §19.9 Payment methods
-            Section("Payments") {
-                NavigationLink {
-                    PaymentMethodsPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Payment Methods", systemImage: "creditcard")
+                // §19.9 Payment methods — admin-only
+                Section("Payments") {
+                    NavigationLink {
+                        PaymentMethodsPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Payment Methods", systemImage: "creditcard")
+                    }
+                    .accessibilityIdentifier("settings.paymentMethods")
                 }
-                .accessibilityIdentifier("settings.paymentMethods")
             }
 
             // §19.3 / §19.10 / hardware
@@ -322,14 +342,17 @@ public struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings.notifications")
 
-                NavigationLink {
-                    SmsProviderPage(api: APIClientHolder.current)
-                } label: {
-                    Label("SMS Provider", systemImage: "message")
-                }
-                .accessibilityIdentifier("settings.smsProvider")
+                // SMS provider config is admin-only; Notifications are user-facing
+                if isAdmin {
+                    NavigationLink {
+                        SmsProviderPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("SMS Provider", systemImage: "message")
+                    }
+                    .accessibilityIdentifier("settings.smsProvider")
 
-                PrinterSettingsEntryPlaceholder()
+                    PrinterSettingsEntryPlaceholder()
+                }
             }
 
             // §19.4 Appearance
@@ -348,7 +371,39 @@ public struct SettingsView: View {
             }
 
             Section("Security") {
+                // §19.2 Auto-lock, biometric app lock, privacy snapshot
+                NavigationLink {
+                    SecuritySettingsPage()
+                } label: {
+                    Label("Security", systemImage: "lock.shield")
+                }
+                .accessibilityIdentifier("settings.security")
                 BiometricToggleRow()
+            }
+
+            // §28.13 Privacy / GDPR — data export request, account delete, nutrition label
+            Section("Privacy") {
+                NavigationLink {
+                    PrivacyNutritionLabelView()
+                } label: {
+                    Label("Privacy Details", systemImage: "hand.raised.fill")
+                }
+                .accessibilityIdentifier("settings.privacyNutritionLabel")
+
+                NavigationLink {
+                    DataExportRequestView(api: APIClientHolder.current)
+                } label: {
+                    Label("Request My Data", systemImage: "arrow.down.circle")
+                }
+                .accessibilityIdentifier("settings.requestMyData")
+
+                NavigationLink {
+                    AccountDeleteRequestView(api: APIClientHolder.current)
+                } label: {
+                    Label("Delete My Account", systemImage: "person.crop.circle.badge.minus")
+                        .foregroundStyle(.bizarreError)
+                }
+                .accessibilityIdentifier("settings.deleteMyAccount")
             }
 
             // §69 Help center
@@ -456,6 +511,10 @@ public struct SettingsView: View {
     /// Best-effort server-side logout followed by a local wipe. The server
     /// call is non-fatal — if it fails (offline, 401, rate-limited), we
     /// still clear local state so the user actually ends up signed out.
+    ///
+    /// Posts `Notification.Name.userDidSignOut` so observers such as
+    /// `AnalyticsConsentManager` reset per-user consent to the opt-out
+    /// default (§28.13 consent reset on logout).
     private func signOut(clearServer: Bool) async {
         if let api = APIClientHolder.current {
             _ = try? await api.logout()
@@ -468,6 +527,8 @@ public struct SettingsView: View {
             ServerURLStore.clear()
             await APIClientHolder.current?.setBaseURL(nil)
         }
+        // §28.13 — notify observers to reset per-user consent/state.
+        NotificationCenter.default.post(name: .userDidSignOut, object: nil)
         onSignOut?()
     }
 }
@@ -497,5 +558,73 @@ private struct LabeledRow: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
         }
+    }
+}
+
+// MARK: - SettingsNavRow (§91.16 settings-row chevron polish)
+//
+// A navigation-row helper that renders an icon + label on the left and a
+// correctly-sized, correctly-coloured chevron on the right. Use this instead
+// of a raw `NavigationLink { Label(…) }` when the cell needs a custom leading
+// icon background or tint, or when a non-link row must look identical to a
+// navigation row (e.g. a button that presents a sheet).
+//
+// The chevron uses `chevron.right` at `.footnote.weight(.semibold)` with
+// `.bizarreOnSurfaceMuted` tint at 0.55 opacity — matching the native `List`
+// secondary-detail style across iOS 16–18 without relying on the system's
+// undocumented separator override.
+//
+// Usage:
+//   Button { showSheet = true } label: {
+//       SettingsNavRow(icon: "bell", label: "Notifications")
+//   }
+//
+//   // With a coloured icon tint and a badge:
+//   SettingsNavRow(icon: "lock.shield", label: "Security",
+//                  iconTint: .bizarreInfo, badgeCount: 2)
+
+struct SettingsNavRow: View {
+
+    let icon: String
+    let label: String
+    /// Optional semantic tint for the leading SF Symbol. Defaults to `.bizarreOnSurface`.
+    var iconTint: Color = Color.bizarreOnSurface
+    /// When non-zero, a small red count badge is shown between the label and chevron.
+    var badgeCount: Int = 0
+
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.md) {
+            Image(systemName: icon)
+                .imageScale(.medium)
+                .foregroundStyle(iconTint)
+                .frame(width: DesignTokens.Icon.large, height: DesignTokens.Icon.large)
+                .accessibilityHidden(true)
+
+            Text(label)
+                .foregroundStyle(Color.bizarreOnSurface)
+
+            Spacer(minLength: DesignTokens.Spacing.sm)
+
+            if badgeCount > 0 {
+                Text("\(badgeCount)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignTokens.Spacing.xs)
+                    .padding(.vertical, 2)
+                    .background(Color.bizarreError, in: Capsule())
+                    .accessibilityLabel("\(badgeCount) pending")
+            }
+
+            // Chevron — matches native List disclosure indicator weight and
+            // opacity. `font(.footnote.weight(.semibold))` produces the
+            // system-standard › glyph size without manual frame sizing.
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted.opacity(0.55))
+                .accessibilityHidden(true)
+        }
+        // Enforce WCAG 44 pt tap target height.
+        .frame(minHeight: DesignTokens.Touch.minTargetSide)
+        .contentShape(Rectangle())
     }
 }

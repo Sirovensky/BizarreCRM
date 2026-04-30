@@ -52,9 +52,10 @@ public actor SetupRepositoryLive: SetupRepository {
     }
 
     public func uploadLogo(data: Data) async throws -> String {
-        // TODO: POST multipart/form-data to /setup/logo when server endpoint is deployed.
-        AppLog.ui.info("Logo upload stub — \(data.count, privacy: .public) bytes queued")
-        return "https://cdn.bizarrecrm.com/logos/placeholder.png"
+        let response = try await api.uploadSetupLogo(data, mimeType: "image/jpeg")
+        let url = response.url ?? "https://cdn.bizarrecrm.com/logos/placeholder.png"
+        AppLog.ui.info("Logo uploaded via setup endpoint: \(url, privacy: .public)")
+        return url
     }
 
     public func completeSetup() async throws {

@@ -83,12 +83,17 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
     /// Human-readable label for the event type badge in the audit log UI.
     public var eventTypeLabel: String {
         switch eventType {
-        case "void_line":           return "Void line"
-        case "no_sale":             return "No sale"
-        case "discount_override":   return "Discount override"
-        case "price_override":      return "Price override"
-        case "delete_line":         return "Delete line"
-        default:                    return eventType
+        case "void_line":             return "Void line"
+        case "no_sale":               return "No sale"
+        case "discount_override":     return "Discount override"
+        case "price_override":        return "Price override"
+        case "delete_line":           return "Delete line"
+        case "manager_approved_refund": return "Manager refund"
+        case "cash_drop":             return "Cash drop"
+        case "drawer_open":           return "Drawer opened"
+        case "manager_override":      return "Manager override"
+        case "receipt_skipped":       return "Receipt skipped"
+        default:                      return eventType
         }
     }
 
@@ -100,11 +105,31 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
 
 public extension PosAuditEntry {
     enum EventType {
-        public static let voidLine          = "void_line"
-        public static let noSale            = "no_sale"
-        public static let discountOverride  = "discount_override"
-        public static let priceOverride     = "price_override"
-        public static let deleteLine        = "delete_line"
+        public static let voidLine               = "void_line"
+        public static let noSale                 = "no_sale"
+        public static let discountOverride       = "discount_override"
+        public static let priceOverride          = "price_override"
+        public static let deleteLine             = "delete_line"
+        /// §16.9 — manager approved a refund above the tenant PIN threshold.
+        public static let managerApprovedRefund  = "manager_approved_refund"
+        /// §16.10 — Mid-shift cash removal from the drawer to the safe.
+        public static let cashDrop               = "cash_drop"
+        /// §16.8 / §16.11 — Physical cash drawer was opened. Recorded by
+        /// `PosDrawerKickService` every time a kick command is sent, regardless
+        /// of whether the drawer actually opens (hardware confirmation is async).
+        /// `reason` carries the tender method(s) that triggered the kick
+        /// (e.g. "cash" or "cash, check"). Used by loss-prevention reports to
+        /// surface unexpected drawer opens.
+        public static let drawerOpen             = "drawer_open"
+        /// §16 — A manager explicitly overrode a system limit or policy
+        /// (e.g. sold below cost, bypassed a quantity cap, unlocked a locked
+        /// period outside a refund). The `managerId` field is always non-nil
+        /// for this event. `context` keys: `policy` (string), `overrideDetail`.
+        public static let managerOverride        = "manager_override"
+        /// §39.5 — Cashier dismissed the post-sale receipt prompt without
+        /// printing or sending the receipt. Surfaced by `MissingReceiptCounter`
+        /// in the Z-report and end-of-shift summary.
+        public static let receiptSkipped         = "receipt_skipped"
     }
 }
 

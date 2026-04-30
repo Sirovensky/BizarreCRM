@@ -29,6 +29,11 @@ public final class PreferencesViewModel: Sendable {
     var notificationDesktop: Bool = true
     var compactMode: Bool = false
 
+    // §19 — per-user currency + region-format overrides
+    var preferredCurrency: String = ""
+    var dateFormatOverride: String = ""
+    var numberFormatOverride: String = ""
+
     // MARK: State
 
     var isLoading: Bool = false
@@ -57,6 +62,25 @@ public final class PreferencesViewModel: Sendable {
     ]
 
     static let pageSizeOptions: [Int] = [10, 25, 50, 100]
+
+    static let currencyOptions: [String] = Locale.commonISOCurrencyCodes.sorted()
+
+    static let dateFormatOptions: [(label: String, value: String)] = [
+        ("Default (tenant)", ""),
+        ("MM/dd/yyyy (US)", "MM/dd/yyyy"),
+        ("dd/MM/yyyy (EU)", "dd/MM/yyyy"),
+        ("yyyy-MM-dd (ISO)", "yyyy-MM-dd"),
+        ("dd.MM.yyyy", "dd.MM.yyyy"),
+        ("MMM d, yyyy", "MMM d, yyyy"),
+    ]
+
+    static let numberFormatOptions: [(label: String, value: String)] = [
+        ("Default (tenant)", ""),
+        ("1,234.56 (US)", "1,234.56"),
+        ("1.234,56 (EU)", "1.234,56"),
+        ("1 234.56 (FR)", "1 234.56"),
+        ("1234.56 (plain)", "1234.56"),
+    ]
 
     // MARK: Init
 
@@ -110,6 +134,9 @@ public final class PreferencesViewModel: Sendable {
         notificationSound  = prefs.notificationSound  ?? true
         notificationDesktop = prefs.notificationDesktop ?? true
         compactMode        = prefs.compactMode        ?? false
+        preferredCurrency  = prefs.preferredCurrency  ?? ""
+        dateFormatOverride = prefs.dateFormatOverride ?? ""
+        numberFormatOverride = prefs.numberFormatOverride ?? ""
     }
 
     private func makeRequest() -> UserPreferencesResponse {
@@ -124,7 +151,10 @@ public final class PreferencesViewModel: Sendable {
             ticketPageSize: ticketPageSize,
             notificationSound: notificationSound,
             notificationDesktop: notificationDesktop,
-            compactMode: compactMode
+            compactMode: compactMode,
+            preferredCurrency: preferredCurrency.isEmpty ? nil : preferredCurrency,
+            dateFormatOverride: dateFormatOverride.isEmpty ? nil : dateFormatOverride,
+            numberFormatOverride: numberFormatOverride.isEmpty ? nil : numberFormatOverride
         )
     }
 }
@@ -200,6 +230,29 @@ public struct PreferencesPage: View {
                     .accessibilityIdentifier("preferences.notificationDesktop")
             }
 
+            // Messaging — flip "SMS this customer" buttons between in-app
+            // Communications and the system Messages app. iPad/iPhone can
+            // never become the default SMS app, so the device branch hands
+            // off via `sms:` URL. Flipping to device mode also hides the
+            // SMS destination from the rail because Communications stops
+            // owning conversation history.
+            Section("Messaging") {
+                Toggle(isOn: Binding(
+                    get: { MessagingPreference.mode == .device },
+                    set: { useDevice in
+                        MessagingPreference.mode = useDevice ? .device : .inApp
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use device's Messages app")
+                        Text("Hands off to iOS Messages instead of in-app SMS. Disables Communications.")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .accessibilityIdentifier("preferences.useDeviceSMS")
+            }
+
             // Locale overrides
             Section("Locale") {
                 TextField("Timezone override (optional)", text: $vm.timezone)
@@ -217,6 +270,56 @@ public struct PreferencesPage: View {
                     #endif
                     .accessibilityLabel("Language override")
                     .accessibilityIdentifier("preferences.language")
+            }
+
+            // §19 — Preferred currency override
+            Section {
+                Picker(selection: $vm.preferredCurrency) {
+                    Text("Default (use tenant setting)").tag("")
+                    ForEach(PreferencesViewModel.currencyOptions, id: \.self) { code in
+                        Text("\(code) — \(Locale.current.localizedString(forCurrencyCode: code) ?? code)")
+                            .tag(code)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preferred currency")
+                        Text("Overrides the shop's default currency for your session.")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .accessibilityLabel("Preferred currency override")
+                .accessibilityIdentifier("preferences.preferredCurrency")
+            } header: {
+                Text("Currency")
+            }
+
+            // §19 — Region format overrides (date + number)
+            Section {
+                Picker(selection: $vm.dateFormatOverride) {
+                    ForEach(PreferencesViewModel.dateFormatOptions, id: \.value) { opt in
+                        Text(opt.label).tag(opt.value)
+                    }
+                } label: {
+                    Text("Date format")
+                }
+                .accessibilityLabel("Date format override")
+                .accessibilityIdentifier("preferences.dateFormatOverride")
+
+                Picker(selection: $vm.numberFormatOverride) {
+                    ForEach(PreferencesViewModel.numberFormatOptions, id: \.value) { opt in
+                        Text(opt.label).tag(opt.value)
+                    }
+                } label: {
+                    Text("Number format")
+                }
+                .accessibilityLabel("Number format override")
+                .accessibilityIdentifier("preferences.numberFormatOverride")
+            } header: {
+                Text("Region formats")
+            } footer: {
+                Text("Leave on Default to use the shop's configured formats.")
+                    .font(.brandLabelSmall())
             }
 
             if let msg = vm.errorMessage {

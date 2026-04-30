@@ -3,6 +3,9 @@ import Core
 import DesignSystem
 import Networking
 import Sync
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - NotificationListPolishedView
 
@@ -19,6 +22,7 @@ public struct NotificationListPolishedView: View {
 
     @State private var vm: NotificationListPolishedViewModel
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.openURL) private var openURL
 
     public init(api: APIClient, cachedRepo: NotificationCachedRepository? = nil) {
         _vm = State(
@@ -184,6 +188,18 @@ public struct NotificationListPolishedView: View {
                     ForEach(section.items) { note in
                         NotificationRowView(note: note)
                             .listRowBackground(Color.bizarreSurface1)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                // §13.1 Tap → deep link
+                                if let path = deepLinkPath(for: note),
+                                   let url = URL(string: "bizarrecrm://\(path)") {
+                                    openURL(url)
+                                }
+                                if !note.read {
+                                    Task { await vm.markRead(id: note.id) }
+                                }
+                            }
+                            // Trailing: mark read
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 if !note.read {
                                     Button {
@@ -194,6 +210,15 @@ public struct NotificationListPolishedView: View {
                                     .tint(.bizarreTeal)
                                     .accessibilityIdentifier("notif.swipe.read.\(note.id)")
                                 }
+                            }
+                            // Leading: dismiss (PATCH /dismiss)
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task { await vm.dismiss(id: note.id) }
+                                } label: {
+                                    Label("Dismiss", systemImage: "xmark.circle")
+                                }
+                                .accessibilityIdentifier("notif.swipe.dismiss.\(note.id)")
                             }
                     }
                 } header: {
@@ -304,6 +329,32 @@ public struct NotificationListPolishedView: View {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)
                     vm.dismissBanner()
                 }
+        }
+    }
+
+    // MARK: - Deep-link resolver
+
+    /// §13.1 Map a `NotificationItem` → `bizarrecrm://` path fragment.
+    /// Only known entity types are resolved; unknown types return nil (security).
+    private func deepLinkPath(for note: NotificationItem) -> String? {
+        // Entity allowlist — prevent injected types (§13.2 security rule).
+        let allowed: Set<String> = [
+            "ticket", "invoice", "customer", "sms_thread",
+            "appointment", "estimate", "lead"
+        ]
+        guard let rawType = note.entityType?.lowercased(),
+              allowed.contains(rawType) else { return nil }
+        guard let entityId = note.entityId else { return nil }
+
+        switch rawType {
+        case "ticket":          return "tickets/\(entityId)"
+        case "invoice":         return "invoices/\(entityId)"
+        case "customer":        return "customers/\(entityId)"
+        case "sms_thread":      return "sms/\(entityId)"
+        case "appointment":     return "appointments/\(entityId)"
+        case "estimate":        return "estimates/\(entityId)"
+        case "lead":            return "leads/\(entityId)"
+        default:                return nil
         }
     }
 

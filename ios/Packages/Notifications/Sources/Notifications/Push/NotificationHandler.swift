@@ -74,11 +74,47 @@ public final class NotificationHandler: NSObject, @preconcurrency UNUserNotifica
     // MARK: - UNUserNotificationCenterDelegate
 
     /// Show banners in the foreground.
+    ///
+    /// §13.2 Quiet hours — when the user is inside their configured quiet-hours
+    /// window, non-time-sensitive banners are suppressed (the badge still
+    /// updates so the unread count stays accurate). Time-sensitive / critical
+    /// events bypass quiet hours via `QuietHoursGate.shouldSuppress`.
+    ///
+    /// §13.2 Notification-summary — for time-sensitive event types (overdue
+    /// invoice, SLA breach, payment declined, security event, etc.), iOS 15+
+    /// `interruptionLevel: .timeSensitive` is set on the incoming content so
+    /// the notification escapes Focus / Scheduled Summary.
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        let eventType = userInfo["event_type"] as? String ?? ""
+
+        // §13.2 Notification-summary: stamp .timeSensitive on the live content
+        // for time-sensitive events so iOS Scheduled Summary releases it
+        // immediately. (Server-pushed APNs already carries this via the NSE
+        // bridge, but local re-fires and synthetic foreground events go through
+        // `willPresent` without traversing the NSE.)
+        if #available(iOS 15.0, *) {
+            let level = NotificationInterruptionLevelMapper.level(for: eventType)
+            if let mutable = notification.request.content.mutableCopy() as? UNMutableNotificationContent,
+               mutable.interruptionLevel != level {
+                mutable.interruptionLevel = level
+            }
+        }
+
+        // §13.2 Quiet hours gate. Suppress banner + sound for non-critical
+        // events when inside the user's quiet-hours window. Badge still
+        // updates so unread counts remain accurate; the user will see the
+        // notification in the list without an audible interrupt.
+        if #available(iOS 15.0, *), QuietHoursGate.shouldSuppress(eventType: eventType) {
+            AppLog.ui.debug("Notification suppressed by quiet-hours: \(eventType, privacy: .public)")
+            completionHandler([.badge])
+            return
+        }
+
         // Always show banner + sound + badge while app is in foreground.
         completionHandler([.banner, .sound, .badge])
     }
@@ -194,6 +230,13 @@ public final class NotificationHandler: NSObject, @preconcurrency UNUserNotifica
     /// Schedule a local notification to re-fire after `delay` seconds.
     private func scheduleSnooze(for notification: UNNotification, delay: TimeInterval) {
         let content = notification.request.content.mutableCopy() as! UNMutableNotificationContent
+        // §13.2 Notification-summary — preserve / promote the interruption
+        // level on the snoozed re-fire so overdue / SLA-breach events still
+        // bypass Focus & Scheduled Summary when they reappear.
+        if #available(iOS 15.0, *) {
+            let eventType = content.userInfo["event_type"] as? String ?? ""
+            content.interruptionLevel = NotificationInterruptionLevelMapper.level(for: eventType)
+        }
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
         let id = "snooze-\(notification.request.identifier)"
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)

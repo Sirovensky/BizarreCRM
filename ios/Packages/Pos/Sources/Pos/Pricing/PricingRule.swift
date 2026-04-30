@@ -15,6 +15,11 @@ public enum PricingRuleType: String, Codable, Sendable, Hashable, CaseIterable {
     case tieredVolume
     /// Customer-segment pricing: fixed percent off for a named customer segment.
     case segmentPrice
+    /// Location-based: per-location flat percent price override (metro vs suburb etc.).
+    case locationOverride
+    /// Promotion window (flash sale): active only within an explicit time window;
+    /// cashier sees a live countdown timer when the window is open.
+    case promotionWindow
 }
 
 // MARK: - PricingTier
@@ -108,11 +113,37 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
     /// Percent discount for the segment (0.0–1.0).
     public var segmentDiscountPercent: Double?
 
+    // MARK: - locationOverride fields
+
+    /// Location slug this rule applies to (e.g. `"metro-nyc"`).
+    /// `nil` = applies to all locations (use `targetSku`/`targetCategory` for item scoping).
+    public var targetLocationSlug: String?
+    /// Flat percent price override for the location (0.0–1.0).
+    /// A value of `0.05` means items are 5 % cheaper at this location.
+    public var locationDiscountPercent: Double?
+
+    // MARK: - promotionWindow fields
+
+    /// Whether the promotion is currently live (toggled by admin).
+    /// `validFrom`/`validTo` control the window; this flag provides a manual on/off override.
+    public var promotionActive: Bool
+    /// Human-readable flash-sale label shown to the cashier during the window,
+    /// e.g. `"Summer Flash Sale – 20% off accessories"`.
+    public var promotionLabel: String?
+    /// Discount percent for the promotion window (0.0–1.0).
+    public var promotionDiscountPercent: Double?
+
     // MARK: - Validity
 
     public var validFrom: Date?
     public var validTo: Date?
     public var enabled: Bool
+
+    // MARK: - Priority (lower = evaluated first)
+
+    /// Evaluation priority — lower integer wins (first matching rule wins per §16 conflict
+    /// resolution). Default `0` = highest priority. Used by `PricingRulesListView` drag-to-reorder.
+    public var priority: Int
 
     // MARK: - Init
 
@@ -129,9 +160,15 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
         freeQuantity: Int? = nil,
         tiers: [PricingTier]? = nil,
         segmentDiscountPercent: Double? = nil,
+        targetLocationSlug: String? = nil,
+        locationDiscountPercent: Double? = nil,
+        promotionActive: Bool = false,
+        promotionLabel: String? = nil,
+        promotionDiscountPercent: Double? = nil,
         validFrom: Date? = nil,
         validTo: Date? = nil,
-        enabled: Bool = true
+        enabled: Bool = true,
+        priority: Int = 0
     ) {
         self.id = id
         self.name = name
@@ -145,9 +182,15 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
         self.freeQuantity = freeQuantity
         self.tiers = tiers
         self.segmentDiscountPercent = segmentDiscountPercent
+        self.targetLocationSlug = targetLocationSlug
+        self.locationDiscountPercent = locationDiscountPercent
+        self.promotionActive = promotionActive
+        self.promotionLabel = promotionLabel
+        self.promotionDiscountPercent = promotionDiscountPercent
         self.validFrom = validFrom
         self.validTo = validTo
         self.enabled = enabled
+        self.priority = priority
     }
 
     // MARK: - Validity helper
@@ -160,16 +203,37 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, type, enabled, tiers
-        case targetSku              = "target_sku"
-        case targetCategory         = "target_category"
-        case targetSegment          = "target_segment"
-        case bundleQuantity         = "bundle_quantity"
-        case bundlePriceCents       = "bundle_price_cents"
-        case triggerQuantity        = "trigger_quantity"
-        case freeQuantity           = "free_quantity"
-        case segmentDiscountPercent = "segment_discount_percent"
-        case validFrom              = "valid_from"
-        case validTo                = "valid_to"
+        case id, name, type, enabled, tiers, priority
+        case targetSku                  = "target_sku"
+        case targetCategory             = "target_category"
+        case targetSegment              = "target_segment"
+        case bundleQuantity             = "bundle_quantity"
+        case bundlePriceCents           = "bundle_price_cents"
+        case triggerQuantity            = "trigger_quantity"
+        case freeQuantity               = "free_quantity"
+        case segmentDiscountPercent     = "segment_discount_percent"
+        case targetLocationSlug         = "target_location_slug"
+        case locationDiscountPercent    = "location_discount_percent"
+        case promotionActive            = "promotion_active"
+        case promotionLabel             = "promotion_label"
+        case promotionDiscountPercent   = "promotion_discount_percent"
+        case validFrom                  = "valid_from"
+        case validTo                    = "valid_to"
+    }
+
+    // MARK: - Computed: promotion countdown
+
+    /// How many seconds remain in an active promotion window.
+    /// Returns `nil` when `validTo` is not set or the window has closed.
+    public func promotionSecondsRemaining(now: Date = .now) -> TimeInterval? {
+        guard promotionActive, type == .promotionWindow,
+              let end = validTo, end > now else { return nil }
+        return end.timeIntervalSince(now)
+    }
+
+    /// Whether this is a promotion-window rule that is currently live.
+    public func isPromotionLive(now: Date = .now) -> Bool {
+        guard type == .promotionWindow, promotionActive else { return false }
+        return isValid(at: now)
     }
 }

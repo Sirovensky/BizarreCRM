@@ -34,6 +34,7 @@ public struct DocumentScanPreviewView: View {
     // MARK: - Local state
 
     @State private var isEditMode: EditMode = .active
+    @State private var showScanMore: Bool = false
 
     // MARK: - Init
 
@@ -56,6 +57,18 @@ public struct DocumentScanPreviewView: View {
         .presentationDragIndicator(.visible)
         // iPad: fixed 520pt width sheet
         .frame(idealWidth: 520)
+        // §17: "Bulk append multiple scans to single file"
+        .sheet(isPresented: $showScanMore) {
+            DocumentScannerView(
+                onFinished: { result in
+                    Task { @MainActor in
+                        viewModel.appendPages(result.pages)
+                    }
+                },
+                onCanceled: {},
+                onError: { _ in }
+            )
+        }
     }
 
     // MARK: - Content
@@ -98,6 +111,11 @@ public struct DocumentScanPreviewView: View {
 
     private var pageList: some View {
         List {
+            // §17 auto-classification chip
+            if let tag = viewModel.suggestedTag {
+                classificationBanner(tag: tag)
+            }
+
             ForEach(Array(viewModel.pages.enumerated()), id: \.offset) { index, image in
                 pageRow(image: image, index: index, total: viewModel.pages.count)
                     .listRowInsets(EdgeInsets(
@@ -116,9 +134,54 @@ public struct DocumentScanPreviewView: View {
                     viewModel.movePages(fromOffsets: source, toOffset: destination)
                 }
             }
+
+            // §17: "Bulk append multiple scans to single file" — Scan More button
+            Section {
+                Button {
+                    showScanMore = true
+                } label: {
+                    Label("Scan More Pages", systemImage: "plus.viewfinder")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .listRowBackground(Color.bizarreSurfaceBase)
+                .accessibilityLabel("Scan more pages and append to this document")
+                .accessibilityIdentifier("docScan.scanMore")
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - Auto-classification banner
+
+    @ViewBuilder
+    private func classificationBanner(tag: DocumentTag) -> some View {
+        Section {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: tag.systemImageName)
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Suggested tag")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.secondary)
+                    Text(tag.rawValue)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.bizarreSuccess)
+                    .font(.system(size: 20))
+                    .accessibilityHidden(true)
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowBackground(Color.bizarreSuccess.opacity(0.08))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Auto-classified as \(tag.rawValue). Classification is based on document text.")
     }
 
     private func pageRow(image: UIImage, index: Int, total: Int) -> some View {
@@ -184,6 +247,19 @@ public struct DocumentScanPreviewView: View {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
                 .accessibilityIdentifier("docScan.cancel")
+        }
+
+        ToolbarItem(placement: .navigationBarLeading) {
+            // §17: "Bulk append" — additional scan button in toolbar
+            if !viewModel.pages.isEmpty {
+                Button {
+                    showScanMore = true
+                } label: {
+                    Image(systemName: "plus.viewfinder")
+                }
+                .accessibilityLabel("Scan more pages")
+                .accessibilityIdentifier("docScan.scanMoreToolbar")
+            }
         }
 
         ToolbarItem(placement: .confirmationAction) {

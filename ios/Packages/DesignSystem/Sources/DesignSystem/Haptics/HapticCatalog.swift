@@ -27,6 +27,11 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case clockIn
     case clockOut
     case signatureCommit
+    /// Fired at the commit threshold when a swipe action is fully revealed and
+    /// released — the moment the destructive / confirm action fires.
+    /// Distinct from `.destructiveConfirm` (that is for modal confirm dialogs);
+    /// this covers `.swipeActions` row gestures that execute without a sheet.
+    case swipeActionCommit
     // §30 — UI-interaction semantic events
     /// Fired on primary button press (replaces raw `.addToCart` light tap at CTA sites).
     case buttonTap
@@ -105,7 +110,9 @@ public enum HapticCatalog: Sendable {
             g.prepare()
             g.impactOccurred()
 
-        case .addToCart, .scanSuccess, .longPressMenu:
+        case .addToCart, .scanSuccess, .longPressMenu, .swipeActionCommit:
+            // .swipeActionCommit uses medium impact — decisive enough to feel the commit
+            // threshold without the heavy thud reserved for destructive modals.
             let g = UIImpactFeedbackGenerator(style: .medium)
             g.prepare()
             g.impactOccurred()

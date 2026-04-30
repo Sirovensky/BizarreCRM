@@ -11,11 +11,25 @@ public final class SmsListViewModel {
     public private(set) var isLoading: Bool = false
     public private(set) var isRefreshing: Bool = false
     public private(set) var errorMessage: String?
+    /// §91.1 — raw technical error description, for the "Show details" disclosure.
+    /// Never display this directly; surface only inside a collapsed DisclosureGroup.
+    public private(set) var rawErrorDetail: String?
     public var searchQuery: String = ""
     /// Exposed for `StalenessIndicator` chip in toolbar.
     public private(set) var lastSyncedAt: Date?
     /// Per-row action error shown as inline banner.
     public private(set) var actionError: String?
+
+    // MARK: - §12.1 Filters
+    public var filter: SmsListFilter = .init() {
+        didSet { applyFilter() }
+    }
+
+    /// Conversations filtered + ordered per the active filter tab.
+    public private(set) var filteredConversations: [SmsConversation] = []
+
+    /// Tab-level unread counts for chip badges.
+    public private(set) var tabCounts: [SmsListFilterTab: Int] = [:]
 
     @ObservationIgnored private let repo: SmsRepository
     @ObservationIgnored private let cachedRepo: SmsCachedRepository?
@@ -24,6 +38,19 @@ public final class SmsListViewModel {
     public init(repo: SmsRepository) {
         self.repo = repo
         self.cachedRepo = repo as? SmsCachedRepository
+    }
+
+    // MARK: - Filter application
+
+    private func applyFilter() {
+        filteredConversations = filter.apply(to: conversations)
+        // Recompute tab counts.
+        var counts: [SmsListFilterTab: Int] = [:]
+        for tab in SmsListFilterTab.allCases {
+            let f = SmsListFilter(tab: tab, currentUserId: filter.currentUserId)
+            counts[tab] = f.apply(to: conversations).count
+        }
+        tabCounts = counts
     }
 
     public func load() async {
@@ -174,9 +201,38 @@ public final class SmsListViewModel {
             } else {
                 conversations = try await repo.listConversations(keyword: keyword)
             }
+            applyFilter()
         } catch {
-            AppLog.ui.error("SMS list load failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            handleFetchError(error)
         }
+    }
+
+    /// §91.1 §91.14 — Centralised error handler for the conversations fetch pipeline.
+    ///
+    /// - Wraps `DecodingError` (and any other raw error) in a friendly `SmsError` so
+    ///   the UI never exposes internal field names or type details.
+    /// - Logs the **raw** technical description to `AppLog.communications` (§4).
+    /// - Fires a §32 telemetry event on decode failure (§6).
+    private func handleFetchError(_ error: any Error) {
+        // §4 — always log the raw error for diagnostics; never shown in UI.
+        AppLog.communications.error(
+            "SMS conversations fetch failed: \(error.localizedDescription, privacy: .public)"
+        )
+
+        let smsError: SmsError = .decodingConversations(underlying: error)
+        if error is DecodingError {
+            // §6 — §32 telemetry hook on decode failure.
+            Analytics.track(
+                .smsDecodeFailure,
+                properties: ["error_type": .string("DecodingError")]
+            )
+            AppLog.communications.error(
+                "SMS decode failure detail (§91.14): \(String(describing: error), privacy: .public)"
+            )
+        }
+
+        // §1 — expose friendly message; technical payload hidden behind "Show details" in UI.
+        errorMessage = smsError.errorDescription
+        rawErrorDetail = String(describing: error)
     }
 }

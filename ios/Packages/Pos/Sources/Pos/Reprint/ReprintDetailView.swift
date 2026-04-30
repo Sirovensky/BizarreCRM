@@ -12,9 +12,10 @@ import Networking
 ///
 /// The view fetches the full `SaleRecord` from `GET /sales/:id` when it
 /// first appears (the list only provides a `SaleSummary`).
+/// API calls go through `ReprintRepository` (§20 containment).
 public struct ReprintDetailView: View {
     let summary: SaleSummary
-    let api: APIClient
+    let repository: any ReprintRepository
 
     @State private var saleRecord: SaleRecord? = nil
     @State private var loadError: String? = nil
@@ -23,9 +24,16 @@ public struct ReprintDetailView: View {
     @State private var showReasonPicker = false
     @Environment(\.dismiss) private var dismiss
 
+    /// Convenience init accepting a live `APIClient` — wraps it in `ReprintRepositoryImpl`.
     public init(summary: SaleSummary, api: APIClient) {
-        self.summary = summary
-        self.api     = api
+        self.summary    = summary
+        self.repository = ReprintRepositoryImpl(api: api)
+    }
+
+    /// Designated init for testing / dependency injection.
+    public init(summary: SaleSummary, repository: any ReprintRepository) {
+        self.summary    = summary
+        self.repository = repository
     }
 
     public var body: some View {
@@ -184,7 +192,7 @@ public struct ReprintDetailView: View {
         Button {
             let vm = ReprintViewModel(
                 sale: record,
-                api: api,
+                repository: repository,
                 onDispatchPrintJob: { payload in
                     // §17.4 print driver receives the payload.
                     // NullReceiptPrinter stub until Hardware pkg wires the driver.
@@ -228,14 +236,13 @@ public struct ReprintDetailView: View {
         .accessibilityIdentifier("reprint.detail.error")
     }
 
-    // MARK: - API load
+    // MARK: - Data load (via ReprintRepository — §20 containment)
 
     private func loadFullSale() async {
         isLoading = true
         loadError = nil
         do {
-            let record = try await api.get("/sales/\(summary.id)", as: SaleRecord.self)
-            saleRecord = record
+            saleRecord = try await repository.fetchSale(id: summary.id)
         } catch {
             loadError = (error as? AppError)?.localizedDescription ?? error.localizedDescription
         }

@@ -10,21 +10,28 @@ public protocol TicketCachedRepository: TicketRepository {
     var lastSyncedAt: Date? { get async }
 
     /// Bypass the cache and fetch fresh data. Called on pull-to-refresh.
-    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary]
+    func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary]
+}
+
+public extension TicketCachedRepository {
+    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+        try await forceRefresh(filter: filter, urgency: nil, keyword: keyword)
+    }
 }
 
 // MARK: - TicketCachedRepositoryImpl
 
-/// Wraps any `TicketRepository` with a per-(filter, keyword) in-memory cache.
+/// Wraps any `TicketRepository` with a two-layer cache:
 ///
-/// Strategy:
-/// - `list(filter:keyword:)` returns cached data if within `maxAgeSeconds`;
-///   otherwise fetches from remote and caches result.
-/// - `forceRefresh(filter:keyword:)` always hits remote (pull-to-refresh).
-/// - Cache keyed by `(filter, keyword ?? "")` — cheap and correct for MVP.
+/// 1. **In-memory** (`CacheEntry`) — TTL-gated dictionary keyed by
+///    (filter, keyword, sort). Zero-cost hit; invalidated on delete.
+/// 2. **Disk** (`TicketDiskCache`) — JSON files in Caches/BizarreCRM/Tickets/.
+///    Cold launches call `readDiskCache(key:)` to populate the in-memory
+///    layer instantly and show data without a network round-trip.
+///    Written after every successful server fetch. Max age 1h (3600s).
 ///
-/// TODO(phase-4): Replace in-memory cache with GRDB persistence so cold
-/// launches get instant data without a network round-trip.
+/// Phase-5 plan: Replace the disk layer with GRDB + SQLCipher row
+/// storage for predicate-based local filtering (no per-filter buckets).
 public actor TicketCachedRepositoryImpl: TicketCachedRepository {
 
     // MARK: - Cache entry
@@ -53,21 +60,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     public var lastSyncedAt: Date? { latestSyncedAt }
 
     /// Returns cache if fresh; else fetches and caches.
-    public func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
+    public func list(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
         if let entry = cache[key] {
             let age = Date().timeIntervalSince(entry.fetchedAt)
             if age <= Double(maxAgeSeconds) {
                 return entry.tickets
             }
         }
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Always fetches from remote. Used by pull-to-refresh.
-    public func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+    public func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Pass-through — detail view calls this directly; no caching needed for MVP.
@@ -75,17 +82,34 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
         try await remote.detail(id: id)
     }
 
-    // MARK: - Private
-
-    private func cacheKey(filter: TicketListFilter, keyword: String?) -> String {
-        "\(filter.rawValue)|\(keyword ?? "")"
+    public func delete(id: Int64) async throws {
+        try await remote.delete(id: id)
+        cache.removeAll()
     }
 
-    private func fetch(filter: TicketListFilter, keyword: String?, key: String) async throws -> [TicketSummary] {
-        let tickets = try await remote.list(filter: filter, keyword: keyword)
+    public func duplicate(id: Int64) async throws -> DuplicateTicketResponse {
+        let result = try await remote.duplicate(id: id)
+        cache.removeAll()
+        return result
+    }
+
+    public func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse {
+        try await remote.convertToInvoice(id: id)
+    }
+
+    // MARK: - Private
+
+    private func cacheKey(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) -> String {
+        "\(filter.rawValue)|\(urgency?.rawValue ?? "")|\(keyword ?? "")"
+    }
+
+    private func fetch(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?, key: String) async throws -> [TicketSummary] {
+        let tickets = try await remote.list(filter: filter, urgency: urgency, keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)
         latestSyncedAt = now
+        // §4.1 — Persist to disk for cold-launch warm-up
+        await TicketDiskCache.shared.write(tickets, key: key)
         return tickets
     }
 }

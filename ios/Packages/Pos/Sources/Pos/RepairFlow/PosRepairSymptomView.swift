@@ -59,19 +59,53 @@ public struct PosRepairSymptomView: View {
     @State private var vm = PosRepairSymptomViewModel()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     public init(coordinator: PosRepairFlowCoordinator) {
         self.coordinator = coordinator
     }
 
     public var body: some View {
+        // On iPad the step view is hosted inside `iPadRepairInspectorPane`,
+        // which already provides the step indicator (top) and Cancel / Skip
+        // / Continue footer. Render those only on compact (iPhone) so iPad
+        // doesn't get a duplicated progress strip + double footer.
+        if hSizeClass == .regular {
+            iPadBody
+        } else {
+            iPhoneBody
+        }
+    }
+
+    // MARK: - iPad body — content only, parent owns chrome.
+
+    private var iPadBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            symptomTextSection
+            conditionSection.padding(.top, 8)
+            quickChipsSection.padding(.top, 8)
+            internalNotesSection.padding(.top, 8)
+            Spacer().frame(height: 16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            symptomText = coordinator.draft.symptomText
+            selectedCondition = coordinator.draft.condition
+            selectedChips = coordinator.draft.quickChips
+            internalNotes = coordinator.draft.internalNotes
+        }
+    }
+
+    // MARK: - iPhone body — full screen with progress strip + ctaBar.
+
+    private var iPhoneBody: some View {
         VStack(spacing: 0) {
             // Step 2/4 progress bar pinned directly below nav bar (3pt strip, 33%)
             // Gradient: primary (orange) → primary-bright, left → right per mockup.
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color(white: 1, opacity: 0.06))
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
                     Rectangle()
                         .fill(
                             LinearGradient(
@@ -149,7 +183,7 @@ public struct PosRepairSymptomView: View {
                 .lineSpacing(3) // line-height: 1.5 on 13px
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(12)
-                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 14))
+                .background(Color.bizarreOnSurface.opacity(0.03), in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
                     symptomText.isEmpty
                         ? Color.bizarreOrange.opacity(0.35)
@@ -244,6 +278,12 @@ public struct PosRepairSymptomView: View {
 
     private func chipButton(_ chip: RepairSymptomChip) -> some View {
         let isSelected = selectedChips.contains(chip)
+        let bgFill: Color = isSelected
+            ? Color.bizarreOrange.opacity(0.14)
+            : Color.bizarreOnSurface.opacity(0.04)
+        let strokeFill: Color = isSelected
+            ? Color.bizarreOrange.opacity(0.45)
+            : Color.bizarreOnSurface.opacity(0.1)
         return Button {
             if isSelected {
                 selectedChips.remove(chip)
@@ -253,25 +293,14 @@ public struct PosRepairSymptomView: View {
             vm.selectedChips = selectedChips
             BrandHaptics.tap()
         } label: {
-            // Label text only (no system icon) to match mockup chip style
             Text(chip.displayLabel)
                 .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
                 .padding(.horizontal, 13)
                 .padding(.vertical, 7)
-                .background(
-                    isSelected
-                        ? Color.bizarreOrange.opacity(0.14)
-                        : Color(white: 1, opacity: 0.04),
-                    in: Capsule()
-                )
+                .background(bgFill, in: Capsule())
                 .foregroundStyle(isSelected ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
                 .overlay(
-                    Capsule().strokeBorder(
-                        isSelected
-                            ? Color.bizarreOrange.opacity(0.45)
-                            : Color(white: 1, opacity: 0.1),
-                        lineWidth: isSelected ? 1.5 : 1
-                    )
+                    Capsule().strokeBorder(strokeFill, lineWidth: isSelected ? 1.5 : 1)
                 )
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }

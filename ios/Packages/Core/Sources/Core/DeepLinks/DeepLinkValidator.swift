@@ -75,8 +75,8 @@ public enum DeepLinkValidator {
             return .invalid(reason: "URL exceeds maximum length of \(maxURLLength) characters")
         }
 
-        // 2. Null-byte injection guard
-        guard !raw.contains("\0") else {
+        // 2. Null-byte injection guard (check both literal null and percent-encoded forms)
+        guard !raw.contains("\0") && !raw.contains("%00") && !raw.contains("%2500") else {
             return .invalid(reason: "URL contains null bytes")
         }
 
@@ -174,6 +174,12 @@ public enum DeepLinkValidator {
                 return .invalid(reason: "Search query exceeds 512 characters")
             }
             return .valid
+
+        case .resetPassword(let token), .setupInvite(let token):
+            guard token.count >= 8 else {
+                return .invalid(reason: "Auth token is too short (minimum 8 characters)")
+            }
+            return validateID(token, field: "token")
 
         case .dashboard, .posRoot, .posNewCart, .posReturn,
              .auditLogs, .notifications, .timeclock:

@@ -32,6 +32,19 @@ public enum LTVTier: String, Codable, Sendable, CaseIterable, Equatable {
         }
     }
 
+    /// Alias for views that read the lower bound as `minLifetimeSpendCents`.
+    public var minLifetimeSpendCents: Int { thresholdCents }
+
+    /// Plain-text perks summary surfaced in the LTV explainer sheet.
+    public var perksDescription: String {
+        switch self {
+        case .bronze:   return "Standard service. Earn loyalty points on every visit."
+        case .silver:   return "10% off accessories. Priority queue on busy days."
+        case .gold:     return "Free diagnostic. Complimentary device cleaning. Quarterly newsletter."
+        case .platinum: return "VIP concierge line. Loaner device on extended repairs. Member-only events."
+        }
+    }
+
     // MARK: Display
 
     public var label: String {

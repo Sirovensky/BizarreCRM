@@ -139,7 +139,7 @@ public struct PaymentLinksDashboardView: View {
                     "Conversion",
                     value: String(format: "%.1f%%", agg.overallConversionRate * 100)
                 )
-                .foregroundStyle(agg.overallConversionRate > 0.3 ? .green : .orange)
+                .foregroundStyle(agg.overallConversionRate > 0.3 ? .bizarreSuccess : .bizarreWarning)
             }
             .listRowBackground(Color.bizarreSurface1)
         }

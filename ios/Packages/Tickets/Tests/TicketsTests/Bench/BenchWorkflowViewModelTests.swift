@@ -29,9 +29,26 @@ actor BenchStubAPIClient: APIClient {
     var patchCallCount: Int = 0
     var lastPatchPath: String = ""
 
+    static func makeIntakeDetail() -> TicketDetail {
+        let json = #"{"id":42,"order_id":"T-042","status":{"id":1,"name":"Intake"}}"#.data(using: .utf8)!
+        return try! JSONDecoder().decode(TicketDetail.self, from: json)
+    }
+
+    static func makeDefaultStatuses() -> [TicketStatusRow] {
+        let entries: [(String, Int64)] = [
+            ("Intake",1),("Diagnosing",2),("Awaiting Parts",3),
+            ("Awaiting Approval",4),("In Repair",5),("Ready for Pickup",6),
+            ("Completed",7),("Canceled",8),("On Hold",9)
+        ]
+        return entries.map { name, id in
+            let json = "{\"id\":\(id),\"name\":\"\(name)\"}".data(using: .utf8)!
+            return try! JSONDecoder().decode(TicketStatusRow.self, from: json)
+        }
+    }
+
     init(
-        detailResult: Result<TicketDetail, Error> = .success(BenchWorkflowViewModelTests.makeDetail(statusName: "Intake")),
-        statusesResult: Result<[TicketStatusRow], Error> = .success(BenchWorkflowViewModelTests.makeStatuses()),
+        detailResult: Result<TicketDetail, Error> = .success(BenchStubAPIClient.makeIntakeDetail()),
+        statusesResult: Result<[TicketStatusRow], Error> = .success(BenchStubAPIClient.makeDefaultStatuses()),
         patchStatusResult: Result<CreatedResource, Error> = .success(CreatedResource(id: 1))
     ) {
         self.detailResult = detailResult

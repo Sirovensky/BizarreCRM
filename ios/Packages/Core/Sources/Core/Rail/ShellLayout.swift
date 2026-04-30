@@ -35,10 +35,6 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    // NavigationSplitView column visibility — keep detail-only so system
-    // sidebar stays suppressed; the rail owns primary navigation.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
-
     public init(
         selection: Binding<RailDestination>,
         @ViewBuilder content: @escaping (RailDestination) -> Content,
@@ -50,10 +46,18 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
     }
 
     public var body: some View {
-        if horizontalSizeClass == .regular {
-            regularLayout
-        } else {
-            compactContent()
+        // §22.4 — Slide Over / Split View: gate on actual container width
+        // in addition to horizontalSizeClass. At 1/3 split or Slide Over
+        // (~320–400 pt) the size class stays .regular on iPad but the
+        // available width is too narrow for the 64 pt rail plus content.
+        // Threshold 500 pt: at 1/2 split on 11" (~551 pt) we show rail;
+        // at 1/3 split on 13" (~430 pt) we fall through to compact layout.
+        GeometryReader { geo in
+            if horizontalSizeClass == .regular && geo.size.width >= 500 {
+                regularLayout
+            } else {
+                compactContent()
+            }
         }
     }
 
@@ -61,25 +65,36 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
     @ViewBuilder
     private var regularLayout: some View {
+        // Plain HStack: custom 64pt rail on the left, feature content fills the
+        // rest. The feature views supply their own `NavigationSplitView` (when
+        // they need a list/detail split) — wrapping them in another NavSplit
+        // here only added an empty toggleable ghost column on iOS 17+ because
+        // `.detailOnly` is honoured loosely once the user taps the system
+        // sidebar-toggle.
+        // Custom rail sits beside the feature view. SwiftUI honours `.zIndex`
+        // on HStack children for paint order, so the rail renders on top of
+        // any animation overlay leaking out of the feature's own
+        // `NavigationSplitView` sidebar (the "inner sidebar paving over rail
+        // icons" bug from the screenshot walkthrough). It does not affect
+        // layout — the rail stays leftmost, content fills the remainder.
         HStack(spacing: 0) {
             RailSidebarView(
                 items: RailCatalog.primary,
                 selection: $selection
             )
+            .zIndex(1)
 
             Divider()
+                .zIndex(1)
 
-            // NavigationSplitView with .detailOnly suppresses the system
-            // sidebar column, giving the custom rail full nav ownership.
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                // Sidebar column is intentionally empty — the rail above
-                // handles primary navigation. Detail column carries content.
-                EmptyView()
-            } detail: {
-                content(selection)
-            }
+            content(selection)
         }
-        .ignoresSafeArea(.container, edges: .top)
+        // Don't ignore the top safe area — the iPad status bar (clock,
+        // battery, wifi) is opaque chrome owned by the OS and content
+        // sliding under it produces collisions like the repair-flow step
+        // indicator overlapping the date/time row. Bottom edge stays
+        // ignored so the rail glass extends to the home-indicator strip.
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 

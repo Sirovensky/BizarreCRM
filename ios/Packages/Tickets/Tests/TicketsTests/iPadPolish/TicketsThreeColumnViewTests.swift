@@ -117,8 +117,8 @@ final class TicketsThreeColumnViewTests: XCTestCase {
     }
 
     func test_filterDisplayName_allCasesCount() {
-        // Ensure all six filters are present (regression guard)
-        XCTAssertEqual(TicketListFilter.allCases.count, 6)
+        // §4.1: All / Open / On hold / Closed / Cancelled / Active / My Tickets = 7
+        XCTAssertEqual(TicketListFilter.allCases.count, 7)
     }
 
     // MARK: - Quick-action handler wiring (dispatch correctness)

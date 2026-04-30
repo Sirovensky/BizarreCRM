@@ -62,6 +62,11 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
     public let slaStatus: String?
     public let urgency: String?
     public let latestSms: LatestSms?
+    /// ISO-8601 date string, e.g. `"2026-05-02T14:00:00.000Z"`. Nil when no due date set.
+    public let dueOn: String?
+    /// §4.1 — Total count of photos + file attachments on this ticket.
+    /// Server field `attachment_count`; nil when the server omits it (older rows).
+    public let attachmentCount: Int?
 
     public struct Customer: Decodable, Sendable, Hashable {
         public let id: Int64
@@ -76,6 +81,13 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
             let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
             if parts.isEmpty { return organization ?? "" }
             return parts.joined(separator: " ")
+        }
+
+        /// First non-empty phone or mobile number.
+        public var callablePhone: String? {
+            if let p = phone, !p.isEmpty { return p }
+            if let m = mobile, !m.isEmpty { return m }
+            return nil
         }
 
         enum CodingKeys: String, CodingKey {
@@ -161,17 +173,45 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         case slaStatus = "sla_status"
         case urgency
         case latestSms = "latest_sms"
+        case dueOn = "due_on"
+        case attachmentCount = "attachment_count"
+    }
+
+    /// Defensive decode — older server rows occasionally omit `order_id`,
+    /// which would otherwise abort the entire ticket-list payload with
+    /// `keyNotFound("order_id")`. Fall back to `#<id>` when missing.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id            = try c.decode(Int64.self, forKey: .id)
+        self.orderId       = (try? c.decode(String.self, forKey: .orderId)) ?? "#\(self.id)"
+        self.customerId    = try? c.decode(Int64.self, forKey: .customerId)
+        self.total         = (try? c.decode(Int.self, forKey: .total)) ?? 0
+        self.isPinned      = (try? c.decode(Bool.self, forKey: .isPinned)) ?? false
+        self.createdAt     = (try? c.decode(String.self, forKey: .createdAt)) ?? ""
+        self.updatedAt     = (try? c.decode(String.self, forKey: .updatedAt)) ?? ""
+        self.customer      = try? c.decode(Customer.self, forKey: .customer)
+        self.status        = try? c.decode(Status.self, forKey: .status)
+        self.assignedUser  = try? c.decode(AssignedUser.self, forKey: .assignedUser)
+        self.firstDevice   = try? c.decode(FirstDevice.self, forKey: .firstDevice)
+        self.deviceCount   = try? c.decode(Int.self, forKey: .deviceCount)
+        self.slaStatus     = try? c.decode(String.self, forKey: .slaStatus)
+        self.urgency       = try? c.decode(String.self, forKey: .urgency)
+        self.latestSms     = try? c.decode(LatestSms.self, forKey: .latestSms)
+        self.dueOn            = try? c.decode(String.self, forKey: .dueOn)
+        self.attachmentCount  = try? c.decode(Int.self, forKey: .attachmentCount)
     }
 }
 
 /// Client-side filter chips. Mapped to server query params in the repository.
-public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
+/// §4.1: All / Open / On hold / Closed / Cancelled / Active (mirrors server `status_group`).
+public enum TicketListFilter: String, Codable, CaseIterable, Sendable, Identifiable {
     case all
     case myTickets
     case open
-    case inProgress
-    case waiting
+    case onHold
+    case active
     case closed
+    case cancelled
 
     public var id: String { rawValue }
 
@@ -180,14 +220,15 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
         case .all:        return "All"
         case .myTickets:  return "My Tickets"
         case .open:       return "Open"
-        case .inProgress: return "In Progress"
-        case .waiting:    return "Waiting"
+        case .onHold:     return "On Hold"
+        case .active:     return "Active"
         case .closed:     return "Closed"
+        case .cancelled:  return "Cancelled"
         }
     }
 
-    /// Query params the server understands. Some filters are client-side
-    /// refinements (my tickets → assigned_to=me); the rest map to status_group.
+    /// Query params the server understands.
+    /// Maps to `status_group` query param; `myTickets` appends `assigned_to=me`.
     public var queryItems: [URLQueryItem] {
         switch self {
         case .all:
@@ -196,24 +237,100 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
             return [URLQueryItem(name: "assigned_to", value: "me")]
         case .open:
             return [URLQueryItem(name: "status_group", value: "open")]
-        case .inProgress:
-            return [URLQueryItem(name: "status_group", value: "active")]
-        case .waiting:
+        case .onHold:
             return [URLQueryItem(name: "status_group", value: "on_hold")]
+        case .active:
+            return [URLQueryItem(name: "status_group", value: "active")]
         case .closed:
             return [URLQueryItem(name: "status_group", value: "closed")]
+        case .cancelled:
+            return [URLQueryItem(name: "status_group", value: "cancelled")]
         }
     }
 }
 
+/// §4.1 Urgency filter chips — Critical / High / Medium / Normal / Low.
+/// Maps to `urgency` query param on `GET /tickets`.
+public enum TicketUrgencyFilter: String, CaseIterable, Sendable, Identifiable {
+    case critical
+    case high
+    case medium
+    case normal
+    case low
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .critical: return "Critical"
+        case .high:     return "High"
+        case .medium:   return "Medium"
+        case .normal:   return "Normal"
+        case .low:      return "Low"
+        }
+    }
+
+    /// System color name used for urgency dot (maps to semantic colors on iOS).
+    /// Matches Android TicketUrgencyChip color assignment.
+    public var systemColorName: String {
+        switch self {
+        case .critical: return "systemRed"
+        case .high:     return "systemOrange"
+        case .medium:   return "systemYellow"
+        case .normal:   return "systemGreen"
+        case .low:      return "systemGray"
+        }
+    }
+
+    public var queryItem: URLQueryItem {
+        URLQueryItem(name: "urgency", value: rawValue)
+    }
+}
+
+/// §4.1 — sort order shared between Networking calls and the Tickets list view.
+/// UI-side `displayName` and `apply(to:)` extensions live in the Tickets package.
+public enum TicketSortOrder: String, CaseIterable, Sendable, Identifiable {
+    case newest    = "newest"
+    case oldest    = "oldest"
+    case status    = "status"
+    case urgency   = "urgency"
+    case assignee  = "assignee"
+    case dueDate   = "due_date"
+    case totalDesc = "total_desc"
+
+    public var id: String { rawValue }
+
+    public var queryItem: URLQueryItem {
+        URLQueryItem(name: "sort", value: rawValue)
+    }
+}
+
 public extension APIClient {
-    func listTickets(filter: TicketListFilter = .all, keyword: String? = nil, pageSize: Int = 50) async throws -> TicketsListResponse {
+    /// §4.1: list tickets with status-group filter + optional urgency filter.
+    func listTickets(
+        filter: TicketListFilter = .all,
+        urgency: TicketUrgencyFilter? = nil,
+        keyword: String? = nil,
+        pageSize: Int = 50
+    ) async throws -> TicketsListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
+        if let urgency { items.append(urgency.queryItem) }
         if let keyword, !keyword.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: keyword))
         }
         return try await get("/api/v1/tickets", query: items, as: TicketsListResponse.self)
+    }
+
+    /// §6.2 Used-in-tickets — recent tickets that consumed a specific inventory item.
+    /// Server: `GET /api/v1/tickets?part_inventory_id=:id&pagesize=10`
+    func ticketsByInventoryItem(itemId: Int64, limit: Int = 10) async throws -> TicketsListResponse {
+        let query = [
+            URLQueryItem(name: "part_inventory_id", value: String(itemId)),
+            URLQueryItem(name: "pagesize", value: String(limit)),
+            URLQueryItem(name: "sort", value: "newest")
+        ]
+        return try await get("/api/v1/tickets", query: query, as: TicketsListResponse.self)
     }
 }
 
@@ -497,6 +614,41 @@ public extension APIClient {
             "/api/v1/tickets/\(ticketId)/convert-to-invoice",
             body: _EmptyBody(),
             as: ConvertToInvoiceResponse.self
+        )
+    }
+}
+
+// MARK: - Delete ticket
+
+public extension APIClient {
+    /// `DELETE /api/v1/tickets/:id` — soft-delete server-side.
+    func deleteTicket(ticketId: Int64) async throws {
+        try await delete("/api/v1/tickets/\(ticketId)")
+    }
+}
+
+// MARK: - Duplicate ticket
+
+/// Response from `POST /tickets/:id/duplicate`.
+public struct DuplicateTicketResponse: Decodable, Sendable {
+    public let id: Int64?
+    public let ticketId: Int64?
+
+    public var resolvedId: Int64? { id ?? ticketId }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ticketId = "ticket_id"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/:id/duplicate` — copies customer + devices + clears status.
+    func duplicateTicket(ticketId: Int64) async throws -> DuplicateTicketResponse {
+        try await post(
+            "/api/v1/tickets/\(ticketId)/duplicate",
+            body: _EmptyBody(),
+            as: DuplicateTicketResponse.self
         )
     }
 }

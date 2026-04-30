@@ -140,4 +140,109 @@ final class InvoiceCreateViewModelTests: XCTestCase {
         vm.customerId = 1
         vm.scheduleAutoSave()
     }
+
+    // MARK: — §7.3 Line item management
+
+    func test_addLineItem_appendsToList() {
+        let vm = makeSut()
+        XCTAssertTrue(vm.lineItems.isEmpty)
+        vm.addLineItem()
+        XCTAssertEqual(vm.lineItems.count, 1)
+    }
+
+    func test_addLineItem_multipleItems_allAppended() {
+        let vm = makeSut()
+        vm.addLineItem()
+        vm.addLineItem()
+        vm.addLineItem()
+        XCTAssertEqual(vm.lineItems.count, 3)
+    }
+
+    func test_removeLineItem_byId_removesCorrectItem() {
+        let vm = makeSut()
+        vm.addLineItem()
+        vm.addLineItem()
+        let idToRemove = vm.lineItems[0].id
+        vm.removeLineItem(id: idToRemove)
+        XCTAssertEqual(vm.lineItems.count, 1)
+        XCTAssertFalse(vm.lineItems.contains { $0.id == idToRemove })
+    }
+
+    func test_lineItemsSubtotal_correctlyComputed() {
+        let vm = makeSut()
+        vm.addLineItem()
+        vm.lineItems[0].unitPrice = 100
+        vm.lineItems[0].quantity = 2
+        vm.lineItems[0].taxAmount = 10
+        vm.lineItems[0].lineDiscount = 5
+        // lineTotal = 100 * 2 - 5 + 10 = 205
+        XCTAssertEqual(vm.lineItemsSubtotal, 205, accuracy: 0.01)
+    }
+
+    func test_computedTotal_subtractCartDiscount() {
+        let vm = makeSut()
+        vm.addLineItem()
+        vm.lineItems[0].unitPrice = 100
+        vm.lineItems[0].quantity = 1
+        vm.cartDiscount = 20
+        // 100 - 20 = 80
+        XCTAssertEqual(vm.computedTotal, 80, accuracy: 0.01)
+    }
+
+    func test_computedTotal_neverNegative() {
+        let vm = makeSut()
+        vm.addLineItem()
+        vm.lineItems[0].unitPrice = 10
+        vm.cartDiscount = 999
+        XCTAssertEqual(vm.computedTotal, 0, accuracy: 0.01)
+    }
+
+    func test_isValid_falseWhenLineItemDescriptionEmpty() {
+        let vm = makeSut()
+        vm.customerId = 1
+        vm.addLineItem()
+        vm.lineItems[0].description = ""
+        XCTAssertFalse(vm.isValid)
+    }
+
+    func test_isValid_trueWhenLineItemsAllValid() {
+        let vm = makeSut()
+        vm.customerId = 1
+        vm.addLineItem()
+        vm.lineItems[0].description = "Screen replacement"
+        vm.lineItems[0].unitPrice = 75
+        XCTAssertTrue(vm.isValid)
+    }
+
+    func test_restoreDraft_restoresLineItems() {
+        let vm = makeSut()
+        let lineItemDraft = InvoiceDraft.LineItemDraft(description: "Battery", quantity: 2, unitPrice: 49.99)
+        let draft = InvoiceDraft(
+            customerId: "3",
+            lineItems: [lineItemDraft]
+        )
+        vm._pendingDraft = draft
+        vm._draftRecord = DraftRecord(screen: "invoice.create", entityId: nil, updatedAt: Date(), bytes: 10)
+
+        vm.restoreDraft()
+
+        XCTAssertEqual(vm.lineItems.count, 1)
+        XCTAssertEqual(vm.lineItems[0].description, "Battery")
+        XCTAssertEqual(vm.lineItems[0].quantity, 2)
+        XCTAssertEqual(vm.lineItems[0].unitPrice, 49.99, accuracy: 0.001)
+    }
+
+    func test_currentDraft_capturesLineItems() {
+        let vm = makeSut()
+        vm.customerId = 1
+        vm.addLineItem()
+        vm.lineItems[0].description = "Repair labor"
+        vm.lineItems[0].unitPrice = 60
+
+        let draft = vm.currentDraft()
+
+        XCTAssertEqual(draft.lineItems.count, 1)
+        XCTAssertEqual(draft.lineItems[0].description, "Repair labor")
+        XCTAssertEqual(draft.lineItems[0].unitPrice, 60, accuracy: 0.01)
+    }
 }

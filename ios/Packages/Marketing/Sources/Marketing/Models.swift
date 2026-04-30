@@ -147,23 +147,39 @@ public enum CampaignType: String, Codable, Sendable, CaseIterable {
 
 /// Matches `CAMPAIGN_CHANNELS` on the server.
 public enum CampaignChannel: String, Codable, Sendable, CaseIterable {
-    case sms, email, both
+    /// §37 — SMS blast
+    case sms
+    /// §37 — Email blast
+    case email
+    /// §37 — SMS + Email combined blast
+    case both
+    /// §37 — In-app banner (push-to-app-users via §70 notification layer)
+    case inAppBanner = "in_app_banner"
 
     public var displayName: String {
         switch self {
-        case .sms:   return "SMS"
-        case .email: return "Email"
-        case .both:  return "SMS + Email"
+        case .sms:         return "SMS"
+        case .email:       return "Email"
+        case .both:        return "SMS + Email"
+        case .inAppBanner: return "In-App Banner"
         }
     }
 
     public var systemImage: String {
         switch self {
-        case .sms:   return "message.fill"
-        case .email: return "envelope.fill"
-        case .both:  return "square.and.arrow.up.fill"
+        case .sms:         return "message.fill"
+        case .email:       return "envelope.fill"
+        case .both:        return "square.and.arrow.up.fill"
+        case .inAppBanner: return "app.badge.fill"
         }
     }
+
+    /// Whether this channel type triggers server-side SMS dispatch.
+    public var usesSMS: Bool { self == .sms || self == .both }
+    /// Whether this channel type triggers server-side email dispatch.
+    public var usesEmail: Bool { self == .email || self == .both }
+    /// Whether this channel type triggers a push-delivered in-app banner.
+    public var usesInAppBanner: Bool { self == .inAppBanner }
 }
 
 public struct CampaignReport: Codable, Sendable, Hashable {

@@ -13,9 +13,15 @@ import DesignSystem
 
 public struct InventoryMovementCard: View {
     public let report: InventoryReport?
+    /// §91.16 — shown in the zero-movement empty state to guide the tenant to add items.
+    public let onAddItem: (() -> Void)?
 
-    public init(report: InventoryReport?) {
+    public init(
+        report: InventoryReport?,
+        onAddItem: (() -> Void)? = nil
+    ) {
         self.report = report
+        self.onAddItem = onAddItem
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -24,6 +30,19 @@ public struct InventoryMovementCard: View {
     private var topItems: [InventoryMovementItem] {
         guard let r = report else { return [] }
         return Array(r.topMoving.sorted { $0.usedQty > $1.usedQty }.prefix(10))
+    }
+
+    private var hasMovementData: Bool { !topItems.isEmpty }
+
+    /// §91.12 (5): total retail value across all value-summary entries.
+    private func totalInventoryValue(_ r: InventoryReport) -> Double {
+        r.valueSummary.reduce(0) { $0 + $1.totalRetailValue }
+    }
+
+    /// §91.12 (5): true when OOS count > 0 but aggregate inventory value is $0.
+    /// This is contradictory — items can't be "out of stock" if inventory is unvalued.
+    private func isStockHealthContradiction(_ r: InventoryReport) -> Bool {
+        r.outOfStockCount > 0 && totalInventoryValue(r) == 0
     }
 
     public var body: some View {
@@ -39,11 +58,16 @@ public struct InventoryMovementCard: View {
     private var phoneBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            alertRow
-            movementChart
-                .frame(height: max(160, Double(topItems.count) * 28))
-                .chartXAxisLabel("Units Used (30d)", alignment: .center)
-                .accessibilityLabel(axLabel)
+            if hasMovementData {
+                alertRow
+                stockHealthWarning
+                movementChart
+                    .frame(height: max(160, Double(topItems.count) * 28))
+                    .chartXAxisLabel("Units Used (30d)", alignment: .center)
+                    .accessibilityLabel(axLabel)
+            } else {
+                movementEmptyState
+            }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -53,34 +77,60 @@ public struct InventoryMovementCard: View {
     // MARK: - iPad 2-up layout
 
     private var ipadBody: some View {
-        HStack(alignment: .top, spacing: BrandSpacing.md) {
-            // Left: movement bar chart
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                cardHeader
-                movementChart
-                    .frame(height: max(200, Double(topItems.count) * 28))
-                    .chartXAxisLabel("Units Used (30d)", alignment: .center)
-                    .accessibilityLabel(axLabel)
-            }
-            .frame(maxWidth: .infinity)
+        Group {
+            if hasMovementData {
+                HStack(alignment: .top, spacing: BrandSpacing.md) {
+                    // Left: movement bar chart
+                    VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                        cardHeader
+                        stockHealthWarning
+                        movementChart
+                            .frame(height: max(200, Double(topItems.count) * 28))
+                            .chartXAxisLabel("Units Used (30d)", alignment: .center)
+                            .accessibilityLabel(axLabel)
+                    }
+                    .frame(maxWidth: .infinity)
 
-            // Right: value summary table
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                Text("Stock Value")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityAddTraits(.isHeader)
-                alertRow
-                if let r = report {
-                    valueSummaryTable(r.valueSummary)
+                    // Right: value summary table
+                    VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                        Text("Stock Value")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityAddTraits(.isHeader)
+                        alertRow
+                        if let r = report {
+                            valueSummaryTable(r.valueSummary)
+                        }
+                    }
+                    .frame(maxWidth: 200)
+                    .padding(.top, BrandSpacing.xxs)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                    cardHeader
+                    movementEmptyState
                 }
             }
-            .frame(maxWidth: 200)
-            .padding(.top, BrandSpacing.xxs)
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .overlay(strokeBorder)
+    }
+
+    // MARK: - Empty state (§91.16 per-card CTA)
+
+    private var movementEmptyState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            ContentUnavailableView(
+                "No Movement Data",
+                systemImage: "shippingbox",
+                description: Text("Add inventory items to start tracking stock movement.")
+            )
+            if let onAddItem {
+                ReportCardCTAView(destination: .inventoryCreate, onAction: { _ in onAddItem() })
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Card header
@@ -99,6 +149,31 @@ public struct InventoryMovementCard: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .accessibilityAddTraits(.isHeader)
+    }
+
+    // MARK: - Stock health contradiction warning (§91.12 item 5)
+
+    @ViewBuilder
+    private var stockHealthWarning: some View {
+        if let r = report, isStockHealthContradiction(r) {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.bizarreError)
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text("Stock health contradiction: \(r.outOfStockCount) out-of-stock items reported but inventory value is $0. Check data sync.")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreError)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xs)
+            .background(Color.bizarreError.opacity(0.1), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "Stock health contradiction: \(r.outOfStockCount) out-of-stock items but inventory value is zero. Check data sync."
+            )
+        }
     }
 
     // MARK: - Alert row (out of stock / low stock)
@@ -147,24 +222,46 @@ public struct InventoryMovementCard: View {
     @ViewBuilder
     private var movementChart: some View {
         if topItems.isEmpty {
-            emptyState
+            ChartDashedSilhouette(systemImage: "shippingbox", label: "No inventory movement data for this period.")
         } else {
-            Chart(topItems) { item in
-                BarMark(
-                    x: .value("Units Used", item.usedQty),
-                    y: .value("Item", item.name)
-                )
-                .foregroundStyle(Color.bizarreTeal.opacity(0.75))
-                .cornerRadius(DesignTokens.Radius.xs)
-                .annotation(position: .trailing) {
-                    Text("\(item.usedQty)")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Chart(topItems) { item in
+                    BarMark(
+                        x: .value("Units Used", item.usedQty),
+                        y: .value("Item", item.name)
+                    )
+                    .foregroundStyle(Color.bizarreTeal.opacity(0.75))
+                    .cornerRadius(DesignTokens.Radius.xs)
+                    .annotation(position: .trailing) {
+                        Text("\(item.usedQty)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
                 }
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(Color.bizarreOnSurface.opacity(0.85))
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
+                           value: topItems.count)
+
+                inventoryLegendRow
             }
-            .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
-                       value: topItems.count)
         }
+    }
+
+    private var inventoryLegendRow: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Circle().fill(Color.bizarreTeal.opacity(0.75)).frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text("Units used (30d)")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend: units used in last 30 days")
     }
 
     // MARK: - Value summary table (iPad sidebar)
@@ -204,13 +301,6 @@ public struct InventoryMovementCard: View {
         }
     }
 
-    // MARK: - Empty state
-
-    private var emptyState: some View {
-        ContentUnavailableView("No Movement Data",
-                               systemImage: "shippingbox",
-                               description: Text("No inventory movement data for this period."))
-    }
 
     // MARK: - Helpers
 

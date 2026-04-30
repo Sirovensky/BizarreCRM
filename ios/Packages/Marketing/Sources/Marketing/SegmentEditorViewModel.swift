@@ -5,6 +5,9 @@ import Networking
 
 // MARK: - Field / Comparator catalogues
 
+/// §37 — Audience builder segment fields.
+/// Covers: tag, last-visit window, LTV tier, device type, service history,
+/// birthday month per §37 spec plus the original set.
 public enum SegmentField: String, CaseIterable, Sendable {
     case lifetimeSpend     = "lifetime_spend"
     case lastVisitDaysAgo  = "last_visit_days_ago"
@@ -12,6 +15,11 @@ public enum SegmentField: String, CaseIterable, Sendable {
     case deviceType        = "device_type"
     case birthdayMonth     = "birthday_month"
     case createdAt         = "created_at"
+    // §37 new fields for deep audience builder
+    case tag               = "tag"
+    case ltvTier           = "ltv_tier"         // bronze / silver / gold / platinum
+    case serviceType       = "service_type"      // service history (repair type)
+    case totalRepairs      = "total_repairs"
 
     public var displayName: String {
         switch self {
@@ -21,6 +29,24 @@ public enum SegmentField: String, CaseIterable, Sendable {
         case .deviceType:       return "Device type"
         case .birthdayMonth:    return "Birthday month"
         case .createdAt:        return "Created date"
+        case .tag:              return "Tag"
+        case .ltvTier:          return "LTV tier"
+        case .serviceType:      return "Service type"
+        case .totalRepairs:     return "Total repairs"
+        }
+    }
+
+    /// Comparators valid for this field.
+    public var validComparators: [SegmentComparator] {
+        switch self {
+        case .lifetimeSpend, .lastVisitDaysAgo, .ticketCount, .totalRepairs:
+            return [.gt, .lt, .eq, .neq]
+        case .birthdayMonth:
+            return [.eq, .neq]
+        case .tag, .ltvTier, .deviceType, .serviceType:
+            return [.eq, .neq, .contains]
+        case .createdAt:
+            return [.gt, .lt, .eq]
         }
     }
 }

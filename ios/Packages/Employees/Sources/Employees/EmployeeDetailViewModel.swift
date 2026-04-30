@@ -34,6 +34,10 @@ public final class EmployeeDetailViewModel {
     public private(set) var performance: EmployeePerformance?
     public private(set) var availableRoles: [RoleRow] = []
     public private(set) var actionState: LoadState = .idle
+    /// §14.2 Schedule — upcoming shifts (next 14 days).
+    public private(set) var upcomingShifts: [Shift] = []
+    /// §14.2 Schedule — pending / approved time-off for this employee.
+    public private(set) var timeOffRequests: [TimeOffRequest] = []
 
     // MARK: - Confirmation dialogs
 
@@ -62,10 +66,21 @@ public final class EmployeeDetailViewModel {
             async let detailFetch    = api.getEmployee(id: employeeId)
             async let perfFetch      = api.getEmployeePerformance(id: employeeId)
             async let rolesFetch     = api.listRoles()
-            let (d, p, r) = try await (detailFetch, perfFetch, rolesFetch)
+            // §14.2 Schedule: fetch upcoming shifts (next 14 days) + time-off
+            let now = ISO8601DateFormatter().string(from: Date())
+            let future = ISO8601DateFormatter().string(from: Date().addingTimeInterval(14 * 86400))
+            async let shiftsFetch    = api.listShifts(userId: employeeId, fromDate: now, toDate: future)
+            async let timeOffFetch   = api.listTimeOffRequests(userId: employeeId)
+
+            let (d, p, r, shifts, timeOff) = try await (
+                detailFetch, perfFetch, rolesFetch, shiftsFetch, timeOffFetch
+            )
             detail = d
             performance = p
             availableRoles = r.filter { $0.isActiveFlag }
+            upcomingShifts = shifts.sorted { $0.startAt < $1.startAt }
+            timeOffRequests = timeOff.filter { $0.status == .approved || $0.status == .pending }
+                .sorted { $0.startDate < $1.startDate }
             loadState = .loaded
         } catch {
             AppLog.ui.error("EmployeeDetail load failed: \(error.localizedDescription, privacy: .public)")

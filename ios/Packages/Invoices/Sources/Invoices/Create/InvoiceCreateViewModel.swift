@@ -19,6 +19,28 @@ public final class InvoiceCreateViewModel {
     public var ticketId: Int64?
     public var notes: String = ""
     public var dueOn: String = ""
+    public var paymentTerms: String = ""           // §7.3 payment terms
+    public var footerText: String = ""             // §7.3 footer text
+    public var depositRequired: Bool = false       // §7.3 deposit required flag
+    public var lineItems: [DraftLineItem] = []     // §7.3 line items
+    public var cartDiscount: Double = 0            // §7.3 cart-level discount ($)
+    public var sendOnCreate: Bool = false          // §7.3 send now checkbox
+
+    public struct DraftLineItem: Identifiable, Sendable {
+        public var id = UUID()
+        public var description: String = ""
+        public var quantity: Int = 1
+        public var unitPrice: Double = 0
+        public var taxAmount: Double = 0
+        public var lineDiscount: Double = 0
+        public var inventoryItemId: Int64? = nil
+
+        public var isValid: Bool {
+            !description.trimmingCharacters(in: .whitespaces).isEmpty && quantity > 0 && unitPrice >= 0
+        }
+
+        public var lineTotal: Double { unitPrice * Double(quantity) - lineDiscount + taxAmount }
+    }
 
     // MARK: — Submit state
 
@@ -32,17 +54,48 @@ public final class InvoiceCreateViewModel {
     public internal(set) var _pendingDraft: InvoiceDraft?
     public internal(set) var validationErrors: [String: String] = [:]
 
+    // §7.3+ Draft auto-save indicator — updated each time a push completes
+    public private(set) var draftSavedAt: Date?
+
     @ObservationIgnored internal let _draftStoreValue: DraftStore = DraftStore()
     @ObservationIgnored internal lazy var _draftAutoSaverValue: DraftAutoSaver<InvoiceDraft> =
         DraftAutoSaver(screen: "invoice.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
+    /// §7.3 Idempotency key — generated once per create session.
+    /// Passed as `idempotency_key` in the request body so the server can
+    /// deduplicate retries from flaky networks.
+    @ObservationIgnored private let idempotencyKey: String = UUID().uuidString
 
     public init(api: APIClient) { self.api = api }
 
     // MARK: — Validation
 
-    public var isValid: Bool { customerId != nil }
+    public var isValid: Bool {
+        customerId != nil && lineItems.allSatisfy { $0.isValid }
+    }
+
+    // MARK: — Line item helpers (§7.3)
+
+    public func addLineItem() {
+        lineItems.append(DraftLineItem())
+        scheduleAutoSave()
+    }
+
+    public func removeLineItem(id: UUID) {
+        lineItems.removeAll { $0.id == id }
+        scheduleAutoSave()
+    }
+
+    /// Computed subtotal (before cart discount).
+    public var lineItemsSubtotal: Double {
+        lineItems.reduce(0) { $0 + $1.lineTotal }
+    }
+
+    /// Total after cart discount.
+    public var computedTotal: Double {
+        max(0, lineItemsSubtotal - cartDiscount)
+    }
 
     // MARK: — Submit
 
@@ -57,11 +110,24 @@ public final class InvoiceCreateViewModel {
         isSubmitting = true
         defer { isSubmitting = false }
 
+        let requestLineItems = lineItems.map { item in
+            InvoiceLineItemRequest(
+                inventoryItemId: item.inventoryItemId,
+                description: item.description,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                taxAmount: item.taxAmount,
+                lineDiscount: item.lineDiscount
+            )
+        }
         let body = CreateInvoiceRequest(
             customerId: cid,
             ticketId: ticketId,
             notes: notes.isEmpty ? nil : notes,
-            dueOn: dueOn.isEmpty ? nil : dueOn
+            dueOn: dueOn.isEmpty ? nil : dueOn,
+            discount: cartDiscount > 0 ? cartDiscount : nil,
+            lineItems: requestLineItems,
+            idempotencyKey: idempotencyKey
         )
 
         do {
@@ -117,6 +183,13 @@ extension InvoiceCreateViewModel {
         ticketId = d.ticketId.flatMap { Int64($0) }
         notes = d.notes
         dueOn = d.dueOn
+        lineItems = d.lineItems.map { li in
+            var item = DraftLineItem()
+            item.description = li.description
+            item.quantity = max(1, Int(li.quantity.rounded()))
+            item.unitPrice = li.unitPrice
+            return item
+        }
         _pendingDraft = nil
         _draftRecord  = nil
     }
@@ -134,12 +207,19 @@ extension InvoiceCreateViewModel {
             ticketId: ticketId.map { String($0) },
             notes: notes,
             dueOn: dueOn,
+            lineItems: lineItems.map { InvoiceDraft.LineItemDraft(
+                description: $0.description,
+                quantity: Double($0.quantity),
+                unitPrice: $0.unitPrice
+            )},
             updatedAt: Date()
         )
     }
 
     public func scheduleAutoSave() {
         _draftAutoSaverValue.push(currentDraft())
+        // §7.3+ Record the moment so the view can show "Draft saved HH:mm"
+        draftSavedAt = Date()
     }
 }
 

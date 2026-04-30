@@ -1,10 +1,46 @@
 import Foundation
+import Core   // AppLog
 
 // Ground truth: packages/server/src/routes/sms.routes.ts
 //   GET  /sms/conversations          → SmsConversationsResponse
 //   PATCH /sms/conversations/:phone/flag   → { success, data: { conv_phone, is_flagged } }
 //   PATCH /sms/conversations/:phone/pin    → { success, data: { conv_phone, is_pinned } }
 //   PATCH /sms/conversations/:phone/read   → { success }
+
+// MARK: - SmsError (§91.1)
+
+/// Friendly domain error for the SMS conversations pipeline.
+///
+/// Raw `DecodingError` messages expose internal field names and type details — not
+/// appropriate for UI. `SmsError` wraps them behind a stable, localised message
+/// while preserving the original error for logging.
+public enum SmsError: LocalizedError, Sendable {
+    /// The server response could not be decoded.
+    case decodeFailed(underlying: any Error)
+    /// A conversation record arrived without the required `conv_phone` key.
+    case missingPhone
+
+    public var errorDescription: String? {
+        switch self {
+        case .decodeFailed:
+            return "Couldn't read conversation data from the server. Please try again."
+        case .missingPhone:
+            return "A conversation record was missing required data and was skipped."
+        }
+    }
+
+    /// Technical detail — log this, never show directly in UI.
+    public var technicalDetail: String {
+        switch self {
+        case .decodeFailed(let err):
+            return err.localizedDescription
+        case .missingPhone:
+            return "conv_phone key absent in SmsConversation JSON payload"
+        }
+    }
+}
+
+// MARK: - SmsConversationsResponse
 
 /// `GET /api/v1/sms/conversations` response.
 /// Server: packages/server/src/routes/sms.routes.ts:208.
@@ -14,6 +50,9 @@ public struct SmsConversationsResponse: Decodable, Sendable {
 }
 
 public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
+    // §91.14 — `conv_phone` is now optional at the Codable layer so a missing key
+    // in a single record doesn't crash the entire list decode. Callers that need a
+    // non-nil phone (navigation, actions) should guard on `convPhone` being non-empty.
     public let convPhone: String
     public let lastMessageAt: String?
     public let lastMessage: String?
@@ -109,11 +148,19 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
         case recentTicket = "recent_ticket"
     }
 
-    /// Custom decode so `isArchived` defaults to `false` when the server
-    /// omits the field (older rows / responses without ENR-SMS7 flags).
+    /// Custom decode so:
+    ///   - `conv_phone` uses `decodeIfPresent` — missing key logs a warning and
+    ///     uses an empty string rather than crashing the whole list decode (§91.14).
+    ///   - `is_archived` defaults to `false` for older rows without ENR-SMS7 flags.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        convPhone = try c.decode(String.self, forKey: .convPhone)
+        // §91.14 — guard against missing conv_phone without crashing the decode.
+        if let phone = try c.decodeIfPresent(String.self, forKey: .convPhone) {
+            convPhone = phone
+        } else {
+            AppLog.communications.warning("SmsConversation: conv_phone absent — using empty string sentinel")
+            convPhone = ""
+        }
         lastMessageAt = try? c.decode(String.self, forKey: .lastMessageAt)
         lastMessage = try? c.decode(String.self, forKey: .lastMessage)
         lastDirection = try? c.decode(String.self, forKey: .lastDirection)

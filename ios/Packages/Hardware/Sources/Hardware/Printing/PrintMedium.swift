@@ -34,6 +34,8 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     case label4x6
     /// 2" × 4" small label.
     case label2x4
+    /// US Legal page (8.5 × 14 in).
+    case legal
 
     // MARK: - Physical dimensions (points at 72 dpi)
 
@@ -46,6 +48,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .a4:          return 481  // 168 mm at 72 dpi
         case .label4x6:    return 288  // 4 in at 72 dpi
         case .label2x4:    return 144  // 2 in at 72 dpi
+        case .legal:       return 468  // 6.5 in at 72 dpi (same margin as letter)
         }
     }
 
@@ -58,11 +61,34 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .a4:          return 595  // 210 mm
         case .label4x6:    return 288
         case .label2x4:    return 144
+        case .legal:       return 612  // 8.5 in
+        }
+    }
+
+    /// Total page height in points.
+    public var pageHeight: CGFloat {
+        switch self {
+        case .thermal80mm, .thermal58mm: return 0   // continuous feed — no fixed height
+        case .letter:      return 792  // 11 in
+        case .a4:          return 842  // 297 mm
+        case .label4x6:    return 432  // 6 in
+        case .label2x4:    return 288  // 4 in
+        case .legal:       return 1008 // 14 in
         }
     }
 
     /// Lateral margin on each side (points).
     public var sideMargin: CGFloat { (pageWidth - contentWidth) / 2 }
+
+    /// Top/bottom margin (points). Used by the paginated PDF renderer to leave
+    /// breathing room between content slices and page edges.
+    public var margin: CGFloat {
+        switch self {
+        case .thermal80mm, .thermal58mm: return 4
+        case .letter, .a4, .legal:       return 36  // 0.5 in
+        case .label4x6, .label2x4:      return 8
+        }
+    }
 
     // MARK: - Fonts
 
@@ -70,7 +96,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var headerFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 12, weight: .bold, design: .monospaced)
-        case .letter, .a4:               return .system(size: 16, weight: .bold)
+        case .letter, .a4, .legal:       return .system(size: 16, weight: .bold)
         case .label4x6, .label2x4:      return .system(size: 10, weight: .bold)
         }
     }
@@ -79,7 +105,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var bodyFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 9, design: .monospaced)
-        case .letter, .a4:               return .system(size: 11)
+        case .letter, .a4, .legal:       return .system(size: 11)
         case .label4x6, .label2x4:      return .system(size: 8)
         }
     }
@@ -88,7 +114,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var captionFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 7, design: .monospaced)
-        case .letter, .a4:               return .system(size: 9)
+        case .letter, .a4, .legal:       return .system(size: 9)
         case .label4x6, .label2x4:      return .system(size: 7)
         }
     }
@@ -96,7 +122,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     /// Whether the medium fits two columns for line items.
     public var twoColumnLineItems: Bool {
         switch self {
-        case .letter, .a4: return true
+        case .letter, .a4, .legal: return true
         default: return false
         }
     }
@@ -110,7 +136,15 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .a4:          return "A4"
         case .label4x6:    return "4\" × 6\" Label"
         case .label2x4:    return "2\" × 4\" Label"
+        case .legal:       return "Legal (8.5 × 14)"
         }
+    }
+
+    /// Default paper size for US tenants (Settings → Printing).
+    public static var tenantDefault: PrintMedium {
+        let regionCode = Locale.current.region?.identifier ?? "US"
+        // US and Canada default to letter; rest of world to A4.
+        return (regionCode == "US" || regionCode == "CA") ? .letter : .a4
     }
 }
 

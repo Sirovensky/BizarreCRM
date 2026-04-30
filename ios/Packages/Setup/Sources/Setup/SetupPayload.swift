@@ -50,6 +50,8 @@ public struct SetupPayload: Sendable {
     public var firstEmployeeLastName: String? = nil
     public var firstEmployeeEmail: String? = nil
     public var firstEmployeeRole: String? = nil
+    /// Whether to also send an SMS invite to the first employee.
+    public var firstEmployeeSendSMS: Bool = false
 
     // MARK: Step 14 — Sample Data Opt-In (POST /api/v1/onboarding/sample-data)
     public var sampleDataOptIn: Bool? = nil
@@ -257,10 +259,11 @@ public extension SetupPayload {
 
     func firstEmployeePayload() -> [String: String] {
         var d: [String: String] = [:]
-        if let fn = firstEmployeeFirstName, !fn.isEmpty { d["first_name"] = fn }
-        if let ln = firstEmployeeLastName,  !ln.isEmpty { d["last_name"]  = ln }
-        if let em = firstEmployeeEmail,     !em.isEmpty { d["email"]      = em }
-        if let ro = firstEmployeeRole,      !ro.isEmpty { d["role"]       = ro }
+        if let fn = firstEmployeeFirstName, !fn.isEmpty { d["first_name"]   = fn }
+        if let ln = firstEmployeeLastName,  !ln.isEmpty { d["last_name"]    = ln }
+        if let em = firstEmployeeEmail,     !em.isEmpty { d["email"]        = em }
+        if let ro = firstEmployeeRole,      !ro.isEmpty { d["role"]         = ro }
+        d["send_sms_invite"] = firstEmployeeSendSMS ? "1" : "0"
         return d
     }
 

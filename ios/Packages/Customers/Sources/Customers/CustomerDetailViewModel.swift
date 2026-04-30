@@ -10,6 +10,7 @@ public struct CustomerSnapshot: Sendable {
     public var detail: CustomerDetail?
     public var analytics: CustomerAnalytics?
     public var recentTickets: [TicketSummary]?
+    public var recentInvoices: [InvoiceSummary]?
     public var notes: [CustomerNote]?
 }
 
@@ -21,17 +22,36 @@ public final class CustomerDetailViewModel {
     public private(set) var errorMessage: String?
     public let customerId: Int64
 
-    @ObservationIgnored private let repo: CustomerDetailRepository
+    /// Per-customer currency override (ISO 4217), or `nil` to use tenant default.
+    /// §5 lines 978–979.  Loaded from `CustomerCurrencyOverrideStore` on `load()`.
+    public private(set) var currencyOverrideCode: String?
 
-    public init(repo: CustomerDetailRepository, customerId: Int64) {
+    @ObservationIgnored private let repo: CustomerDetailRepository
+    @ObservationIgnored private let currencyOverrides: CustomerCurrencyOverrideStore
+
+    public init(
+        repo: CustomerDetailRepository,
+        customerId: Int64,
+        currencyOverrides: CustomerCurrencyOverrideStore = .shared
+    ) {
         self.repo = repo
         self.customerId = customerId
+        self.currencyOverrides = currencyOverrides
+    }
+
+    /// Persist a per-customer currency override and refresh the cached value.
+    public func setCurrencyOverride(_ code: String?) async {
+        await currencyOverrides.setOverride(code, customerId: Int(customerId))
+        currencyOverrideCode = await currencyOverrides.override(customerId: Int(customerId))
     }
 
     public func load() async {
         if snapshot.detail == nil { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
+
+        // Per-customer currency override (offline-first; §5 line 979).
+        currencyOverrideCode = await currencyOverrides.override(customerId: Int(customerId))
 
         // Primary fetch — fail the screen if we can't even load the core detail.
         do {
@@ -45,10 +65,12 @@ public final class CustomerDetailViewModel {
         // Secondary fetches — silent-degrade, mirror Android fire-and-forget.
         async let analytics = try? repo.analytics(id: customerId)
         async let tickets = try? repo.recentTickets(id: customerId)
+        async let invoices = try? repo.recentInvoices(id: customerId)
         async let notes = try? repo.notes(id: customerId)
 
         snapshot.analytics = await analytics
         snapshot.recentTickets = await tickets
+        snapshot.recentInvoices = await invoices
         snapshot.notes = await notes
     }
 }
@@ -57,6 +79,7 @@ public protocol CustomerDetailRepository: Sendable {
     func detail(id: Int64) async throws -> CustomerDetail
     func analytics(id: Int64) async throws -> CustomerAnalytics
     func recentTickets(id: Int64) async throws -> [TicketSummary]
+    func recentInvoices(id: Int64) async throws -> [InvoiceSummary]
     func notes(id: Int64) async throws -> [CustomerNote]
 }
 
@@ -73,6 +96,9 @@ public actor CustomerDetailRepositoryImpl: CustomerDetailRepository {
     }
     public func recentTickets(id: Int64) async throws -> [TicketSummary] {
         try await api.customerRecentTickets(id: id)
+    }
+    public func recentInvoices(id: Int64) async throws -> [InvoiceSummary] {
+        try await api.customerRecentInvoices(id: id)
     }
     public func notes(id: Int64) async throws -> [CustomerNote] {
         try await api.customerNotes(id: id)

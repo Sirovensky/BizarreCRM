@@ -4,6 +4,7 @@ import Core
 import DesignSystem
 import Networking
 import Customers
+import UIKit
 
 // §4.3 — Full-fidelity multi-step ticket create.
 //
@@ -21,14 +22,19 @@ public struct TicketCreateFlowView: View {
     @State private var pendingBanner: String?
     private let customerRepo: CustomerRepository
     private let onCreated: (_ ticketId: Int64) -> Void
+    // §4.3 — Optional "print label" callback. When non-nil and a printer is paired,
+    // a "Print intake label" banner is offered after successful create.
+    private let onPrintLabel: ((_ ticketId: Int64) -> Void)?
 
     public init(
         api: APIClient,
         customerRepo: CustomerRepository,
-        onCreated: @escaping (_ ticketId: Int64) -> Void = { _ in }
+        onCreated: @escaping (_ ticketId: Int64) -> Void = { _ in },
+        onPrintLabel: ((_ ticketId: Int64) -> Void)? = nil
     ) {
         self.customerRepo = customerRepo
         self.onCreated = onCreated
+        self.onPrintLabel = onPrintLabel
         _vm = State(wrappedValue: TicketCreateFlowViewModel(api: api))
     }
 
@@ -48,6 +54,16 @@ public struct TicketCreateFlowView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        // §4.3: inline validation error toast
+        .overlay(alignment: .bottom) {
+            if let validationError = vm.stepValidationError {
+                StepValidationToast(message: validationError)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.xl)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(BrandMotion.banner, value: vm.stepValidationError)
     }
 
     // MARK: - iPhone: full-screen NavigationStack
@@ -66,11 +82,13 @@ public struct TicketCreateFlowView: View {
         ToolbarItem(placement: .cancellationAction) {
             if vm.currentStep == .customer {
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(".", modifiers: .command)  // §4.3 ⌘. cancel
                     .accessibilityLabel("Cancel ticket creation")
             } else {
                 Button(action: vm.back) {
                     Label("Back", systemImage: "chevron.left")
                 }
+                .keyboardShortcut(.leftArrow, modifiers: .command)  // §4.3 ⌘← prev step
                 .accessibilityLabel("Go back to \(prevStepTitle)")
             }
         }
@@ -130,6 +148,7 @@ public struct TicketCreateFlowView: View {
     private var iPadToolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
+                .keyboardShortcut(".", modifiers: .command)  // §4.3 ⌘. cancel
                 .accessibilityLabel("Cancel ticket creation")
         }
 
@@ -189,12 +208,29 @@ public struct TicketCreateFlowView: View {
     private func submitAndDismiss() async {
         await vm.submit()
         if let id = vm.createdTicketId {
+            // §4.3: .success haptic on create
+            let haptic = UINotificationFeedbackGenerator()
+            haptic.notificationOccurred(.success)
             if vm.queuedOffline {
                 pendingBanner = "Saved — will sync when online"
+                haptic.notificationOccurred(.success)
                 try? await Task.sleep(nanoseconds: 900_000_000)
+            } else {
+                haptic.notificationOccurred(.success)
             }
+            // §4.3 — Post-create: pop to ticket detail + offer "Print label" if callback available
             onCreated(id)
+            if let printLabel = onPrintLabel {
+                // Brief banner so the view is still visible before dismiss
+                pendingBanner = "Ticket created — tap to print intake label"
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                printLabel(id)
+            }
             dismiss()
+        } else if vm.errorMessage != nil {
+            // §4.3: .error haptic on validation fail / server error
+            let haptic = UINotificationFeedbackGenerator()
+            haptic.notificationOccurred(.error)
         }
     }
 
@@ -204,6 +240,31 @@ public struct TicketCreateFlowView: View {
         let all = CreateFlowStep.allCases
         guard let idx = all.firstIndex(of: vm.currentStep), idx > 0 else { return "" }
         return all[idx - 1].title
+    }
+}
+
+// MARK: - §4.3 Inline validation toast (glass error pill)
+
+private struct CreateFlowValidationToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.white)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bizarreError.opacity(0.9), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Validation error: \(message)")
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -222,7 +283,7 @@ private struct CreateFlowProgressBar: View {
                 Capsule()
                     .fill(Color.bizarreOrange)
                     .frame(width: progress(geo.size.width), height: 4)
-                    .animation(BrandMotion.stepTransition, value: current)
+                    .animation(BrandMotion.snappy, value: current)
             }
         }
         .frame(height: 4)
@@ -393,8 +454,16 @@ private struct FlowCustomerPickerSheet: View {
 
 // MARK: - Step 2: Devices
 
+private struct ServicePickerTarget: Identifiable { let id: Int }  // wraps device index
+private struct CatalogPickerTarget: Identifiable { let id: Int }  // wraps device index
+private struct TemplatePickerTarget: Identifiable { let id: Int }  // wraps device index — §4.10
+
 private struct DevicesStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
+    @State private var servicePickerTarget: ServicePickerTarget? = nil
+    @State private var catalogPickerTarget: CatalogPickerTarget? = nil
+    // §4.10 — Device template picker
+    @State private var templatePickerTarget: TemplatePickerTarget? = nil
 
     var body: some View {
         Form {
@@ -403,7 +472,10 @@ private struct DevicesStepView: View {
                     DeviceFormSection(
                         device: device,
                         onUpdate: { update in vm.updateDevice(at: idx, update) },
-                        onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) }
+                        onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) },
+                        onPickService: { servicePickerTarget = ServicePickerTarget(id: idx) },
+                        onPickCatalogDevice: { catalogPickerTarget = CatalogPickerTarget(id: idx) },
+                        onPickTemplate: { templatePickerTarget = TemplatePickerTarget(id: idx) }
                     )
 
                     if vm.devices.count > 1 {
@@ -440,6 +512,54 @@ private struct DevicesStepView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .sheet(item: $servicePickerTarget) { target in
+            // §4.3 — Services / parts picker for device at target.id
+            TicketCreateServicePickerSheet(api: vm.api) { serviceId, name, price in
+                vm.updateDevice(at: target.id) {
+                    $0.serviceId = serviceId
+                    $0.serviceName = name
+                    if $0.price == 0 { $0.price = price }   // pre-fill price only if blank
+                }
+                servicePickerTarget = nil
+            }
+        }
+        .sheet(item: $catalogPickerTarget) { target in
+            // §4.3 — Device catalog hierarchical picker
+            CatalogDevicePickerSheet(api: vm.api) { catalogDevice in
+                vm.updateDevice(at: target.id) {
+                    // Pre-fill device name from catalog selection if blank
+                    if $0.deviceName.isEmpty {
+                        $0.deviceName = catalogDevice.displayName
+                    }
+                }
+                catalogPickerTarget = nil
+            }
+        }
+        // §4.10 — Device template picker: pre-fills name, service, price + checklist
+        .sheet(item: $templatePickerTarget) { target in
+            TicketTemplatePickerSheet(api: vm.api) { template in
+                vm.updateDevice(at: target.id) { device in
+                    if device.deviceName.isEmpty {
+                        device.deviceName = template.model ?? template.name
+                    }
+                    if device.serviceName.isEmpty {
+                        device.serviceName = template.name
+                        if let cents = template.defaultPriceCents, device.price == 0 {
+                            device.price = Double(cents) / 100.0
+                        }
+                    }
+                    // Pre-fill intake checklist from template conditions
+                    if !template.conditions.isEmpty && device.checklist.allSatisfy({ !$0.checked }) {
+                        for (i, condition) in template.conditions.enumerated() {
+                            if i < device.checklist.count {
+                                device.checklist[i].label = condition
+                            }
+                        }
+                    }
+                }
+                templatePickerTarget = nil
+            }
+        }
     }
 }
 
@@ -447,15 +567,39 @@ private struct DeviceFormSection: View {
     var device: DraftDevice
     let onUpdate: ((inout DraftDevice) -> Void) -> Void
     let onToggleChecklist: (String) -> Void
+    let onPickService: () -> Void
+    let onPickCatalogDevice: () -> Void
+    // §4.10 — template picker callback (optional so callers that don't support it compile)
+    var onPickTemplate: (() -> Void)? = nil
 
     var body: some View {
         Group {
-            TextField("Device name (e.g. iPhone 14 Pro)", text: .init(
-                get: { device.deviceName },
-                set: { v in onUpdate { $0.deviceName = v } }
-            ))
-            .autocorrectionDisabled()
-            .accessibilityLabel("Device name")
+            // §4.3 — Device name with catalog lookup shortcut
+            HStack {
+                TextField("Device name (e.g. iPhone 14 Pro)", text: .init(
+                    get: { device.deviceName },
+                    set: { v in onUpdate { $0.deviceName = v } }
+                ))
+                .autocorrectionDisabled()
+                .accessibilityLabel("Device name")
+                // §4.10 — template picker shortcut button
+                if let onPickTemplate {
+                    Button {
+                        onPickTemplate()
+                    } label: {
+                        Image(systemName: "doc.badge.plus")
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .accessibilityLabel("Pick device template")
+                }
+                Button {
+                    onPickCatalogDevice()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Look up device in catalog")
+            }
 
             TextField("IMEI", text: .init(
                 get: { device.imei },
@@ -492,6 +636,28 @@ private struct DeviceFormSection: View {
             ))
             .keyboardType(.decimalPad)
             .accessibilityLabel("Repair price in US dollars")
+
+            // §4.3 — Service picker shortcut
+            Button {
+                onPickService()
+            } label: {
+                HStack {
+                    if !device.serviceName.isEmpty {
+                        Text(device.serviceName)
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    } else {
+                        Text("Choose repair service…")
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .font(.system(size: 12))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(device.serviceName.isEmpty ? "Choose a repair service from catalog" : "Selected service: \(device.serviceName). Tap to change.")
         }
 
         // Pre-conditions checklist
@@ -611,10 +777,11 @@ private struct PricingStepView: View {
     }
 }
 
-// MARK: - Step 4: Assignee & Due Date
+// MARK: - Step 4: Assignee, Due Date, Service Type, Tags
 
 private struct ScheduleStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
+    @State private var newTag: String = ""
 
     var body: some View {
         Form {
@@ -655,15 +822,90 @@ private struct ScheduleStepView: View {
                     .accessibilityLabel("Due date in year month day format")
             }
 
+            // §4.3 — Service type picker
+            Section("Service type") {
+                Picker("Service type", selection: $vm.serviceType) {
+                    Text("None").tag(Optional<TicketServiceType>.none)
+                    ForEach(TicketServiceType.allCases, id: \.self) { t in
+                        Text(t.displayName).tag(Optional(t))
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityLabel("Ticket service type")
+            }
+
+            // §4.3 — Tags multi-chip
+            Section("Tags / labels") {
+                if !vm.tags.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            ForEach(vm.tags, id: \.self) { tag in
+                                HStack(spacing: 4) {
+                                    Text(tag)
+                                        .font(.brandLabelSmall())
+                                    Button {
+                                        vm.tags.removeAll { $0 == tag }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 12))
+                                    }
+                                    .accessibilityLabel("Remove tag \(tag)")
+                                }
+                                .padding(.horizontal, BrandSpacing.sm)
+                                .padding(.vertical, BrandSpacing.xxs)
+                                .background(Color.bizarreOrange.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Tag: \(tag)")
+                            }
+                        }
+                        .padding(.vertical, BrandSpacing.xs)
+                    }
+                }
+                HStack {
+                    TextField("Add tag…", text: $newTag)
+                        .submitLabel(.done)
+                        .onSubmit { addTag() }
+                        .accessibilityLabel("New tag name")
+                    if !newTag.isEmpty {
+                        Button("Add") { addTag() }
+                            .foregroundStyle(.bizarreOrange)
+                            .font(.brandLabelMedium())
+                            .accessibilityLabel("Add tag")
+                    }
+                }
+            }
+
             Section("Classification") {
                 TextField("Source (walk-in, web, referral…)", text: $vm.source)
                     .accessibilityLabel("Ticket source")
                 TextField("Referral source", text: $vm.referralSource)
                     .accessibilityLabel("Referral source")
             }
+
+            // §4.3 — Deposit
+            Section("Deposit") {
+                HStack {
+                    Text("$")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    TextField("0.00", value: $vm.depositAmount, format: .number)
+                        .keyboardType(.decimalPad)
+                        .accessibilityLabel("Deposit amount in dollars")
+                }
+            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+    }
+
+    private func addTag() {
+        let trimmed = newTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !vm.tags.contains(trimmed) else {
+            newTag = ""
+            return
+        }
+        vm.tags.append(trimmed)
+        newTag = ""
     }
 }
 
@@ -764,5 +1006,38 @@ private extension Animation {
 
 private extension BrandMotion {
     static var stepTransition: Animation { .easeInOut(duration: DesignTokens.Motion.snappy) }
+}
+
+// MARK: - §4.3 Inline glass validation toast
+
+/// Glass pill that appears at the bottom of the create flow when a step
+/// validation fails. Auto-dismissed when the user corrects the field and
+/// the stepValidationError is cleared by the ViewModel.
+private struct StepValidationToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, BrandSpacing.lg)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreError.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Validation error: \(message)")
+        .accessibilityAddTraits(.isStaticText)
+    }
 }
 #endif

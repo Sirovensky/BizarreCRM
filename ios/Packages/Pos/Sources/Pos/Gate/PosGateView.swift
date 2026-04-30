@@ -123,59 +123,268 @@ public struct PosGateView: View {
     }
 
     // MARK: - iPad layout
-
+    //
+    // Wrapped in `PosRegisterLayout` so the gate phase shares the exact
+    // same `rail | catalog | cart` template as path-choice and the active
+    // register: 60pt topbar, catalog on the left at `catalogFraction:0.65`,
+    // 420pt cart on the right. Earlier the gate used a `NavigationStack`
+    // with `.searchable` which added ~96pt of nav-bar + drawer chrome
+    // above the cart column — the customer placeholder landed ~30pt
+    // lower than the post-gate "Walk-in" header. That broke the
+    // smooth-river feel; using the same template fixes the y-origin.
     private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: .constant(.detailOnly)) {
-            // Primary column hidden — .detailOnly suppresses it.
-            EmptyView()
-        } detail: {
-            ScrollView {
-                VStack(spacing: 0) {
-                    heroHeader
-                        .padding(.bottom, 12)
-                        .padding(.top, 32)
-
-                    fallbackOrLabel
-                        .padding(.bottom, 10)
-
-                    fallbackButtons(minHeight: 72, cornerRadius: 18, horizontalPadding: 20)
-                        .frame(maxWidth: 680)
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                    pickupStripSection(isCompact: false)
-                        .frame(maxWidth: 680)
-                        .padding(.top, 36)
-                        .padding(.bottom, 32)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 32)
-            }
-            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-            .searchable(
-                text: $vm.query,
-                placement: .automatic,
-                prompt: "Search by name, phone, email, loyalty #, or scan customer card"
-            )
-            .keyboardShortcut("k", modifiers: [.command])
-            .overlay(alignment: .top) {
+        PosRegisterLayout(
+            catalogFraction: 0.65
+        ) {
+            iPadGateTopbar
+        } catalog: {
+            ZStack(alignment: .top) {
+                itemsColumn
                 if vm.isSearching || !vm.results.isEmpty {
                     searchResultsOverlay
                         .frame(maxWidth: 680)
                         .padding(.horizontal, 32)
+                        .padding(.top, 64) // sits below the inline search field
                 }
             }
-            .sheet(isPresented: $vm.isShowingPickupSheet) {
-                PickupListSheet(
-                    isPresented: $vm.isShowingPickupSheet,
-                    allPickups: vm.pickupTickets,
-                    onSelect: { vm.openPickup(id: $0) }
-                )
-            }
+        } cart: {
+            cartPlaceholderColumn
         }
-        .navigationSplitViewStyle(.prominentDetail)
+        .sheet(isPresented: $vm.isShowingPickupSheet) {
+            PickupListSheet(
+                isPresented: $vm.isShowingPickupSheet,
+                allPickups: vm.pickupTickets,
+                onSelect: { vm.openPickup(id: $0) }
+            )
+        }
         .task { await vm.loadPickups() }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: createNewTapTrigger)
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: walkInTapTrigger)
+    }
+
+    // MARK: - iPad gate · topbar (centered title + trailing online chip + ⋯)
+
+    private var iPadGateTopbar: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                Text("POS · new sale")
+                    .font(.headline)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                Text("Register open · Pavel I.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+            .accessibilityElement(children: .combine)
+
+            HStack(spacing: 8) {
+                Spacer()
+                onlineChip
+                Button {
+                    // TODO: overflow menu (settings, end register session)
+                } label: {
+                    Text("⋯")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color.bizarreOnSurface)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("More options")
+            }
+            .padding(.horizontal, BrandSpacing.md)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - iPad gate · items column (search + hero + buttons + pickup strip)
+
+    private var itemsColumn: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                inlineSearchField
+                    .frame(maxWidth: 680)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+
+                heroHeader
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+
+                fallbackOrLabel
+                    .padding(.bottom, 10)
+
+                fallbackButtons(minHeight: 72, cornerRadius: 18, horizontalPadding: 20)
+                    .frame(maxWidth: 680)
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                pickupStripSection(isCompact: false)
+                    .frame(maxWidth: 680)
+                    .padding(.top, 36)
+                    .padding(.bottom, 32)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+        }
+    }
+
+    // MARK: - Inline search field (replaces `.searchable` nav-bar drawer)
+
+    private var inlineSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            TextField(
+                "Search by name, phone, email, loyalty #, or scan customer card",
+                text: $vm.query
+            )
+            .textFieldStyle(.plain)
+            .foregroundStyle(.bizarreOnSurface)
+            .submitLabel(.search)
+            .accessibilityIdentifier("pos.gate.search")
+            if !vm.query.isEmpty {
+                Button {
+                    vm.query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.bizarreSurface1.opacity(0.5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - iPad gate · cart placeholder column ("No customer")
+
+    private var cartPlaceholderColumn: some View {
+        VStack(spacing: 0) {
+            // Cart head — empty-customer state. Padding mirrors
+            // `PosIPadCartPanel.cartCustomerHeader` exactly so the "No
+            // customer" header lands at the same y-origin as the post-gate
+            // "Walk-in" / customer-attached header (cashier never sees the
+            // header jump when the gate clears).
+            HStack(spacing: BrandSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
+                        .overlay(Circle().strokeBorder(Color.bizarreOnSurface.opacity(0.18),
+                                                       style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No customer")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.bizarreOnSurface)
+                    Text("Pick a customer to start the sale.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+
+            Divider().background(.bizarreOutline)
+
+            // Empty body — caption per mockup, no pointing-emoji (the cart
+            // panel sits on the right of the items column so a left-pointing
+            // emoji would aim at the cart itself, not the customer chooser).
+            VStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "cart")
+                    .font(.system(size: 40))
+                    .opacity(0.25)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                    .accessibilityHidden(true)
+                Text("Every sale needs a customer attached.")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, BrandSpacing.lg)
+            .padding(.vertical, BrandSpacing.xl)
+
+            Spacer(minLength: 0)
+
+            // Totals stub — all $0.00
+            VStack(spacing: BrandSpacing.xs) {
+                totalsRow(label: "Subtotal", value: "$0.00")
+                totalsRow(label: "Tax", value: "$0.00")
+                Divider().overlay(Color.bizarreOutline.opacity(0.2))
+                HStack {
+                    Text("Total")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(Color.bizarreOnSurface)
+                    Spacer()
+                    Text("$0.00")
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .monospacedDigit()
+                }
+            }
+            .padding(BrandSpacing.md)
+
+            // Disabled "Attach customer first" CTA — slimmed to match the
+            // post-gate Charge button height for vertical-rhythm parity.
+            Text("Attach customer first")
+                .font(.brandTitleSmall())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .padding(.vertical, 8)
+                .background(Color.bizarreOnSurface.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+        }
+        // Background + leading edge divider are supplied by `PosRegisterLayout`'s
+        // glass-backed cart column wrapper — explicit `Color.bizarreSurface1`
+        // here would render glass-on-solid and break the column's brand glass.
+    }
+
+    private func totalsRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            Spacer()
+            Text(value)
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurface)
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: - iPad gate · topbar principal title
+
+    @ToolbarContentBuilder
+    private var gateTopbarPrincipal: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text("POS · new sale")
+                    .font(.headline)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                Text("Register open · Pavel I.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     // MARK: - Shared sub-views
@@ -229,14 +438,10 @@ public struct PosGateView: View {
                     .foregroundStyle(Color.bizarreOnSurface)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(Color(white: 1, opacity: 0.06))
+                            .fill(Color.bizarreOnSurface.opacity(0.05))
                             .overlay(
                                 RoundedRectangle(cornerRadius: cornerRadius)
-                                    .stroke(Color(white: 1, opacity: 0.12), lineWidth: 1)
-                            )
-                            .shadow(
-                                color: Color.white.opacity(0.08),
-                                radius: 0, x: 0, y: -1
+                                    .stroke(Color.bizarreOnSurface.opacity(0.14), lineWidth: 1)
                             )
                     )
             }
@@ -258,13 +463,13 @@ public struct PosGateView: View {
                     .foregroundStyle(Color.bizarreOnSurfaceMuted)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(Color(white: 1, opacity: 0.04))
+                            .fill(Color.bizarreOnSurface.opacity(0.02))
                             .overlay(
                                 RoundedRectangle(cornerRadius: cornerRadius)
                                     .strokeBorder(
+                                        Color.bizarreOnSurface.opacity(0.20),
                                         style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
                                     )
-                                    .foregroundStyle(Color(white: 1, opacity: 0.18))
                             )
                     )
             }
@@ -392,14 +597,19 @@ private struct CustomerHitRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // Initials avatar
+                // Initials avatar — neutral surface tile to keep the
+                // customer chrome out of the brand accent palette.
                 ZStack {
                     Circle()
-                        .fill(Color.bizarreTeal.opacity(0.25))
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.bizarreOnSurface.opacity(0.18), lineWidth: 1)
+                        )
                         .frame(width: 40, height: 40)
                     Text(hit.initials)
                         .font(.callout.weight(.bold))
-                        .foregroundStyle(Color.bizarreTeal)
+                        .foregroundStyle(.bizarreOnSurface)
                 }
                 .accessibilityHidden(true)
 

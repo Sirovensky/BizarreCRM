@@ -34,6 +34,9 @@ import Hardware
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    /// §28.8 — tracks whether the app is inactive / backgrounded so we can
+    /// overlay a branded blur before the system takes an App Switcher snapshot.
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -69,6 +72,14 @@ struct RootView: View {
                 .posTheme(override: nil)
             }
         }
+        // §28.8 Privacy snapshot — overlay a branded blur while the app is
+        // inactive so the App Switcher thumbnail never reveals sensitive data.
+        // Removed immediately when the app becomes active again.
+        .overlay {
+            if scenePhase != .active {
+                PrivacySnapshotOverlay()
+            }
+        }
         .task { await listenForSessionEvents() }
     }
 
@@ -90,6 +101,37 @@ struct RootView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - §28.8 Privacy snapshot overlay
+
+/// Branded blur shown while the app is inactive (App Switcher, system overlays).
+///
+/// The system captures the app snapshot when `scenePhase` transitions from
+/// `.active` to `.inactive`. By overlaying this view before that snapshot is
+/// taken, no sensitive data appears in the App Switcher.
+///
+/// Customer-facing display (kiosk) intentionally opts out — kiosk content is
+/// already meant to be public-facing and the overlay would confuse customers.
+private struct PrivacySnapshotOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase
+                .ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image("BrandMark")
+                    .resizable()
+                    .renderingMode(.template)
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(width: 56, height: 56)
+                Text("BizarreCRM")
+                    .font(.system(.title2, design: .default).bold())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+        }
+        .transition(.opacity)
+        .accessibilityHidden(true) // decorative only; app is inactive
     }
 }
 
@@ -273,42 +315,77 @@ private struct iPhoneTabs: View {
     @Binding var selection: MainTab
     var onSignOut: (() -> Void)? = nil
 
+    // §29.1 — Lazy tabs: Dashboard is eager (home tab); all others rendered on
+    // first selection so cold-start only pays the cost of one tab's body.
+    // Once a tab has appeared it is never destroyed — tabs stay alive so
+    // ValueObservation pipelines keep running and pull-to-refresh state is
+    // preserved. The `.appeared` set is intentionally not persisted across
+    // app launches; every cold-start re-pays only the first navigation cost.
+    @State private var appearedTabs: Set<MainTab> = [.dashboard]
+
     var body: some View {
         TabView(selection: $selection) {
+            // Home tab — always eager; content starts loading immediately.
             DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
                 .tabItem { Label(MainTab.dashboard.title, systemImage: MainTab.dashboard.systemImage) }
                 .tag(MainTab.dashboard)
 
-            TicketListView(
-                repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient,
-                customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
-            )
-                .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
-                .tag(MainTab.tickets)
-
-            CustomerListView(
-                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient
-            )
-                .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
-                .tag(MainTab.customers)
-
-            PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+            lazyTab(.tickets) {
+                TicketListView(
+                    repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
                     api: AppServices.shared.apiClient,
-                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                    cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
-                .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
-                .tag(MainTab.pos)
+                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
+                )
+            }
+            .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
+            .tag(MainTab.tickets)
 
-            MoreMenuView(onSignOut: onSignOut)
-                .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
-                .tag(MainTab.more)
+            lazyTab(.customers) {
+                CustomerListView(
+                    repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                    detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient
+                )
+            }
+            .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
+            .tag(MainTab.customers)
 
-            GlobalSearchView(api: AppServices.shared.apiClient)
-                .tabItem { Label(MainTab.search.title, systemImage: MainTab.search.systemImage) }
-                .tag(MainTab.search)
+            lazyTab(.pos) {
+                PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                        api: AppServices.shared.apiClient,
+                        customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                        cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
+            }
+            .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
+            .tag(MainTab.pos)
+
+            lazyTab(.more) {
+                MoreMenuView(onSignOut: onSignOut)
+            }
+            .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
+            .tag(MainTab.more)
+
+            lazyTab(.search) {
+                GlobalSearchView(api: AppServices.shared.apiClient)
+            }
+            .tabItem { Label(MainTab.search.title, systemImage: MainTab.search.systemImage) }
+            .tag(MainTab.search)
+        }
+        .onChange(of: selection) { _, newTab in
+            appearedTabs.insert(newTab)
+        }
+    }
+
+    /// Returns the real content view once `tab` has appeared (been selected at
+    /// least once), or a lightweight `Color.clear` placeholder otherwise.
+    /// After first appearance the real view is kept in the hierarchy permanently.
+    @ViewBuilder
+    private func lazyTab<Content: View>(_ tab: MainTab, @ViewBuilder content: () -> Content) -> some View {
+        if appearedTabs.contains(tab) {
+            content()
+        } else {
+            Color.clear
+                .accessibilityHidden(true)
         }
     }
 }
@@ -324,6 +401,12 @@ private struct iPadShell: View {
     @Binding var destination: RailDestination
     var onSignOut: (() -> Void)? = nil
 
+    /// Pending phone number to push into the SMS tab when the user taps an
+    /// in-app "SMS this customer" affordance from elsewhere (Customers,
+    /// Tickets, Leads, Appointments, Marketing). Cleared once the SMS view
+    /// reads + consumes it.
+    @State private var pendingSMSPhone: String? = nil
+
     var body: some View {
         ShellLayout(selection: $destination) { dest in
             detailView(for: dest)
@@ -336,6 +419,15 @@ private struct iPadShell: View {
                 onSignOut: onSignOut
             )
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openInAppSMSThread)) { note in
+            // Posted by `SMSLauncher.open(phone:)` when
+            // `MessagingPreference.mode == .inApp` (the default). Switch the
+            // rail to the SMS destination and stash the phone so SmsListView
+            // can push the matching thread on its next render.
+            guard let phone = note.object as? String, !phone.isEmpty else { return }
+            pendingSMSPhone = phone
+            destination = .sms
+        }
     }
 
     @ViewBuilder
@@ -344,7 +436,13 @@ private struct iPadShell: View {
         case .dashboard:
             DashboardView(
                 repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient
+                api: AppServices.shared.apiClient,
+                onMyQueueTicketTap: { _ in destination = .tickets },
+                onNewTicket: { destination = .tickets },
+                onNewCustomer: { destination = .customers },
+                onScanBarcode: { destination = .inventory },
+                onNewSMS: { destination = .sms },
+                onTapSyncSettings: { destination = .settings }
             )
 
         case .tickets:

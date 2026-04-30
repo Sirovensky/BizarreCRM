@@ -68,11 +68,17 @@ public final class MileageEntryViewModel {
     public private(set) var savedEntryId: Int64?
 
     private let employeeId: Int64
-    private let api: APIClient
+    private let repository: any MileageRepository
 
+    public init(employeeId: Int64, repository: any MileageRepository) {
+        self.employeeId = employeeId
+        self.repository = repository
+    }
+
+    /// Convenience init for callers that hold an `APIClient` directly.
     public init(employeeId: Int64, api: APIClient) {
         self.employeeId = employeeId
-        self.api = api
+        self.repository = LiveMileageRepository(api: api)
     }
 
     // MARK: - Computed
@@ -169,7 +175,7 @@ public final class MileageEntryViewModel {
             purpose: purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : purpose
         )
         do {
-            let entry: MileageEntry = try await api.post("/api/v1/expenses/mileage", body: body, as: MileageEntry.self)
+            let entry = try await repository.create(body)
             savedEntryId = entry.id
         } catch {
             AppLog.ui.error("Mileage save failed: \(error.localizedDescription, privacy: .public)")

@@ -19,6 +19,12 @@ public final class OwnerPLViewModel {
         didSet { if selectedPreset != .custom { applyPreset(selectedPreset) } }
     }
     public var rollup: OwnerPLRollup = .day
+
+    // MARK: - Display toggles
+
+    /// When true the time-series chart and revenue KPI use net revenue (after refunds/discounts).
+    /// When false they show gross revenue. Toggled via the gross/net segmented control.
+    public var showNetRevenue: Bool = false
     public private(set) var fromDateString: String = ""
     public private(set) var toDateString: String   = ""
 

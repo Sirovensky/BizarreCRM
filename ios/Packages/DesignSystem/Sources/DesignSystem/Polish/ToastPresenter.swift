@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Toast model
 
@@ -70,6 +73,10 @@ public final class ToastPresenter {
     public init() {}
 
     /// Enqueue a new toast. Removes oldest if stack is full.
+    ///
+    /// When VoiceOver is active the message is also posted as a `.announcement`
+    /// notification so the user hears it without needing to navigate to the toast
+    /// pill. The announcement is silent when VoiceOver is off — §26.1.
     public func show(_ message: String, style: Toast.Style = .info, duration: Double? = nil) {
         let toast = Toast(message: message, style: style, duration: duration)
         var updated = toasts
@@ -79,6 +86,16 @@ public final class ToastPresenter {
         updated.append(toast)
         toasts = updated
         scheduleAutoDismiss(toast)
+        postVoiceOverAnnouncement(message)
+    }
+
+    // MARK: Private — VoiceOver
+
+    private func postVoiceOverAnnouncement(_ message: String) {
+        #if canImport(UIKit)
+        guard UIAccessibility.isVoiceOverRunning else { return }
+        UIAccessibility.post(notification: .announcement, argument: message)
+        #endif
     }
 
     /// Immediately dismiss a specific toast.
@@ -188,6 +205,7 @@ public extension View {
     func toastOverlay() -> some View {
         overlay(alignment: .bottom) {
             ToastStackView()
+                .brandZ(.toast)   // §30 layering rule — toasts pinned to top of stack
         }
     }
 }

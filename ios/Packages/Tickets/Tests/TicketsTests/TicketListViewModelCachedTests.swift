@@ -95,7 +95,7 @@ private actor StubCachedTicketRepo: TicketCachedRepository {
 
     var lastSyncedAt: Date? { syncedAt }
 
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
         if shouldFail { throw TVMTestError.boom }
         syncedAt = Date()
         return makeTickets(count: ticketCount)
@@ -108,9 +108,10 @@ private actor StubCachedTicketRepo: TicketCachedRepository {
         return makeTickets(count: ticketCount)
     }
 
-    func detail(id: Int64) async throws -> TicketDetail {
-        throw TVMTestError.boom
-    }
+    func detail(id: Int64) async throws -> TicketDetail { throw TVMTestError.boom }
+    func delete(id: Int64) async throws { throw TVMTestError.boom }
+    func duplicate(id: Int64) async throws -> DuplicateTicketResponse { throw TVMTestError.boom }
+    func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse { throw TVMTestError.boom }
 
     private func makeTickets(count: Int) -> [TicketSummary] {
         (0..<count).map { index in
@@ -136,7 +137,7 @@ private actor PlainStubTicketRepo: TicketRepository {
         self.ticketCount = ticketCount
     }
 
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
         (0..<ticketCount).map { index in
             let json = """
             {
@@ -155,6 +156,10 @@ private actor PlainStubTicketRepo: TicketRepository {
     func detail(id: Int64) async throws -> TicketDetail {
         throw TVMTestError.boom
     }
+
+    func delete(id: Int64) async throws { throw TVMTestError.boom }
+    func duplicate(id: Int64) async throws -> DuplicateTicketResponse { throw TVMTestError.boom }
+    func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse { throw TVMTestError.boom }
 }
 
 private enum TVMTestError: Error, LocalizedError {

@@ -1,0 +1,1677 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS phone mockups — pick one</title>
+<style>
+  :root {
+    --bg: #0f0a14;
+    --surface: #1a1722;
+    --surface-2: #241f2e;
+    --outline: #332c3f;
+    --on: #ece9f3;
+    --muted: #a79fb8;
+    --primary: #fdeed0;
+    --on-primary: #2b1400;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --font: -apple-system, "SF Pro Text", Segoe UI, Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #08060b; color: var(--on);
+    font-family: var(--font); font-size: 14px;
+  }
+  h1 {
+    text-align: center; padding: 14px 8px 4px; margin: 0;
+    font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
+  }
+  .intro { text-align: center; color: var(--muted); padding: 0 16px 16px; font-size: 13px; line-height: 1.4; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 24px; padding: 8px 16px 48px; max-width: 1800px; margin: 0 auto;
+  }
+  .card {
+    background: rgba(26,23,34,0.3);
+    border: 1px solid var(--outline);
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+  .card .summary { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+  .card .pros { color: var(--success); font-size: 12px; margin-bottom: 2px; }
+  .card .cons { color: var(--warning); font-size: 12px; margin-bottom: 14px; }
+
+  /* Phone frame — fixed portrait ratio Pixel-ish */
+  .phone {
+    width: 360px; height: 760px;
+    margin: 0 auto;
+    background: var(--bg);
+    border: 8px solid #111;
+    border-radius: 38px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .notch {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 100px; height: 22px; background: #000;
+    border-radius: 0 0 14px 14px;
+    z-index: 9;
+  }
+  .phone-body {
+    width: 100%; height: 100%;
+    padding-top: 28px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: var(--surface);
+    border-bottom: 1px solid var(--outline);
+  }
+  .topbar .title { font-weight: 700; font-size: 15px; }
+  .topbar .chip {
+    background: var(--surface-2); padding: 4px 10px; border-radius: 99px;
+    font-size: 11px; color: var(--muted);
+  }
+
+  .body { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+  .scroll { overflow-y: auto; flex: 1; }
+
+  /* Generic button */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px;
+    background: var(--primary); color: var(--on-primary);
+    border: 0; border-radius: 12px; padding: 12px 16px;
+    font-weight: 700; font-size: 14px; text-decoration: none;
+  }
+  .btn.ghost {
+    background: transparent; color: var(--on);
+    border: 1.5px dashed var(--outline);
+  }
+  .btn.secondary {
+    background: var(--surface-2); color: var(--on); border: 1px solid var(--outline);
+  }
+  .btn.destructive { background: var(--error); color: #fff; }
+
+  /* Chip row */
+  .chip-row { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip-pill {
+    flex-shrink: 0; padding: 6px 12px; border-radius: 99px;
+    background: var(--surface-2); color: var(--on); font-size: 12px;
+    border: 1px solid var(--outline); white-space: nowrap;
+  }
+  .chip-pill.active { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+
+  /* Catalog tile */
+  .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--outline);
+    border-radius: 12px; padding: 10px; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .tile .name { font-size: 13px; font-weight: 600; line-height: 1.2; }
+  .tile .price { font-size: 14px; font-weight: 700; color: var(--primary); }
+
+  /* Cart line */
+  .cart-line {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--outline);
+  }
+  .cart-line .line-name { font-size: 13px; }
+  .cart-line .line-qty { color: var(--muted); font-size: 12px; }
+  .cart-line .line-price { font-weight: 700; font-size: 14px; color: var(--primary); }
+
+  /* Bottom tender bar */
+  .tender-bar {
+    padding: 12px 14px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--outline);
+  }
+  .tender-totals { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .tender-total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; margin: 6px 0 10px; }
+  .tender-total .amount { color: var(--on); }
+  .tender-btn {
+    width: 100%; padding: 16px; border-radius: 14px;
+    background: var(--primary); color: var(--on-primary);
+    font-weight: 800; font-size: 16px; border: 0;
+  }
+
+  /* Tabs */
+  .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--outline); }
+  .tab { flex: 1; padding: 12px; text-align: center; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--on); border-bottom-color: var(--primary); font-weight: 700; }
+
+  /* FAB */
+  .fab {
+    position: absolute; right: 14px; bottom: 90px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--primary); color: var(--on-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+  }
+
+  /* Approach C collapsed cart header */
+  .cart-handle {
+    padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--outline);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px;
+  }
+  .cart-handle .pull { color: var(--muted); font-size: 11px; }
+
+  /* Approach D big scan */
+  .big-scan {
+    background: var(--surface); border-bottom: 1px solid var(--outline);
+    padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .big-scan .scan-btn {
+    background: linear-gradient(135deg, var(--primary), var(--warning));
+    color: var(--on-primary);
+    padding: 22px; border-radius: 14px;
+    text-align: center; font-size: 18px; font-weight: 800;
+  }
+  .big-scan .quick-row { display: flex; gap: 6px; overflow-x: auto; }
+  .big-scan .quick-row::-webkit-scrollbar { display: none; }
+  .quick-tile {
+    flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--outline);
+    border-radius: 10px; padding: 10px 14px; min-width: 100px;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* Approach E stacked — cart always top */
+  .stack-cart {
+    max-height: 240px; overflow-y: auto;
+    background: var(--surface);
+  }
+
+  .hint {
+    background: rgba(77,184,201,0.12); color: var(--teal);
+    padding: 8px 12px; font-size: 11px; text-align: center; border-bottom: 1px solid var(--outline);
+  }
+
+  /* Bottom-sheet style cart (Approach B) */
+  .sheet-handle {
+    width: 36px; height: 4px; border-radius: 2px; background: var(--outline);
+    margin: 8px auto;
+  }
+  .sheet {
+    background: var(--surface);
+    border-top-left-radius: 22px; border-top-right-radius: 22px;
+    border-top: 1px solid var(--outline);
+  }
+
+  .meta { text-align: center; color: var(--muted); font-size: 11px; padding: 12px; }
+
+  /* ─────────────────────────────────────────────────────────────
+     v2b — ANIMATED bottom→top search on focus
+     Loops every 5s. 220ms "spring"-feel cubic-bezier transitions.
+     Mirrors Material 3 SearchBar collapsed→expanded behavior.
+     ───────────────────────────────────────────────────────────── */
+  @keyframes searchRise {
+    0%, 28%   { top: auto; bottom: 14px; transform: translateY(0); }
+    34%, 70%  { top: 82px; bottom: auto; transform: translateY(0); }
+    76%, 100% { top: auto; bottom: 14px; transform: translateY(0); }
+  }
+  @keyframes tilesFade {
+    0%, 28%   { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    34%, 70%  { opacity: 0; transform: translateY(-12px); pointer-events: none; }
+    76%, 100% { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  }
+  @keyframes resultsFade {
+    0%, 33%   { opacity: 0; transform: translateY(8px); }
+    40%, 70%  { opacity: 1; transform: translateY(0); }
+    75%, 100% { opacity: 0; transform: translateY(8px); }
+  }
+  @keyframes queryType {
+    0%, 33%   { content: ""; }
+    40%       { content: "S"; }
+    45%       { content: "Sa"; }
+    50%       { content: "Sar"; }
+    55%, 70%  { content: "Sarah"; }
+    75%, 100% { content: ""; }
+  }
+  @keyframes placeholderSwap {
+    0%, 33%   { opacity: 1; }
+    40%, 70%  { opacity: 0; }
+    75%, 100% { opacity: 1; }
+  }
+  @keyframes keyboardRise {
+    0%, 28%   { transform: translateY(100%); opacity: 0; }
+    34%, 70%  { transform: translateY(0); opacity: 1; }
+    76%, 100% { transform: translateY(100%); opacity: 0; }
+  }
+
+  .anim-phone .anim-search {
+    position: absolute; left: 14px; right: 14px;
+    animation: searchRise 5s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+    z-index: 20;
+  }
+  .anim-phone .anim-tiles {
+    animation: tilesFade 5s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+  }
+  .anim-phone .anim-results {
+    position: absolute; left: 0; right: 0; top: 148px; bottom: 180px;
+    overflow: hidden;
+    animation: resultsFade 5s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+  .anim-phone .anim-typed::before {
+    content: "";
+    animation: queryType 5s steps(1, end) infinite;
+    font-weight: 500;
+    color: var(--on);
+  }
+  .anim-phone .anim-placeholder {
+    animation: placeholderSwap 5s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+  }
+  .anim-phone .anim-caret {
+    display: inline-block; width: 1.5px; height: 14px;
+    background: var(--primary); vertical-align: middle;
+    margin-left: 1px; opacity: 0.85;
+    animation: placeholderSwap 5s reverse cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+  }
+  .anim-phone .anim-keyboard {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 180px; background: linear-gradient(180deg, #1e1929, #0d0a13);
+    border-top: 1px solid var(--outline);
+    animation: keyboardRise 5s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+    z-index: 15;
+    display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; padding: 10px 6px 22px;
+  }
+  .anim-phone .anim-keyboard span {
+    background: var(--surface-2); border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--on); height: 26px;
+  }
+</style>
+</head>
+<body>
+
+<h1>POS phone mockups — pick one (vertical only)</h1>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PALETTE SHOWCASE — pick a primary color (applied to rest of page)
+     Each swatch = same 4 widgets rendered with that palette's primary.
+     Click label to see which looks best against warm dark surface.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="max-width: 1200px; margin: 0 auto 28px; padding: 0 16px;">
+  <div class="card">
+    <h2 style="margin-bottom: 4px;">🎨 Primary color options — dark warm theme</h2>
+    <p class="summary" style="margin-bottom: 14px;">Same widgets, different primary. Surface / on-surface / success / warning stay fixed. Current file uses <b style="color: #fdeed0;">cream #fdeed0</b> — pick a winner and I'll swap across all mockups + flow notes.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;">
+
+      <!-- Helper: inline palette preview template via repeated blocks -->
+
+      <!-- Cream -->
+      <div style="background: #1a1722; border: 2px solid #fdeed0; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #fdeed0;">Cream (current)</b><code style="color: #a79fb8; font-size: 11px;">#fdeed0</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #fdeed0; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #fdeed0; color: #2b1400; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #fdeed0; color: #2b1400; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #fdeed0; color: #2b1400; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #fdeed0; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Soft, warm, boutique feel. Low chroma = easy on eyes. Can look washed-out on pure-black OLED.</div>
+      </div>
+
+      <!-- Amber / gold -->
+      <div style="background: #1a1722; border: 2px solid #f5b942; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #f5b942;">Amber / gold</b><code style="color: #a79fb8; font-size: 11px;">#f5b942</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #f5b942; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #f5b942; color: #2b1400; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #f5b942; color: #2b1400; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #f5b942; color: #2b1400; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #f5b942; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Retro diner · warm + punchy. Closest to original orange vibe without shouting. Collides with #warning unless shifted.</div>
+      </div>
+
+      <!-- Electric lime -->
+      <div style="background: #1a1722; border: 2px solid #c4e538; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #c4e538;">Electric lime</b><code style="color: #a79fb8; font-size: 11px;">#c4e538</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #c4e538; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #c4e538; color: #1e2a00; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #c4e538; color: #1e2a00; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #c4e538; color: #1e2a00; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #c4e538; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Pops hardest on dark. Cyberpunk / energy-drink energy. Can feel loud in large fills.</div>
+      </div>
+
+      <!-- Coral -->
+      <div style="background: #1a1722; border: 2px solid #ff7a5c; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #ff7a5c;">Coral</b><code style="color: #a79fb8; font-size: 11px;">#ff7a5c</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #ff7a5c; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #ff7a5c; color: #2a0a02; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #ff7a5c; color: #2a0a02; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #ff7a5c; color: #2a0a02; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #ff7a5c; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Sunset warm · softer than pure orange. Close to "error" red — avoid destructive CTAs styled with primary.</div>
+      </div>
+
+      <!-- Teal (promote accent) -->
+      <div style="background: #1a1722; border: 2px solid #4db8c9; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #4db8c9;">Teal</b><code style="color: #a79fb8; font-size: 11px;">#4db8c9</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #4db8c9; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #4db8c9; color: #002d35; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #4db8c9; color: #002d35; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #4db8c9; color: #002d35; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #4db8c9; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Cool + techy · universal on warm dark. Already our accent; promotion = whole UI feels "tech shop" not "retail boutique".</div>
+      </div>
+
+      <!-- Rose gold -->
+      <div style="background: #1a1722; border: 2px solid #e7b4a5; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="color: #e7b4a5;">Rose gold</b><code style="color: #a79fb8; font-size: 11px;">#e7b4a5</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #e7b4a5; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: #e7b4a5; color: #2e1308; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: #e7b4a5; color: #2e1308; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: #e7b4a5; color: #2e1308; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+          <span style="color: #e7b4a5; font-size: 12px; font-weight: 600;">› link</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Muted warm · similar vibe to cream but more chroma. Feels premium / apparel-store.</div>
+      </div>
+
+      <!-- Sunrise gradient -->
+      <div style="background: #1a1722; border: 2px solid; border-image: linear-gradient(135deg, #ff7a5c, #f5b942) 1; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><b style="background: linear-gradient(135deg, #ff7a5c, #f5b942); -webkit-background-clip: text; background-clip: text; color: transparent;">Sunrise gradient</b><code style="color: #a79fb8; font-size: 11px;">coral→amber</code></div>
+        <div style="background: #241f2e; border: 1.5px solid #f5b942; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #ff7a5c, #f5b942); color: #2b1400; display: flex; align-items: center; justify-content: center; font-weight: 900;">+</div>
+          <div style="font-size: 12px; color: #ece9f3;">Create new customer</div>
+        </div>
+        <button style="background: linear-gradient(135deg, #ff7a5c, #f5b942); color: #2b1400; border: 0; border-radius: 10px; padding: 10px; font-weight: 800; font-size: 13px;">Tender · $274.51</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span style="background: linear-gradient(135deg, #ff7a5c, #f5b942); color: #2b1400; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700;">Active</span>
+          <span style="background: #241f2e; color: #ece9f3; border: 1px solid #332c3f; padding: 3px 9px; border-radius: 99px; font-size: 11px;">Idle</span>
+        </div>
+        <div style="font-size: 10px; color: #a79fb8;">Reserve gradient for hero CTAs only (tender / scan). Plain color everywhere else. High visual cost.</div>
+      </div>
+
+    </div>
+
+    <div style="margin-top: 14px; padding: 12px; background: #0f0a14; border-radius: 10px; border: 1px solid #332c3f; color: #a79fb8; font-size: 12px; line-height: 1.5;">
+      <b style="color: #ece9f3;">How to pick:</b> look at the "Tender" button — that's the most prominent on-screen fill in the POS flow. If it burns your eyes after 10 seconds, it'll do so after 10 hours at the counter. Amber and Rose gold are the most "sustainable" for all-day shifts. Lime and Sunrise are the most "brand memorable". Cream is the most "Bizarre-named" — the literal cream-orange origin.
+    </div>
+  </div>
+</div>
+
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     v2b — ANIMATED: search rises from bottom → top on focus (LIVE demo)
+     Loops every 5s. Demonstrates M3 SearchBar docked→expanded behavior.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="max-width: 900px; margin: 0 auto 28px; padding: 0 16px;">
+  <div class="card" style="border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary);">
+    <h2 style="color: var(--primary);">🎬 v2b — Search animates bottom → top on focus (LIVE, loops every 5s)</h2>
+    <p class="summary">
+      <b>Idle:</b> search bar pinned at bottom (thumb zone). <b>On tap:</b> bar rises to top in 220ms, tiles fade out, results list + keyboard slide up. <b>Back gesture:</b> reverses the transition. Uses Material 3 <code>SearchBar</code> (docked → expanded). Single component, no custom animation math needed.
+    </p>
+    <p class="pros">✓ Thumb reach when idle · ✓ Natural top-down results when typing · ✓ Stock M3 component · ✓ Back button/gesture collapses cleanly</p>
+    <p class="cons">✗ First-time users may briefly hunt after tap — 220ms + shared-element motion mitigates · ✗ Keyboard + bar must rise in same frame (test on low-end device)</p>
+
+    <div style="display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; max-width: 820px; margin: 0 auto;">
+
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">
+          ▶ LIVE · bottom-idle → top-focused → reset · 5s loop
+        </div>
+        <div class="phone anim-phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div class="title">POS</div>
+              <div class="chip">Store #1 · Pavel</div>
+            </div>
+
+            <!-- Tile area — fades out while search rises -->
+            <div class="anim-tiles" style="padding: 14px; display: flex; flex-direction: column; flex: 1; position: relative; transition: opacity 220ms cubic-bezier(0.2, 0.9, 0.2, 1);">
+
+              <div style="flex: 0.6;"></div>
+
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 14px; padding: 18px; display: flex; align-items: center; gap: 14px; min-height: 72px;">
+                  <div style="width: 48px; height: 48px; border-radius: 12px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 16px; font-weight: 700;">Search customer</div>
+                    <div style="color: var(--muted); font-size: 12px;">Tap or use search below</div>
+                  </div>
+                  <div style="color: var(--muted); font-size: 18px;">›</div>
+                </div>
+
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 14px; padding: 18px; display: flex; align-items: center; gap: 14px; min-height: 72px;">
+                  <div style="width: 48px; height: 48px; border-radius: 12px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900;">+</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 16px; font-weight: 700;">Create new customer</div>
+                    <div style="color: var(--muted); font-size: 12px;">First name required</div>
+                  </div>
+                  <div style="color: var(--muted); font-size: 18px;">›</div>
+                </div>
+
+                <div style="background: transparent; border: 1.5px dashed var(--outline); border-radius: 14px; padding: 18px; display: flex; align-items: center; gap: 14px; min-height: 72px;">
+                  <div style="width: 48px; height: 48px; border-radius: 12px; border: 1.5px dashed var(--outline); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted);">👥</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 16px; font-weight: 700; color: var(--muted);">Walk-in customer</div>
+                    <div style="color: var(--muted); font-size: 12px;">Quick sale · no record</div>
+                  </div>
+                  <div style="color: var(--muted); font-size: 18px;">›</div>
+                </div>
+              </div>
+
+              <div style="flex: 0.4;"></div>
+
+              <div style="padding-top: 8px;">
+                <div style="color: var(--muted); font-size: 10px; margin-bottom: 6px; letter-spacing: 0.5px;">RECENT</div>
+                <div style="display: flex; gap: 6px; overflow-x: auto;">
+                  <div class="chip-pill" style="flex-shrink: 0;">Sarah M · 2m</div>
+                  <div class="chip-pill" style="flex-shrink: 0;">Ticket #4821</div>
+                  <div class="chip-pill" style="flex-shrink: 0;">Walk-in · 15m</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Results pane — absolutely positioned, fades in while search is at top -->
+            <div class="anim-results">
+              <div style="padding: 10px 14px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">CUSTOMERS · 2</div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline);">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #002d35; font-size: 12px;">SM</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 600;"><mark style="background: var(--primary); color: var(--on-primary); padding: 0 2px; border-radius: 2px;">Sarah</mark> M.</div>
+                    <div style="color: var(--muted); font-size: 11px;">(555) 214-8801 · 3 tickets</div>
+                  </div>
+                </div>
+              </div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline);">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--success); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #002817; font-size: 12px;">SK</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 600;"><mark style="background: var(--primary); color: var(--on-primary); padding: 0 2px; border-radius: 2px;">Sarah</mark> Kowalski</div>
+                    <div style="color: var(--muted); font-size: 11px;">sarah.k@mail.com · VIP</div>
+                  </div>
+                </div>
+              </div>
+              <div style="padding: 12px 14px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">TICKETS · 1</div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">#4829 · <mark style="background: var(--primary); color: var(--on-primary); padding: 0 2px; border-radius: 2px;">Sarah</mark> M · iPhone 14 screen</div>
+                  <div style="color: var(--muted); font-size: 11px;">Ready for pickup</div>
+                </div>
+                <div style="color: var(--success); font-size: 11px;">●</div>
+              </div>
+            </div>
+
+            <!-- Animated search bar — rises from bottom to top -->
+            <div class="anim-search">
+              <div style="display: flex; gap: 8px; align-items: center; background: var(--surface-2); border: 1.5px solid var(--primary); border-radius: 14px; padding: 14px 14px; box-shadow: 0 -2px 12px rgba(245,130,32,0.15); transition: all 220ms cubic-bezier(0.2, 0.9, 0.2, 1);">
+                <span style="color: var(--primary); font-size: 16px;">🔍</span>
+                <span style="flex: 1; font-size: 14px; min-height: 18px;">
+                  <span class="anim-placeholder" style="color: var(--muted);">Customer, part, or ticket…</span>
+                  <span class="anim-typed"></span><span class="anim-caret"></span>
+                </span>
+                <span style="color: var(--primary); font-size: 18px;">📷</span>
+              </div>
+            </div>
+
+            <!-- Fake keyboard — slides up while bar is at top -->
+            <div class="anim-keyboard">
+              <span>q</span><span>w</span><span>e</span><span>r</span><span>t</span><span>y</span><span>u</span><span>i</span><span>o</span><span>p</span>
+              <span>a</span><span>s</span><span>d</span><span>f</span><span>g</span><span>h</span><span>j</span><span>k</span><span>l</span><span>⌫</span>
+              <span>⇧</span><span>z</span><span>x</span><span>c</span><span>v</span><span>b</span><span>n</span><span>m</span><span>,</span><span>↵</span>
+              <span style="grid-column: span 3;">123</span><span style="grid-column: span 5;">space</span><span style="grid-column: span 2;">done</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="margin-top: 20px; padding: 14px 18px; background: var(--surface); border-radius: 12px; border: 1px solid var(--outline);">
+      <div style="color: var(--primary); font-size: 12px; font-weight: 700; margin-bottom: 8px;">IMPLEMENTATION</div>
+      <pre style="margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; white-space: pre-wrap; font-family: ui-monospace, Menlo, Consolas, monospace;">// androidx.compose.material3.SearchBar handles this transition natively.
+// docked=false → full-screen expansion with built-in AnimatedVisibility.
+var expanded by rememberSaveable { mutableStateOf(false) }
+Box(Modifier.fillMaxSize()) {
+    // Idle tiles layer — fades out when expanded
+    AnimatedVisibility(
+        visible = !expanded,
+        enter  = fadeIn(spring(stiffness = StiffnessMediumLow)),
+        exit   = fadeOut(spring(stiffness = StiffnessMediumLow))
+    ) { EntryTiles(...) }
+
+    SearchBar(
+        query = query,
+        onQueryChange = vm::onQueryChange,
+        onSearch = vm::runSearch,
+        active = expanded,
+        onActiveChange = { expanded = it },
+        placeholder = { Text("Customer, part, or ticket…") },
+        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+        trailingIcon = {
+            IconButton(onClick = vm::openScanner) {
+                Icon(Icons.Outlined.PhotoCamera, "Scan")
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .align(if (expanded) Alignment.TopCenter else Alignment.BottomCenter)
+            .padding(14.dp)
+            .animateContentSize(spring(stiffness = StiffnessMediumLow))
+    ) {
+        // Results slot — renders when expanded=true
+        SearchResults(query, onSelect = vm::attachCustomer)
+    }
+}
+// Back handler collapses expanded state:
+BackHandler(enabled = expanded) { expanded = false }</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     v2b FULL FLOW — after customer picked: device / cart / edit / tender / receipt
+     Six phones show the entire journey from attached customer to completed sale.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="max-width: 1200px; margin: 0 auto 28px; padding: 0 16px;">
+  <div class="card" style="border-color: var(--teal);">
+    <h2 style="color: var(--teal);">🔁 v2b full flow — customer → device → cart → edit → tender → receipt</h2>
+    <p class="summary">
+      Complete sale from attached customer to signed receipt. Three paths branch from the attached-customer screen: <b>Retail sale</b> (scan/add parts, tender), <b>Repair ticket</b> (pick device → describe issue → reserve parts), <b>Store credit / layaway</b> (split tender, park cart). Bottom nav stays consistent — search always in thumb reach.
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; padding: 10px 0;">
+
+      <!-- PHONE 1 — Customer attached, empty cart, 3 next-step CTAs -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">1 · Customer attached · choose path</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #002d35; font-size: 11px;">SM</div>
+                <div>
+                  <div class="title" style="font-size: 14px;">Sarah M.</div>
+                  <div style="color: var(--muted); font-size: 10px;">(555) 214-8801 · 3 tickets</div>
+                </div>
+              </div>
+              <div style="color: var(--muted); font-size: 16px;">⋮</div>
+            </div>
+
+            <!-- Cart summary strip -->
+            <div style="padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 12px; color: var(--muted);">Cart · empty</div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--on);">$0.00</div>
+            </div>
+
+            <!-- Path picker — large tap targets in middle of screen -->
+            <div style="padding: 14px; display: flex; flex-direction: column; gap: 10px; flex: 1;">
+              <div style="flex: 0.3;"></div>
+
+              <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 14px; min-height: 68px;">
+                <div style="width: 44px; height: 44px; border-radius: 11px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px;">🛒</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 15px; font-weight: 700;">Retail sale</div>
+                  <div style="color: var(--muted); font-size: 11px;">Scan or browse parts · tender</div>
+                </div>
+                <div style="color: var(--primary); font-size: 18px;">›</div>
+              </div>
+
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 14px; min-height: 68px;">
+                <div style="width: 44px; height: 44px; border-radius: 11px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 22px;">🔧</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 15px; font-weight: 700;">Create repair ticket</div>
+                  <div style="color: var(--muted); font-size: 11px;">Pick device · describe · reserve parts</div>
+                </div>
+                <div style="color: var(--muted); font-size: 18px;">›</div>
+              </div>
+
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 14px; min-height: 68px;">
+                <div style="width: 44px; height: 44px; border-radius: 11px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 20px;">💳</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 15px; font-weight: 700;">Store credit · payment</div>
+                  <div style="color: var(--muted); font-size: 11px;">Balance: <b style="color: var(--success);">$42.00</b> · add funds</div>
+                </div>
+                <div style="color: var(--muted); font-size: 18px;">›</div>
+              </div>
+
+              <div style="flex: 0.4;"></div>
+
+              <div style="padding-top: 8px;">
+                <!-- HERO: Ready-for-pickup → taps straight to Tender (skips cart) -->
+                <div style="background: rgba(52,196,126,0.08); border: 1.5px solid var(--success); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; min-height: 60px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-size: 20px;">✓</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 700;">#4829 · Ready for pickup</div>
+                    <div style="color: var(--muted); font-size: 11px;">iPhone 14 screen · $274 due</div>
+                  </div>
+                  <span style="background: var(--success); color: #002817; padding: 6px 12px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: 0.3px; white-space: nowrap;">Open cart →</span>
+                </div>
+
+                <!-- Past tickets — smaller but still 44px tap target -->
+                <div style="color: var(--muted); font-size: 10px; margin: 10px 0 4px; letter-spacing: 0.5px;">PAST REPAIRS</div>
+                <div style="display: flex; flex-direction: column; gap: 3px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; min-height: 32px; font-size: 12px;">
+                    <span><a href="#" style="color: var(--teal); font-weight: 600; text-decoration: none;">#4611</a> <span style="color: var(--on);">· Battery replacement</span></span>
+                    <span style="color: var(--muted); font-size: 11px;">Apr 12 · $189</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; min-height: 32px; font-size: 12px; border-top: 1px solid var(--outline);">
+                    <span><a href="#" style="color: var(--teal); font-weight: 600; text-decoration: none;">#4488</a> <span style="color: var(--on);">· Charge port clean</span></span>
+                    <span style="color: var(--muted); font-size: 11px;">Mar 3 · $45</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom search bar persists -->
+            <div style="padding: 10px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline);">
+              <div style="display: flex; gap: 8px; align-items: center; background: var(--surface-2); border: 1px solid var(--outline); border-radius: 14px; padding: 12px 14px;">
+                <span style="color: var(--muted); font-size: 14px;">🔍</span>
+                <span style="color: var(--muted); font-size: 13px; flex: 1;">Scan or search parts…</span>
+                <span style="color: var(--primary); font-size: 16px;">📷</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE 2 — Device picker (after "Create repair ticket") -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">2 · Pick device for repair</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div class="title" style="font-size: 14px;">Pick device</div>
+              </div>
+              <div class="chip">Sarah M.</div>
+            </div>
+
+            <div style="padding: 12px 14px 6px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">ON FILE · 2</div>
+
+            <!-- Existing devices -->
+            <div style="padding: 0 14px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 14px; font-weight: 700;">iPhone 14 Pro</div>
+                  <div style="color: var(--muted); font-size: 11px;">IMEI 359…8821 · Space Black · 256GB</div>
+                  <div style="color: var(--success); font-size: 10px; margin-top: 2px;">Under warranty until 2026-08-14</div>
+                </div>
+                <div style="color: var(--primary); font-size: 18px;">●</div>
+              </div>
+
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 14px; font-weight: 700;">Apple Watch Series 8</div>
+                  <div style="color: var(--muted); font-size: 11px;">Serial FH7…921 · 45mm Aluminum</div>
+                </div>
+                <div style="color: var(--muted); font-size: 14px;">○</div>
+              </div>
+            </div>
+
+            <div style="padding: 14px 14px 6px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">ADD NEW</div>
+
+            <div style="padding: 0 14px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: transparent; border: 1.5px dashed var(--primary); border-radius: 12px; padding: 14px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900;">+</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 14px; font-weight: 700; color: var(--primary);">Add new device</div>
+                  <div style="color: var(--muted); font-size: 11px;">Scan IMEI/serial, pick model, condition</div>
+                </div>
+                <div style="color: var(--primary); font-size: 18px;">›</div>
+              </div>
+
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 20px;">📷</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 14px; font-weight: 700;">Scan IMEI</div>
+                  <div style="color: var(--muted); font-size: 11px;">Auto-fills make / model / year</div>
+                </div>
+                <div style="color: var(--muted); font-size: 18px;">›</div>
+              </div>
+            </div>
+
+            <div style="flex: 1;"></div>
+
+            <!-- Primary CTA pinned bottom -->
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline);">
+              <button class="tender-btn">Continue → describe issue</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE 3 — Cart with items (after adding parts) -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">3 · Cart · 3 items · tap line to edit</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #002d35; font-size: 11px;">SM</div>
+                <div>
+                  <div class="title" style="font-size: 14px;">Sarah M.</div>
+                  <div style="color: var(--muted); font-size: 10px;">iPhone 14 Pro · Ticket draft</div>
+                </div>
+              </div>
+              <div style="color: var(--muted); font-size: 16px;">⋮</div>
+            </div>
+
+            <!-- Path tabs -->
+            <div class="tabs">
+              <div class="tab">Catalog</div>
+              <div class="tab active">Cart · 3 · $262</div>
+            </div>
+
+            <div class="scroll">
+              <!-- Cart line — part -->
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); display: flex; gap: 10px; align-items: center;">
+                <div style="width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔧</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen</div>
+                  <div style="color: var(--muted); font-size: 11px;">SKU IPH14P-S · Qty 1</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-weight: 700; color: var(--primary); font-size: 14px;">$189.00</div>
+                  <div style="color: var(--muted); font-size: 10px; text-decoration: line-through;">$199</div>
+                </div>
+              </div>
+
+              <!-- Cart line — labor service -->
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); display: flex; gap: 10px; align-items: center;">
+                <div style="width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px;">⚙️</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · screen replacement</div>
+                  <div style="color: var(--muted); font-size: 11px;">Service · 45 min · Qty 1</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-weight: 700; color: var(--primary); font-size: 14px;">$60.00</div>
+                </div>
+              </div>
+
+              <!-- Cart line — accessory -->
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); display: flex; gap: 10px; align-items: center; background: rgba(245,130,32,0.05); border-left: 3px solid var(--primary);">
+                <div style="width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔌</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">USB-C 3ft cable</div>
+                  <div style="color: var(--muted); font-size: 11px;">SKU USB-C3 · Qty 1 · ✎ editing</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-weight: 700; color: var(--primary); font-size: 14px;">$14.00</div>
+                </div>
+              </div>
+
+              <!-- Add-more row -->
+              <div style="padding: 14px; display: flex; gap: 8px;">
+                <div style="flex: 1; background: var(--surface); border: 1px dashed var(--outline); border-radius: 10px; padding: 10px; text-align: center; font-size: 12px; color: var(--teal);">+ Misc item</div>
+                <div style="flex: 1; background: var(--surface); border: 1px dashed var(--outline); border-radius: 10px; padding: 10px; text-align: center; font-size: 12px; color: var(--teal);">+ Note</div>
+                <div style="flex: 1; background: var(--surface); border: 1px dashed var(--outline); border-radius: 10px; padding: 10px; text-align: center; font-size: 12px; color: var(--teal);">+ Discount</div>
+              </div>
+            </div>
+
+            <!-- Totals + tender CTA -->
+            <div class="tender-bar">
+              <div class="tender-totals"><span>Subtotal</span><span>$263.00</span></div>
+              <div class="tender-totals" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+              <div class="tender-totals"><span>Tax · 8.5%</span><span>$21.51</span></div>
+              <div class="tender-total"><span>Total</span><span class="amount">$274.51</span></div>
+              <button class="tender-btn">Tender · $274.51</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE 4 — Line edit bottom sheet -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">4 · Edit line · qty · discount · note</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #002d35; font-size: 11px;">SM</div>
+                <div class="title" style="font-size: 14px;">Sarah M.</div>
+              </div>
+              <div style="color: var(--muted); font-size: 16px;">⋮</div>
+            </div>
+
+            <!-- Dimmed cart underneath -->
+            <div style="flex: 1; opacity: 0.35; pointer-events: none;">
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); font-size: 12px;">iPhone 14 Pro Screen · $189.00</div>
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); font-size: 12px;">Labor · $60.00</div>
+              <div style="padding: 12px 14px; border-bottom: 1px solid var(--outline); font-size: 12px;">USB-C 3ft · $14.00</div>
+            </div>
+
+            <!-- Bottom sheet -->
+            <div class="sheet" style="padding-bottom: 14px;">
+              <div class="sheet-handle"></div>
+              <div style="padding: 4px 18px 10px;">
+                <div style="font-size: 15px; font-weight: 700;">USB-C 3ft cable</div>
+                <div style="color: var(--muted); font-size: 11px;">SKU USB-C3 · Stock 22</div>
+              </div>
+
+              <!-- Qty stepper -->
+              <div style="padding: 8px 18px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--outline);">
+                <div style="font-size: 13px;">Qty</div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button style="width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--outline); color: var(--on); font-size: 18px;">−</button>
+                  <div style="font-size: 18px; font-weight: 700; min-width: 30px; text-align: center;">1</div>
+                  <button style="width: 34px; height: 34px; border-radius: 50%; background: var(--primary); border: 0; color: var(--on-primary); font-size: 18px; font-weight: 700;">+</button>
+                </div>
+              </div>
+
+              <!-- Unit price -->
+              <div style="padding: 8px 18px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--outline);">
+                <div style="font-size: 13px;">Unit price</div>
+                <div style="font-size: 14px; font-weight: 700;">$14.00</div>
+              </div>
+
+              <!-- Discount -->
+              <div style="padding: 8px 18px; border-top: 1px solid var(--outline);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <div style="font-size: 13px;">Discount</div>
+                  <div style="font-size: 13px; color: var(--success);">− $0.00</div>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                  <div class="chip-pill" style="flex: 1; text-align: center;">5%</div>
+                  <div class="chip-pill active" style="flex: 1; text-align: center;">10%</div>
+                  <div class="chip-pill" style="flex: 1; text-align: center;">$</div>
+                  <div class="chip-pill" style="flex: 1; text-align: center;">Custom</div>
+                </div>
+              </div>
+
+              <!-- Note -->
+              <div style="padding: 8px 18px; border-top: 1px solid var(--outline);">
+                <div style="font-size: 13px; margin-bottom: 6px;">Note</div>
+                <div style="background: var(--surface-2); border: 1px solid var(--outline); border-radius: 8px; padding: 10px; color: var(--muted); font-size: 12px; min-height: 44px;">Gift wrap · tag "For Mia"</div>
+              </div>
+
+              <!-- Destructive + done -->
+              <div style="padding: 12px 18px 0; display: flex; gap: 8px;">
+                <button class="btn destructive" style="flex: 1; padding: 12px;">Remove</button>
+                <button class="btn" style="flex: 1.5; padding: 12px;">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE 5 — Tender / split payment -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">5 · Tender · split payment</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div class="title" style="font-size: 14px;">Tender</div>
+              </div>
+              <div class="chip" style="background: var(--primary); color: var(--on-primary);">$274.51</div>
+            </div>
+
+            <div style="padding: 14px;">
+              <!-- Hero balance card · clearly separates Paid / Remaining -->
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+                  <div>
+                    <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">TOTAL DUE</div>
+                    <div style="font-size: 22px; font-weight: 800; color: var(--on); line-height: 1.1;">$274.51</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">REMAINING</div>
+                    <div style="font-size: 22px; font-weight: 800; color: var(--primary); line-height: 1.1;">$134.51</div>
+                  </div>
+                </div>
+                <!-- Progress bar shows how much has been paid -->
+                <div style="height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 10px;">
+                  <div style="height: 100%; width: 51%; background: var(--success); border-radius: 3px;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                  <span style="color: var(--success); font-size: 10px; font-weight: 600;">✓ Paid $140.00</span>
+                  <span style="color: var(--muted); font-size: 10px;">51%</span>
+                </div>
+              </div>
+
+              <!-- Paid tenders · clearly locked in, with "remove" icon -->
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                <div style="color: var(--success); font-size: 10px; letter-spacing: 0.5px; font-weight: 700;">✓ PAID · 2</div>
+                <div style="color: var(--muted); font-size: 10px;">Tap ✕ to undo</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;">
+                <div style="background: rgba(52,196,126,0.08); border: 1px solid var(--success); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px;">✓</div>
+                    <div>
+                      <div style="font-size: 13px; font-weight: 700;">Store credit · $42.00</div>
+                      <div style="color: var(--muted); font-size: 10px;">Used from $42.00 available · $0 remaining</div>
+                    </div>
+                  </div>
+                  <span style="color: var(--muted); font-size: 16px; padding: 0 4px;">✕</span>
+                </div>
+                <div style="background: rgba(52,196,126,0.08); border: 1px solid var(--success); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px;">✓</div>
+                    <div>
+                      <div style="font-size: 13px; font-weight: 700;">Cash · $98.00</div>
+                      <div style="color: var(--muted); font-size: 10px;">Received $100 · change $2.00 due</div>
+                    </div>
+                  </div>
+                  <span style="color: var(--muted); font-size: 16px; padding: 0 4px;">✕</span>
+                </div>
+              </div>
+
+              <!-- Add another payment · clearly "what's next" -->
+              <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">+ ADD PAYMENT FOR REMAINING $134.51</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 10px; padding: 14px 10px; text-align: center;">
+                  <div style="font-size: 22px;">💳</div>
+                  <div style="font-size: 12px; font-weight: 700; color: var(--primary);">Card reader</div>
+                  <div style="color: var(--muted); font-size: 10px;">Charge $134.51</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 14px 10px; text-align: center;">
+                  <div style="font-size: 22px;">📱</div>
+                  <div style="font-size: 12px; font-weight: 600;">Tap to pay</div>
+                  <div style="color: var(--muted); font-size: 10px;">NFC · Apple / Google Pay</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 14px 10px; text-align: center;">
+                  <div style="font-size: 22px;">🏦</div>
+                  <div style="font-size: 12px; font-weight: 600;">ACH / check</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 14px 10px; text-align: center;">
+                  <div style="font-size: 22px;">⏸️</div>
+                  <div style="font-size: 12px; font-weight: 600;">Park cart</div>
+                  <div style="color: var(--muted); font-size: 10px;">Layaway / hold</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex: 1;"></div>
+
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline);">
+              <button class="tender-btn" style="background: var(--surface-2); color: var(--muted); border: 1px solid var(--outline);">$134.51 remaining — add payment to finish</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PHONE 6 — Receipt / success -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">6 · Receipt · send / print / next</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div class="title" style="font-size: 14px;">Sale complete</div>
+              <div class="chip" style="background: var(--success); color: #002817;">✓ Paid</div>
+            </div>
+
+            <!-- Hero success state -->
+            <div style="padding: 24px 14px 16px; text-align: center;">
+              <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--success); display: inline-flex; align-items: center; justify-content: center; font-size: 36px; color: #002817; margin-bottom: 10px;">✓</div>
+              <div style="font-size: 22px; font-weight: 800; color: var(--on);">$274.51</div>
+              <div style="color: var(--muted); font-size: 12px;">Invoice #2026-0714 · Sarah M.</div>
+              <div style="color: var(--muted); font-size: 11px; margin-top: 2px;">Parts reserved to Ticket <b style="color: var(--teal);">#4831</b></div>
+            </div>
+
+            <!-- Send options -->
+            <div style="padding: 0 14px 8px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">SEND RECEIPT</div>
+            <div style="padding: 0 14px 14px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">💬</span>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 700;">SMS</div>
+                  <div style="color: var(--muted); font-size: 11px;">(555) 214-8801 · via BizarreSMS</div>
+                </div>
+                <span style="color: var(--primary);">›</span>
+              </div>
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">✉️</span>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Email</div>
+                  <div style="color: var(--muted); font-size: 11px;">sarah.m@mail.com</div>
+                </div>
+                <span style="color: var(--muted);">›</span>
+              </div>
+              <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">🖨️</span>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Thermal print</div>
+                  <div style="color: var(--muted); font-size: 11px;">Epson TM-m30 · counter</div>
+                </div>
+                <span style="color: var(--muted);">›</span>
+              </div>
+            </div>
+
+            <div style="flex: 1;"></div>
+
+            <!-- Next actions -->
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline); display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1;">Open ticket #4831</button>
+              <button class="btn" style="flex: 1.2;">New sale ↗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Flow notes -->
+    <div style="margin-top: 20px; padding: 14px 18px; background: var(--surface); border-radius: 12px; border: 1px solid var(--outline);">
+      <div style="color: var(--teal); font-size: 12px; font-weight: 700; margin-bottom: 8px;">FLOW NOTES · v2b</div>
+      <ul style="margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.6;">
+        <li><b style="color: var(--on);">Path branching</b> — attached-customer screen shows 3 CTAs (Retail / Repair / Store credit). Most sales pick Retail; Repair adds Device picker + issue description steps. Store credit is inline top-up.</li>
+        <li><b style="color: var(--on);">Device picker</b> — shows devices already on file first, then "Add new" with IMEI scan (auto-fills make/model/year/warranty via lookup). Selected device attaches to both the cart AND the repair ticket draft.</li>
+        <li><b style="color: var(--on);">Cart line tap</b> — opens bottom sheet for qty/discount/note. Dim cart behind. Remove is destructive red, Save is primary. Swipe-left on line = quick remove.</li>
+        <li><b style="color: var(--on);">Misc item · Note · Discount</b> — three dashed-border slots under cart for power users. Misc = freeform one-off item (name + price). Note = prints on receipt. Discount = cart-wide %.</li>
+        <li><b style="color: var(--on);">Tender split</b> — applied tenders show top (store credit + cash); remaining balance dynamic. Add-tender grid stays accessible until balance = 0. Park cart = layaway mode.</li>
+        <li><b style="color: var(--on);">Receipt send</b> — SMS via BizarreSMS (default for mobile numbers), Email (default for email-only customers), Thermal print (always available if printer paired). Walk-in skips send, prints only.</li>
+        <li><b style="color: var(--on);">Ticket link</b> — if cart built from Repair path, "Open ticket #NNNN" CTA appears next to "New sale" so cashier can hand off to repair tech immediately.</li>
+        <li><b style="color: var(--on);">Bottom search persists</b> — on every screen except Tender + Receipt. Cashier can barcode-scan a new part mid-cart without losing context.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     REPAIR CHECK-IN — full drop-off workflow (after customer + device picked)
+     Issue · condition · diagnostic · access · quote · signature
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="max-width: 1200px; margin: 0 auto 28px; padding: 0 16px;">
+  <div class="card" style="border-color: var(--warning);">
+    <h2 style="color: var(--warning);">🔧 Repair check-in — drop-off flow (6 screens)</h2>
+    <p class="summary">
+      Walk-in → device dropped off → ticket created. Picks up where v2b "Create repair ticket" path left off (customer + device already attached). Captures <b>what's broken</b>, <b>device condition</b>, <b>pre-repair diagnostic state</b>, <b>access + data</b>, <b>quote</b>, and <b>signed waiver</b>. Each step writes to the ticket draft so cashier can back out and resume without loss.
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; padding: 10px 0;">
+
+      <!-- CI-1 · Symptoms only (tiles) -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-1 · Symptoms · tap what's broken</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 1 · What we're fixing</div>
+                  <div style="color: var(--muted); font-size: 10px;">Sarah M. · iPhone 14 Pro</div>
+                </div>
+              </div>
+              <div class="chip">Draft · autosave</div>
+            </div>
+
+            <!-- Progress bar -->
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 17%; background: var(--primary);"></div>
+            </div>
+
+            <div class="scroll">
+              <!-- Symptom categories -->
+              <div style="padding: 14px 14px 6px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">ISSUES TO REPAIR · TAP ALL THAT APPLY</div>
+              <div style="padding: 0 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">📱</div>
+                  <div style="font-size: 12px; font-weight: 700; color: var(--primary);">Cracked screen</div>
+                </div>
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">🔋</div>
+                  <div style="font-size: 12px; font-weight: 700; color: var(--primary);">Battery drain</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">🔌</div>
+                  <div style="font-size: 12px; font-weight: 600;">Won't charge</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">💧</div>
+                  <div style="font-size: 12px; font-weight: 600;">Liquid damage</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">🔊</div>
+                  <div style="font-size: 12px; font-weight: 600;">No sound</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">📷</div>
+                  <div style="font-size: 12px; font-weight: 600;">Camera</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">🔘</div>
+                  <div style="font-size: 12px; font-weight: 600;">Buttons</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 12px; text-align: center;">
+                  <div style="font-size: 22px;">⚠️</div>
+                  <div style="font-size: 12px; font-weight: 600;">Other</div>
+                </div>
+              </div>
+
+              <!-- Quick tip — next step covers notes + passcode -->
+              <div style="padding: 10px 14px 14px; color: var(--muted); font-size: 11px; text-align: center;">Next: customer notes, photos, passcode</div>
+            </div>
+
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline); display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1;">Skip</button>
+              <button class="btn" style="flex: 1.5;">Next · details →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CI-2 · Details (customer notes + internal notes + passcode + photos) -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-2 · Details · customer notes · internal notes · passcode · photos</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 2 · Details</div>
+                  <div style="color: var(--muted); font-size: 10px;">Notes · photos · device access</div>
+                </div>
+              </div>
+              <div class="chip">Draft · autosave</div>
+            </div>
+
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 33%; background: var(--primary);"></div>
+            </div>
+
+            <div class="scroll">
+              <!-- 1. Diagnostic notes (customer-facing problem description) -->
+              <div style="padding: 14px 14px 0;">
+                <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">DIAGNOSTIC NOTES</div>
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 12px; padding: 12px; min-height: 72px; font-size: 13px;">
+                  <span style="color: var(--on);">Dropped on sidewalk this morning. Face ID still works but screen flickers when making calls. Battery also dies fast.</span>
+                  <span style="color: var(--primary);">|</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                  <span style="color: var(--teal); font-size: 11px;">🎤 Dictate</span>
+                  <span style="color: var(--muted); font-size: 11px;">112 / 2000</span>
+                </div>
+              </div>
+
+              <!-- 2. Internal notes (ticket_notes.type='internal' · tech-only) -->
+              <div style="padding: 14px 14px 0;">
+                <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">INTERNAL NOTES</div>
+                <div style="background: var(--surface); border: 1px dashed var(--warning); border-radius: 12px; padding: 12px; min-height: 60px; font-size: 13px;">
+                  <span style="color: var(--on);">Prior repair attempt visible — non-OEM adhesive on frame. Warn Mike to check flex cable seating.</span>
+                  <span style="color: var(--warning);">|</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                  <span style="color: var(--teal); font-size: 11px;">@mention tech · # tag</span>
+                  <span style="color: var(--muted); font-size: 11px;">87 / 5000</span>
+                </div>
+              </div>
+
+              <!-- 3. Passcode -->
+              <div style="padding: 14px 14px 0;">
+                <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">🔑 DEVICE PASSCODE · encrypted</div>
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 12px; padding: 12px 14px; display: flex; gap: 10px; align-items: center;">
+                  <span style="font-size: 18px;">🔑</span>
+                  <div style="flex: 1; color: var(--on); font-family: ui-monospace, monospace; font-size: 18px; letter-spacing: 4px;">••••<span style="color: var(--muted);">00</span></div>
+                  <span style="color: var(--muted); font-size: 14px;">👁</span>
+                </div>
+                <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+                  <div class="chip-pill">None</div>
+                  <div class="chip-pill active">4-digit</div>
+                  <div class="chip-pill">6-digit</div>
+                  <div class="chip-pill">Alphanumeric</div>
+                  <div class="chip-pill">Pattern</div>
+                </div>
+                <div style="color: var(--muted); font-size: 11px; margin-top: 6px;">Auto-deleted when ticket closes</div>
+              </div>
+
+              <!-- 4. Photos (LAST) -->
+              <div style="padding: 14px 14px 0;">
+                <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">📸 PHOTOS · 2</div>
+                <div style="display: flex; gap: 6px; overflow-x: auto;">
+                  <div style="flex-shrink: 0; width: 72px; height: 72px; border-radius: 8px; background: linear-gradient(135deg, #2a1f1a, #1a0f0a); border: 1px solid var(--outline); display: flex; align-items: center; justify-content: center; font-size: 22px;">📸</div>
+                  <div style="flex-shrink: 0; width: 72px; height: 72px; border-radius: 8px; background: linear-gradient(135deg, #2a1f1a, #1a0f0a); border: 1px solid var(--outline); display: flex; align-items: center; justify-content: center; font-size: 22px;">📸</div>
+                  <div style="flex-shrink: 0; width: 72px; height: 72px; border-radius: 8px; background: var(--surface); border: 1.5px dashed var(--primary); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 28px;">+</div>
+                </div>
+              </div>
+
+              <div style="padding: 14px;"></div>
+            </div>
+
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline); display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1;">Back</button>
+              <button class="btn" style="flex: 1.5;">Next · damage →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CI-3 · Pre-existing damage (NOT being repaired) -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-3 · Damage we're NOT fixing · liability record</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 3 · Pre-existing damage</div>
+                  <div style="color: var(--muted); font-size: 10px;">Everything we are NOT fixing today</div>
+                </div>
+              </div>
+            </div>
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 50%; background: var(--primary);"></div>
+            </div>
+
+            <!-- Tabs front/back -->
+            <div class="tabs">
+              <div class="tab active">Front</div>
+              <div class="tab">Back</div>
+              <div class="tab">Sides</div>
+            </div>
+
+            <!-- Device diagram with tappable zones -->
+            <div style="padding: 14px; display: flex; justify-content: center; background: var(--bg);">
+              <div style="position: relative; width: 160px; height: 320px; background: #0a0810; border: 2px solid var(--outline); border-radius: 28px; box-shadow: inset 0 0 0 4px #000;">
+                <div style="position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 54px; height: 14px; background: #000; border-radius: 10px;"></div>
+                <!-- Cracked zone marker -->
+                <div style="position: absolute; top: 80px; right: 28px; width: 44px; height: 44px; border: 2px solid var(--error); border-radius: 50%; background: rgba(226,82,108,0.2); display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--error); font-weight: 700;">✖</div>
+                <div style="position: absolute; top: 76px; right: 76px; font-size: 10px; color: var(--error); font-weight: 700;">Crack<br>top-right</div>
+                <!-- Scratch marker -->
+                <div style="position: absolute; bottom: 90px; left: 32px; width: 28px; height: 28px; border: 2px solid var(--warning); border-radius: 50%; background: rgba(232,163,61,0.2); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--warning); font-weight: 700;">/</div>
+                <div style="position: absolute; bottom: 84px; left: 68px; font-size: 10px; color: var(--warning); font-weight: 700;">Scratch</div>
+              </div>
+            </div>
+
+            <!-- Condition checklist chips -->
+            <div style="padding: 4px 14px 10px;">
+              <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">OVERALL</div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <div class="chip-pill">Mint</div>
+                <div class="chip-pill">Good</div>
+                <div class="chip-pill active">Fair</div>
+                <div class="chip-pill">Poor</div>
+                <div class="chip-pill">Salvage</div>
+              </div>
+            </div>
+
+            <div style="padding: 0 14px 10px;">
+              <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">INCLUDES</div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <div class="chip-pill active">SIM tray</div>
+                <div class="chip-pill">Case</div>
+                <div class="chip-pill active">Tempered glass</div>
+                <div class="chip-pill">Charger</div>
+                <div class="chip-pill">Cable</div>
+              </div>
+            </div>
+
+            <!-- Liquid damage indicator -->
+            <div style="padding: 10px 14px; margin: 0 14px 12px; background: rgba(226,82,108,0.1); border: 1px solid var(--error); border-radius: 10px; display: flex; gap: 10px; align-items: center;">
+              <span style="font-size: 20px;">💧</span>
+              <div style="flex: 1; font-size: 12px;">
+                <div style="color: var(--error); font-weight: 700;">Liquid damage indicator</div>
+                <div style="color: var(--muted); font-size: 11px;">Select LDI status → not tested / clean / tripped</div>
+              </div>
+              <span style="color: var(--error);">›</span>
+            </div>
+
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline); display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1;">Back</button>
+              <button class="btn" style="flex: 1.5;">Next · diagnostic →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CI-4 · Diagnostic checklist -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-4 · Pre-repair diagnostic · what works now</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 4 · Diagnostic</div>
+                  <div style="color: var(--muted); font-size: 10px;">Verify before · prove on pickup</div>
+                </div>
+              </div>
+            </div>
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 67%; background: var(--primary);"></div>
+            </div>
+
+            <!-- Quick action: mark all working -->
+            <div style="padding: 10px 14px; background: rgba(52,196,126,0.08); border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 12px; color: var(--on);">Mark all as working</div>
+              <button class="btn secondary" style="padding: 6px 12px; font-size: 12px;">All OK</button>
+            </div>
+
+            <div class="scroll">
+              <!-- Checklist items — tri-state: OK / fail / untested -->
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Power on</div>
+                  <div style="color: var(--muted); font-size: 11px;">Device boots to lock screen</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Touchscreen</div>
+                  <div style="color: var(--muted); font-size: 11px;">All zones responsive</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--error); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Face ID / Touch ID</div>
+                  <div style="color: var(--muted); font-size: 11px;">Enrolls + unlocks</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Speakers (earpiece + loud)</div>
+                  <div style="color: var(--muted); font-size: 11px;">Tone test passes both</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Cameras (front + rear)</div>
+                  <div style="color: var(--muted); font-size: 11px;">Autofocus + flash</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--warning); color: #2b1400; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Wi-Fi + Bluetooth</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px;">?</div>
+                </div>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Cellular / SIM</div>
+                  <div style="color: var(--muted); font-size: 11px;">Battery health: <b style="color: var(--warning);">78%</b> · read via MDM</div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--success); color: #002817; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">✓</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px;">✕</div>
+                  <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--outline); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 12px;">?</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline); display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1;">Back</button>
+              <button class="btn" style="flex: 1.5;">Next · access →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CI-5 · Quote + deposit -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-5 · Quote · parts reserved · deposit</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 5 · Quote</div>
+                  <div style="color: var(--muted); font-size: 10px;">Est · customer approves</div>
+                </div>
+              </div>
+            </div>
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 83%; background: var(--primary);"></div>
+            </div>
+
+            <div class="scroll">
+              <!-- Repair lines -->
+              <div style="padding: 12px 14px 6px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">REPAIR LINES</div>
+              <div style="padding: 8px 14px; border-top: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen (OEM)</div>
+                  <div style="color: var(--success); font-size: 11px;">✓ Reserved · stock 7 → 6</div>
+                </div>
+                <div style="color: var(--primary); font-weight: 700; font-size: 14px;">$189.00</div>
+              </div>
+              <div style="padding: 8px 14px; border-top: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 600;">Battery · iPhone 14 Pro</div>
+                  <div style="color: var(--warning); font-size: 11px;">⏳ Ordered · ETA Mon Apr 27</div>
+                </div>
+                <div style="color: var(--primary); font-weight: 700; font-size: 14px;">$69.00</div>
+              </div>
+              <div style="padding: 8px 14px; border-top: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 600;">Labor · screen + battery</div>
+                  <div style="color: var(--muted); font-size: 11px;">~60 min · tech: Mike</div>
+                </div>
+                <div style="color: var(--primary); font-weight: 700; font-size: 14px;">$90.00</div>
+              </div>
+              <!-- ETA -->
+              <div style="margin: 14px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; display: flex; gap: 10px; align-items: center;">
+                <span style="font-size: 20px;">⏱️</span>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 700;">Est. ready: <span style="color: var(--primary);">Tue Apr 28, 3pm</span></div>
+                  <div style="color: var(--muted); font-size: 11px;">Waiting on battery delivery</div>
+                </div>
+              </div>
+
+              <!-- Deposit -->
+              <div style="padding: 0 14px 8px; color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">DEPOSIT (OPTIONAL)</div>
+              <div style="padding: 0 14px; display: flex; gap: 6px;">
+                <div class="chip-pill">$0</div>
+                <div class="chip-pill">$25</div>
+                <div class="chip-pill active">$50</div>
+                <div class="chip-pill">$100</div>
+                <div class="chip-pill">Full</div>
+              </div>
+              <div style="padding: 10px 14px; color: var(--muted); font-size: 11px;">$50 deposit applied · balance due on pickup: <b style="color: var(--on);">$327.58</b></div>
+            </div>
+
+            <!-- Grand total -->
+            <div class="tender-bar">
+              <div class="tender-totals"><span>Subtotal</span><span>$348.00</span></div>
+              <div class="tender-totals"><span>Tax · 8.5%</span><span>$29.58</span></div>
+              <div class="tender-totals" style="color: var(--primary);"><span>Deposit today</span><span>− $50.00</span></div>
+              <div class="tender-total"><span>Due on pickup</span><span class="amount">$327.58</span></div>
+              <button class="tender-btn">Get signature &amp; check in →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CI-6 · Terms + signature -->
+      <div>
+        <div style="text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 6px;">CI-6 · Terms · signature · create ticket</div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-body">
+            <div class="topbar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted); font-size: 18px;">‹</span>
+                <div>
+                  <div class="title" style="font-size: 14px;">Step 6 · Sign</div>
+                  <div style="color: var(--muted); font-size: 10px;">Customer reads · signs</div>
+                </div>
+              </div>
+            </div>
+            <div style="height: 3px; background: var(--surface-2);">
+              <div style="height: 100%; width: 100%; background: var(--success);"></div>
+            </div>
+
+            <div class="scroll">
+              <!-- Collapsed terms summary -->
+              <div style="padding: 14px;">
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 12px; padding: 12px;">
+                  <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px;">Repair authorization · key terms</div>
+                  <ul style="margin: 0; padding-left: 16px; color: var(--muted); font-size: 11px; line-height: 1.55;">
+                    <li>Estimate valid 7 days · additional issues re-quoted with approval</li>
+                    <li>Shop not liable for pre-existing damage listed in CI-2</li>
+                    <li><b style="color: var(--on);">Customer confirms own backup</b> · shop not responsible for data loss</li>
+                    <li>Unclaimed devices after <b>90 days</b> become shop property</li>
+                    <li>30-day warranty on parts · 90-day warranty on labor</li>
+                  </ul>
+                  <div style="color: var(--teal); font-size: 11px; margin-top: 8px;">▸ Read full terms (PDF)</div>
+                </div>
+              </div>
+
+              <!-- Acknowledgment checklist -->
+              <div style="padding: 0 14px 10px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 22px; height: 22px; border-radius: 5px; background: var(--primary); display: flex; align-items: center; justify-content: center; color: var(--on-primary); font-weight: 900; font-size: 14px;">✓</div>
+                  <div style="font-size: 12px; flex: 1;">Agree to estimate & terms</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 22px; height: 22px; border-radius: 5px; background: var(--primary); display: flex; align-items: center; justify-content: center; color: var(--on-primary); font-weight: 900; font-size: 14px;">✓</div>
+                  <div style="font-size: 12px; flex: 1;">Consent to backup + data handling</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 22px; height: 22px; border-radius: 5px; background: var(--primary); display: flex; align-items: center; justify-content: center; color: var(--on-primary); font-weight: 900; font-size: 14px;">✓</div>
+                  <div style="font-size: 12px; flex: 1;">Authorize $50 deposit charge</div>
+                </div>
+                <div style="background: var(--surface); border: 1px solid var(--outline); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center;">
+                  <div style="width: 22px; height: 22px; border-radius: 5px; background: var(--surface-2); border: 1.5px solid var(--outline);"></div>
+                  <div style="font-size: 12px; flex: 1; color: var(--muted);">Opt in to repair status SMS updates</div>
+                </div>
+              </div>
+
+              <!-- Signature pad -->
+              <div style="padding: 0 14px 14px;">
+                <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px;">SIGNATURE</div>
+                <div style="background: var(--surface); border: 1.5px solid var(--primary); border-radius: 12px; height: 110px; position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px;">
+                  <!-- Faux signature -->
+                  <svg viewBox="0 0 280 80" style="width: 90%; height: 70px; position: absolute; top: 10px; left: 14px;">
+                    <path d="M10,60 Q30,20 50,45 T90,40 Q110,60 130,30 T180,35 Q210,55 230,25 T270,45" stroke="var(--on)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                  </svg>
+                  <div style="color: var(--muted); font-size: 11px; z-index: 1;">Sarah M. · 2026-04-24 14:22</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                  <span style="color: var(--muted); font-size: 11px;">Sign above with finger or stylus</span>
+                  <span style="color: var(--teal); font-size: 11px;">Clear</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Final CTA -->
+            <div style="padding: 12px 14px 14px; background: var(--surface); border-top: 1px solid var(--outline);">
+              <button class="tender-btn" style="background: var(--success); color: #002817;">Create ticket · print label</button>
+              <div style="color: var(--muted); font-size: 11px; text-align: center; margin-top: 6px;">Charges $50 deposit · opens Ticket #4831 · prints drop-off receipt</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Check-in notes -->
+    <div style="margin-top: 20px; padding: 14px 18px; background: var(--surface); border-radius: 12px; border: 1px solid var(--outline);">
+      <div style="color: var(--warning); font-size: 12px; font-weight: 700; margin-bottom: 8px;">CHECK-IN FLOW NOTES</div>
+      <ul style="margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.6;">
+        <li><b style="color: var(--on);">Autosave every step</b> — ticket stays in <code>draft</code> state with autosave. Back button never loses data. Closing app → resume on next POS open (chip in customer header).</li>
+        <li><b style="color: var(--on);">Skip-able steps</b> — only Issue + Signature are required. Condition / Diagnostic / Access / Quote can be partial; tech can fill the rest post-drop-off from the desktop CRM.</li>
+        <li><b style="color: var(--on);">Condition zone taps</b> — device diagram is SVG; tap anywhere drops a marker with type picker (crack ✖ / scratch / dent / stain). Long-press = remove. Zoom via pinch.</li>
+        <li><b style="color: var(--on);">Diagnostic tri-state</b> — ✓/✕/? forces explicit "untested" so no silent assumptions. Mandatory for "cracked screen" tickets: touchscreen test before + after.</li>
+        <li><b style="color: var(--on);">Passcode handling</b> — stored in SQLCipher-encrypted column with TTL; nullified on ticket close. Audit log records read access by tech user id.</li>
+        <li><b style="color: var(--on);">Quote is live</b> — parts stock deducted on reserve (not on approve). Out-of-stock auto-switches to "Order" line with supplier ETA pulled from Mobilesentrix / PhoneLcdParts.</li>
+        <li><b style="color: var(--on);">ETA calc</b> — pulls latest supplier lead-time, adds tech queue depth (Mike has 2 ahead), adds labor minutes. Updates if supplier ETA slips.</li>
+        <li><b style="color: var(--on);">Terms = shop-configurable</b> — admin edits in Settings; versioned. Signed copy embeds the exact terms text + version hash for legal integrity.</li>
+        <li><b style="color: var(--on);">Signature pad</b> — captures pressure-curve SVG + timestamp + device meta. Stored alongside ticket. Tech's pickup-time signature uses same pad.</li>
+        <li><b style="color: var(--on);">Print label</b> — 2×1 inch thermal · ticket# / QR / customer last-name / device / drop-off date. QR opens ticket directly when scanned.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+
+<p class="meta">
+  File: <code>android/pos-phone-mockups.html</code> · Open in Chrome to preview ·
+  Colors match Bizarre dark theme (orange primary, warm dark surfaces)
+</p>
+
+</body>
+</html>

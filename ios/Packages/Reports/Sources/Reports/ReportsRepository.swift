@@ -22,6 +22,8 @@ public protocol ReportsRepository: Sendable {
     // CSAT / NPS — endpoint stubs: server routes not yet present; graceful fallback
     func getCSAT(from: String, to: String) async throws -> CSATScore
     func getNPS(from: String, to: String) async throws -> NPSScore
+    // SLA Breaches — endpoint stub: GET /api/v1/reports/sla-breaches (not yet on server)
+    func getSLABreaches(from: String, to: String) async throws -> SLABreachReport
     // Drill-through — endpoint stub
     func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord]
     // Scheduled reports — wired to GET /api/v1/reports/scheduled
@@ -30,6 +32,35 @@ public protocol ReportsRepository: Sendable {
     func deleteScheduledReport(id: Int64) async throws
     // Email report
     func emailReport(recipient: String, pdfBase64: String) async throws
+    // §15.4 Technician performance — GET /api/v1/reports/technician-performance
+    func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow]
+    // §15.6 Tax report — GET /api/v1/reports/tax
+    func getTaxReport(from: String, to: String) async throws -> TaxReportResponse
+    // §15.2 Top customers — GET /api/v1/reports/top-customers
+    func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow]
+    // §15.3 Tickets trend — GET /api/v1/reports/tickets-trend
+    func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint]
+    // §15.3 Busy hours heatmap — GET /api/v1/reports/tickets-heatmap
+    func getBusyHours(from: String, to: String) async throws -> [BusyHourCell]
+    // §15.3 SLA summary — GET /api/v1/reports/sla
+    func getSLASummary(from: String, to: String) async throws -> SLABreachSummary
+    // §15.7 Insights
+    func getWarrantyClaims(from: String, to: String) async throws -> [WarrantyClaimsPoint]
+    func getDeviceModelsRepaired(from: String, to: String) async throws -> [DeviceModelRepaired]
+    func getPartsUsage(from: String, to: String) async throws -> [PartUsageRow]
+    func getTechHours(from: String, to: String) async throws -> [TechHoursRow]
+    func getStalledTickets(from: String, to: String) async throws -> StalledTicketsSummary
+    func getCustomerAcquisitionChurn(from: String, to: String) async throws -> CustomerAcquisitionChurn
+    // §15.9 BI built-in
+    func getRevenueByCategory(from: String, to: String) async throws -> [RevenueByCategoryRow]
+    func getRepeatCustomerStats(from: String, to: String) async throws -> RepeatCustomerStats
+    func getAvgTicketValueTrend(from: String, to: String) async throws -> [AvgTicketValueTrendPoint]
+    func getConversionFunnel(from: String, to: String) async throws -> ConversionFunnelStats
+    func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow]
+    // §15.2 Cohort revenue retention → GET /api/v1/reports/cohort-retention
+    func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData
+    // §15.5 Shrinkage trend → GET /api/v1/reports/inventory-shrinkage
+    func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport
 }
 
 // MARK: - LiveReportsRepository
@@ -168,7 +199,8 @@ public actor LiveReportsRepository: ReportsRepository {
         }
         let response = try await api.get("/api/v1/reports/nps-trend", as: NpsTrendResponse.self)
         let overall = response.overall
-        let total = Double((overall?.promoters ?? 0) + (overall?.passives ?? 0) + (overall?.detractors ?? 0))
+        let respondentCount = (overall?.promoters ?? 0) + (overall?.passives ?? 0) + (overall?.detractors ?? 0)
+        let total = Double(respondentCount)
         let promoterPct = total > 0 ? (Double(overall?.promoters ?? 0) / total) * 100.0 : 0.0
         let detractorPct = total > 0 ? (Double(overall?.detractors ?? 0) / total) * 100.0 : 0.0
         return NPSScore(
@@ -176,8 +208,19 @@ public actor LiveReportsRepository: ReportsRepository {
             previous: 0,
             promoterPct: promoterPct,
             detractorPct: detractorPct,
-            themes: []
+            themes: [],
+            respondentCount: respondentCount
         )
+    }
+
+    // MARK: - SLA Breaches — endpoint stub (GET /api/v1/reports/sla-breaches not yet on server)
+
+    public func getSLABreaches(from: String, to: String) async throws -> SLABreachReport {
+        // When server implements the route, replace with:
+        // let query = [URLQueryItem(name: "from_date", value: from),
+        //              URLQueryItem(name: "to_date",   value: to)]
+        // return try await api.get("/api/v1/reports/sla-breaches", query: query, as: SLABreachReport.self)
+        throw ReportsRepositoryError.endpointNotImplemented("/reports/sla-breaches")
     }
 
     // MARK: - Drill-through → GET /api/v1/reports/sales (single-day slice)
@@ -236,7 +279,268 @@ public actor LiveReportsRepository: ReportsRepository {
         _ = try await api.post("/api/v1/reports/email", body: body, as: EmptyReportPayload.self)
     }
 
+    // MARK: - Technician Performance → GET /api/v1/reports/technician-performance
+
+    public func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow] {
+        struct TechPerfResponse: Decodable, Sendable {
+            let rows: [TechnicianPerfRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([TechnicianPerfRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        let response = try await api.get(
+            "/api/v1/reports/technician-performance", query: query, as: TechPerfResponse.self
+        )
+        return response.rows
+    }
+
+    // MARK: - Tax Report → GET /api/v1/reports/tax
+
+    public func getTaxReport(from: String, to: String) async throws -> TaxReportResponse {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        return try await api.get("/api/v1/reports/tax", query: query, as: TaxReportResponse.self)
+    }
+
+    // MARK: - Top Customers → GET /api/v1/reports/top-customers
+
+    public func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow] {
+        struct Response: Decodable, Sendable {
+            let customers: [TopCustomerRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                customers = (try? c.decode([TopCustomerRow].self, forKey: .customers)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case customers }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to),
+            URLQueryItem(name: "limit",     value: "10")
+        ]
+        let response = try await api.get("/api/v1/reports/top-customers", query: query, as: Response.self)
+        return response.customers
+    }
+
+    // MARK: - Tickets Trend → GET /api/v1/reports/tickets-trend
+
+    public func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint] {
+        struct Response: Decodable, Sendable {
+            let rows: [TicketDayPoint]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([TicketDayPoint].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        let response = try await api.get("/api/v1/reports/tickets-trend", query: query, as: Response.self)
+        return response.rows
+    }
+
+    // MARK: - Busy Hours Heatmap → GET /api/v1/reports/tickets-heatmap
+
+    public func getBusyHours(from: String, to: String) async throws -> [BusyHourCell] {
+        struct Response: Decodable, Sendable {
+            let busyHours: [BusyHourCell]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                busyHours = (try? c.decode([BusyHourCell].self, forKey: .busyHours)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case busyHours = "busy_hours" }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        let response = try await api.get("/api/v1/reports/tickets-heatmap", query: query, as: Response.self)
+        return response.busyHours
+    }
+
+    // MARK: - SLA Summary → GET /api/v1/reports/sla
+
+    public func getSLASummary(from: String, to: String) async throws -> SLABreachSummary {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        return try await api.get("/api/v1/reports/sla", query: query, as: SLABreachSummary.self)
+    }
+
+    // MARK: - §15.7 Warranty Claims → GET /api/v1/reports/warranty-claims
+
+    public func getWarrantyClaims(from: String, to: String) async throws -> [WarrantyClaimsPoint] {
+        struct Response: Decodable, Sendable {
+            let rows: [WarrantyClaimsPoint]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([WarrantyClaimsPoint].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/warranty-claims",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.7 Device Models Repaired → GET /api/v1/reports/device-models
+
+    public func getDeviceModelsRepaired(from: String, to: String) async throws -> [DeviceModelRepaired] {
+        struct Response: Decodable, Sendable {
+            let rows: [DeviceModelRepaired]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([DeviceModelRepaired].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/device-models",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.7 Parts Usage → GET /api/v1/reports/parts-usage
+
+    public func getPartsUsage(from: String, to: String) async throws -> [PartUsageRow] {
+        struct Response: Decodable, Sendable {
+            let rows: [PartUsageRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([PartUsageRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/parts-usage",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.7 Tech Hours → GET /api/v1/reports/tech-hours
+
+    public func getTechHours(from: String, to: String) async throws -> [TechHoursRow] {
+        struct Response: Decodable, Sendable {
+            let rows: [TechHoursRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([TechHoursRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/tech-hours",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.7 Stalled Tickets → GET /api/v1/reports/stalled-tickets
+
+    public func getStalledTickets(from: String, to: String) async throws -> StalledTicketsSummary {
+        return try await api.get("/api/v1/reports/stalled-tickets",
+                                 query: dateQuery(from: from, to: to), as: StalledTicketsSummary.self)
+    }
+
+    // MARK: - §15.7 Customer Acquisition & Churn → GET /api/v1/reports/customer-acquisition
+
+    public func getCustomerAcquisitionChurn(from: String, to: String) async throws -> CustomerAcquisitionChurn {
+        return try await api.get("/api/v1/reports/customer-acquisition",
+                                 query: dateQuery(from: from, to: to), as: CustomerAcquisitionChurn.self)
+    }
+
+    // MARK: - §15.9 Revenue by Category → GET /api/v1/reports/revenue-by-category
+
+    public func getRevenueByCategory(from: String, to: String) async throws -> [RevenueByCategoryRow] {
+        struct Response: Decodable, Sendable {
+            let rows: [RevenueByCategoryRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([RevenueByCategoryRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/revenue-by-category",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.9 Repeat Customer Stats → GET /api/v1/reports/repeat-customers
+
+    public func getRepeatCustomerStats(from: String, to: String) async throws -> RepeatCustomerStats {
+        return try await api.get("/api/v1/reports/repeat-customers",
+                                 query: dateQuery(from: from, to: to), as: RepeatCustomerStats.self)
+    }
+
+    // MARK: - §15.9 Avg Ticket Value Trend → GET /api/v1/reports/avg-ticket-trend
+
+    public func getAvgTicketValueTrend(from: String, to: String) async throws -> [AvgTicketValueTrendPoint] {
+        struct Response: Decodable, Sendable {
+            let rows: [AvgTicketValueTrendPoint]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([AvgTicketValueTrendPoint].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/avg-ticket-trend",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.9 Conversion Funnel → GET /api/v1/reports/conversion-funnel
+
+    public func getConversionFunnel(from: String, to: String) async throws -> ConversionFunnelStats {
+        return try await api.get("/api/v1/reports/conversion-funnel",
+                                 query: dateQuery(from: from, to: to), as: ConversionFunnelStats.self)
+    }
+
+    // MARK: - §15.9 Labor Utilization → GET /api/v1/reports/labor-utilization
+
+    public func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow] {
+        struct Response: Decodable, Sendable {
+            let rows: [LaborUtilizationRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([LaborUtilizationRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let r = try await api.get("/api/v1/reports/labor-utilization",
+                                  query: dateQuery(from: from, to: to), as: Response.self)
+        return r.rows
+    }
+
+    // MARK: - §15.2 Cohort Retention → GET /api/v1/reports/cohort-retention
+
+    public func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData {
+        return try await api.get("/api/v1/reports/cohort-retention",
+                                 query: dateQuery(from: from, to: to),
+                                 as: CohortRetentionData.self)
+    }
+
+    // MARK: - §15.5 Shrinkage Report → GET /api/v1/reports/inventory-shrinkage
+
+    public func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport {
+        return try await api.get("/api/v1/reports/inventory-shrinkage",
+                                 query: dateQuery(from: from, to: to),
+                                 as: ShrinkageReport.self)
+    }
+
     // MARK: - Private helpers
+
+    /// Build a standard from_date/to_date query item array.
+    private func dateQuery(from: String, to: String) -> [URLQueryItem] {
+        [URLQueryItem(name: "from_date", value: from),
+         URLQueryItem(name: "to_date",   value: to)]
+    }
 
     /// Compute the previous period of equal length for period-over-period comparison.
     private func previousPeriod(from fromStr: String, to toStr: String) -> (String, String) {

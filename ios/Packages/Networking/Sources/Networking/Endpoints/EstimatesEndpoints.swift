@@ -44,13 +44,20 @@ public struct Estimate: Decodable, Sendable, Identifiable, Hashable {
     public let status: String?
     public let subtotal: Double?
     public let discount: Double?
+    public let rejectionReason: String?
     public let totalTax: Double?
     public let total: Double?
     public let validUntil: String?
     public let notes: String?
     public let createdAt: String?
+    public let sentAt: String?
     public let isExpiring: Bool?
     public let daysUntilExpiry: Int?
+    /// Current version number (§8.2 versioning).
+    public let versionNumber: Int?
+    /// Version number that the customer approved, if any.
+    /// Used to detect the "customer approved v2 but staff edited to v3" scenario (§8).
+    public let approvedVersionNumber: Int?
     /// Populated when fetching detail (`GET /estimates/:id`).
     public let lineItems: [EstimateLineItem]?
 
@@ -68,11 +75,15 @@ public struct Estimate: Decodable, Sendable, Identifiable, Hashable {
         case customerLastName = "customer_last_name"
         case customerEmail = "customer_email"
         case customerPhone = "customer_phone"
+        case rejectionReason = "rejection_reason"
         case totalTax = "total_tax"
         case validUntil = "valid_until"
         case createdAt = "created_at"
+        case sentAt = "sent_at"
         case isExpiring = "is_expiring"
         case daysUntilExpiry = "days_until_expiry"
+        case versionNumber = "version_number"
+        case approvedVersionNumber = "approved_version_number"
         case lineItems = "line_items"
     }
 }

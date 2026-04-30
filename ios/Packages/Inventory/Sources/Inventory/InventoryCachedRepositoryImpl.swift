@@ -5,10 +5,25 @@ import Sync
 
 // MARK: - InventoryCacheFilter
 
-/// Composite cache key combining filter + keyword.
+/// Composite cache key combining filter + sort + advanced filter + keyword.
 struct InventoryCacheFilter: Sendable, Hashable {
     let filter: InventoryFilter
+    let sort: InventorySortOption
+    let advanced: InventoryAdvancedFilter
     let keyword: String?
+
+    // Legacy convenience (sort defaults to .nameAsc, advanced defaults to empty).
+    init(
+        filter: InventoryFilter,
+        sort: InventorySortOption = .nameAsc,
+        advanced: InventoryAdvancedFilter = .init(),
+        keyword: String?
+    ) {
+        self.filter = filter
+        self.sort = sort
+        self.advanced = advanced
+        self.keyword = keyword
+    }
 }
 
 // MARK: - InventoryCachedRepositoryImpl
@@ -41,10 +56,26 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
         self.underlying = InventoryRepositoryImpl(api: api)
     }
 
-    // MARK: - InventoryRepository conformance (legacy plain list)
+    // MARK: - InventoryRepository conformance
 
     public func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] {
         let result = try await cachedList(filter: filter, keyword: keyword, maxAgeSeconds: 300)
+        return result.value
+    }
+
+    public func listAdvanced(
+        filter: InventoryFilter,
+        sort: InventorySortOption,
+        advanced: InventoryAdvancedFilter,
+        keyword: String?
+    ) async throws -> [InventoryListItem] {
+        let result = try await cachedList(
+            filter: filter,
+            sort: sort,
+            advanced: advanced,
+            keyword: keyword,
+            maxAgeSeconds: 300
+        )
         return result.value
     }
 
@@ -54,10 +85,12 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
     /// refresh when the cache is stale.
     public func cachedList(
         filter: InventoryFilter,
+        sort: InventorySortOption = .nameAsc,
+        advanced: InventoryAdvancedFilter = .init(),
         keyword: String?,
         maxAgeSeconds: Int = 300
     ) async throws -> CachedResult<[InventoryListItem]> {
-        let key = InventoryCacheFilter(filter: filter, keyword: keyword)
+        let key = InventoryCacheFilter(filter: filter, sort: sort, advanced: advanced, keyword: keyword)
         let cached = cache[key] ?? []
         let lastSync = syncedAt[key]
 
@@ -72,7 +105,8 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
             // Background refresh — best effort; UI already has stale data.
             Task {
                 do {
-                    let fresh = try await self.underlying.list(filter: filter, keyword: keyword)
+                    let fresh = try await self.underlying.listAdvanced(
+                        filter: filter, sort: sort, advanced: advanced, keyword: keyword)
                     await self.updateCache(key: key, items: fresh)
                 } catch {
                     AppLog.sync.warning("Inventory background refresh failed: \(error.localizedDescription, privacy: .public)")
@@ -90,11 +124,17 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
 
     // MARK: - Cache mutations (called from write paths on success)
 
-    /// Force a remote fetch and update the cache for all cached keys.
+    /// Force a remote fetch and update the cache.
     /// Called by `InventoryListViewModel.refresh()`.
-    public func forceRefresh(filter: InventoryFilter, keyword: String?) async throws -> CachedResult<[InventoryListItem]> {
-        let key = InventoryCacheFilter(filter: filter, keyword: keyword)
-        let fresh = try await underlying.list(filter: filter, keyword: keyword)
+    public func forceRefresh(
+        filter: InventoryFilter,
+        sort: InventorySortOption = .nameAsc,
+        advanced: InventoryAdvancedFilter = .init(),
+        keyword: String?
+    ) async throws -> CachedResult<[InventoryListItem]> {
+        let key = InventoryCacheFilter(filter: filter, sort: sort, advanced: advanced, keyword: keyword)
+        let fresh = try await underlying.listAdvanced(
+            filter: filter, sort: sort, advanced: advanced, keyword: keyword)
         updateCache(key: key, items: fresh)
         return CachedResult(
             value: fresh,
@@ -105,8 +145,13 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
     }
 
     /// Called after successful create/update/delete to invalidate affected key.
-    public func invalidate(filter: InventoryFilter, keyword: String?) {
-        let key = InventoryCacheFilter(filter: filter, keyword: keyword)
+    public func invalidate(
+        filter: InventoryFilter,
+        sort: InventorySortOption = .nameAsc,
+        advanced: InventoryAdvancedFilter = .init(),
+        keyword: String?
+    ) {
+        let key = InventoryCacheFilter(filter: filter, sort: sort, advanced: advanced, keyword: keyword)
         syncedAt.removeValue(forKey: key)
     }
 

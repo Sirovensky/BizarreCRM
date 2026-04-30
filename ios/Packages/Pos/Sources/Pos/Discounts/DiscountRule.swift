@@ -14,6 +14,54 @@ public enum DiscountScope: String, Codable, Sendable, Hashable, CaseIterable {
     case sku
 }
 
+// MARK: - DiscountChannel
+
+/// Restricts which sales channel a `DiscountRule` may fire in.
+///
+/// - `any`: no restriction — fires in-store, online, and via payment links.
+/// - `inStoreOnly`: fires only from the POS cart (never from a payment link or web checkout).
+/// - `onlineOnly`: fires only from payment links / web checkout (never from POS).
+public enum DiscountChannel: String, Codable, Sendable, Hashable, CaseIterable {
+    /// No channel restriction — applies everywhere.
+    case any
+    /// Applies only when the sale originates from the POS register.
+    case inStoreOnly = "in_store_only"
+    /// Applies only when the sale originates from a payment link or web checkout.
+    case onlineOnly  = "online_only"
+
+    public var displayName: String {
+        switch self {
+        case .any:         return "Any channel"
+        case .inStoreOnly: return "In-store (POS) only"
+        case .onlineOnly:  return "Online / payment link only"
+        }
+    }
+}
+
+// MARK: - DiscountStackOrder
+
+/// Controls the order in which discount types are applied when multiple rules
+/// stack on the same cart element.
+///
+/// Default per-tenant is `.percentBeforeFixed` which matches the most common
+/// accounting convention (apply the percentage first, then take dollars off
+/// the reduced total, then compare with and without tax).
+public enum DiscountStackOrder: String, Codable, Sendable, Hashable, CaseIterable {
+    /// Percentage discounts are applied first, then fixed-amount discounts,
+    /// then the result is compared against tax (default).
+    case percentBeforeFixed = "percent_before_fixed"
+    /// Fixed-amount discounts are deducted first, then percentages apply on
+    /// the reduced basis.
+    case fixedBeforePercent = "fixed_before_percent"
+
+    public var displayName: String {
+        switch self {
+        case .percentBeforeFixed: return "% off first, then $ off"
+        case .fixedBeforePercent: return "$ off first, then % off"
+        }
+    }
+}
+
 // MARK: - DiscountRule
 
 /// A persistent, server-synced discount rule.
@@ -66,6 +114,40 @@ public struct DiscountRule: Codable, Sendable, Identifiable, Hashable {
     /// `ManagerPinSheet`.
     public var managerApprovalRequired: Bool
 
+    // MARK: - Eligibility gates (§16 discount types)
+
+    /// When `true`, this rule only fires when the attached customer has never
+    /// completed a sale at this tenant (first-time customer discount).
+    ///
+    /// The iOS side is *optimistic* — the server re-validates on checkout
+    /// submission and rejects if the customer already has a prior order.
+    public var firstTimeCustomerOnly: Bool
+
+    /// Minimum loyalty tier name required for the rule to fire (e.g. `"Gold"`).
+    /// `nil` = no loyalty-tier restriction.
+    ///
+    /// Checked against the customer's current membership tier; walk-in
+    /// customers never match a non-nil tier requirement.
+    public var requiredLoyaltyTier: String?
+
+    /// Employee role slug required for the rule to fire (e.g. `"technician"`).
+    /// `nil` = no role restriction (applies to all staff).
+    ///
+    /// Used for employee-discount rules — only cashiers whose role matches may
+    /// apply the rule without manager override.
+    public var requiredEmployeeRole: String?
+
+    /// Set of category names **excluded** from this rule's scope.
+    ///
+    /// Even if the rule's `scope` would match a line (`.lineItem`, `.whole`),
+    /// any line whose item category appears in this set is skipped.
+    /// Empty set = no exclusions.
+    public var excludedCategories: Set<String>
+
+    /// Channel restriction — controls whether this rule fires in-store, online,
+    /// or both.  Default `.any`.
+    public var channel: DiscountChannel
+
     public init(
         id: String,
         name: String,
@@ -79,7 +161,12 @@ public struct DiscountRule: Codable, Sendable, Identifiable, Hashable {
         validTo: Date? = nil,
         maxUsesPerCustomer: Int? = nil,
         stackable: Bool = true,
-        managerApprovalRequired: Bool = false
+        managerApprovalRequired: Bool = false,
+        firstTimeCustomerOnly: Bool = false,
+        requiredLoyaltyTier: String? = nil,
+        requiredEmployeeRole: String? = nil,
+        excludedCategories: Set<String> = [],
+        channel: DiscountChannel = .any
     ) {
         self.id = id
         self.name = name
@@ -94,6 +181,75 @@ public struct DiscountRule: Codable, Sendable, Identifiable, Hashable {
         self.maxUsesPerCustomer = maxUsesPerCustomer
         self.stackable = stackable
         self.managerApprovalRequired = managerApprovalRequired
+        self.firstTimeCustomerOnly = firstTimeCustomerOnly
+        self.requiredLoyaltyTier = requiredLoyaltyTier
+        self.requiredEmployeeRole = requiredEmployeeRole
+        self.excludedCategories = excludedCategories
+        self.channel = channel
+    }
+
+    // MARK: - Custom Codable (new fields with backward-compatible defaults)
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, scope, matcher
+        case discountPercent        = "discount_percent"
+        case discountFlatCents      = "discount_flat_cents"
+        case minQuantity            = "min_quantity"
+        case minCartTotalCents      = "min_cart_total_cents"
+        case validFrom              = "valid_from"
+        case validTo                = "valid_to"
+        case maxUsesPerCustomer     = "max_uses_per_customer"
+        case stackable
+        case managerApprovalRequired = "manager_approval_required"
+        case firstTimeCustomerOnly  = "first_time_customer_only"
+        case requiredLoyaltyTier    = "required_loyalty_tier"
+        case requiredEmployeeRole   = "required_employee_role"
+        case excludedCategories     = "excluded_categories"
+        case channel
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                      = try c.decode(String.self,       forKey: .id)
+        name                    = try c.decode(String.self,       forKey: .name)
+        scope                   = try c.decode(DiscountScope.self, forKey: .scope)
+        matcher                 = try c.decodeIfPresent(String.self, forKey: .matcher) ?? ""
+        discountPercent         = try c.decodeIfPresent(Double.self, forKey: .discountPercent)
+        discountFlatCents       = try c.decodeIfPresent(Int.self,   forKey: .discountFlatCents)
+        minQuantity             = try c.decodeIfPresent(Int.self,   forKey: .minQuantity)
+        minCartTotalCents       = try c.decodeIfPresent(Int.self,   forKey: .minCartTotalCents)
+        validFrom               = try c.decodeIfPresent(Date.self,  forKey: .validFrom)
+        validTo                 = try c.decodeIfPresent(Date.self,  forKey: .validTo)
+        maxUsesPerCustomer      = try c.decodeIfPresent(Int.self,   forKey: .maxUsesPerCustomer)
+        stackable               = try c.decodeIfPresent(Bool.self,  forKey: .stackable) ?? true
+        managerApprovalRequired = try c.decodeIfPresent(Bool.self,  forKey: .managerApprovalRequired) ?? false
+        firstTimeCustomerOnly   = try c.decodeIfPresent(Bool.self,  forKey: .firstTimeCustomerOnly) ?? false
+        requiredLoyaltyTier     = try c.decodeIfPresent(String.self, forKey: .requiredLoyaltyTier)
+        requiredEmployeeRole    = try c.decodeIfPresent(String.self, forKey: .requiredEmployeeRole)
+        excludedCategories      = Set(try c.decodeIfPresent([String].self, forKey: .excludedCategories) ?? [])
+        channel                 = try c.decodeIfPresent(DiscountChannel.self, forKey: .channel) ?? .any
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,                        forKey: .id)
+        try c.encode(name,                      forKey: .name)
+        try c.encode(scope,                     forKey: .scope)
+        try c.encode(matcher,                   forKey: .matcher)
+        try c.encodeIfPresent(discountPercent,  forKey: .discountPercent)
+        try c.encodeIfPresent(discountFlatCents, forKey: .discountFlatCents)
+        try c.encodeIfPresent(minQuantity,       forKey: .minQuantity)
+        try c.encodeIfPresent(minCartTotalCents, forKey: .minCartTotalCents)
+        try c.encodeIfPresent(validFrom,         forKey: .validFrom)
+        try c.encodeIfPresent(validTo,           forKey: .validTo)
+        try c.encodeIfPresent(maxUsesPerCustomer, forKey: .maxUsesPerCustomer)
+        try c.encode(stackable,                  forKey: .stackable)
+        try c.encode(managerApprovalRequired,    forKey: .managerApprovalRequired)
+        try c.encode(firstTimeCustomerOnly,      forKey: .firstTimeCustomerOnly)
+        try c.encodeIfPresent(requiredLoyaltyTier, forKey: .requiredLoyaltyTier)
+        try c.encodeIfPresent(requiredEmployeeRole, forKey: .requiredEmployeeRole)
+        try c.encode(Array(excludedCategories),  forKey: .excludedCategories)
+        try c.encode(channel,                    forKey: .channel)
     }
 
     // MARK: - Validity helpers

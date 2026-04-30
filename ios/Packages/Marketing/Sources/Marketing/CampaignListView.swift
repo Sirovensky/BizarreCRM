@@ -136,7 +136,7 @@ public struct CampaignListView: View {
         } else if let err = vm.errorMessage, vm.campaigns.isEmpty {
             errorView(err)
         } else if vm.campaigns.isEmpty {
-            emptyDetail(icon: "megaphone", message: "No campaigns yet")
+            campaignEmptyState
         } else {
             campaignList
         }
@@ -228,6 +228,51 @@ public struct CampaignListView: View {
         #endif
         .scrollContentBackground(.hidden)
         .animation(.easeInOut(duration: 0.2), value: vm.filter)
+    }
+
+    /// Empty state shown when no campaigns exist (new tenant or all filtered away).
+    private var campaignEmptyState: some View {
+        VStack(spacing: BrandSpacing.lg) {
+            Spacer(minLength: 0)
+            ZStack {
+                Circle()
+                    .fill(Color.bizarreOrange.opacity(0.10))
+                    .frame(width: 96, height: 96)
+                Image(systemName: "megaphone.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.bizarreOrange)
+            }
+            .accessibilityHidden(true)
+
+            VStack(spacing: BrandSpacing.sm) {
+                Text(vm.filter == .all ? "No campaigns yet" : "No \(vm.filter.displayName.lowercased()) campaigns")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .multilineTextAlignment(.center)
+                Text("Create a campaign to send SMS or email blasts to your customers.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.xl)
+            }
+
+            Button {
+                showingCreate = true
+            } label: {
+                Label("New Campaign", systemImage: "plus")
+                    .font(.brandTitleSmall())
+                    .padding(.horizontal, BrandSpacing.xl)
+                    .padding(.vertical, BrandSpacing.md)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Create new campaign")
+            .accessibilityIdentifier("marketing.campaigns.emptyStateCreate")
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
     }
 
     private func errorView(_ msg: String) -> some View {

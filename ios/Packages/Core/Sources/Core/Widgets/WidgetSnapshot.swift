@@ -59,6 +59,11 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     /// Next 3 appointments sorted by scheduledAt asc.
     public let nextAppointments: [AppointmentSummary]
 
+    /// Up to 5 tickets currently assigned to the signed-in technician (my queue).
+    /// Written by the main app on sync using the current user's employee ID.
+    /// Empty when no user is signed in or no tickets are assigned.
+    public let myQueueTickets: [TicketSummary]
+
     /// Timestamp of last successful write.
     public let lastUpdated: Date
 
@@ -70,6 +75,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
         revenueTodayCents: Int,
         revenueYesterdayCents: Int,
         nextAppointments: [AppointmentSummary] = [],
+        myQueueTickets: [TicketSummary] = [],
         lastUpdated: Date
     ) {
         self.openTicketCount = openTicketCount
@@ -77,6 +83,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
         self.revenueTodayCents = revenueTodayCents
         self.revenueYesterdayCents = revenueYesterdayCents
         self.nextAppointments = Array(nextAppointments.prefix(3))
+        self.myQueueTickets = Array(myQueueTickets.prefix(5))
         self.lastUpdated = lastUpdated
     }
 

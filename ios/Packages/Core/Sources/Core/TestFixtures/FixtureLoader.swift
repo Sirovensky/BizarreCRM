@@ -105,7 +105,12 @@ public struct FixtureLoader: Sendable {
     // MARK: — Private
 
     private func rawData(for name: String) throws -> Data {
-        guard let url = bundle.url(forResource: name, withExtension: "json") else {
+        // Search the bundle root first, then the conventional "Fixtures" subdirectory
+        // (SPM `.copy("TestFixtures/Fixtures")` copies the directory, so files land
+        // at `Fixtures/<name>.json` inside the bundle).
+        let url = bundle.url(forResource: name, withExtension: "json")
+            ?? bundle.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")
+        guard let url else {
             throw LoaderError.fileNotFound(
                 name: name,
                 bundle: bundle.bundleIdentifier ?? bundle.bundlePath

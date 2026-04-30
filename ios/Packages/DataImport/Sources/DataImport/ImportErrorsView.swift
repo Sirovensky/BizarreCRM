@@ -71,13 +71,41 @@ public struct ImportErrorsView: View {
 
     private var bottomBar: some View {
         VStack(spacing: DesignTokens.Spacing.md) {
-            // Export errors button — stub (out of scope per spec)
-            Button("Export Errors (TODO)") { /* out of scope */ }
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .disabled(true)
-                .accessibilityLabel("Export errors — not yet available")
-                .accessibilityIdentifier("import.errors.export")
+            // §48.2 Export errors — downloadable error report
+            if let url = vm.errorExportURL {
+                ShareLink(
+                    item: url,
+                    subject: Text("Import Error Report"),
+                    message: Text("Row-level errors from your import")
+                ) {
+                    Label("Share Error Report", systemImage: "square.and.arrow.up")
+                        .font(.brandBodyMedium().weight(.semibold))
+                        .foregroundStyle(.bizarreOrange)
+                        .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("import.errors.share")
+            }
+
+            Button {
+                Task { await vm.exportErrors() }
+            } label: {
+                HStack {
+                    Spacer()
+                    if vm.isExportingErrors {
+                        ProgressView().controlSize(.small)
+                        Text("Preparing…").font(.brandBodyMedium())
+                    } else {
+                        Label("Download Error Report", systemImage: "arrow.down.doc")
+                            .font(.brandBodyMedium().weight(.semibold))
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.bizarreOrange)
+            .disabled(vm.isExportingErrors || !vm.rowErrors.isEmpty == false)
+            .accessibilityIdentifier("import.errors.export")
+            .accessibilityLabel(vm.isExportingErrors ? "Preparing error report" : "Download error report")
 
             Button("Back") { vm.backFromErrors() }
                 .buttonStyle(.brandGlassProminent)

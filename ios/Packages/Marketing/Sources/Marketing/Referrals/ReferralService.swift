@@ -19,7 +19,7 @@ public actor ReferralService {
 
     /// Fetch the existing referral code for `customerId`, or generate a new one.
     public func getOrGenerateCode(customerId: String) async throws -> ReferralCode {
-        try await api.get("referrals/code/\(customerId)", as: ReferralCode.self)
+        try await api.referralCode(customerId: customerId)
     }
 
     /// Build a universal (https) share link embedding the code.
@@ -57,7 +57,7 @@ public actor ReferralService {
     // MARK: - Leaderboard
 
     public func fetchLeaderboard() async throws -> [ReferralLeaderEntry] {
-        let response = try await api.get("referrals/leaderboard", as: ReferralLeaderboardResponse.self)
+        let response = try await api.referralLeaderboard()
         return response.entries
     }
 }

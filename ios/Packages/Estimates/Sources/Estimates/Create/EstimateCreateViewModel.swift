@@ -41,8 +41,45 @@ public final class EstimateCreateViewModel {
         DraftAutoSaver(screen: "estimate.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
+    /// §8.3: Per-session idempotency key generated at VM init.
+    /// Sent with every create attempt so that retries on network failure
+    /// don't produce duplicate estimates.
+    /// §8.3 — Exposed for RepairServicePickerSheet inside EstimateCreateView.
+    public var apiForPicker: APIClient { api }
 
     public init(api: APIClient) { self.api = api }
+
+    /// §8.3 — Prefill from a lead detail: customer identity carried over; no line items yet.
+    /// The lead's linked customer is pre-selected so the user only needs to add line items + validity.
+    ///
+    /// Uses `LeadDetail` (rather than `Lead`) because only the detail response carries `customerId`.
+    public init(api: APIClient, prefillFromLeadDetail lead: LeadDetail) {
+        self.api = api
+        // Map lead detail fields to estimate create fields
+        self.customerId = lead.customerId
+        let nameParts = [lead.firstName, lead.lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        let displayName = nameParts.isEmpty ? "Lead #\(lead.id)" : nameParts.joined(separator: " ")
+        self.customerDisplayName = displayName
+        self.notes = "Estimate created from lead #\(lead.id)."
+        // Validity: default 30 days from today — tenant can configure
+        let thirtyDays = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        self.validUntil = fmt.string(from: thirtyDays)
+    }
+
+    /// §8.3 — Lightweight prefill from `Lead` summary (no customerId available).
+    /// Used when navigating from the lead list where detail has not been fetched.
+    /// `customerId` will be nil — user must re-select from the customer picker.
+    public init(api: APIClient, prefillFromLead lead: Lead) {
+        self.api = api
+        self.customerDisplayName = lead.displayName
+        self.notes = "Estimate created from lead \(lead.orderId ?? "#\(lead.id)")."
+        let thirtyDays = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        self.validUntil = fmt.string(from: thirtyDays)
+    }
 
     // MARK: - Validation
 
@@ -97,6 +134,15 @@ public final class EstimateCreateViewModel {
         scheduleAutoSave()
     }
 
+    // MARK: - §8.3 Idempotency key
+
+    /// Per-session UUID sent as `Idempotency-Key` header. Generated once on
+    /// first submit; stays the same so a network-retry doesn't double-create.
+    @ObservationIgnored private var idempotencyKey: String = UUID().uuidString
+
+    /// Reset the key — called when the user explicitly cancels and re-opens.
+    public func resetIdempotencyKey() { idempotencyKey = UUID().uuidString }
+
     // MARK: - Submit
 
     public func submit() async {
@@ -120,16 +166,18 @@ public final class EstimateCreateViewModel {
             lineItems.compactMap { $0.toRequest() }
         let discountValue: Double? = discountText.isEmpty ? nil : Double(discountText)
 
-        let body = CreateEstimateRequest(
+        // §8.3: Use idempotent create so retries don't produce duplicate estimates.
+        let body = CreateEstimateWithIdempotencyRequest(
             customerId: cid,
             notes: notes.isEmpty ? nil : notes,
             validUntil: validUntil.isEmpty ? nil : validUntil,
             discount: discountValue,
-            lineItems: requestLineItems
+            lineItems: requestLineItems,
+            idempotencyKey: idempotencyKey
         )
 
         do {
-            let created = try await api.createEstimate(body)
+            let created = try await api.createEstimateIdempotent(body)
             createdId = created.id
             await _draftAutoSaverValue.clear()
         } catch {

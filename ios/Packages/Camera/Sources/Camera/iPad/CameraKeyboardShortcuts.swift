@@ -162,7 +162,7 @@ public struct ShortcutHintOverlay: View {
                         .frame(minWidth: 44)
                         .padding(.horizontal, DesignTokens.Spacing.sm)
                         .padding(.vertical, DesignTokens.Spacing.xxs)
-                        .background(Color.white.opacity(0.15),
+                        .background(Color.bizarreOnSurface.opacity(0.15),
                                     in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xs))
                         .accessibilityHidden(true)
 

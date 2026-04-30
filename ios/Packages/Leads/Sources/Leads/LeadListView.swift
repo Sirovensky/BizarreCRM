@@ -8,16 +8,16 @@ import Sync
 @MainActor
 @Observable
 public final class LeadListViewModel {
-    public private(set) var items: [Lead] = []
+    public internal(set) var items: [Lead] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
     /// Exposed for `StalenessIndicator` chip in toolbar.
     public private(set) var lastSyncedAt: Date?
 
-    @ObservationIgnored private let api: APIClient
-    @ObservationIgnored private let cachedRepo: LeadCachedRepository?
-    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored internal let api: APIClient
+    @ObservationIgnored internal let cachedRepo: LeadCachedRepository?
+    @ObservationIgnored internal var searchTask: Task<Void, Never>?
 
     public init(api: APIClient, cachedRepo: LeadCachedRepository? = nil) {
         self.api = api

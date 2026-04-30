@@ -19,6 +19,10 @@ public final class ExpenseDetailViewModel {
     public private(set) var isDeleting: Bool = false
     public private(set) var deleteError: String?
     public private(set) var didDelete: Bool = false
+    // §11.2 Approval workflow
+    public private(set) var isApproving: Bool = false
+    public private(set) var isDenying: Bool = false
+    public private(set) var approvalError: String?
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let id: Int64
@@ -59,6 +63,38 @@ public final class ExpenseDetailViewModel {
     public func refreshAfterReceiptAttach() async {
         await load()
     }
+
+    // MARK: - §11.2 Approval workflow
+
+    /// Approve expense via `POST /expenses/:id/approve`.
+    public func approve() async {
+        guard !isApproving else { return }
+        approvalError = nil
+        isApproving = true
+        defer { isApproving = false }
+        do {
+            try await api.approveExpense(id: id)
+            await load()
+        } catch {
+            AppLog.ui.error("Expense approve failed: \(error.localizedDescription, privacy: .public)")
+            approvalError = error.localizedDescription
+        }
+    }
+
+    /// Deny expense via `POST /expenses/:id/deny` with a reason comment.
+    public func deny(reason: String) async {
+        guard !isDenying else { return }
+        approvalError = nil
+        isDenying = true
+        defer { isDenying = false }
+        do {
+            try await api.denyExpense(id: id, reason: reason)
+            await load()
+        } catch {
+            AppLog.ui.error("Expense deny failed: \(error.localizedDescription, privacy: .public)")
+            approvalError = error.localizedDescription
+        }
+    }
 }
 
 // MARK: - View
@@ -69,6 +105,12 @@ public struct ExpenseDetailView: View {
     @State private var showEdit: Bool = false
     @State private var showReceiptAttach: Bool = false
     @State private var showDeleteConfirm: Bool = false
+    /// §11.2 Approval — deny reason sheet
+    @State private var showDenySheet: Bool = false
+    @State private var denyReasonText: String = ""
+    /// §11.2 — full-screen receipt zoom sheet
+    @State private var showReceiptZoom: Bool = false
+    @State private var zoomReceiptPath: String?
     private let api: APIClient
 
     public init(api: APIClient, id: Int64) {
@@ -101,6 +143,14 @@ public struct ExpenseDetailView: View {
                 .presentationDetents([.medium, .large])
             }
         }
+        // §11.2 — full-screen receipt zoom with pinch
+        .fullScreenCover(isPresented: $showReceiptZoom) {
+            if let path = zoomReceiptPath {
+                ReceiptZoomView(api: api, path: path) {
+                    showReceiptZoom = false
+                }
+            }
+        }
         .confirmationDialog(
             "Delete this expense?",
             isPresented: $showDeleteConfirm,
@@ -123,6 +173,54 @@ public struct ExpenseDetailView: View {
             Button("OK") { }
         } message: {
             Text(vm.deleteError ?? "")
+        }
+        // §11.2 Approval error alert
+        .alert("Action failed", isPresented: Binding(
+            get: { vm.approvalError != nil },
+            set: { _ in }
+        )) {
+            Button("OK") { }
+        } message: {
+            Text(vm.approvalError ?? "")
+        }
+        // §11.2 Deny reason sheet
+        .sheet(isPresented: $showDenySheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: BrandSpacing.md) {
+                    Text("Provide a reason for denying this expense.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .padding(.horizontal)
+                    TextEditor(text: $denyReasonText)
+                        .frame(minHeight: 100)
+                        .padding(BrandSpacing.sm)
+                        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+                        .accessibilityLabel("Denial reason")
+                    Spacer()
+                }
+                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+                .navigationTitle("Deny Expense")
+                #if canImport(UIKit)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showDenySheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Submit") {
+                            let reason = denyReasonText
+                            showDenySheet = false
+                            denyReasonText = ""
+                            Task { await vm.deny(reason: reason) }
+                        }
+                        .disabled(denyReasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel("Submit denial reason")
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -214,6 +312,10 @@ public struct ExpenseDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 headerCard(expense)
+                // §11.2 Approval workflow — show approve/deny buttons when pending
+                if expense.status == ExpenseStatus.pending.rawValue {
+                    approvalActionsCard(expense)
+                }
                 if let desc = expense.description, !desc.isEmpty {
                     descriptionCard(desc)
                 }
@@ -234,6 +336,10 @@ public struct ExpenseDetailView: View {
                 GridRow {
                     VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                         headerCard(expense)
+                        // §11.2 Approval workflow (iPad)
+                        if expense.status == ExpenseStatus.pending.rawValue {
+                            approvalActionsCard(expense)
+                        }
                         if let desc = expense.description, !desc.isEmpty {
                             descriptionCard(desc)
                         }
@@ -251,6 +357,61 @@ public struct ExpenseDetailView: View {
             .frame(maxWidth: 1100, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: - §11.2 Approval actions card
+
+    private func approvalActionsCard(_ expense: Expense) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            sectionHeader("Manager Action")
+            Text("This expense is pending approval.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.md) {
+                Button {
+                    Task { await vm.approve() }
+                } label: {
+                    HStack {
+                        if vm.isApproving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill").accessibilityHidden(true)
+                        }
+                        Text("Approve")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreSuccess)
+                .disabled(vm.isApproving || vm.isDenying)
+                .accessibilityLabel("Approve expense")
+                .accessibilityIdentifier("expenses.detail.approve")
+
+                Button {
+                    denyReasonText = ""
+                    showDenySheet = true
+                } label: {
+                    HStack {
+                        if vm.isDenying {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "xmark.circle.fill").accessibilityHidden(true)
+                        }
+                        Text("Deny")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreError)
+                .disabled(vm.isApproving || vm.isDenying)
+                .accessibilityLabel("Deny expense")
+                .accessibilityIdentifier("expenses.detail.deny")
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreWarning.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreWarning.opacity(0.4), lineWidth: 0.5))
     }
 
     // MARK: - Header card
@@ -292,13 +453,35 @@ public struct ExpenseDetailView: View {
         .accessibilityLabel(headerA11y(expense))
     }
 
+    // MARK: - §11 Category color chips — each category maps to a distinct hue
+
+    /// Returns a per-category background color so chips carry visual meaning at
+    /// a glance (Travel = blue, Payroll = teal, Taxes = red, etc.).
+    /// Falls back to the brand orange for unknown / nil categories.
+    private static func categoryChipColor(for category: String?) -> Color {
+        switch category?.lowercased() {
+        case "travel":      return Color(red: 0.18, green: 0.53, blue: 0.92)   // blue
+        case "payroll":     return Color(red: 0.13, green: 0.68, blue: 0.49)   // teal-green
+        case "taxes":       return Color(red: 0.85, green: 0.27, blue: 0.27)   // red
+        case "insurance":   return Color(red: 0.56, green: 0.27, blue: 0.87)   // violet
+        case "software":    return Color(red: 0.12, green: 0.60, blue: 0.72)   // cyan
+        case "marketing":   return Color(red: 0.95, green: 0.60, blue: 0.07)   // amber
+        case "rent":        return Color(red: 0.42, green: 0.42, blue: 0.70)   // slate-blue
+        case "utilities":   return Color(red: 0.22, green: 0.65, blue: 0.40)   // green
+        case "shipping":    return Color(red: 0.65, green: 0.45, blue: 0.18)   // brown
+        case "maintenance": return Color(red: 0.50, green: 0.55, blue: 0.60)   // steel
+        default:            return .bizarreOrange
+        }
+    }
+
     private func categoryChip(_ category: String?) -> some View {
-        Text(category?.capitalized ?? "Uncategorized")
+        let bg = Self.categoryChipColor(for: category)
+        return Text(category?.capitalized ?? "Uncategorized")
             .font(.brandLabelLarge())
-            .foregroundStyle(.bizarreOnOrange)
+            .foregroundStyle(.white)
             .padding(.horizontal, BrandSpacing.sm)
             .padding(.vertical, BrandSpacing.xxs)
-            .background(Color.bizarreOrange, in: Capsule())
+            .background(bg, in: Capsule())
             .accessibilityLabel("Category \(category?.capitalized ?? "Uncategorized")")
     }
 
@@ -355,11 +538,18 @@ public struct ExpenseDetailView: View {
         return hasVendor || hasPayment || hasTax || hasNotes
     }
 
+    /// §11 Vendor copy chip — pressing the chip copies the vendor name to the
+    /// pasteboard and briefly shows a "Copied!" confirmation label.
+    private func vendorCopyChip(_ vendor: String) -> some View {
+        VendorCopyChip(vendor: vendor)
+    }
+
     private func vendorPaymentCard(_ expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             sectionHeader("Vendor & Payment")
             if let vendor = expense.vendor, !vendor.isEmpty {
-                metaRow(label: "Vendor", value: vendor)
+                // §11 Vendor copy chip — tap to copy vendor name to clipboard
+                vendorCopyChip(vendor)
             }
             if let method = expense.paymentMethod, !method.isEmpty {
                 metaRow(label: "Payment", value: method)
@@ -465,22 +655,46 @@ public struct ExpenseDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
+    /// §11.2 — tap receipt thumbnail → full-screen zoom sheet.
     private func receiptImageView(path: String) -> some View {
-        ReceiptImageView(api: api, path: path)
+        Button {
+            zoomReceiptPath = path
+            showReceiptZoom = true
+        } label: {
+            ReceiptImageView(api: api, path: path)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View receipt full screen")
+        .accessibilityHint("Double-tap to open full-screen view with pinch-to-zoom")
     }
 
+    /// §11 Receipt photo placeholder — dashed-border drop zone that communicates
+    /// the expected content even before a photo is attached.
     private var emptyReceiptView: some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "doc.text.image")
-                .font(.system(size: 24))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+        VStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "camera.viewfinder")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.6))
                 .accessibilityHidden(true)
             Text("No receipt attached")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("Tap \"Attach\" to add a photo or scan")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.7))
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-        .accessibilityLabel("No receipt attached")
+        .frame(maxWidth: .infinity, minHeight: 120)
+        .padding(BrandSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                )
+                .foregroundStyle(Color.bizarreOutline.opacity(0.5))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No receipt attached. Tap Attach to add a photo or scan.")
     }
 
     // MARK: - Helpers
@@ -493,11 +707,56 @@ public struct ExpenseDetailView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// §11 Amount format — uses the device locale's currency so non-USD tenants
+    /// see their local symbol (€, £, ¥ …) rather than a hard-coded "$".
     private func formatMoney(_ v: Double) -> String {
         let f = NumberFormatter()
         f.numberStyle = .currency
-        f.currencyCode = "USD"
-        return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+        f.locale = .current          // honours device region setting
+        return f.string(from: NSNumber(value: v)) ?? String(format: "%.2f", v)
+    }
+}
+
+// MARK: - §11 Vendor copy chip
+
+/// Tappable chip that copies the vendor name to the pasteboard.
+/// Shows a brief "Copied!" confirmation label using `@State` — no UIKit needed.
+private struct VendorCopyChip: View {
+    let vendor: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            #if canImport(UIKit)
+            UIPasteboard.general.string = vendor
+            #elseif canImport(AppKit)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(vendor, forType: .string)
+            #endif
+            withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                withAnimation(.easeInOut(duration: 0.2)) { copied = false }
+            }
+        } label: {
+            HStack(spacing: BrandSpacing.xxs) {
+                Text(copied ? "Copied!" : vendor)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(copied ? Color.bizarreSuccess : Color.bizarreOnSurface)
+                    .animation(.easeInOut(duration: 0.15), value: copied)
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(copied ? Color.bizarreSuccess : Color.bizarreOnSurfaceMuted)
+                    .animation(.easeInOut(duration: 0.15), value: copied)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(Color.bizarreSurface1, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Vendor: \(vendor). Double-tap to copy.")
+        .accessibilityHint("Copies vendor name to clipboard")
     }
 }
 

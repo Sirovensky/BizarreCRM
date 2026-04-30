@@ -1,9 +1,9 @@
 import XCTest
 @testable import Core
 
-// MARK: — Stub URLSession
+// MARK: — Stub session
 
-final class StubAnalyticsURLSession: AnalyticsURLSessionProtocol, @unchecked Sendable {
+final class AnalyticsSinkStub: AnalyticsURLSessionProtocol, @unchecked Sendable {
     var capturedRequests: [URLRequest] = []
     var responseData: Data = Data()
     var responseCode: Int = 200
@@ -30,8 +30,8 @@ final class TenantServerAnalyticsSinkTests: XCTestCase {
     private func makeSUT(
         batchSize: Int = 50,
         consent: AnalyticsConsentManager? = nil,
-        session: StubAnalyticsURLSession = StubAnalyticsURLSession()
-    ) -> (TenantServerAnalyticsSink, StubAnalyticsURLSession) {
+        session: AnalyticsSinkStub = AnalyticsSinkStub()
+    ) -> (TenantServerAnalyticsSink, AnalyticsSinkStub) {
         let defaults = UserDefaults(suiteName: "test.sink.\(UUID().uuidString)")!
         let mgr = consent ?? AnalyticsConsentManager(defaults: defaults)
         mgr.optIn()
@@ -122,7 +122,7 @@ final class TenantServerAnalyticsSinkTests: XCTestCase {
     // MARK: — Fire-and-forget on failure
 
     func test_flush_dropsOnNetworkFailure_doesNotThrow() async {
-        let session = StubAnalyticsURLSession()
+        let session = AnalyticsSinkStub()
         session.shouldThrow = true
         let (sink, _) = makeSUT(batchSize: 50, session: session)
         await sink.enqueue(makePayload())
@@ -136,7 +136,7 @@ final class TenantServerAnalyticsSinkTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "test.sink.consent.\(UUID().uuidString)")!
         let mgr = AnalyticsConsentManager(defaults: defaults)
         // leave opted-out (default)
-        let session = StubAnalyticsURLSession()
+        let session = AnalyticsSinkStub()
         let sink = TenantServerAnalyticsSink(
             endpoint: URL(string: "https://example.com/analytics/events")!,
             consentManager: mgr,

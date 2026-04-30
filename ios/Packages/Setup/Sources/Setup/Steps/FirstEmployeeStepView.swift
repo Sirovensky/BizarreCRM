@@ -25,6 +25,8 @@ final class FirstEmployeeViewModel {
     var lastName: String  = ""
     var email: String     = ""
     var role: FirstEmployeeRole = .technician
+    /// When true the invitation email also triggers an SMS to the employee.
+    var sendSMSInvite: Bool = false
 
     var firstNameError: String? = nil
     var lastNameError: String?  = nil
@@ -68,7 +70,8 @@ final class FirstEmployeeViewModel {
         let ln = lastName.trimmingCharacters(in: .whitespaces)
         let em = email.trimmingCharacters(in: .whitespaces)
         guard !fn.isEmpty || !ln.isEmpty || !em.isEmpty else { return nil }
-        return FirstEmployeePayload(firstName: fn, lastName: ln, email: em, role: role)
+        return FirstEmployeePayload(firstName: fn, lastName: ln, email: em, role: role,
+                                    sendSMSInvite: sendSMSInvite)
     }
 
     // MARK: Private validators
@@ -111,12 +114,21 @@ public struct FirstEmployeePayload: Sendable, Equatable {
     public let lastName: String
     public let email: String
     public let role: FirstEmployeeRole
+    /// When true the server also sends an SMS invite (requires employee phone on server side).
+    public let sendSMSInvite: Bool
 
-    public init(firstName: String, lastName: String, email: String, role: FirstEmployeeRole) {
-        self.firstName = firstName
-        self.lastName  = lastName
-        self.email     = email
-        self.role      = role
+    public init(
+        firstName: String,
+        lastName: String,
+        email: String,
+        role: FirstEmployeeRole,
+        sendSMSInvite: Bool = false
+    ) {
+        self.firstName    = firstName
+        self.lastName     = lastName
+        self.email        = email
+        self.role         = role
+        self.sendSMSInvite = sendSMSInvite
     }
 }
 
@@ -148,6 +160,11 @@ public struct FirstEmployeeStepView: View {
                 lastNameField
                 emailField
                 rolePicker
+                // SMS invite toggle — only shown when the user has entered data.
+                if vm.hasAnyInput {
+                    smsInviteToggle
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 skipHint
                 Spacer(minLength: BrandSpacing.xxl)
             }
@@ -156,6 +173,7 @@ public struct FirstEmployeeStepView: View {
             .padding(.bottom, BrandSpacing.xxl)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .animation(.easeInOut(duration: 0.15), value: vm.hasAnyInput)
         .onChange(of: vm.isNextEnabled) { _, valid in
             onValidityChanged(valid)
         }
@@ -244,22 +262,103 @@ public struct FirstEmployeeStepView: View {
         }
     }
 
-    // MARK: - Role picker
+    // MARK: - Role picker (chip row)
+    // §36 role-pick — use branded chips instead of a segmented control so
+    // that each role button can carry an icon, an a11y trait, and a hint.
 
     private var rolePicker: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             Text("Role")
                 .font(.brandLabelLarge())
                 .foregroundStyle(Color.bizarreOnSurfaceMuted)
-            Picker("Role", selection: $vm.role) {
-                ForEach(FirstEmployeeRole.allCases, id: \.self) { r in
-                    Text(r.displayName).tag(r)
+
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(FirstEmployeeRole.allCases, id: \.self) { role in
+                    roleChip(role)
                 }
             }
-            .pickerStyle(.segmented)
             .accessibilityLabel("Employee role")
             .accessibilityValue(vm.role.displayName)
         }
+    }
+
+    @ViewBuilder
+    private func roleChip(_ role: FirstEmployeeRole) -> some View {
+        let isSelected = vm.role == role
+        Button {
+            vm.role = role
+        } label: {
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: roleIcon(role))
+                    .font(.system(size: 13, weight: .medium))
+                    .accessibilityHidden(true)
+                Text(role.displayName)
+                    .font(.brandLabelLarge())
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(isSelected ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
+            .background(
+                isSelected ? Color.bizarreOrange.opacity(0.18) : Color.bizarreSurface1.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(role.displayName)
+        .accessibilityHint(roleHint(role))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    private func roleIcon(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "person.badge.key.fill"
+        case .technician: return "wrench.and.screwdriver.fill"
+        case .sales:      return "cart.fill"
+        }
+    }
+
+    private func roleHint(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "Full access including settings and staff management"
+        case .technician: return "Access to tickets and repairs"
+        case .sales:      return "Access to POS and customer records"
+        }
+    }
+
+    // MARK: - SMS invite toggle
+
+    /// Shown once the user starts filling in the form. Lets the admin also
+    /// send an SMS invite on top of the email invite (server combines both).
+    private var smsInviteToggle: some View {
+        Toggle(isOn: $vm.sendSMSInvite) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Also send SMS invite")
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(Color.bizarreOnSurface)
+                Text("A text message with a sign-up link will be sent to the employee's phone.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(.bizarreOrange)
+        .padding(BrandSpacing.md)
+        .background(
+            Color.bizarreSurface1.opacity(0.5),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .accessibilityLabel("Also send SMS invite")
+        .accessibilityHint("A text message sign-up link will be sent to the employee's phone")
+        .accessibilityValue(vm.sendSMSInvite ? "On" : "Off")
     }
 
     // MARK: - Skip hint

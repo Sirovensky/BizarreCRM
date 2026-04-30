@@ -159,13 +159,44 @@ public extension InvoiceDetail {
         if s == "void" || s == "paid" { return false }
         return (amountPaid ?? 0) == 0 || s == "draft"
     }
+
+    /// Line items can be edited when the invoice is in draft or unpaid with no payments.
+    var canEditLines: Bool {
+        let s = (status ?? "").lowercased()
+        guard s != "void" && s != "paid" && s != "partial" else { return false }
+        return (amountPaid ?? 0) == 0
+    }
+
+    /// Invoice is overpaid (e.g. credit note conversion candidate).
+    var isOverpaid: Bool {
+        guard let paid = amountPaid, let total = total else { return false }
+        return paid > total + 0.001
+    }
 }
 
 public extension APIClient {
     func invoice(id: Int64) async throws -> InvoiceDetail {
         try await get("/api/v1/invoices/\(id)", as: InvoiceDetail.self)
     }
+
+    // §7.2 Clone invoice — POST /api/v1/invoices/:id/clone
+    // Server duplicates all line items, sets status to "draft", returns new invoice id.
+    func cloneInvoice(id: Int64) async throws -> CloneInvoiceResponse {
+        try await post("/api/v1/invoices/\(id)/clone", body: InvoiceCloneEmptyBody(), as: CloneInvoiceResponse.self)
+    }
 }
+
+public struct CloneInvoiceResponse: Decodable, Sendable {
+    public let id: Int64
+    public let orderId: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case orderId = "order_id"
+    }
+}
+
+// Empty body for POST requests that require no payload (named to avoid conflict with NotificationsEndpoints.EmptyBody)
+private struct InvoiceCloneEmptyBody: Encodable, Sendable {}
 
 // MARK: - Void endpoint
 // Server: POST /api/v1/invoices/:id/void

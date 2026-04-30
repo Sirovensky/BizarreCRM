@@ -91,7 +91,7 @@ public enum ClipboardBridge {
             return Payload(plainText: name, url: url)
         case .dashboard, .posRoot, .posNewCart, .posReturn,
              .settings, .auditLogs, .search, .notifications,
-             .timeclock, .magicLink:
+             .timeclock, .magicLink, .resetPassword, .setupInvite:
             // These destinations carry no stable, copy-worthy record ID.
             return nil
         }

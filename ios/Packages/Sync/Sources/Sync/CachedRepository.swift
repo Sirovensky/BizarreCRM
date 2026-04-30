@@ -1,6 +1,25 @@
 import Foundation
 import Core
 
+// MARK: - ReadStrategy (§20.1)
+
+/// Controls how a `CachedRepository` satisfies a read request.
+///
+/// - `networkOnly`: Skip local cache; fetch fresh from server. Fails offline.
+/// - `cacheOnly`: Return local GRDB data only; never attempt a network call.
+///   Use for guaranteed-offline screens.
+/// - `cacheFirst`: Return local data immediately; if stale, refresh in the
+///   background (default). Best for most interactive lists.
+/// - `cacheThenNetwork`: Return local data immediately AND fire a remote
+///   refresh unconditionally; UI re-renders when refresh completes
+///   (stale-while-revalidate pattern).
+public enum ReadStrategy: String, Sendable, CaseIterable {
+    case networkOnly
+    case cacheOnly
+    case cacheFirst
+    case cacheThenNetwork
+}
+
 // MARK: - CacheSource
 
 /// Where the data in a `CachedResult` came from.
@@ -192,9 +211,8 @@ public actor AbstractCachedRepository<Entity: Sendable, ListFilter: Sendable> {
     public func delete(id: String) async throws {
         // 1. Delete locally (optimistic).
         try await localDelete(id)
-        // 2. Enqueue sync op with a minimal sentinel entity.
-        // We build a tombstone payload directly since we can't reconstruct the entity.
-        let payloadData = try JSONEncoder().encode(["id": id, "deleted": "true"])
+        // 2. Enqueue sync op with a canonical tombstone payload (§20.5).
+        let payloadData = try Tombstone(id: id).encode()
         let tombstoneOp = SyncOp(
             op: "delete",
             entity: entityName,

@@ -166,7 +166,7 @@ final class BiometricLockTimeoutPolicyTests: XCTestCase {
 
 // MARK: - Box helper (mutable clock container)
 
-private final class Box<T> {
+private final class Box<T>: @unchecked Sendable {
     var value: T
     init(_ value: T) { self.value = value }
 }

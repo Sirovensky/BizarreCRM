@@ -120,6 +120,7 @@ public struct EmployeeDetailView: View {
                         currentShiftCard
                     }
                     performanceCard
+                    scheduleCard
                     commissionCard
                     adminActionsCard
                 }
@@ -204,6 +205,48 @@ public struct EmployeeDetailView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.green.opacity(0.3), lineWidth: 1)
             )
+        }
+    }
+
+    // MARK: - Schedule card (§14.2)
+
+    @ViewBuilder
+    private var scheduleCard: some View {
+        let hasShifts = !vm.upcomingShifts.isEmpty
+        let hasTimeOff = !vm.timeOffRequests.isEmpty
+        if hasShifts || hasTimeOff {
+            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                Label("Schedule", systemImage: "calendar")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+
+                if hasShifts {
+                    Text("Upcoming Shifts")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    ForEach(vm.upcomingShifts.prefix(3)) { shift in
+                        ShiftRow(shift: shift)
+                    }
+                    if vm.upcomingShifts.count > 3 {
+                        Text("+ \(vm.upcomingShifts.count - 3) more shifts this fortnight")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+
+                if hasTimeOff {
+                    if hasShifts { Divider() }
+                    Text("Time Off")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    ForEach(vm.timeOffRequests.prefix(3)) { req in
+                        TimeOffRow(request: req)
+                    }
+                }
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -409,6 +452,109 @@ public struct EmployeeDetailView: View {
         f.currencyCode = "USD"
         f.maximumFractionDigits = 0
         return f.string(from: NSNumber(value: value)) ?? "$\(Int(value))"
+    }
+}
+
+// MARK: - ShiftRow (§14.2 schedule)
+
+private struct ShiftRow: View {
+    let shift: Shift
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(formattedDateRange(start: shift.startAt, end: shift.endAt))
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                if let tag = shift.roleTag, !tag.isEmpty {
+                    Text(tag)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+            Spacer()
+            statusBadge
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var statusBadge: some View {
+        Text(shift.status.capitalized)
+            .font(.brandLabelSmall())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(badgeColor.opacity(0.15), in: Capsule())
+            .foregroundStyle(badgeColor)
+    }
+
+    private var badgeColor: Color {
+        switch shift.status {
+        case "completed":  return .green
+        case "cancelled":  return .bizarreError
+        default:           return .bizarreOrange
+        }
+    }
+
+    private func formattedDateRange(start: String, end: String) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let display = DateFormatter()
+        display.dateStyle = .short
+        display.timeStyle = .short
+        guard let s = parser.date(from: start) else { return start }
+        guard let e = parser.date(from: end) else { return display.string(from: s) }
+        if Calendar.current.isDate(s, inSameDayAs: e) {
+            let dayFmt = DateFormatter()
+            dayFmt.dateStyle = .short
+            let timeFmt = DateFormatter()
+            timeFmt.timeStyle = .short
+            return "\(dayFmt.string(from: s)) \(timeFmt.string(from: s))–\(timeFmt.string(from: e))"
+        }
+        return "\(display.string(from: s)) – \(display.string(from: e))"
+    }
+
+    private var accessibilityLabel: String {
+        let status = shift.status.capitalized
+        let role = shift.roleTag.map { ", \($0)" } ?? ""
+        return "\(status) shift\(role): \(formattedDateRange(start: shift.startAt, end: shift.endAt))"
+    }
+}
+
+// MARK: - TimeOffRow (§14.2 schedule)
+
+private struct TimeOffRow: View {
+    let request: TimeOffRequest
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("\(request.startDate) – \(request.endDate)")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text(request.kind.displayName)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+            Text(request.status.rawValue.capitalized)
+                .font(.brandLabelSmall())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(statusColor.opacity(0.15), in: Capsule())
+                .foregroundStyle(statusColor)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(request.kind.displayName): \(request.startDate) to \(request.endDate), \(request.status.rawValue)")
+    }
+
+    private var statusColor: Color {
+        switch request.status {
+        case .approved:  return .green
+        case .denied:    return .bizarreError
+        case .cancelled: return .bizarreOnSurfaceMuted
+        case .pending:   return .bizarreOrange
+        }
     }
 }
 

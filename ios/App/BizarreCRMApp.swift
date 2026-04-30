@@ -21,6 +21,12 @@ struct BizarreCRMApp: App {
                 .environment(appState)
                 .tint(.bizarreOrange)
                 .preferredColorScheme(appState.forcedColorScheme)
+                // §22.7 — Stage Manager / Split View: refuse to shrink below
+                // 700 × 500 pt. Below that threshold ShellLayout falls through
+                // to compact (iPhone) layout, but this also guarantees the
+                // OS-level resize handle stops at the same boundary so the
+                // user can't drag a window into a half-rendered state.
+                .splitViewMinSize()
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }
@@ -30,17 +36,77 @@ struct BizarreCRMApp: App {
                     }
                 }
         }
+        // §22.3 — iPad-specific grouped menu bar. CommandGroup / CommandMenu
+        // entries appear in the top-of-screen menu bar when a hardware keyboard
+        // is attached (Stage Manager, external keyboard). They are silently
+        // ignored on iPhone and have no effect on iPad without a keyboard.
         .commands {
+            // File — new entities and sync.
             CommandGroup(replacing: .newItem) {
                 Button("New Ticket") {
                     DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://ticket/new")!)
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
+                Button("New Customer") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://customer/new")!)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button("Sync Now") {
                     Task { @MainActor in await SyncManager.shared.syncNow() }
                 }
                 .keyboardShortcut("r", modifiers: .command)
+            }
+
+            // Actions — quick domain operations matching KeyboardShortcutCatalog.
+            CommandMenu("Actions") {
+                Button("Command Palette") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://palette")!)
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Divider()
+
+                Button("Find…") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://search")!)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button("Find Customer by Phone") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://search?filter=phone")!)
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            }
+
+            // Navigate — ⌘1–⌘8 tab / rail shortcuts.
+            CommandMenu("Navigate") {
+                Button("Dashboard")    { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://dashboard")!) }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Tickets")      { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://tickets")!) }
+                    .keyboardShortcut("2", modifiers: .command)
+                Button("Customers")    { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://customers")!) }
+                    .keyboardShortcut("3", modifiers: .command)
+                Button("POS")          { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://pos")!) }
+                    .keyboardShortcut("4", modifiers: .command)
+                Button("Inventory")    { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://inventory")!) }
+                    .keyboardShortcut("5", modifiers: .command)
+                Button("Appointments") { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://appointments")!) }
+                    .keyboardShortcut("6", modifiers: .command)
+                Button("Reports")      { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://reports")!) }
+                    .keyboardShortcut("7", modifiers: .command)
+                Button("Settings")     { DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://settings")!) }
+                    .keyboardShortcut("8", modifiers: .command)
+            }
+
+            // Help — shortcuts overlay.
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://shortcuts")!)
+                }
+                .keyboardShortcut("/", modifiers: .command)
             }
         }
 

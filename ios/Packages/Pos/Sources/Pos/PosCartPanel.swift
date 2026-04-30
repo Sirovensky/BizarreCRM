@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 import Core
 import DesignSystem
 
@@ -28,11 +29,36 @@ struct PosCartPanel: View {
     var onShowFees: (() -> Void)?
     /// §16.4: show/hide coupon input
     var onShowCoupon: (() -> Void)?
+    /// §16.4: customer context banners (group discount, tax-exempt, loyalty).
+    var customerContext: PosCustomerContext = .empty
+    /// §16.4: pre-computed loyalty earn preview points; nil when inactive.
+    var loyaltyEarnedPoints: Int? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
     /// Line-edit sheet state — the item currently being edited inline.
     @State private var editingLineItem: CartItem?
+
+    // MARK: - §16 Sale note state
+    /// Whether the cart-level sale note editor is expanded inline.
+    @State private var showSaleNoteEditor: Bool = false
+    /// Draft text while the note editor is open.
+    @State private var saleNoteDraft: String = ""
+    /// Tracks the task used to announce accessibility changes on note save.
+    @State private var totalAnnounceTask: Task<Void, Never>?
+
+    // MARK: - §16 Recurring charge sheet state
+    /// Whether the recurring-charge frequency selector sheet is visible.
+    @State private var showRecurringSheet: Bool = false
+
+    // MARK: - §16 Cart undo toast state
+
+    /// The most-recently deleted cart item. Non-nil while the undo window is open.
+    @State private var undoItem: CartItem?
+    /// Drives the visible undo snackbar (Reduce-Motion-safe opacity transition).
+    @State private var showUndoToast: Bool = false
+    /// Task that auto-dismisses the toast after 5 s.
+    @State private var undoTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -46,9 +72,57 @@ struct PosCartPanel: View {
                         onChange: onChangeCustomer,
                         onRemove: onRemoveCustomer
                     )
+
+                    // §16.15 — Loyalty-points balance chip. Shown whenever the
+                    // attached customer has a known loyalty balance, giving the
+                    // cashier an immediate at-a-glance view of redeemable points
+                    // without scrolling to the context banners below.
+                    if let balance = customerContext.loyaltyPointsBalance {
+                        PosLoyaltyBalanceChip(pointsBalance: balance, earnedPoints: loyaltyEarnedPoints)
+                            .padding(.horizontal, BrandSpacing.base)
+                            .padding(.bottom, BrandSpacing.xs)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            .animation(BrandMotion.snappy, value: balance)
+                    }
+
+                    // §16.4 — Customer context banners (tax-exempt, group discount, loyalty).
+                    if customerContext != .empty {
+                        PosCustomerContextBanners(
+                            context: customerContext,
+                            cartTotalCents: cart.totalCents,
+                            earnedPoints: loyaltyEarnedPoints
+                        )
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.bottom, BrandSpacing.xs)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .animation(BrandMotion.snappy, value: customerContext)
+                    }
                 }
                 cartContent
                 totalsFooter
+            }
+            // §16.22 — Dimmed-background overlay when line-edit sheet is open.
+            // Cart rows visible but dim to 0.35 opacity and ignore taps (per mockup).
+            if editingLineItem != nil {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(BrandMotion.snappy, value: editingLineItem != nil)
+                    .accessibilityHidden(true)
+            }
+
+            // §16 — Cart undo toast: snackbar shown for 5 s after swipe-to-remove.
+            // Pinned to the bottom of the cart panel above the totals footer.
+            if showUndoToast, let item = undoItem {
+                VStack {
+                    Spacer()
+                    cartUndoToast(item: item)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.bottom, BrandSpacing.md)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .zIndex(10)
+                }
+                .allowsHitTesting(true)
             }
         }
         // Line-edit bottom sheet — mockup screen 4
@@ -68,6 +142,92 @@ struct PosCartPanel: View {
                 }
             )
         }
+        // §16 Recurring charge selector sheet
+        .sheet(isPresented: $showRecurringSheet) {
+            PosRecurringChargeSheet(cart: cart)
+        }
+    }
+
+    // MARK: - §16 Undo toast helpers
+
+    /// Show the undo snackbar for `item` and schedule auto-dismiss after 5 s.
+    private func showUndo(for item: CartItem) {
+        undoTask?.cancel()
+        undoItem = item
+        withAnimation(BrandMotion.snappy) { showUndoToast = true }
+        BrandHaptics.tap()
+        undoTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            dismissUndo()
+        }
+    }
+
+    /// Dismiss the undo toast without restoring the item.
+    private func dismissUndo() {
+        undoTask?.cancel()
+        undoTask = nil
+        withAnimation(BrandMotion.snappy) { showUndoToast = false }
+        // Hold onto `undoItem` briefly so the exit animation can still render
+        // the label before it disappears.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.4))
+            undoItem = nil
+        }
+    }
+
+    /// Restore the deleted item back to the cart.
+    private func performUndo(item: CartItem) {
+        cart.add(item)
+        BrandHaptics.success()
+        dismissUndo()
+    }
+
+    @ViewBuilder
+    private func cartUndoToast(item: CartItem) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "arrow.uturn.backward.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Removed")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(item.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: BrandSpacing.xs)
+            Button {
+                performUndo(item: item)
+            } label: {
+                Text("Undo")
+                    .font(.brandLabelLarge())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, BrandSpacing.xxs + 2)
+                    .background(Color.bizarreOrange.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Undo remove \(item.name)")
+            .accessibilityIdentifier("pos.cart.undoRemove")
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(
+            Color.bizarreSurface1,
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Removed \(item.name). Tap Undo to restore.")
+        .accessibilityIdentifier("pos.cart.undoToast")
     }
 
     @ViewBuilder
@@ -92,8 +252,11 @@ struct PosCartPanel: View {
                     .listRowInsets(EdgeInsets())
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
-                            BrandHaptics.tap()
+                            // §16 — capture item before removal so the undo toast
+                            // can offer to restore it within the 5-second window.
+                            let snapshot = item
                             cart.remove(id: item.id)
+                            showUndo(for: snapshot)
                         } label: {
                             Label("Void", systemImage: "trash")
                         }
@@ -110,8 +273,31 @@ struct PosCartPanel: View {
                         } label: {
                             Label("Edit price", systemImage: "dollarsign")
                         }
+                        // §16 Cart quick-action: duplicate the line with a fresh UUID
+                        // so the cashier can quickly sell the same item twice without
+                        // re-picking from the catalog. Duplicate starts with qty 1.
+                        Button {
+                            let duplicate = CartItem(
+                                inventoryItemId: item.inventoryItemId,
+                                name: item.name,
+                                sku: item.sku,
+                                quantity: 1,
+                                unitPrice: item.unitPrice,
+                                taxRate: item.taxRate,
+                                discountCents: item.discountCents,
+                                notes: item.notes
+                            )
+                            cart.add(duplicate)
+                            BrandHaptics.tap()
+                        } label: {
+                            Label("Duplicate line", systemImage: "plus.square.on.square")
+                        }
+                        .accessibilityLabel("Duplicate \(item.name)")
+                        Divider()
                         Button(role: .destructive) {
+                            let snapshot = item
                             cart.remove(id: item.id)
+                            showUndo(for: snapshot)
                         } label: {
                             Label("Remove", systemImage: "trash")
                         }
@@ -123,6 +309,19 @@ struct PosCartPanel: View {
                 quickActionRow
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 6, trailing: 16))
+
+                // §16 Sale note inline editor — shown when cashier taps "+ Note"
+                saleNoteSection
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
+
+                // Ticket link chip — §16.3
+                HStack(spacing: BrandSpacing.sm) {
+                    PosCartTicketLinkChip(cart: cart)
+                    Spacer(minLength: 0)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 6, trailing: 16))
 
                 // Coupon section
                 couponSection
@@ -159,7 +358,85 @@ struct PosCartPanel: View {
         HStack(spacing: 8) {
             quickActionBtn("+ Misc") { onShowFees?() }
             quickActionBtn("+ Discount") { onShowDiscount?() }
-            quickActionBtn("+ Note") { /* note for cart, not line */ }
+            // §16 Sale note — tap toggles the inline note editor below the
+            // item list. If a note is already set the button text changes to
+            // "Edit note" so the cashier knows something is recorded.
+            quickActionBtn(cart.saleNote != nil ? "Edit note" : "+ Note") {
+                saleNoteDraft = cart.saleNote ?? ""
+                withAnimation(BrandMotion.snappy) { showSaleNoteEditor.toggle() }
+                BrandHaptics.tap()
+            }
+        }
+    }
+
+    // MARK: - §16 Sale note inline editor
+
+    @ViewBuilder
+    private var saleNoteSection: some View {
+        if showSaleNoteEditor {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                HStack {
+                    Text("Sale note")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textCase(.uppercase)
+                        .kerning(0.8)
+                    Spacer()
+                    Text("\(saleNoteDraft.count) / 500")
+                        .font(.brandLabelSmall().monospacedDigit())
+                        .foregroundStyle(saleNoteDraft.count >= 500
+                            ? Color.bizarreError : .bizarreOnSurfaceMuted)
+                        .accessibilityIdentifier("pos.cart.saleNote.counter")
+                }
+
+                TextEditor(text: $saleNoteDraft)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .frame(minHeight: 60, maxHeight: 100)
+                    .scrollContentBackground(.hidden)
+                    .padding(BrandSpacing.xs)
+                    .background(Color.bizarreSurface2.opacity(0.7),
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5)
+                    )
+                    .onChange(of: saleNoteDraft) { _, new in
+                        if new.count > 500 { saleNoteDraft = String(new.prefix(500)) }
+                    }
+                    .accessibilityLabel("Sale note, optional. Prints on receipt.")
+                    .accessibilityIdentifier("pos.cart.saleNote.editor")
+
+                HStack(spacing: BrandSpacing.sm) {
+                    if cart.saleNote != nil {
+                        Button {
+                            cart.setSaleNote(nil)
+                            withAnimation(BrandMotion.snappy) { showSaleNoteEditor = false }
+                        } label: {
+                            Text("Clear")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreError)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pos.cart.saleNote.clear")
+                    }
+                    Spacer()
+                    Button {
+                        cart.setSaleNote(saleNoteDraft)
+                        BrandHaptics.success()
+                        withAnimation(BrandMotion.snappy) { showSaleNoteEditor = false }
+                    } label: {
+                        Text("Save note")
+                            .font(.brandLabelLarge().weight(.semibold))
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pos.cart.saleNote.save")
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -290,6 +567,73 @@ struct PosCartPanel: View {
                     .font(.brandHeadlineMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
+            }
+            // §16 A11y — screen reader announces the new cart total on change,
+            // debounced so rapid qty taps don't flood the VoiceOver queue.
+            // The `.accessibilityLabel` on the HStack above gives the static
+            // label; this modifier fires the live announcement as a side-effect.
+            .onChange(of: cart.totalCents) { _, newTotal in
+                let formatted = CartMath.formatCents(newTotal)
+                // Debounce: cancel any pending announcement for 0.5 s before posting.
+                totalAnnounceTask?.cancel()
+                totalAnnounceTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: "Cart total: \(formatted)"
+                    )
+                }
+            }
+
+            // §16 Recurring charge entry / indicator.
+            // When no rule is set: a ghost "Set recurring" link (optional feature).
+            // When a rule is set: a tinted row showing the cadence; tap to change.
+            if cart.recurringRule == nil {
+                Button {
+                    BrandHaptics.tap()
+                    showRecurringSheet = true
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityHidden(true)
+                        Text("Set recurring charge")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, BrandSpacing.xs)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Set recurring charge frequency")
+                .accessibilityIdentifier("pos.cart.setRecurring")
+            } else if let rule = cart.recurringRule {
+                Button {
+                    BrandHaptics.tap()
+                    showRecurringSheet = true
+                } label: {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Image(systemName: "arrow.clockwise.circle")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                        Text("Recurring · \(rule.frequencyLabel)")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, BrandSpacing.xs)
+                    .background(Color.bizarreOrange.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Recurring charge: \(rule.frequencyLabel). Tap to change.")
+                .accessibilityIdentifier("pos.cart.recurringIndicator")
             }
 
             // §40 — applied tenders
@@ -434,72 +778,103 @@ struct PosCartStrip: View {
     @Bindable var cart: Cart
     var onChange: (() -> Void)?
     var onRemove: (() -> Void)?
+    /// §16 Customer-tag color stripe — the hex color of the customer's highest-
+    /// priority tag (e.g. "#FFD700" for VIP). When non-nil a 3pt leading stripe
+    /// and a subtle tint are applied so the cashier can identify the customer
+    /// tier at a glance without reading the tag name.
+    var tagColor: Color? = nil
 
     var body: some View {
-        HStack(spacing: 10) {
-            // 26pt teal avatar
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+        ZStack(alignment: .leading) {
+            HStack(spacing: 10) {
+                // §16 Customer-tag color stripe — 3pt accent bar at leading edge.
+                // Hidden from VoiceOver (decorative — tag info is in context banners).
+                if let color = tagColor {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(color)
+                        .frame(width: 3)
+                        .padding(.vertical, 4)
+                        .accessibilityHidden(true)
+                        .accessibilityIdentifier("pos.cart.customerStrip.tagStripe")
+                }
+
+                // 26pt teal avatar
+                ZStack {
+                    Circle()
+                        .fill(
+                            tagColor.map { c in
+                                LinearGradient(
+                                    colors: [c.opacity(0.8), c.opacity(0.5)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            } ?? LinearGradient(
+                                colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                Text(customer.initials)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x002D35))
-            }
-            .frame(width: 26, height: 26)
-            .accessibilityHidden(true)
+                    Text(customer.initials)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x002D35))
+                }
+                .frame(width: 26, height: 26)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(customer.displayName)
-                    .font(.system(size: 13.5, weight: .bold))
-                    .foregroundStyle(.bizarreOnSurface)
-                    .lineLimit(1)
-                if let sub = stripSubtitle {
-                    Text(sub)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(customer.displayName)
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundStyle(.bizarreOnSurface)
                         .lineLimit(1)
+                    if let sub = stripSubtitle {
+                        Text(sub)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                // Right side: cream Capsule chip showing line count (mockup: .chip.primary)
+                if cart.lineCount > 0 {
+                    Text(cart.lineCount == 1 ? "1 line" : "\(cart.lineCount) lines")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.bizarreOnOrange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.bizarreOrange, in: Capsule())
+                        .accessibilityLabel("\(cart.lineCount) cart lines")
+                }
+
+                // Remove customer
+                if let onRemove {
+                    Button {
+                        BrandHaptics.tap()
+                        onRemove()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove customer")
+                    .accessibilityIdentifier("pos.cart.removeCustomer")
                 }
             }
-
-            Spacer()
-
-            // Right side: cream Capsule chip showing line count (mockup: .chip.primary)
-            if cart.lineCount > 0 {
-                Text(cart.lineCount == 1 ? "1 line" : "\(cart.lineCount) lines")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.bizarreOnOrange)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.bizarreOrange, in: Capsule())
-                    .accessibilityLabel("\(cart.lineCount) cart lines")
-            }
-
-            // Remove customer
-            if let onRemove {
-                Button {
-                    BrandHaptics.tap()
-                    onRemove()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove customer")
-                .accessibilityIdentifier("pos.cart.removeCustomer")
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
         .background(
-            Color.bizarreSurface1.opacity(0.35)
-                .background(.ultraThinMaterial)
+            Group {
+                if let color = tagColor {
+                    color.opacity(0.06)
+                        .background(.ultraThinMaterial)
+                } else {
+                    Color.bizarreSurface1.opacity(0.35)
+                        .background(.ultraThinMaterial)
+                }
+            }
         )
         .overlay(alignment: .bottom) {
             Divider().background(.bizarreOutline)
@@ -593,8 +968,29 @@ struct PosCartRow: View {
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), quantity \(item.quantity), \(CartMath.formatCents(item.lineSubtotalCents)). Tap to edit.")
+        // §16 A11y — row label announces name + price so VoiceOver users hear
+        // the most important content first. A separate accessibilityValue carries
+        // the quantity so dynamic changes (stepper) trigger a value announcement
+        // without re-reading the whole label. The hint explains both tap and
+        // swipe-left actions so users know how to edit and how to remove.
+        .accessibilityLabel(a11yLabel)
+        .accessibilityValue("Quantity \(item.quantity)")
+        .accessibilityHint("Double tap to edit. Swipe left for remove option.")
         .accessibilityIdentifier("pos.cartRow.\(item.id)")
+    }
+
+    private var a11yLabel: String {
+        var parts: [String] = [item.name]
+        if item.discountCents > 0 {
+            let orig = CartMath.toCents(item.unitPrice * Decimal(item.quantity)) + item.discountCents
+            parts.append("\(CartMath.formatCents(item.lineSubtotalCents)), discounted from \(CartMath.formatCents(orig))")
+        } else {
+            parts.append(CartMath.formatCents(item.lineSubtotalCents))
+        }
+        if item.inventoryItemId == nil {
+            parts.append("custom line")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -761,7 +1157,7 @@ struct PosChargeButton: View {
             .overlay(
                 // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
                 RadialGradient(
-                    colors: [Color.white.opacity(0.42), Color.clear],
+                    colors: [Color.bizarreOnSurface.opacity(0.42), Color.clear],
                     center: UnitPoint(x: 0.5, y: 0),
                     startRadius: 0,
                     endRadius: 60
@@ -771,7 +1167,7 @@ struct PosChargeButton: View {
             .overlay(
                 // Inset white-glow stroke (mockup: inset 0 1.5px 0 rgba(255,255,255,0.50) + border)
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+                    .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1.5)
             )
             .shadow(color: Color(hex: 0xFDEED0).opacity(0.12), radius: 20, y: 8)
         }
@@ -780,6 +1176,68 @@ struct PosChargeButton: View {
         .keyboardShortcut(.return, modifiers: .command)
         .accessibilityLabel("\(isComplete ? "Complete" : "Charge") total \(CartMath.formatCents(totalCents))")
         .accessibilityIdentifier("pos.chargeButton")
+    }
+}
+
+// MARK: - PosLoyaltyBalanceChip
+
+/// §16.15 — Compact loyalty-points display chip shown below the customer strip
+/// when an attached customer has a known loyalty balance. Renders two states:
+///   • Balance-only: "★ 420 pts" (muted, balance visible but not earned this sale)
+///   • Earn preview: "★ 420 pts  +75 this sale" — when `earnedPoints` is set
+///
+/// Distinct from the `PosCustomerContextBanners` loyalty banner which blends
+/// in with tax-exempt / group-discount info. This chip is visually prominent
+/// and pinned directly below the customer strip so cashiers see points at a
+/// glance without expanding the banners section.
+struct PosLoyaltyBalanceChip: View {
+    let pointsBalance: Int
+    /// If non-nil, a "+N this sale" earn-preview suffix is appended.
+    var earnedPoints: Int?
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: 0x4DB8C9))
+                .accessibilityHidden(true)
+
+            Text("\(pointsBalance) pt\(pointsBalance == 1 ? "" : "s")")
+                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                .foregroundStyle(.bizarreOnSurface)
+
+            if let earned = earnedPoints, earned > 0 {
+                Text("· +\(earned) this sale")
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Color(hex: 0x4DB8C9))
+            }
+
+            Spacer(minLength: 0)
+
+            Text("LOYALTY")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Color(hex: 0x4DB8C9).opacity(0.75))
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(Color(hex: 0x4DB8C9).opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color(hex: 0x4DB8C9).opacity(0.25), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityIdentifier("pos.loyaltyBalanceChip")
+    }
+
+    private var accessibilityText: String {
+        let base = "\(pointsBalance) loyalty point\(pointsBalance == 1 ? "" : "s")"
+        if let earned = earnedPoints, earned > 0 {
+            return "\(base). Earning \(earned) point\(earned == 1 ? "" : "s") on this sale."
+        }
+        return base
     }
 }
 

@@ -236,7 +236,7 @@ public struct CameraFullScreenLayout: View {
                     .strokeBorder(.white, lineWidth: 3)
                     .frame(width: 80, height: 80)
                 Circle()
-                    .fill(isCapturing ? Color.white.opacity(0.6) : Color.white)
+                    .fill(isCapturing ? Color.bizarreOnSurface.opacity(0.6) : Color.white)
                     .frame(width: 68, height: 68)
                     .scaleEffect(isCapturing && !reduceMotion ? 0.88 : 1.0)
                     .animation(

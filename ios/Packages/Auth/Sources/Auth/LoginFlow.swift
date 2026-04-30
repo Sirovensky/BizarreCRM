@@ -64,6 +64,28 @@ public final class LoginFlow {
     public var pin: String = ""
     public var confirmPin: String = ""
 
+    // §2.2 Trust-this-device (2FA step)
+    public var trustDevice: Bool = false
+
+    // §2.1 Setup probe
+    public var isProbing: Bool = false
+    public var setupProbeResult: SetupProbeResult? = nil
+
+    // §2.2 Rate-limit countdown — seconds remaining when server returns 429
+    public var rateLimitRetryAfter: TimeInterval? = nil
+
+    // §2.11 Current user loaded from /auth/me on cold start
+    public var currentUser: MeResponse? = nil
+
+    // §2.11 Session revoked banner
+    public var sessionRevokedMessage: String? = nil
+
+    // §2.12 Account-locked modal
+    public var isAccountLocked: Bool = false
+
+    // §2.13 Challenge-token expiry task — cancelled when challenge resolves
+    @ObservationIgnored private var challengeExpiryTask: Task<Void, Never>? = nil
+
     // shared
     public var errorMessage: String?
     public var isSubmitting: Bool = false
@@ -82,7 +104,67 @@ public final class LoginFlow {
         if let saved = ServerURLStore.load() {
             self.step = .credentials
             self.resolvedServerName = saved.host
+
+            // §2.6 Login-time biometric — if "Remember me" + biometric enabled,
+            // auto-POST /auth/login using stored credentials. We defer the
+            // actual attempt to `attemptBiometricLogin()` so the view can
+            // trigger it after the UI is ready.
+            prefillRememberedUsername()
         }
+    }
+
+    // MARK: - §2.6 Prefill remembered username
+
+    private func prefillRememberedUsername() {
+        // `LastUsernameStore.lastUsername()` is synchronous under the hood
+        // (it calls `storage.getUsername()` which is not async). The actor
+        // hop is the only async part; we schedule a Task so init stays sync.
+        Task { @MainActor in
+            if let saved = await LastUsernameStore.shared.lastUsername() {
+                username = saved
+            }
+        }
+    }
+
+    // MARK: - §2.6 Login-time biometric shortcut
+
+    /// Attempt to decrypt stored credentials via biometric and auto-sign-in.
+    /// Called from the view on `.onAppear` when `step == .credentials` and
+    /// biometric + remember-me are both enabled.
+    ///
+    /// The `BiometricLoginShortcutModifier` handles the full UX overlay for
+    /// the credentials panel. This method is the thin glue in `LoginFlow`
+    /// that the modifier's `onSuccess` closure calls back into.
+    public func loginWithBiometricCredentials(username: String, password: String) async {
+        self.username = username
+        self.password = password
+        await submitCredentials()
+    }
+
+    // MARK: - §2.11 Cold-start /auth/me validation
+
+    /// Validate the stored token on cold start. Call before rendering the main shell.
+    /// On success loads current role/permissions into `currentUser`.
+    /// On 401 the global `SessionEvents.sessionRevoked` path handles re-auth.
+    public func validateSessionOnColdStart() async {
+        do {
+            let me = try await api.fetchMe()
+            currentUser = me
+        } catch APITransportError.httpStatus(let code, let msg) where code == 401 {
+            // Token already expired — let session-revoked path handle it.
+            sessionRevokedMessage = msg
+        } catch {
+            // Non-auth error — log, don't block UX (network may be flaky).
+            AppLog.auth.info("Cold-start /auth/me failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - §2.12 Session-revoked banner handler
+
+    /// Wire into the `SessionEvents.stream` listener in AppState.
+    /// Surfaces a glass banner explaining why the user was signed out.
+    public func handleSessionRevoked(message: String?) {
+        sessionRevokedMessage = message ?? "Your session was revoked on another device."
     }
 
     // MARK: - Step A · SERVER
@@ -129,15 +211,53 @@ public final class LoginFlow {
             let envelope = try await api.getEnvelope("/api/v1/portal/embed/config", query: nil, as: PortalConfig.self)
             resolvedServerName = envelope.data?.name
             ServerURLStore.save(url)
-            step = .credentials
+            await runSetupProbe()
         } catch APITransportError.httpStatus(let code, _) where code == 404 {
             // 404 = reachable but unnamed — still a valid server
             ServerURLStore.save(url)
-            step = .credentials
+            await runSetupProbe()
         } catch {
-            errorMessage = useSelfHosted
-                ? "Could not connect: \(error.localizedDescription)"
-                : "Shop not found. Check the name and try again."
+            let isOffline: Bool = {
+                let ns = error as NSError
+                return ns.domain == NSURLErrorDomain &&
+                    (ns.code == NSURLErrorNotConnectedToInternet ||
+                     ns.code == NSURLErrorNetworkConnectionLost)
+            }()
+            if isOffline {
+                errorMessage = "You're offline. Connect to reach your server."
+            } else {
+                errorMessage = useSelfHosted
+                    ? "Can't reach this server. Check the address."
+                    : "Shop not found. Check the name and try again."
+            }
+        }
+    }
+
+    // MARK: - §2.1 Setup probe (runs after server URL confirmed)
+
+    private func runSetupProbe() async {
+        isProbing = true
+        defer { isProbing = false }
+
+        // Use Keychain directly to check for a saved tenant ID — TenantStore.shared
+        // is an actor and we don't want to hold a cross-actor reference here.
+        let hasSavedTenant = KeychainStore.shared.get(.activeTenantId) != nil
+
+        _ = hasSavedTenant
+        let probe = SetupStatusProbe(api: api)
+        let result = await probe.run()
+        setupProbeResult = result
+
+        switch result {
+        case .resolved(let status):
+            if status.needsSetup {
+                // InitialSetupFlow handles itself — stay on .server step.
+                break
+            } else {
+                step = .credentials
+            }
+        case .failure:
+            step = .credentials
         }
     }
 
@@ -198,6 +318,15 @@ public final class LoginFlow {
     public func submitCredentials() async {
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
+        rateLimitRetryAfter = nil
+        isAccountLocked = false
+
+        // §2.2 Form validation — CTA is disabled in the view when fields are
+        // empty, but guard here too so the actor state is always consistent.
+        guard !username.isEmpty, !password.isEmpty else {
+            errorMessage = "Enter your username and password."
+            return
+        }
 
         // Shapes mirror packages/server/src/routes/auth.routes.ts:569–701
         // Server field names (not guessed): challengeToken, totpEnabled,
@@ -226,22 +355,86 @@ public final class LoginFlow {
             // 3. 2FA setup pending (new user or newly-required)
             // 4. 2FA verify (existing user with TOTP enabled)
             if let access = resp.accessToken, let refresh = resp.refreshToken {
+                cancelChallengeExpiry()
                 finishAuth(access: access, refresh: refresh)
             } else if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 step = .setPassword(challenge: challenge)
             } else if resp.requires2faSetup == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 await runTwoFactorSetup(challenge: challenge)
             } else if resp.totpEnabled == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 step = .twoFactorVerify(challenge: challenge)
             } else if let challenge = resp.challengeToken {
                 // Fallback: challenge issued but no flags set — treat as 2FA verify.
+                startChallengeExpiry()
                 step = .twoFactorVerify(challenge: challenge)
             } else {
                 errorMessage = "Unexpected response — check with your admin."
             }
+        } catch APITransportError.httpStatus(let code, _) where code == 401 {
+            // §2.12 Wrong password — inline error + shake (view observes `errorMessage`)
+            errorMessage = "Username or password incorrect."
+        } catch APITransportError.httpStatus(let code, _) where code == 423 {
+            // §2.12 Account locked
+            isAccountLocked = true
+        } catch APITransportError.httpStatus(let code, let body) where code == 429 {
+            // §2.2 Rate-limit — parse delta-seconds from the server's message or use default
+            let retryInterval: TimeInterval
+            if let msg = body, let parsed = RetryAfterParser.parse(msg) {
+                retryInterval = parsed
+            } else {
+                retryInterval = 60
+            }
+            rateLimitRetryAfter = retryInterval
+            let retrySeconds = Int(retryInterval.rounded())
+            errorMessage = "Too many attempts. Wait \(humanDuration(retrySeconds)) before trying again."
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = localizedNetworkError(error)
         }
+    }
+
+    // MARK: - §2.2 Rate-limit human-readable duration
+
+    private func humanDuration(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds) seconds" }
+        let minutes = (seconds + 59) / 60
+        return "\(minutes) minute\(minutes == 1 ? "" : "s")"
+    }
+
+    // MARK: - §2.12 Network error localisation
+
+    private func localizedNetworkError(_ error: Error) -> String {
+        if let transport = error as? APITransportError {
+            switch transport {
+            case .noBaseURL:
+                return "No server configured. Check the server address."
+            case .networkUnavailable:
+                return "You're offline. Connect to sign in."
+            case .certificatePinFailed:
+                return "This server's certificate doesn't match the pinned certificate. Contact your admin."
+            case .invalidResponse, .envelopeFailure:
+                return "Can't reach this server. Check the address."
+            case .decoding:
+                return "Unexpected server response. Contact your admin."
+            case .httpStatus, .unauthorized, .notImplemented:
+                return transport.errorDescription ?? "Request failed."
+            }
+        }
+        // URLError — covers "The Internet connection appears to be offline." etc.
+        let underlying = (error as NSError)
+        if underlying.domain == NSURLErrorDomain {
+            switch underlying.code {
+            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
+                return "You're offline. Connect to sign in."
+            case NSURLErrorCannotConnectToHost, NSURLErrorTimedOut:
+                return "Can't reach this server. Check the address."
+            default:
+                return underlying.localizedDescription
+            }
+        }
+        return error.localizedDescription
     }
 
     // MARK: - Step D · SET_PASSWORD
@@ -268,6 +461,24 @@ public final class LoginFlow {
     }
 
     // MARK: - Step E · 2FA_SETUP
+
+    // MARK: - §2.13 Challenge token expiry
+
+    /// Start the 10-minute expiry clock for any challenge-based step.
+    /// Cancel any existing task first so only one clock runs at a time.
+    private func startChallengeExpiry() {
+        challengeExpiryTask?.cancel()
+        challengeExpiryTask = ChallengeTokenExpiry.start { [weak self] in
+            guard let self else { return }
+            self.step = .credentials
+            self.errorMessage = "Session expired. Please sign in again."
+        }
+    }
+
+    private func cancelChallengeExpiry() {
+        challengeExpiryTask?.cancel()
+        challengeExpiryTask = nil
+    }
 
     private func runTwoFactorSetup(challenge: String) async {
         // Server response shape (auth.routes.ts:770):
@@ -324,7 +535,12 @@ public final class LoginFlow {
         let code = totpCode.filter(\.isNumber)
         guard code.count == 6 else { errorMessage = "Enter the 6-digit code."; return }
 
-        struct TwoFAReq: Encodable, Sendable { let challengeToken: String; let code: String }
+        // §2.2 Trust-this-device — sends the flag only when the checkbox is on.
+        struct TwoFAReq: Encodable, Sendable {
+            let challengeToken: String
+            let code: String
+            let trustDevice: Bool?
+        }
         struct TwoFAResp: Decodable, Sendable {
             let accessToken: String
             let refreshToken: String
@@ -333,7 +549,11 @@ public final class LoginFlow {
 
         do {
             let resp = try await api.post("/api/v1/auth/login/2fa-verify",
-                                          body: TwoFAReq(challengeToken: challenge, code: code),
+                                          body: TwoFAReq(
+                                            challengeToken: challenge,
+                                            code: code,
+                                            trustDevice: trustDevice ? true : nil
+                                          ),
                                           as: TwoFAResp.self)
             if let codes = resp.backupCodes, !codes.isEmpty {
                 backupCodes = codes
@@ -341,7 +561,7 @@ public final class LoginFlow {
             finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
         } catch {
             totpCode = ""
-            errorMessage = error.localizedDescription
+            errorMessage = localizedNetworkError(error)
         }
     }
 
@@ -448,6 +668,7 @@ public final class LoginFlow {
     // MARK: - Internal
 
     private func finishAuth(access: String, refresh: String) {
+        cancelChallengeExpiry()
         TokenStore.shared.save(access: access, refresh: refresh)
         Task { await api.setAuthToken(access) }
         step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup

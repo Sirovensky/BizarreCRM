@@ -31,9 +31,25 @@ public final class AuthRefresher: AuthSessionRefresher, @unchecked Sendable {
     private struct Resp: Decodable, Sendable {
         let accessToken: String
         let refreshToken: String
+        /// §28.14 — Server may include `rotated: true` when the refresh token
+        /// was rotated (i.e., the old token is now invalid). The client uses
+        /// this flag to update `TokenStore` even if the access token is the same.
+        /// Absent from older server builds; defaults to `false`.
+        let rotated: Bool?
     }
 
+    // MARK: - §28.14 Rotation flag
+
+    /// `true` after the most recent successful refresh that carried a new
+    /// refresh token from the server (`rotated == true`).  Reset to `false`
+    /// on the next call to `refresh()`.
+    ///
+    /// Observers (e.g. `SessionTimer`) may use this to emit an audit event
+    /// when rotation occurs, without needing to compare token strings.
+    public private(set) var lastRefreshWasRotated: Bool = false
+
     public func refresh() async throws -> (accessToken: String, refreshToken: String) {
+        lastRefreshWasRotated = false
         let stored = await MainActor.run { TokenStore.shared.refreshToken }
         guard let current = stored, !current.isEmpty else {
             AppLog.auth.warning("refresh() called with no stored refresh token")
@@ -52,7 +68,13 @@ public final class AuthRefresher: AuthSessionRefresher, @unchecked Sendable {
         }
         await apiClient.setAuthToken(resp.accessToken)
 
-        AppLog.auth.info("Session token refreshed successfully")
+        // §28.14 — record whether the server rotated the refresh token.
+        lastRefreshWasRotated = resp.rotated ?? false
+        if lastRefreshWasRotated {
+            AppLog.auth.info("Session token refreshed + refresh token rotated")
+        } else {
+            AppLog.auth.info("Session token refreshed successfully")
+        }
         return (accessToken: resp.accessToken, refreshToken: resp.refreshToken)
     }
 }

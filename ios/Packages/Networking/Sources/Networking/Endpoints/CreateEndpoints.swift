@@ -99,23 +99,34 @@ public struct CreateAppointmentRequest: Encodable, Sendable {
     public let customerId: Int64?
     public let leadId: Int64?
     public let notes: String?
+    /// §10.3 idempotency key — server ignores duplicate submissions within 24h.
+    public let idempotencyKey: String?
+    /// §10.2 Reminder offsets in minutes before the appointment start.
+    /// e.g. [15, 60, 1440] = 15 min, 1 hour, 1 day before.
+    public let reminderOffsets: [Int]?
 
     public init(title: String, startTime: String, endTime: String? = nil,
-                customerId: Int64? = nil, leadId: Int64? = nil, notes: String? = nil) {
+                customerId: Int64? = nil, leadId: Int64? = nil, notes: String? = nil,
+                idempotencyKey: String? = nil,
+                reminderOffsets: [Int]? = nil) {
         self.title = title
         self.startTime = startTime
         self.endTime = endTime
         self.customerId = customerId
         self.leadId = leadId
         self.notes = notes
+        self.idempotencyKey = idempotencyKey
+        self.reminderOffsets = reminderOffsets
     }
 
     enum CodingKeys: String, CodingKey {
         case title, notes
-        case startTime = "start_time"
-        case endTime = "end_time"
-        case customerId = "customer_id"
-        case leadId = "lead_id"
+        case startTime      = "start_time"
+        case endTime        = "end_time"
+        case customerId     = "customer_id"
+        case leadId         = "lead_id"
+        case idempotencyKey = "idempotency_key"
+        case reminderOffsets = "reminder_offsets"
     }
 }
 
@@ -128,21 +139,45 @@ public struct CreateLeadRequest: Encodable, Sendable {
     public let phone: String?
     public let source: String?
     public let notes: String?
+    // §9.4 Extended fields
+    public let company: String?
+    public let title: String?
+    public let estimatedValueCents: Int?
+    public let stage: String?
+    public let followUpAt: String?
 
-    public init(firstName: String, lastName: String? = nil, email: String? = nil,
-                phone: String? = nil, source: String? = nil, notes: String? = nil) {
+    public init(
+        firstName: String,
+        lastName: String? = nil,
+        email: String? = nil,
+        phone: String? = nil,
+        source: String? = nil,
+        notes: String? = nil,
+        company: String? = nil,
+        title: String? = nil,
+        estimatedValueCents: Int? = nil,
+        stage: String? = nil,
+        followUpAt: String? = nil
+    ) {
         self.firstName = firstName
         self.lastName = lastName
         self.email = email
         self.phone = phone
         self.source = source
         self.notes = notes
+        self.company = company
+        self.title = title
+        self.estimatedValueCents = estimatedValueCents
+        self.stage = stage
+        self.followUpAt = followUpAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case email, phone, source, notes
-        case firstName = "first_name"
-        case lastName = "last_name"
+        case email, phone, source, notes, company, title, stage
+        case firstName            = "first_name"
+        case lastName             = "last_name"
+        case estimatedValueCents  = "estimated_value_cents"
+        case followUpAt           = "follow_up_at"
     }
 }
 
@@ -194,17 +229,43 @@ public struct UpdateTicketRequest: Codable, Sendable {
 // MARK: - Ticket create (simplified — single device, minimum required fields)
 
 public struct CreateTicketRequest: Codable, Sendable {
-    public let customerId: Int64
+    /// Server-side id of the attached customer. May be 0 / nil when
+    /// `isWalkIn` is true — the server resolves a customer row (either a
+    /// fresh per-ticket record using the optional `walk*` identity fields,
+    /// or the shared `WALK-IN` sentinel for fully anonymous walk-ins).
+    public let customerId: Int64?
     public let devices: [NewDevice]
     public let statusId: Int64?
     public let assignedTo: Int64?
+    /// CROSS12 — set true for walk-in tickets so the server bypasses the
+    /// `customer_id required` rule. Mirrors web/Android behaviour
+    /// (tickets.routes.ts:873).
+    public let isWalkIn: Bool?
+    /// Optional walk-in identity fields. When any of `walkInFirstName`,
+    /// `walkInLastName`, or `walkInPhone` is non-empty the server creates
+    /// a unique editable customer row for this ticket — otherwise it falls
+    /// back to the shared sentinel (which can never be renamed).
+    public let walkInFirstName: String?
+    public let walkInLastName: String?
+    public let walkInPhone: String?
+    public let walkInEmail: String?
 
-    public init(customerId: Int64, devices: [NewDevice],
-                statusId: Int64? = nil, assignedTo: Int64? = nil) {
+    public init(customerId: Int64? = nil, devices: [NewDevice],
+                statusId: Int64? = nil, assignedTo: Int64? = nil,
+                isWalkIn: Bool? = nil,
+                walkInFirstName: String? = nil,
+                walkInLastName: String? = nil,
+                walkInPhone: String? = nil,
+                walkInEmail: String? = nil) {
         self.customerId = customerId
         self.devices = devices
         self.statusId = statusId
         self.assignedTo = assignedTo
+        self.isWalkIn = isWalkIn
+        self.walkInFirstName = walkInFirstName
+        self.walkInLastName = walkInLastName
+        self.walkInPhone = walkInPhone
+        self.walkInEmail = walkInEmail
     }
 
     public struct NewDevice: Codable, Sendable {
@@ -235,6 +296,11 @@ public struct CreateTicketRequest: Codable, Sendable {
         case customerId = "customer_id"
         case statusId = "status_id"
         case assignedTo = "assigned_to"
+        case isWalkIn = "is_walk_in"
+        case walkInFirstName = "walk_in_first_name"
+        case walkInLastName = "walk_in_last_name"
+        case walkInPhone = "walk_in_phone"
+        case walkInEmail = "walk_in_email"
     }
 }
 
@@ -282,27 +348,77 @@ public extension APIClient {
 
 // MARK: — Invoice create
 
-/// `POST /api/v1/invoices` — minimal required fields.
-/// Server: packages/server/src/routes/invoices.routes.ts.
+/// A single line item for `POST /api/v1/invoices`.
+/// Server: invoices.routes.ts:445 — validates quantity > 0, unit_price >= 0.
+public struct InvoiceLineItemRequest: Encodable, Sendable, Hashable {
+    public let inventoryItemId: Int64?
+    public let description: String
+    public let quantity: Int
+    public let unitPrice: Double
+    public let taxAmount: Double
+    public let lineDiscount: Double
+
+    public init(
+        inventoryItemId: Int64? = nil,
+        description: String,
+        quantity: Int = 1,
+        unitPrice: Double,
+        taxAmount: Double = 0,
+        lineDiscount: Double = 0
+    ) {
+        self.inventoryItemId = inventoryItemId
+        self.description = description
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.taxAmount = taxAmount
+        self.lineDiscount = lineDiscount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case description, quantity
+        case inventoryItemId = "inventory_item_id"
+        case unitPrice       = "unit_price"
+        case taxAmount       = "tax_amount"
+        case lineDiscount    = "line_discount"
+    }
+}
+
+/// `POST /api/v1/invoices` — full create including line items.
+/// Server: packages/server/src/routes/invoices.routes.ts:378.
 public struct CreateInvoiceRequest: Encodable, Sendable {
     public let customerId: Int64
     public let ticketId: Int64?
     public let notes: String?
     public let dueOn: String?    // YYYY-MM-DD
+    public let discount: Double?
+    public let discountReason: String?
+    public let lineItems: [InvoiceLineItemRequest]
+    /// §7.3 — idempotency key prevents duplicate creation on retry.
+    public let idempotencyKey: String?
 
     public init(customerId: Int64, ticketId: Int64? = nil,
-                notes: String? = nil, dueOn: String? = nil) {
+                notes: String? = nil, dueOn: String? = nil,
+                discount: Double? = nil, discountReason: String? = nil,
+                lineItems: [InvoiceLineItemRequest] = [],
+                idempotencyKey: String? = nil) {
         self.customerId = customerId
         self.ticketId = ticketId
         self.notes = notes
         self.dueOn = dueOn
+        self.discount = discount
+        self.discountReason = discountReason
+        self.lineItems = lineItems
+        self.idempotencyKey = idempotencyKey
     }
 
     enum CodingKeys: String, CodingKey {
-        case notes
-        case customerId = "customer_id"
-        case ticketId   = "ticket_id"
-        case dueOn      = "due_on"
+        case notes, discount
+        case customerId     = "customer_id"
+        case ticketId       = "ticket_id"
+        case dueOn          = "due_on"
+        case discountReason = "discount_reason"
+        case idempotencyKey = "idempotency_key"
+        case lineItems     = "line_items"
     }
 }
 

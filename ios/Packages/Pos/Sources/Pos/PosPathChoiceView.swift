@@ -144,25 +144,26 @@ struct PosPathChoiceView: View {
                         .padding(.vertical, 2)
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                .stroke(Color.bizarreOnSurface.opacity(0.12), lineWidth: 1)
                         )
                         .padding(.top, 4)
                 }
             }
             .padding(20)
             .frame(maxWidth: .infinity, minHeight: sizeClass == .regular ? 180 : 132, alignment: .topLeading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(accent == .primary
-                          ? Color.white.opacity(0.06)
-                          : Color.white.opacity(0.03))
+                          ? Color.bizarreOnSurface.opacity(0.06)
+                          : Color.bizarreOnSurface.opacity(0.03))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(
                         accent == .primary
                         ? Color.bizarrePrimary.opacity(0.55)
-                        : Color.white.opacity(0.16),
+                        : Color.bizarreOnSurface.opacity(0.16),
                         style: StrokeStyle(
                             lineWidth: accent == .primary ? 1.5 : 1,
                             dash: accent == .primary ? [] : [6, 4]

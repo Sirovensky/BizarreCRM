@@ -5,6 +5,17 @@ import UIKit
 import CoreText
 #endif
 
+// MARK: - BrandFonts
+//
+// §80.8 / §30.4 canonical scale — matches bizarreelectronics.com brand fonts:
+//   Display / Titles  → Bebas Neue (condensed, all-caps)
+//   Accent headings   → League Spartan (geometric sans)
+//   Body / UI         → Roboto (workhorse)
+//   Mono (IDs/codes)  → Roboto Mono
+//
+// Old families (Inter, Barlow Condensed, JetBrains Mono) are no longer used.
+// Fallback when fonts are not registered: SF Pro / SF Mono of matching size.
+
 public enum BrandFonts {
     private nonisolated(unsafe) static var didRegister = false
 
@@ -13,23 +24,161 @@ public enum BrandFonts {
         didRegister = true
         // Fonts are registered via Info.plist `UIAppFonts`; this hook exists
         // for CI environments or SPM previews where runtime registration helps.
-        AppLog.ui.debug("BrandFonts ready")
+        AppLog.ui.debug("BrandFonts ready (§80.8 scale)")
     }
 }
 
 public extension Font {
-    static func brandDisplayLarge()  -> Font { .custom("BarlowCondensed-SemiBold", size: 57, relativeTo: .largeTitle) }
-    static func brandDisplayMedium() -> Font { .custom("BarlowCondensed-SemiBold", size: 45, relativeTo: .largeTitle) }
-    static func brandHeadlineLarge() -> Font { .custom("BarlowCondensed-SemiBold", size: 32, relativeTo: .title) }
-    static func brandHeadlineMedium()-> Font { .custom("BarlowCondensed-SemiBold", size: 28, relativeTo: .title2) }
-    static func brandTitleLarge()    -> Font { .custom("Inter-SemiBold", size: 22, relativeTo: .title3) }
-    static func brandTitleMedium()   -> Font { .custom("Inter-SemiBold", size: 16, relativeTo: .headline) }
-    static func brandTitleSmall()    -> Font { .custom("Inter-SemiBold", size: 14, relativeTo: .subheadline) }
-    static func brandBodyLarge()     -> Font { .custom("Inter-Regular",  size: 16, relativeTo: .body) }
-    static func brandBodyMedium()    -> Font { .custom("Inter-Regular",  size: 14, relativeTo: .callout) }
-    static func brandLabelLarge()    -> Font { .custom("Inter-Medium",   size: 14, relativeTo: .footnote) }
-    static func brandLabelSmall()    -> Font { .custom("Inter-Medium",   size: 12, relativeTo: .caption) }
-    static func brandMono(size: CGFloat = 14) -> Font {
-        .custom("JetBrainsMono-Regular", size: size, relativeTo: .body)
+
+    // MARK: - Display / Title — Bebas Neue (§80.8 largeTitle / title1)
+
+    /// 34 pt  Bebas Neue — large screen titles, hero numbers.
+    static func brandDisplayLarge()  -> Font {
+        .custom("BebasNeue-Regular", size: 34, relativeTo: .largeTitle)
     }
+
+    /// 28 pt  Bebas Neue — section / modal titles.
+    static func brandDisplayMedium() -> Font {
+        .custom("BebasNeue-Regular", size: 28, relativeTo: .title)
+    }
+
+    // MARK: - Accent / Secondary headings — League Spartan (§80.8 title2 / title3)
+
+    /// 22 pt  League Spartan SemiBold — card headings, section subtitles.
+    static func brandHeadlineLarge() -> Font {
+        .custom("LeagueSpartan-SemiBold", size: 22, relativeTo: .title2)
+    }
+
+    /// 20 pt  League Spartan Medium — sub-section headings.
+    static func brandHeadlineMedium() -> Font {
+        .custom("LeagueSpartan-Medium", size: 20, relativeTo: .title3)
+    }
+
+    // MARK: - Body / UI — Roboto (§80.8 headline / body / callout / subheadline)
+
+    /// 17 pt  Roboto SemiBold — emphasized labels, table header cells.
+    static func brandTitleLarge() -> Font {
+        .custom("Roboto-SemiBold", size: 17, relativeTo: .headline)
+    }
+
+    /// 16 pt  Roboto Medium — card titles, action labels.
+    static func brandTitleMedium() -> Font {
+        .custom("Roboto-Medium", size: 16, relativeTo: .callout)
+    }
+
+    /// 14 pt  Roboto Medium — row titles, chip labels.
+    static func brandTitleSmall() -> Font {
+        .custom("Roboto-Medium", size: 14, relativeTo: .subheadline)
+    }
+
+    /// 17 pt  Roboto Regular — paragraph body text.
+    static func brandBodyLarge() -> Font {
+        .custom("Roboto-Regular", size: 17, relativeTo: .body)
+    }
+
+    /// 14 pt  Roboto Regular — secondary body, form hints.
+    static func brandBodyMedium() -> Font {
+        .custom("Roboto-Regular", size: 14, relativeTo: .callout)
+    }
+
+    /// 14 pt  Roboto Medium — metadata labels, footnotes with emphasis.
+    static func brandLabelLarge() -> Font {
+        .custom("Roboto-Medium", size: 14, relativeTo: .footnote)
+    }
+
+    /// 12 pt  Roboto Regular — captions, table column headers.
+    static func brandLabelSmall() -> Font {
+        .custom("Roboto-Regular", size: 12, relativeTo: .caption)
+    }
+
+    // MARK: - KPI / Metric values (§91.10 — unified weight token)
+    //
+    // All KPI numeric values on report cards use this single token so weight
+    // is consistent across RevenueChartCard, AvgTicketValueCard,
+    // ExpensesChartCard, and FinancialDashboardView.
+    //
+    // 20 pt  League Spartan SemiBold — prominent enough to scan at a glance,
+    // monospacedDigit applied at call site to prevent digit jitter.
+
+    /// 20 pt  League Spartan SemiBold — unified KPI / metric value token.
+    static func brandKpiValue() -> Font {
+        .custom("LeagueSpartan-SemiBold", size: 20, relativeTo: .title3)
+    }
+
+    // MARK: - Mono — Roboto Mono (§80.8 mono)
+
+    /// Roboto Mono Regular — IDs, SKUs, IMEI, barcodes, order numbers.
+    static func brandMono(size: CGFloat = 14) -> Font {
+        .custom("RobotoMono-Regular", size: size, relativeTo: .body)
+    }
+
+    // MARK: - Chart axis labels (§91.10 — explicit size token)
+    //
+    // Swift Charts applies system default sizing to axis labels; override to
+    // a consistent 12 pt Roboto Regular so axis context stays legible without
+    // competing with data marks.
+    //
+    // §91.13: 12 pt is the minimum size that passes the Dynamic Type
+    // legibility test. Previously 11 pt; bumped to 12 pt to close §91.10
+    // "Axis labels < 12pt" and §91.13 "Many label texts under 12pt".
+
+    /// 12 pt  Roboto Regular — chart x/y axis labels and annotations.
+    static func brandChartAxisLabel() -> Font {
+        .custom("Roboto-Regular", size: 12, relativeTo: .caption)
+    }
+
+    // MARK: - Compatibility aliases for pre-§91.10 callsites
+    //
+    // Older Components.swift / Dashboard call sites reference these older names.
+    // Map them to the closest §91.10 token so existing code keeps working.
+
+    /// Alias of `brandLabelSmall` — 12 pt caption.
+    static func brandCaption1() -> Font { brandLabelSmall() }
+
+    /// Slightly smaller caption — 11 pt Roboto Regular.
+    static func brandCaption2() -> Font {
+        .custom("Roboto-Regular", size: 11, relativeTo: .caption2)
+    }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandCallout() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandFootnote() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandTitleSmall` — 18 pt League Spartan.
+    static func brandTitle2() -> Font { brandTitleSmall() }
+
+    /// Alias of `brandBodyMedium` — 17 pt Roboto Regular.
+    static func brandBody() -> Font { brandBodyMedium() }
+
+    /// Alias of `brandDisplayMedium` — 28 pt Bebas Neue.
+    static func brandDisplaySmall() -> Font { brandDisplayMedium() }
+
+    /// Alias of `brandLabelLarge` — 14 pt Roboto Medium.
+    static func brandLabelMedium() -> Font { brandLabelLarge() }
+
+    /// Alias of `brandBodyMedium` — 17 pt Roboto Regular.
+    static func brandBodySmall() -> Font {
+        .custom("Roboto-Regular", size: 14, relativeTo: .footnote)
+    }
+
+    /// Alias of `brandLabelSmall` — 12 pt Roboto Regular.
+    static func brandCaption() -> Font { brandLabelSmall() }
+
+    /// Alias of `brandHeadlineMedium` — 22 pt League Spartan SemiBold.
+    static func brandHeadlineSmall() -> Font {
+        .custom("LeagueSpartan-SemiBold", size: 18, relativeTo: .title3)
+    }
+
+    // MARK: - `bizarre*` legacy aliases used in §9 inventory transfer code.
+
+    static var bizarreCaption: Font { brandLabelSmall() }
+    static var bizarreBody: Font { brandBodyMedium() }
+    static var bizarreHeadline: Font { brandHeadlineMedium() }
+    static var bizarreTitle: Font { brandTitleMedium() }
+    static var bizarreTitle3: Font { brandTitleSmall() }
+    static var bizarreTitle2: Font { brandTitleMedium() }
+    static var bizarreFootnote: Font { brandLabelSmall() }
+    static var bizarreCallout: Font { brandLabelLarge() }
 }

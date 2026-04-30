@@ -89,4 +89,11 @@ public extension APIClient {
     func impersonateUser(_ request: ImpersonateRequest) async throws -> ImpersonateResponse {
         try await post("/api/v1/tenant/impersonate", body: request, as: ImpersonateResponse.self)
     }
+
+    /// `DELETE /api/v1/onboarding/sample-data` — remove all sample/demo data
+    /// that was seeded when the admin opted in during the setup wizard.
+    /// Admin-only. Idempotent (safe to call if already removed).
+    func deleteOnboardingSampleData() async throws {
+        try await delete("/api/v1/onboarding/sample-data")
+    }
 }

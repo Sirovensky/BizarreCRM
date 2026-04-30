@@ -89,9 +89,10 @@ struct CustomerFormCoreSection: View {
                     .focused($focus, equals: .firstName).submitLabel(.next).onSubmit { focus = .lastName }
                     .accessibilityLabel("First name")
                 LabeledTextField("Last name", text: $lastName, contentType: .familyName)
-                    .focused($focus, equals: .lastName).submitLabel(.next).onSubmit { focus = .phone }
+                    .focused($focus, equals: .lastName).submitLabel(.next).onSubmit { focus = .organization }
                     .accessibilityLabel("Last name")
                 LabeledTextField("Organization", text: $organization, contentType: .organizationName)
+                    .focused($focus, equals: .organization).submitLabel(.next).onSubmit { focus = .phone }
                     .accessibilityLabel("Organization")
             }
 
@@ -104,25 +105,33 @@ struct CustomerFormCoreSection: View {
                     .accessibilityLabel("Mobile number")
                 LabeledTextField("Email", text: $email, contentType: .emailAddress,
                                  keyboard: .emailAddress, autocapitalize: .never)
-                    .focused($focus, equals: .email)
+                    .focused($focus, equals: .email).submitLabel(.next).onSubmit { focus = .address1 }
                     .accessibilityLabel("Email address")
             }
 
+            // §22.3 — Address fields wired into the logical Tab / Return focus
+            // chain so hardware-keyboard users can traverse the whole form
+            // without lifting their hands.
             Section("Address") {
                 LabeledTextField("Street", text: $address1, contentType: .streetAddressLine1)
+                    .focused($focus, equals: .address1).submitLabel(.next).onSubmit { focus = .city }
                     .accessibilityLabel("Street address")
                 LabeledTextField("City", text: $city, contentType: .addressCity)
+                    .focused($focus, equals: .city).submitLabel(.next).onSubmit { focus = .state }
                     .accessibilityLabel("City")
                 LabeledTextField("State", text: $state, contentType: .addressState)
+                    .focused($focus, equals: .state).submitLabel(.next).onSubmit { focus = .postcode }
                     .accessibilityLabel("State")
                 LabeledTextField("Postal code", text: $postcode, contentType: .postalCode,
                                  keyboard: .numbersAndPunctuation)
+                    .focused($focus, equals: .postcode).submitLabel(.next).onSubmit { focus = .notes }
                     .accessibilityLabel("Postal code")
             }
 
             Section("Notes") {
                 TextField("Notes", text: $notes, axis: .vertical)
                     .lineLimit(3...6)
+                    .focused($focus, equals: .notes).submitLabel(.done).onSubmit { focus = nil }
                     .accessibilityLabel("Notes")
             }
 

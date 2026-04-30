@@ -81,4 +81,29 @@ public extension APIClient {
     func deleteReview(id: String) async throws {
         try await delete("/employees/reviews/\(id)")
     }
+
+    // MARK: - §46.2 Archive
+
+    /// `POST /employees/reviews/:id/archive` — mark review as archived (immutable, kept indefinitely).
+    /// Server keeps record; client treats it as read-only after archiving.
+    func archiveReview(id: String) async throws -> PerformanceReview {
+        try await post(
+            "/employees/reviews/\(id)/archive",
+            body: ReviewsEmptyBody(),
+            as: ReviewResponse.self
+        ).review
+    }
+
+    /// `GET /employees/reviews?archived=true&employee_id=X` — fetch archived reviews for HR file.
+    func listArchivedReviews(employeeId: String? = nil) async throws -> [PerformanceReview] {
+        var query: [URLQueryItem] = [.init(name: "archived", value: "true")]
+        if let eid = employeeId { query.append(.init(name: "employee_id", value: eid)) }
+        return try await get("/employees/reviews",
+                             query: query,
+                             as: ReviewsListResponse.self).reviews
+    }
 }
+
+// MARK: - Empty request body helper
+
+private struct ReviewsEmptyBody: Encodable, Sendable {}

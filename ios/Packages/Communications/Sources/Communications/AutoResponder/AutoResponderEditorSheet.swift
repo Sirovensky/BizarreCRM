@@ -82,15 +82,9 @@ final class AutoResponderEditorViewModel: Sendable {
         do {
             let rule: AutoResponderRule
             if let eid = existingId {
-                rule = try await api.patch(
-                    "/api/v1/sms/auto-responders/\(eid)",
-                    body: builtRule, as: AutoResponderRule.self
-                )
+                rule = try await api.updateAutoResponder(id: eid, body: builtRule)
             } else {
-                rule = try await api.post(
-                    "/api/v1/sms/auto-responders",
-                    body: builtRule, as: AutoResponderRule.self
-                )
+                rule = try await api.createAutoResponder(builtRule)
             }
             onSave(rule)
         } catch {

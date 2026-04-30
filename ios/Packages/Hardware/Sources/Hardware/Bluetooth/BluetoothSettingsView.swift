@@ -57,6 +57,16 @@ public final class BluetoothSettingsViewModel {
         await refresh()
     }
 
+    /// Forget (un-pair) a peripheral: disconnect it and remove from the reconnect store.
+    /// §17: "Forget button per paired device"
+    public func forget(device: BluetoothDevice) async {
+        await manager.disconnect(device.id)
+        // Remove from the persisted reconnect store so auto-reconnect stops.
+        BluetoothReconnectService.forget(forKey: device.id.uuidString)
+        AppLog.hardware.info("BluetoothSettingsViewModel: forgot device \(device.id)")
+        await refresh()
+    }
+
     // MARK: - Private
 
     private func refresh() async {
@@ -164,6 +174,9 @@ public struct BluetoothSettingsView: View {
                     onRename: {
                         pendingName = device.name
                         renameDevice = device
+                    },
+                    onForget: {
+                        Task { await viewModel.forget(device: device) }
                     }
                 )
             }
@@ -218,6 +231,9 @@ private struct BluetoothDeviceRow: View {
     let onConnect: () -> Void
     let onDisconnect: () -> Void
     let onRename: () -> Void
+    let onForget: () -> Void
+    /// MAC address from the paired-device record (shown after first connection).
+    var macAddress: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -232,6 +248,15 @@ private struct BluetoothDeviceRow: View {
                 Text(kindLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // §17 "App shows printer MAC after first connection"
+                if let mac = macAddress {
+                    Text(mac)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("MAC address: \(mac)")
+                }
+                batteryIndicator
             }
 
             Spacer()
@@ -241,10 +266,14 @@ private struct BluetoothDeviceRow: View {
             connectButton
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(device.name), \(kindLabel), RSSI \(device.rssi) dBm, \(device.isConnected ? "connected" : "not connected")")
+        .accessibilityLabel(accessibilityRowLabel)
         .contextMenu {
             Button("Rename", action: onRename)
                 .accessibilityLabel("Rename \(device.name)")
+            Button(role: .destructive, action: onForget) {
+                Label("Forget This Device", systemImage: "minus.circle")
+            }
+            .accessibilityLabel("Forget \(device.name) — stop auto-reconnecting")
         }
     }
 
@@ -275,6 +304,39 @@ private struct BluetoothDeviceRow: View {
         return Image(systemName: "wifi", variableValue: Double(bars) / 3.0)
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
+    }
+
+    /// Battery indicator chip (shown when battery level is available).
+    /// §17: "Surface peripheral battery level where published"
+    @ViewBuilder
+    private var batteryIndicator: some View {
+        if let pct = device.batteryPercent {
+            let isLow = pct < 20
+            Label("\(pct)%", systemImage: batteryIcon(pct: pct))
+                .font(.caption2)
+                .foregroundStyle(isLow ? .red : .secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(isLow ? Color.red.opacity(0.1) : Color.clear, in: Capsule())
+                .accessibilityLabel(isLow ? "Low battery: \(pct)%" : "Battery: \(pct)%")
+        }
+    }
+
+    private func batteryIcon(pct: Int) -> String {
+        switch pct {
+        case 0..<20:  return "battery.0percent"
+        case 20..<40: return "battery.25percent"
+        case 40..<60: return "battery.50percent"
+        case 60..<80: return "battery.75percent"
+        default:      return "battery.100percent"
+        }
+    }
+
+    private var accessibilityRowLabel: String {
+        var parts = ["\(device.name)", kindLabel, "RSSI \(device.rssi) dBm"]
+        parts.append(device.isConnected ? "connected" : "not connected")
+        if let pct = device.batteryPercent { parts.append("battery \(pct)%") }
+        return parts.joined(separator: ", ")
     }
 
     private var connectButton: some View {

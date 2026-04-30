@@ -1,10 +1,6 @@
 import Foundation
 import Networking
 
-#if canImport(UIKit)
-import SwiftUI
-import DesignSystem
-
 // §22 — iPad toolbar quick-assign sheet
 //
 // `TicketQuickActionsToolbar` is a toolbar item that presents an inline
@@ -31,6 +27,10 @@ public struct TicketQuickAssignState: Sendable, Equatable {
         self.assignees = assignees
     }
 }
+
+#if canImport(UIKit)
+import SwiftUI
+import DesignSystem
 
 // MARK: - Quick-actions toolbar item
 

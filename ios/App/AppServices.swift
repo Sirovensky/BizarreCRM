@@ -9,6 +9,8 @@ import Inventory
 import Pos
 import Sync
 import Hardware
+import Core
+import DesignSystem
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -67,5 +69,45 @@ final class AppServices {
         let posExecutor = PosSyncOpExecutor(api: apiClient)
         SyncManager.shared.executor = posExecutor
         SyncManager.shared.autoStart()
+
+        // §66.1 — Start CHHapticEngine on app start so it is warm when the
+        // first sale/scan/status-change arrives. Actor-isolated; no await needed here.
+        _ = CoreHapticsEngine.shared  // triggers actor init + notification registration
+
+        // §29.1 Deferred init — non-critical framework init moved off the
+        // hot launch path. MetricKit wiring (§32.2) and any future analytics /
+        // feature-flag prefetch go here so cold-start time is not penalised.
+        let client = apiClient
+        Task.detached(priority: .background) {
+            // §32.2 MetricKit performance upload — tenant server only.
+            // Upload closure builds a URLRequest manually so we can POST raw
+            // pre-serialised JSON without going through the typed APIClient.
+            let metricKit = MetricKitManager(upload: { [client] data in
+                guard let base = await client.currentBaseURL() else { return }
+                var req = URLRequest(url: base.appendingPathComponent("telemetry/metrics"))
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = data
+                _ = try await URLSession.shared.data(for: req)
+            })
+            metricKit.start()
+
+            // §32.9 Heartbeat — POST /heartbeat every 5 min while foregrounded.
+            await HeartbeatService.shared.start { [client] payload in
+                _ = try await client.post("/heartbeat", body: payload, as: HeartbeatAck.self)
+            }
+        }
+    }
+
+    /// §32.9 — Stop heartbeat on logout / scene background.
+    /// Call from the logout flow after clearing Keychain credentials.
+    func stopHeartbeat() {
+        Task { await HeartbeatService.shared.stop() }
     }
 }
+
+// MARK: — §32.9 Heartbeat acknowledgment envelope
+
+/// Minimal ack from `POST /heartbeat`. Server returns `{ success: true }` wrapped in
+/// the standard `{ success, data, message }` envelope; only `success` matters here.
+private struct HeartbeatAck: Decodable, Sendable {}

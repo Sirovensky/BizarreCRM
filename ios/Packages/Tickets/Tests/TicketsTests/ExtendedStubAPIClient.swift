@@ -11,6 +11,11 @@ actor ExtendedStubAPIClient: APIClient {
     var signOffResult: Result<SignOffResponse, Error>?
     var detailResult: Result<TicketDetail, Error>?
     var listResult: Result<TicketsListResponse, Error>?
+    // §4.4 / §4.5 — delete, duplicate, convert
+    var deleteError: Error?
+    var duplicateResult: Result<DuplicateTicketResponse, Error>?
+    var convertResult: Result<ConvertToInvoiceResponse, Error>?
+    var deletedPaths: [String] = []
 
     init() {}
 
@@ -71,6 +76,24 @@ actor ExtendedStubAPIClient: APIClient {
                 throw e
             }
         }
+        if path.hasSuffix("/duplicate") {
+            guard let result = duplicateResult else { throw APITransportError.noBaseURL }
+            switch result {
+            case .success(let r):
+                guard let cast = r as? T else { throw APITransportError.decoding("type mismatch") }
+                return cast
+            case .failure(let e): throw e
+            }
+        }
+        if path.hasSuffix("/convert-to-invoice") {
+            guard let result = convertResult else { throw APITransportError.noBaseURL }
+            switch result {
+            case .success(let r):
+                guard let cast = r as? T else { throw APITransportError.decoding("type mismatch") }
+                return cast
+            case .failure(let e): throw e
+            }
+        }
         throw APITransportError.noBaseURL
     }
 
@@ -80,7 +103,10 @@ actor ExtendedStubAPIClient: APIClient {
     func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
         throw APITransportError.noBaseURL
     }
-    func delete(_ path: String) async throws {}
+    func delete(_ path: String) async throws {
+        deletedPaths.append(path)
+        if let err = deleteError { throw err }
+    }
     func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
         throw APITransportError.noBaseURL
     }

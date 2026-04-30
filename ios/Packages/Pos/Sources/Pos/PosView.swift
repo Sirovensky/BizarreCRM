@@ -35,6 +35,49 @@ public enum PosPhase {
     case receipt(PosReceiptPayload)
 }
 
+// MARK: - PosRoleGate
+
+/// §16.1 — "Not enabled for this role" card shown when the user's role lacks
+/// the `pos.access` permission. The card renders an icon, a message, and a
+/// "Contact your admin" CTA. Rendered by `PosView` when `posAccessDenied` is
+/// true (injected at init for testability; defaults to `false`).
+struct PosRoleGateCard: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase.ignoresSafeArea()
+            VStack(spacing: BrandSpacing.lg) {
+                Image(systemName: "person.crop.circle.badge.xmark")
+                    .font(.system(size: 64, weight: .regular))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                VStack(spacing: BrandSpacing.xs) {
+                    Text("POS not enabled")
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Your role doesn't include the \u{201C}pos.access\u{201D} permission. Contact your admin to get access.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, BrandSpacing.xl)
+                }
+                Link(destination: URL(string: "mailto:admin")!) {
+                    Label("Contact admin", systemImage: "envelope")
+                        .font(.brandTitleSmall())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.roleGate.contactAdmin")
+            }
+            .frame(maxWidth: 420)
+        }
+        .accessibilityIdentifier("pos.roleGate")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("POS not enabled. Your role lacks pos.access permission. Contact your admin.")
+    }
+}
+
 /// POS root screen. §16.4 wires the customer attach flow.
 /// Wave-5 phase machine drives customer gate → cart → tender → receipt.
 public struct PosView: View {
@@ -85,6 +128,8 @@ public struct PosView: View {
     @State private var showingOpenRegister: Bool = false
     @State private var showingCloseRegister: Bool = false
     @State private var showingZReport: Bool = false
+    /// §16.10 — Mid-shift cash drop sheet.
+    @State private var showingCashDrop: Bool = false
     /// Snapshot of the session that was just closed so `ZReportView` has
     /// something to render after `registerSession` has been cleared.
     @State private var lastClosedSession: CashSessionRecord?
@@ -92,6 +137,8 @@ public struct PosView: View {
     @State private var showingNoSalePin: Bool = false
     /// §16.11 — Audit log viewer.
     @State private var showingAuditLog: Bool = false
+    /// Active-cart toolbar — `Scan` primary action sheet.
+    @State private var showingScanner: Bool = false
     /// §16.5 — v1 tender select + cash tender flow (retained, not deleted).
     @State private var showingTenderSelect: Bool = false
     @State private var cashTenderVM: CashTenderViewModel?
@@ -103,6 +150,17 @@ public struct PosView: View {
     // TODO(b2): wire via api.storeCredit(customerId:) once APIClient exposes the
     // GET /api/v1/store-credit/:customerId endpoint (§16.6).
     @State private var storeCreditCents: Int? = nil
+
+    /// §16.1 / §16.2 / §16.4 — PosViewModel: permission gate, catalog filter,
+    /// favorites, recently-sold, repair services, customer context.
+    @State private var posVM = PosViewModel()
+
+    /// §16.4 — Device-for-repair picker state. Presented when a service item
+    /// is added to the cart and the customer has saved assets.
+    @State private var showingDevicePicker: Bool = false
+    /// The cart line that triggered the device picker; used to attach the
+    /// selected device option via `PosDeviceAttachment`.
+    @State private var devicePickerCartLineId: UUID? = nil
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -116,10 +174,18 @@ public struct PosView: View {
     /// previews and tests receive the default `NullCashDrawer`.
     private let cashDrawerOpen: @Sendable () async throws -> Void
 
+    /// §16.1 — When `true` the POS renders `PosRoleGateCard` instead of the
+    /// normal register flow. Inject `true` from `AppState` when the active
+    /// user's role does NOT include `pos.access`. Defaults to `false` so
+    /// existing call sites and previews are unaffected.
+    private let posAccessDenied: Bool
+
     public init(
         repo: InventoryRepository? = nil,
         api: APIClient? = nil,
         customerRepo: CustomerRepository? = nil,
+        userRole: PosUserRole = .preview,
+        posAccessDenied: Bool = false,
         cashDrawerOpen: @escaping @Sendable () async throws -> Void = { throw CashDrawerError.notConnected }
     ) {
         if let repo {
@@ -129,12 +195,22 @@ public struct PosView: View {
         }
         self.api = api
         self.customerRepo = customerRepo
+        self.posAccessDenied = posAccessDenied
         self.cashDrawerOpen = cashDrawerOpen
+        _posVM = State(wrappedValue: PosViewModel(api: api, userRole: userRole))
     }
 
     public var body: some View {
         Group {
-            if !registerLoaded {
+            // §16.1 Permission gate — checked before any POS surface renders.
+            // Two layers:
+            //   1) Tenant-level explicit `posAccessDenied` flag (admin override).
+            //   2) Role-based `posVM.userRole.canAccessPos` (RBAC).
+            if posAccessDenied {
+                PosRoleGateCard()
+            } else if !posVM.userRole.canAccessPos {
+                PosAccessDeniedView(role: posVM.userRole)
+            } else if !registerLoaded {
                 // First-tick loading — avoid flashing the open-register
                 // sheet before the store has answered.
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,6 +223,42 @@ public struct PosView: View {
         .task { await search.load() }
         .task { await loadRegisterSession() }
         .task { await cartVM.restoreSnapshotIfAvailable(into: cart) }
+        // §16.4 — Load customer context whenever the attached customer changes.
+        .onChange(of: cart.customer?.id) { _, newId in
+            Task { await posVM.loadCustomerContext(customerId: newId) }
+        }
+        // §16.4 — Apply tax exemption when context loads.
+        .onChange(of: posVM.customerContext) { _, ctx in
+            if ctx.isTaxExempt { posVM.applyTaxExemptionIfNeeded(to: cart) }
+            if ctx.groupDiscountPercent != nil { posVM.applyGroupDiscountIfNeeded(to: cart) }
+        }
+        // §16.4 — Device picker for repair service items.
+        .sheet(isPresented: $showingDevicePicker) {
+            if let api, let customerId = cart.customer?.id, customerId > 0 {
+                PosDevicePickerSheet(
+                    customerId: customerId,
+                    repository: PosDevicePickerRepositoryImpl(api: api),
+                    onConfirm: { option in
+                        if let lineId = devicePickerCartLineId {
+                            let attachment = PosDeviceAttachment(
+                                cartLineId: lineId,
+                                deviceOptionId: {
+                                    if case .asset(let id, _, _) = option { return id }
+                                    return nil
+                                }()
+                            )
+                            AppLog.pos.info("PosVM: device attached — \(attachment.deviceOptionId.map { String($0) } ?? "none", privacy: .public)")
+                        }
+                        devicePickerCartLineId = nil
+                    },
+                    onAddNew: {
+                        devicePickerCartLineId = nil
+                        // Deferred: navigate to device creation within Customers package.
+                        tenderErrorMessage = "Device creation is available in the Customer profile."
+                    }
+                )
+            }
+        }
         .sheet(isPresented: $showingOfflineQueue) {
             OfflineSaleQueueView()
         }
@@ -221,6 +333,17 @@ public struct PosView: View {
                 ZReportView(session: session)
             }
         }
+        // §16.10 — mid-shift cash drop
+        .sheet(isPresented: $showingCashDrop) {
+            PosCashDropSheet(
+                cashSessionId: registerSession?.id,
+                cashSessionRepo: api.map { CashSessionRepositoryImpl(api: $0) },
+                onDropRecorded: { dropCents in
+                    BrandHaptics.success()
+                    holdToastMessage = "\(CartMath.formatCents(dropCents)) dropped to safe."
+                }
+            )
+        }
         .sheet(isPresented: $showingCustomLine) {
             PosCustomLineSheet { item in cart.add(item) }
         }
@@ -238,6 +361,11 @@ public struct PosView: View {
                 vm: vm,
                 onCompleted: { result in
                     cashTenderVM = nil
+                    // §16.8 — kick the cash drawer on every cash tender so
+                    // the cashier doesn't need to remember a manual no-sale.
+                    // Wrapped in `openDrawer()`'s existing try/catch so a
+                    // missing printer never blocks the post-sale screen.
+                    openDrawer()
                     postSale = buildPostSaleViewModel(
                         methodLabel: result.methodLabel,
                         methodAmountCents: result.receivedCents,
@@ -326,7 +454,9 @@ public struct PosView: View {
                     editPriceFor: $editPriceFor,
                     onShowDiscount: { showingDiscountSheet = true },
                     onShowTip: { showingTipSheet = true },
-                    onShowFees: { showingFeesSheet = true }
+                    onShowFees: { showingFeesSheet = true },
+                    customerContext: posVM.customerContext,
+                    loyaltyEarnedPoints: posVM.loyaltyPointsPreview(cartTotalCents: cart.totalCents)
                 )
                 .navigationTitle("Cart")
                 .navigationBarTitleDisplayMode(.inline)
@@ -478,11 +608,34 @@ public struct PosView: View {
     @ViewBuilder
     private var pathChoiceView: some View {
         let displayName = cart.customer?.displayName ?? "this customer"
-        PosPathChoiceView(
+        let inner = PosPathChoiceView(
             customerName: displayName,
             onSell: { pathChoice = .selling },
             onStartRepair: startRepairFlow
         )
+        if Platform.isCompact {
+            inner
+        } else {
+            // iPad — keep the rail + items + cart layout consistent across
+            // every POS phase. The path-choice cards become the catalog
+            // column; the cart stays pinned on the right so the cashier
+            // never loses sight of the totals/customer-attached state.
+            PosRegisterLayout(
+                catalogFraction: 0.65
+            ) {
+                Color.clear.frame(height: 0)
+            } catalog: {
+                inner
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } cart: {
+                PosIPadCartPanel(
+                    cart: cart,
+                    onCharge: startChargeV5,
+                    onEditItem: { item in editingCartItem = item },
+                    editingItemId: editingCartItem?.id
+                )
+            }
+        }
     }
 
     /// Build a `PosRepairFlowCoordinator`, attach it to the phase machine,
@@ -496,11 +649,18 @@ public struct PosView: View {
             tenderErrorMessage = "Repair check-in unavailable: no server connection."
             return
         }
+        // Walk-in customer (id == nil) is supported — the server's
+        // `POST /api/v1/tickets` accepts `is_walk_in: true` and resolves
+        // a customer row internally (per-ticket editable record if any
+        // walk-in identity fields are present, else the shared WALK-IN
+        // sentinel). See tickets.routes.ts:873.
+        let isWalkIn = cart.customer?.isWalkIn ?? true
         let customerId = cart.customer?.id ?? 0
         let coordinator = PosRepairRouter.makeCoordinator(
             customerId: customerId,
             customerDisplayName: cart.customer?.displayName,
             api: api,
+            isWalkIn: isWalkIn,
             onCancel: {
                 pathChoice = .undecided
                 phase = .cart
@@ -634,6 +794,13 @@ public struct PosView: View {
             customerPhone: cart.customer?.phone,
             customerEmail: cart.customer?.email
         )
+        // §16.7 — snapshot the render model so reprints are byte-identical.
+        let renderPayload = PosReceiptPayloadBuilder.build(
+            cart: cart,
+            methodLabel: methodLabel,
+            methodAmountCents: result.totalCents
+        )
+        Task { await PosReceiptStore.shared.save(renderPayload) }
         paidAt = Date()
         phase = .receipt(payload)
     }
@@ -723,7 +890,8 @@ public struct PosView: View {
                 showsCustomerCTAs: !cart.hasCustomer,
                 onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
                 onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                posVM: posVM
             )
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
@@ -769,7 +937,8 @@ public struct PosView: View {
                     showsCustomerCTAs: !cart.hasCustomer,
                     onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
                     onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                    posVM: posVM
                 )
             } cart: {
                 // ── Cart slot (condensed iPad panel) ──────────────────
@@ -809,212 +978,190 @@ public struct PosView: View {
         let devicePickerVM = PosDevicePickerViewModel(
             repository: PosDevicePickerRepositoryImpl(api: api)
         )
+        // The repair flow lands inside the same `rail | catalog | cart`
+        // template as path-choice and the active-cart screen. Step indicator
+        // and hero header live INSIDE the catalog slot (top of
+        // `iPadRepairInspectorPane`) so the right cart column starts at the
+        // topbar y-origin on every phase — no vertical shift between
+        // path-choice and repair. Same river, no bumps.
         PosRegisterLayout(
-            catalogFraction: 0.65,
-            inspectorActive: true
+            catalogFraction: 0.65
         ) {
-            // Topbar — empty; nav bar hosts posToolbar.
             Color.clear.frame(height: 0)
         } catalog: {
-            iPadRepairCatalogPlaceholder(coordinator: coordinator)
-        } cart: {
-            iPadRepairCartPlaceholder(coordinator: coordinator)
-        } inspector: {
             iPadRepairInspectorPane(
                 coordinator: coordinator,
                 devicePickerVM: devicePickerVM
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } cart: {
+            PosIPadCartPanel(
+                cart: cart,
+                onCharge: startChargeV5,
+                onEditItem: { item in editingCartItem = item },
+                editingItemId: editingCartItem?.id
+            )
         }
         .animation(BrandMotion.snappy, value: coordinator.currentStep)
+        .toolbar { repairTopbarPrincipal(coordinator: coordinator) }
     }
 
-    /// Items column — dimmed centered "Creating ticket…" hint per mockup
-    /// (`pos-ipad-mockups.html` line 1741).
-    private func iPadRepairCatalogPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
-        VStack(spacing: 12) {
-            Text("🧾").font(.system(size: 56))
-            Text("Creating repair ticket…")
-                .font(.brandTitleSmall())
-                .foregroundStyle(.bizarreOnSurface)
-            Text(coordinator.currentStep.accessibilityDescription)
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-        }
-        .opacity(0.45)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityHidden(true)
-    }
-
-    /// Cart column — header + repair-in-progress placeholder + disabled
-    /// per-step charge button (mockup line 1750-1768).
-    private func iPadRepairCartPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
-        VStack(spacing: 0) {
-            if let customer = cart.customer {
-                HStack(spacing: BrandSpacing.sm) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(customer.displayName)
-                            .font(.brandTitleSmall())
-                            .foregroundStyle(.bizarreOnSurface)
-                        Text("Repair ticket — in progress")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreWarning)
-                    }
-                    Spacer(minLength: BrandSpacing.xs)
-                    Text("Draft")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.bizarreWarning.opacity(0.18), in: Capsule())
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                Divider().background(.bizarreOutline)
+    /// Mockup principal title block — `New repair · <customer>` plus
+    /// `Step X of 4 — <step name> · <device>` per `pos-ipad-mockups.html`.
+    @ToolbarContentBuilder
+    private func repairTopbarPrincipal(coordinator: PosRepairFlowCoordinator) -> some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text("New repair · \(cart.customer?.displayName ?? "Walk-in")")
+                    .font(.headline)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                    .lineLimit(1)
+                Text(coordinator.currentStep.accessibilityDescription)
+                    .font(.caption2)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .lineLimit(1)
             }
-            Spacer(minLength: 0)
-            VStack(spacing: 10) {
-                Text("🔧").font(.system(size: 40))
-                Text("Complete the inspector to start adding parts.")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            Spacer(minLength: 0)
-            Button(action: {}) {
-                Text(repairStepDisabledChargeLabel(coordinator.currentStep))
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
-            .disabled(true)
-            .accessibilityIdentifier("pos.ipad.repair.disabledCharge")
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func repairStepDisabledChargeLabel(_ step: RepairStep) -> String {
-        switch step {
-        case .pickDevice:      return "Pick device first"
-        case .describeIssue:   return "Describe issue first"
-        case .diagnosticQuote: return "Set diagnostic & quote first"
-        case .deposit:         return "Pay deposit first"
+            .accessibilityElement(children: .combine)
         }
     }
 
-    /// Inspector pane — hosts the active repair step view + footer with
-    /// Cancel + Continue (per mockup line 1809-1812).
+    /// Catalog-slot content for the iPad repair flow.
+    ///
+    /// Mirrors `PosPathChoiceView`'s aesthetic so the cashier's eye lands in
+    /// the same place across every POS phase: step indicator + centered
+    /// hero header + centered scrollable step body (`maxWidth: 720`) +
+    /// Cancel / Skip / Continue footer. Surface tone is `bizarreSurfaceBase`
+    /// — identical to path-choice. No hard `Divider` lines inside the
+    /// content; whitespace separates sections.
     @ViewBuilder
     private func iPadRepairInspectorPane(coordinator: PosRepairFlowCoordinator,
                                           devicePickerVM: PosDevicePickerViewModel) -> some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(alignment: .top, spacing: BrandSpacing.sm) {
-                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+        let subtitle: String = {
+            if let name = coordinator.customerDisplayName {
+                return "\(coordinator.currentStep.accessibilityDescription) · \(name)"
+            } else {
+                return coordinator.currentStep.accessibilityDescription
+            }
+        }()
+
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                // Step indicator — relocated from above PosRegisterLayout to
+                // inside the catalog slot so it can't push the cart column
+                // y-origin around.
+                RepairStepIndicator(
+                    current: coordinator.currentStep,
+                    onTapPastStep: { step in
+                        coordinator.jump(to: step)
+                    }
+                )
+                .padding(.horizontal, BrandSpacing.xl)
+                .padding(.top, BrandSpacing.sm)
+                .padding(.bottom, BrandSpacing.lg)
+
+                // Hero header — typography parity with PosPathChoiceView.
+                VStack(alignment: .center, spacing: 6) {
                     Text(coordinator.currentStep.navigationTitle)
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                    if let name = coordinator.customerDisplayName {
-                        Text("\(coordinator.currentStep.accessibilityDescription) · \(name)")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                    } else {
-                        Text(coordinator.currentStep.accessibilityDescription)
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .font(.system(size: 26, weight: .bold))
+                        .kerning(-0.4)
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, BrandSpacing.xl)
+
+                // Step body — centered, same maxWidth as path-choice tiles.
+                ScrollView {
+                    Group {
+                        switch coordinator.currentStep {
+                        case .pickDevice:
+                            PosRepairDevicePickerView(coordinator: coordinator,
+                                                       devicePickerVM: devicePickerVM)
+                        case .describeIssue:
+                            PosRepairSymptomView(coordinator: coordinator)
+                        case .diagnosticQuote:
+                            PosRepairQuoteView(coordinator: coordinator)
+                        case .deposit:
+                            PosRepairDepositView(coordinator: coordinator)
+                        }
                     }
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, BrandSpacing.sm)
                 }
-                Spacer(minLength: BrandSpacing.xs)
-                Button {
-                    coordinator.cancel()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-                .accessibilityLabel("Close repair flow")
-            }
-            .padding(.horizontal, BrandSpacing.md)
-            .padding(.top, BrandSpacing.md)
-            .padding(.bottom, BrandSpacing.sm)
 
-            Divider().background(.bizarreOutline)
+                Spacer(minLength: 0)
 
-            // Step body
-            ScrollView {
-                Group {
-                    switch coordinator.currentStep {
-                    case .pickDevice:
-                        PosRepairDevicePickerView(coordinator: coordinator,
-                                                   devicePickerVM: devicePickerVM)
-                    case .describeIssue:
-                        PosRepairSymptomView(coordinator: coordinator)
-                    case .diagnosticQuote:
-                        PosRepairQuoteView(coordinator: coordinator)
-                    case .deposit:
-                        PosRepairDepositView(coordinator: coordinator)
-                    }
-                }
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.sm)
-            }
-
-            Divider().background(.bizarreOutline)
-
-            // Footer — Cancel + Skip (skippable steps only) + Continue
-            HStack(spacing: BrandSpacing.sm) {
-                Button(role: .destructive) {
-                    coordinator.cancel()
-                } label: {
-                    Text("Cancel")
-                        .font(.brandTitleSmall())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrandSpacing.sm)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("pos.ipad.repair.cancel")
-
-                // Skip — only for steps where mockup CI-3 / CI-4 declares skippable
-                // (.describeIssue, .diagnosticQuote). Pick-device + Deposit required.
-                if coordinator.currentStep == .describeIssue ||
-                   coordinator.currentStep == .diagnosticQuote {
-                    Button {
-                        coordinator.skipCurrent()
+                // Footer — Cancel / Skip / Continue. No surrounding Dividers.
+                HStack(spacing: BrandSpacing.sm) {
+                    Button(role: .destructive) {
+                        coordinator.cancel()
                     } label: {
-                        Text("Skip")
+                        Text("Cancel")
                             .font(.brandTitleSmall())
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, BrandSpacing.sm)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.bizarreOnSurfaceMuted)
-                    .accessibilityIdentifier("pos.ipad.repair.skip")
-                }
+                    .accessibilityIdentifier("pos.ipad.repair.cancel")
 
-                Button {
-                    coordinator.advance()
-                } label: {
-                    Text(repairContinueLabel(coordinator.currentStep))
-                        .font(.brandTitleSmall())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrandSpacing.sm)
+                    // Skip — only for skippable steps (`.describeIssue`, `.diagnosticQuote`).
+                    if coordinator.currentStep == .describeIssue ||
+                       coordinator.currentStep == .diagnosticQuote {
+                        Button {
+                            coordinator.skipCurrent()
+                        } label: {
+                            Text("Skip")
+                                .font(.brandTitleSmall())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, BrandSpacing.sm)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.bizarreOnSurfaceMuted)
+                        .accessibilityIdentifier("pos.ipad.repair.skip")
+                    }
+
+                    Button {
+                        coordinator.advance()
+                    } label: {
+                        Text(repairContinueLabel(coordinator.currentStep))
+                            .font(.brandTitleSmall())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, BrandSpacing.sm)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .disabled(coordinator.isLoading)
+                    .accessibilityIdentifier("pos.ipad.repair.continue")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-                .disabled(coordinator.isLoading)
-                .accessibilityIdentifier("pos.ipad.repair.continue")
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 32)
+                .padding(.vertical, BrandSpacing.md)
             }
-            .padding(BrandSpacing.md)
+
+            // Top-trailing close button — overlay so the centered hero
+            // header isn't broken by an asymmetric leading/trailing icon.
+            Button {
+                coordinator.cancel()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .padding(BrandSpacing.md)
+            }
+            .accessibilityLabel("Close repair flow")
+            .accessibilityIdentifier("pos.ipad.repair.close")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bizarreSurface1)
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .animation(BrandMotion.snappy, value: coordinator.currentStep)
     }
 
     private func repairContinueLabel(_ step: RepairStep) -> String {
@@ -1168,7 +1315,7 @@ public struct PosView: View {
                                 .foregroundStyle(.bizarreOnSurface)
                                 .lineLimit(3, reservesSpace: true)
                                 .padding(BrandSpacing.sm)
-                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                                .background(Color.bizarreOnSurface.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
                                 .accessibilityIdentifier("pos.inspector.note")
                         }
@@ -1244,12 +1391,63 @@ public struct PosView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Mockup principal title — `New sale · <customer>` when one is attached,
+    /// else falls back to `POS`.
+    private var activeCartTitle: String {
+        if let name = cart.customer?.displayName, !name.isEmpty {
+            return "New sale · \(name)"
+        }
+        return "POS · new sale"
+    }
+
+    /// Subline — line count + register status. Mockup uses
+    /// `iPhone 14 Pro · 3 lines · autocreating ticket #draft`. We render the
+    /// device summary when present, otherwise just the line count and
+    /// register-open hint.
+    private var activeCartSubtitle: String {
+        let lineCount = cart.items.count
+        let lineLabel = lineCount == 1 ? "1 line" : "\(lineCount) lines"
+        if registerSession != nil {
+            return "Register open · \(lineLabel)"
+        }
+        return lineLabel
+    }
+
     private var posToolbar: some ToolbarContent {
         Group {
+            // Mockup principal title block — `New sale · <customer>` + sub.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(activeCartTitle)
+                        .font(.headline)
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .lineLimit(1)
+                    Text(activeCartSubtitle)
+                        .font(.caption2)
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            // Primary — 📷 Scan (mockup `tb-btn primary`).
             ToolbarItem(placement: .primaryAction) {
-                Button { showingCustomLine = true } label: { Image(systemName: "plus") }
-                    .keyboardShortcut("N", modifiers: .command)
-                    .accessibilityLabel("Add custom line")
+                Button {
+                    showingScanner = true
+                } label: {
+                    Label("Scan", systemImage: "barcode.viewfinder")
+                }
+                .accessibilityLabel("Scan barcode")
+            }
+            // Hold direct button (mockup `⏸ Hold (⌘H)`).
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingHoldSheet = true
+                } label: {
+                    Image(systemName: "pause.circle")
+                }
+                .keyboardShortcut("H", modifiers: .command)
+                .disabled(cart.isEmpty)
+                .accessibilityLabel("Hold cart")
             }
             // §16.3 — overflow "⋯" menu. Keeps the toolbar from crowding.
             // Uses `.topBarTrailing` (not `.secondaryAction`) because on iPad
@@ -1331,6 +1529,15 @@ public struct PosView: View {
                     }
                     // §16.10 — Register management
                     Section("Register") {
+                        // §16.10 mid-shift cash drop
+                        Button {
+                            showingCashDrop = true
+                        } label: {
+                            Label("Cash drop to safe", systemImage: "arrow.down.to.line.circle")
+                        }
+                        .disabled(registerSession == nil)
+                        .accessibilityIdentifier("pos.toolbar.cashDrop")
+
                         Button {
                             showingCloseRegister = true
                         } label: {
@@ -1402,6 +1609,14 @@ public struct PosView: View {
         let line = PosCartMapper.cartItem(from: item)
         cart.add(line)
         BrandHaptics.success()
+        posVM.recordSale(itemIds: [item.id])
+
+        // §16.4 — Device picker for repair service items when a customer is attached.
+        // Only prompt when the item is a service and the customer has a real ID.
+        if item.isService, let customerId = cart.customer?.id, customerId > 0, api != nil {
+            devicePickerCartLineId = line.id
+            showingDevicePicker = true
+        }
     }
 
     private func startCharge() {
@@ -1450,6 +1665,8 @@ public struct PosView: View {
             methodAmountCents: methodAmountCents,
             orderNumber: orderNumber
         )
+        // §16.7 — persist render model so reprints are byte-identical.
+        Task { await PosReceiptStore.shared.save(snapshot) }
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
         let methodLabel: String = overrideLabel ?? {
@@ -1681,6 +1898,9 @@ private struct CartPillCustomerChip: View {
 
 private struct PosDisabledRepository: InventoryRepository {
     func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
+
+    func listAdvanced(filter: InventoryFilter, sort: InventorySortOption,
+                      advanced: InventoryAdvancedFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
 }
 
 // MARK: - Wave-5 null stubs (build-safe fallbacks when DI not fully wired)
@@ -1691,6 +1911,16 @@ private struct PosGateNullCustomerRepository: CustomerRepository {
     func list(keyword: String?) async throws -> [CustomerSummary] { [] }
     func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
         throw URLError(.unsupportedURL)
+    }
+    func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        CustomerCursorPage(customers: [], nextCursor: nil)
+    }
+    func createFromContact(_ req: ContactImportCreateRequest) async throws {}
+    func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
+    }
+    func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
     }
 }
 

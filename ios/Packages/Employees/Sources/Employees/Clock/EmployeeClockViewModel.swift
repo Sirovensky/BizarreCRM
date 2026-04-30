@@ -71,9 +71,18 @@ public final class EmployeeClockViewModel {
     }
 
     /// Clock in with the supplied PIN (may be empty if tenant has no PIN).
+    /// §14.3: Verifies PIN against `/auth/verify-pin` before sending clock-in request.
     public func clockIn(pin: String) async {
         clockState = .loading
         do {
+            // §14.3 PIN gate — skip verification if pin is empty (tenant has no PIN policy).
+            if !pin.isEmpty {
+                let valid = try await api.verifyPin(userId: employeeId, pin: pin)
+                guard valid else {
+                    clockState = .failed("Incorrect PIN. Please try again.")
+                    return
+                }
+            }
             let entry = try await api.clockIn(userId: employeeId, pin: pin)
             clockState = .clockedIn(entry)
             updateElapsed(from: entry)
@@ -86,9 +95,19 @@ public final class EmployeeClockViewModel {
     }
 
     /// Clock out with the supplied PIN.
+    /// §14.3: Verifies PIN against `/auth/verify-pin` before sending clock-out request.
     public func clockOut(pin: String) async {
         clockState = .loading
         do {
+            if !pin.isEmpty {
+                let valid = try await api.verifyPin(userId: employeeId, pin: pin)
+                guard valid else {
+                    clockState = .failed("Incorrect PIN. Please try again.")
+                    // Restore clocked-in state so the UI doesn't drop the clock entry.
+                    await refresh()
+                    return
+                }
+            }
             _ = try await api.clockOut(userId: employeeId, pin: pin)
             clockState = .notClockedIn
             elapsedSeconds = 0

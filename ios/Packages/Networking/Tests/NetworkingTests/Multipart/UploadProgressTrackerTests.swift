@@ -29,7 +29,7 @@ final class UploadProgressTrackerTests: XCTestCase {
 
     // MARK: - Update
 
-    func testUpdateEmitsCorrectFraction() {
+    func testUpdateEmitsCorrectFraction() throws {
         let tracker = UploadProgressTracker()
         var received: [Double] = []
         tracker.progressPublisher
@@ -38,10 +38,11 @@ final class UploadProgressTrackerTests: XCTestCase {
             .store(in: &cancellables)
 
         tracker.update(bytesSent: 500, totalBytes: 1000)
-        XCTAssertEqual(received.last, 0.5, accuracy: 0.001)
+        let last1 = try XCTUnwrap(received.last)
+        XCTAssertEqual(last1, 0.5, accuracy: 0.001)
     }
 
-    func testUpdateClampsToOne() {
+    func testUpdateClampsToOne() throws {
         let tracker = UploadProgressTracker()
         var received: [Double] = []
         tracker.progressPublisher
@@ -51,7 +52,8 @@ final class UploadProgressTrackerTests: XCTestCase {
 
         // More bytes sent than total (edge case)
         tracker.update(bytesSent: 1500, totalBytes: 1000)
-        XCTAssertEqual(received.last, 1.0)
+        let last2 = try XCTUnwrap(received.last)
+        XCTAssertEqual(last2, 1.0)
     }
 
     func testUpdateIgnoresNegativeTotalBytes() {
@@ -134,7 +136,7 @@ final class UploadProgressTrackerTests: XCTestCase {
             totalBytesExpectedToSend: 1000
         )
 
-        XCTAssertEqual(received.last, 0.25, accuracy: 0.001)
+        XCTAssertEqual(received.last ?? -1, 0.25, accuracy: 0.001)
     }
 
     func testDelegateCompletionWithNoErrorCallsComplete() {

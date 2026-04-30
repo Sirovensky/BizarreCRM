@@ -2,25 +2,40 @@
 import SwiftUI
 import DesignSystem
 import Core
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
-/// §Agent-E — Receipt confirmation screen. Shown immediately after a tender
-/// settles. Replaces (sits alongside) `PosPostSaleView` — the older view is
-/// retained for the spinner/phase transition; this view is the settled state.
+/// §Agent-E / §16.24 — Receipt confirmation screen. Shown immediately after a
+/// tender settles. Replaces (sits alongside) `PosPostSaleView` — the older view
+/// is retained for the spinner/phase transition; this view is the settled state.
+///
+/// §16.24 additions:
+/// - Hero circle with 600ms spring scale animation.
+/// - "SEND RECEIPT" vertical rows (SMS disabled POS-SMS-001, email enabled,
+///   thermal print disabled until §17).
+/// - Teal "Parts reserved to Ticket #N" row when `linkedRepairTicketId` is set.
+/// - Auto-dismiss 10s countdown ("Starting new sale in Ns…") that fires
+///   `vm.nextSale()` when it reaches 0. Any tap cancels it.
+/// - "Open ticket #N" secondary CTA when repair ticket is linked.
 ///
 /// Layout (iPhone + iPad share the same scroll body; iPad gets the collapse
 /// modifier on the cart column via the parent):
 ///
 /// ```
 /// ┌─────────────────────────────────────────┐
-/// │  SUCCESS HERO  (check glyph + amount)   │
+/// │  SUCCESS HERO  (check + spring + amount)│
 /// ├─────────────────────────────────────────┤
-/// │  SHARE 4-UP GRID (Text / Email / Print / AirDrop)│
+/// │  TICKET LINK ROW (teal, if linked)      │
+/// ├─────────────────────────────────────────┤
+/// │  SEND RECEIPT rows                      │
+/// ├─────────────────────────────────────────┤
+/// │  QR CODE                                │
 /// ├─────────────────────────────────────────┤
 /// │  LOYALTY CELEBRATION ROW (if pts > 0)   │
 /// ├─────────────────────────────────────────┤
 /// │  RECEIPT PREVIEW (monospace, scrollable)│
 /// ├─────────────────────────────────────────┤
-/// │  POST-SALE ACTION ROW                   │
+/// │  NEXT-ACTION CTA BAR (glass background) │
 /// └─────────────────────────────────────────┘
 /// ```
 ///
@@ -42,17 +57,31 @@ public struct PosReceiptView: View {
     /// the transaction settles.
     public let paidAt: Date
 
+    /// Optional public tracking URL (from server invoice response `trackingToken`).
+    /// When set, the QR code encodes this URL. Falls back to nil (no QR shown).
+    public let trackingURL: URL?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    // MARK: - §16.24 — Hero spring animation state
+    @State private var heroScale: CGFloat = 0.5
+    @State private var heroOpacity: Double = 0.0
+
+    // MARK: - §16.7 PDF export
+    @State private var pdfExportURL: URL?
+    @State private var showingPdfExporter: Bool = false
 
     public init(
         vm: PosReceiptViewModel,
         receiptText: String? = nil,
-        paidAt: Date = Date()
+        paidAt: Date = Date(),
+        trackingURL: URL? = nil
     ) {
         self.vm = vm
         self.receiptText = receiptText
         self.paidAt = paidAt
+        self.trackingURL = trackingURL
     }
 
     public var body: some View {
@@ -62,6 +91,104 @@ public struct PosReceiptView: View {
         }
         .sensoryFeedback(.success, trigger: paidAt)
         .accessibilityIdentifier("pos.receipt.root")
+        // §16.7 — PDF download via fileExporter (only active when a PDF is ready)
+        .modifier(ReceiptPDFExporterModifier(
+            isPresented: $showingPdfExporter,
+            url: $pdfExportURL,
+            invoiceId: vm.payload.invoiceId
+        ))
+        .task(id: paidAt) {
+            // §16.7 — Persist receipt model on first appear (keyed to paidAt so
+            // re-renders don't cause duplicate writes).
+            await persistReceiptModel()
+            // §16.24 — Trigger hero spring animation then start auto-dismiss.
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                heroScale = 1.0
+                heroOpacity = 1.0
+            }
+            vm.startAutoDismissCountdown()
+        }
+        // Cancel auto-dismiss on any tap.
+        .simultaneousGesture(
+            TapGesture().onEnded { vm.cancelAutoDismiss() }
+        )
+    }
+
+    // MARK: - §16.7 — Persist receipt model
+
+    private func persistReceiptModel() async {
+        let model = ReceiptModelStore.StoredReceiptModel(
+            invoiceId: vm.payload.invoiceId,
+            receiptNumber: String(vm.payload.invoiceId),
+            amountPaidCents: vm.payload.amountPaidCents,
+            changeGivenCents: vm.payload.changeGivenCents,
+            methodLabel: vm.payload.methodLabel,
+            customerPhone: vm.payload.customerPhone,
+            customerEmail: vm.payload.customerEmail,
+            receiptText: receiptText
+        )
+        await ReceiptModelStore.shared.save(model)
+    }
+
+    // MARK: - §16.7 — PDF rendering
+
+    private func exportPDF() {
+        guard let text = receiptText else { return }
+        let pdfData = renderReceiptPDF(text: text)
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Receipt-\(vm.payload.invoiceId)-\(Self.isoDateString()).pdf")
+        do {
+            try pdfData.write(to: tempURL)
+            pdfExportURL = tempURL
+            showingPdfExporter = true
+        } catch {
+            AppLog.pos.error("Receipt PDF write failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func renderReceiptPDF(text: String) -> Data {
+        let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { ctx in
+            ctx.beginPage()
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+            ]
+            let lines = text
+                .components(separatedBy: .newlines)
+                .map { NSAttributedString(string: $0, attributes: attrs) }
+            var yOffset: CGFloat = 32
+            for line in lines {
+                line.draw(at: CGPoint(x: 32, y: yOffset))
+                yOffset += 14
+                if yOffset > pageRect.height - 32 {
+                    ctx.beginPage()
+                    yOffset = 32
+                }
+            }
+        }
+    }
+
+    private static func isoDateString() -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.string(from: Date())
+    }
+
+    // MARK: - §16.7 — QR code generation
+
+    /// Generates a QR-code `UIImage` from the tracking URL.
+    /// Returns `nil` when `trackingURL` is absent.
+    private var trackingQRImage: UIImage? {
+        guard let url = trackingURL else { return nil }
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(url.absoluteString.utf8)
+        filter.correctionLevel = "M"
+        guard let ciImage = filter.outputImage else { return nil }
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Scroll body
@@ -88,7 +215,10 @@ public struct PosReceiptView: View {
     private var iPhoneLayout: some View {
         VStack(spacing: BrandSpacing.lg) {
             heroSection
-            shareTileGrid
+            ticketLinkRow
+            sendReceiptSection
+            downloadPDFButton
+            qrCodeSection
             loyaltyCelebration
             if let text = receiptText {
                 inlineReceiptPreview(text: text)
@@ -101,21 +231,264 @@ public struct PosReceiptView: View {
 
     private var iPadLayout: some View {
         HStack(alignment: .top, spacing: BrandSpacing.lg) {
-            // Left: hero + share + loyalty + pencil banner + post-sale actions
+            // Left: hero + ticket link + send receipt + loyalty + pencil banner + post-sale actions
             VStack(spacing: BrandSpacing.lg) {
                 heroSection
-                shareTileGrid
+                ticketLinkRow
+                sendReceiptSection
+                downloadPDFButton
                 loyaltyCelebration
                 pencilSignatureBanner
                 postSaleActionRow
             }
             .frame(maxWidth: .infinity)
 
-            // Right: inline receipt preview (lowest elevation per mockup)
-            if let text = receiptText {
-                inlineReceiptPreview(text: text)
-                    .frame(maxWidth: .infinity)
+            // Right: inline receipt preview + QR code (lowest elevation per mockup)
+            VStack(spacing: BrandSpacing.lg) {
+                if let text = receiptText {
+                    inlineReceiptPreview(text: text)
+                }
+                qrCodeSection
             }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - §16.24 — Ticket link row
+
+    /// Teal row: "Parts reserved to Ticket #NNNN" — shown when a repair ticket
+    /// is linked to this sale. Matches §16.24 spec hero sub-row.
+    @ViewBuilder
+    private var ticketLinkRow: some View {
+        if let ticketId = vm.payload.linkedRepairTicketId {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.bizarreTeal)
+                    .accessibilityHidden(true)
+                Text("Parts reserved to Ticket #\(ticketId)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.bizarreTeal)
+                Spacer()
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                    .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Parts reserved to Ticket \(ticketId)")
+            .accessibilityIdentifier("pos.receipt.ticketLink")
+        }
+    }
+
+    // MARK: - §16.24 — SEND RECEIPT section
+
+    /// Vertical list of send-receipt rows per §16.24 spec.
+    /// SMS: disabled (POS-SMS-001 pending).
+    /// Email: enabled when customer email on file.
+    /// Thermal print: disabled until §17.
+    private var sendReceiptSection: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            // Section label
+            Text("SEND RECEIPT")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .kerning(1.0)
+                .padding(.horizontal, BrandSpacing.sm)
+
+            VStack(spacing: 0) {
+                // SMS row — disabled POS-SMS-001
+                sendReceiptRow(
+                    icon: "message.fill",
+                    label: "SMS",
+                    sublabel: vm.payload.customerPhone ?? "No phone on file",
+                    badge: "POS-SMS-001",
+                    isPrimary: vm.defaultChannel == .sms,
+                    isEnabled: false,
+                    identifier: "pos.receipt.send.sms"
+                ) {
+                    vm.share(channel: .sms)
+                }
+
+                Divider().padding(.leading, BrandSpacing.xl + BrandSpacing.md)
+
+                // Email row — enabled
+                sendReceiptRow(
+                    icon: "envelope.fill",
+                    label: "Email",
+                    sublabel: vm.payload.customerEmail ?? "No email on file",
+                    badge: nil,
+                    isPrimary: vm.defaultChannel == .email,
+                    isEnabled: vm.payload.customerEmail != nil,
+                    identifier: "pos.receipt.send.email"
+                ) {
+                    vm.share(channel: .email)
+                }
+
+                Divider().padding(.leading, BrandSpacing.xl + BrandSpacing.md)
+
+                // Thermal print row — disabled until §17
+                sendReceiptRow(
+                    icon: "printer.fill",
+                    label: "Thermal print",
+                    sublabel: "Printer SDK — §17",
+                    badge: nil,
+                    isPrimary: vm.defaultChannel == .print,
+                    isEnabled: false,
+                    identifier: "pos.receipt.send.thermalPrint"
+                ) {}
+            }
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+            )
+
+            // Send status feedback
+            if vm.sendStatus != .idle {
+                sendStatusBanner
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.top, BrandSpacing.xs)
+            }
+        }
+    }
+
+    private func sendReceiptRow(
+        icon: String,
+        label: String,
+        sublabel: String,
+        badge: String?,
+        isPrimary: Bool,
+        isEnabled: Bool,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: BrandSpacing.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isEnabled ? (isPrimary ? Color.bizarreOrange : Color.bizarreOnSurface) : Color.bizarreOnSurfaceMuted)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(label)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isEnabled ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.bizarreSurface2, in: Capsule())
+                        }
+                    }
+                    Text(sublabel)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                }
+                Spacer()
+                if isPrimary && isEnabled {
+                    Circle()
+                        .fill(Color.bizarreOrange)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+                if vm.sendStatus == .sending && isPrimary {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm + 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: - §16.24 — Auto-dismiss countdown label
+
+    @ViewBuilder
+    private var autoDismissCountdownLabel: some View {
+        if let remaining = vm.autoDismissSecondsRemaining {
+            Text("Starting new sale in \(remaining)s…")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Auto-dismiss in \(remaining) seconds. Tap to cancel.")
+                .accessibilityIdentifier("pos.receipt.autoDismissCountdown")
+        }
+    }
+
+    // MARK: - §16.7 — Download PDF button
+
+    @ViewBuilder
+    private var downloadPDFButton: some View {
+        if receiptText != nil {
+            Button {
+                exportPDF()
+            } label: {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "arrow.down.doc.fill")
+                        .font(.system(size: 16, weight: .medium))
+                    Text("Download PDF")
+                        .font(.brandTitleSmall())
+                }
+                .foregroundStyle(.bizarreOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+            .buttonStyle(.bordered)
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Download receipt as PDF")
+            .accessibilityHint("Saves a PDF file to your chosen location")
+            .accessibilityIdentifier("pos.receipt.downloadPDF")
+        }
+    }
+
+    // MARK: - §16.7 — QR code section
+
+    @ViewBuilder
+    private var qrCodeSection: some View {
+        if let qrImage = trackingQRImage {
+            VStack(spacing: BrandSpacing.sm) {
+                Text("Scan to track order")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .textCase(.uppercase)
+                    .kerning(0.8)
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .padding(BrandSpacing.sm)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("Tracking QR code — customer can scan to track order")
+                    .accessibilityIdentifier("pos.receipt.qrCode")
+                if let url = trackingURL {
+                    Text(url.absoluteString)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("pos.receipt.trackingURL")
+                }
+            }
+            .padding(.vertical, BrandSpacing.md)
+            .padding(.horizontal, BrandSpacing.lg)
+            .frame(maxWidth: .infinity)
+            .background(Color.bizarreSurface1.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
         }
     }
 
@@ -153,45 +526,47 @@ public struct PosReceiptView: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - §16.24 Hero (spring animated)
 
     /// Celebration hero — highest visual elevation per mockup spec.
-    /// Glass container with radial success glow, "Payment complete" label,
-    /// hero amount in Barlow Condensed, and cash change row.
+    /// §16.24: 72pt success circle, white checkmark, 600ms spring scale-in.
+    /// Below: total in Barlow Condensed (22pt bold), invoice # + customer name (12pt muted).
     private var heroSection: some View {
         VStack(spacing: BrandSpacing.md) {
-            // Radial glow behind check mark
+            // §16.24 — 72pt success circle with white checkmark, spring animated
             ZStack {
                 RadialGradient(
-                    colors: [Color.bizarreSuccess.opacity(0.40), .clear],
+                    colors: [Color.bizarreSuccess.opacity(0.35), .clear],
                     center: .center,
-                    startRadius: 20,
-                    endRadius: 90
+                    startRadius: 24,
+                    endRadius: 80
                 )
-                .frame(width: 180, height: 180)
+                .frame(width: 160, height: 160)
                 .accessibilityHidden(true)
 
                 Circle()
-                    .fill(Color.bizarreSuccess.opacity(0.18))
-                    .frame(width: 104, height: 104)
+                    .fill(Color.bizarreSuccess)
+                    .frame(width: 72, height: 72)
                     .accessibilityHidden(true)
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80, weight: .semibold))
-                    .foregroundStyle(.bizarreSuccess)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Color.white)
                     .accessibilityHidden(true)
             }
+            .scaleEffect(heroScale)
+            .opacity(heroOpacity)
 
-            // "Payment complete" label — matches mockup
+            // "Payment complete" label
             Text("Payment complete")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityIdentifier("pos.receipt.completionLabel")
 
-            // Amount — Barlow Condensed hero, Dynamic Type capped
+            // §16.24 — Amount: Barlow Condensed, 22pt weight-800 equivalent, Dynamic Type capped
             Text(CartMath.formatCents(vm.payload.amountPaidCents))
                 .font(
-                    .custom("BarlowCondensed-SemiBold", size: 60, relativeTo: .largeTitle)
+                    .custom("BarlowCondensed-ExtraBold", size: 60, relativeTo: .largeTitle)
                     .leading(.tight)
                 )
                 .dynamicTypeSize(.large ... .accessibility2)
@@ -200,18 +575,20 @@ public struct PosReceiptView: View {
                 .accessibilityLabel("Amount charged: \(CartMath.formatCents(vm.payload.amountPaidCents))")
                 .accessibilityIdentifier("pos.receipt.amount")
 
-            // Method + optional cash detail
-            Text(cashDetailLabel)
-                .font(.brandBodyMedium())
+            // §16.24 — Invoice number + method (12pt muted)
+            Text("Invoice #\(vm.payload.invoiceId) · \(cashDetailLabel)")
+                .font(.system(size: 12))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("pos.receipt.methodLabel")
+
+            // §16.12 — OFFLINE watermark (visible until sale syncs)
+            offlineWatermark
         }
         .padding(.vertical, BrandSpacing.xl)
         .padding(.horizontal, BrandSpacing.lg)
         .frame(maxWidth: .infinity)
         .background(
-            // Hero highest elevation: glass surface with success-tinted glow
             RoundedRectangle(cornerRadius: 24)
                 .fill(Color.bizarreSurface1.opacity(0.85))
                 .overlay(
@@ -230,6 +607,62 @@ public struct PosReceiptView: View {
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("pos.receipt.hero")
+    }
+
+    // MARK: - §16.12 — OFFLINE watermark
+
+    /// Amber "OFFLINE" badge shown in the hero when `capturedOffline == true`
+    /// and the sale has not yet synced to the server (`syncedAt == nil`).
+    ///
+    /// State machine:
+    /// - `capturedOffline == false`: hidden (normal online sale).
+    /// - `capturedOffline == true, syncedAt == nil`: amber "OFFLINE — Sent when reconnected".
+    /// - `capturedOffline == true, syncedAt != nil`: success "Synced" chip with timestamp.
+    ///
+    /// The `PosReceiptViewModel` is responsible for updating `payload.syncedAt`
+    /// when the sync drain loop confirms the server received the sale. Until then
+    /// the amber watermark remains visible on reprints.
+    @ViewBuilder
+    private var offlineWatermark: some View {
+        if vm.payload.capturedOffline {
+            if let syncedAt = vm.payload.syncedAt {
+                // Post-sync: success chip
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.bizarreSuccess)
+                    Text("Synced \(syncedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.bizarreSuccess)
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreSuccess.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreSuccess.opacity(0.30), lineWidth: 1))
+                .accessibilityLabel("Sale synced \(syncedAt.formatted())")
+                .accessibilityIdentifier("pos.receipt.syncedChip")
+            } else {
+                // Pre-sync: amber "OFFLINE" watermark
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.bizarreWarning)
+                    Text("OFFLINE")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(Color.bizarreWarning)
+                        .kerning(1.2)
+                    Text("· Sent when reconnected")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.bizarreWarning.opacity(0.8))
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 1))
+                .accessibilityLabel("Sale captured offline. Will be sent to the server when reconnected.")
+                .accessibilityIdentifier("pos.receipt.offlineWatermark")
+            }
+        }
     }
 
     /// Label combining method + received + change for cash transactions.
@@ -427,17 +860,23 @@ public struct PosReceiptView: View {
         return nil
     }
 
-    // MARK: - Post-sale action row
+    // MARK: - §16.24 Post-sale action row (glass CTA bar)
 
     private var postSaleActionRow: some View {
         VStack(spacing: BrandSpacing.sm) {
+            // §16.24 — Auto-dismiss countdown (muted, above buttons)
+            autoDismissCountdownLabel
+
             // Secondary actions
             HStack(spacing: BrandSpacing.sm) {
-                secondaryActionButton(
-                    label: "View ticket",
-                    systemImage: "ticket",
-                    identifier: "pos.receipt.viewTicket"
-                ) { vm.viewTicket() }
+                // §16.24 — "Open ticket #N" when repair ticket linked
+                if let ticketId = vm.payload.linkedRepairTicketId {
+                    secondaryActionButton(
+                        label: "Open ticket #\(ticketId)",
+                        systemImage: "wrench.and.screwdriver",
+                        identifier: "pos.receipt.openTicket"
+                    ) { vm.viewTicket() }
+                }
 
                 secondaryActionButton(
                     label: "Customer",
@@ -452,14 +891,14 @@ public struct PosReceiptView: View {
                 ) { vm.startRefund() }
             }
 
-            // Primary CTA — next sale
+            // §16.24 — Primary CTA: "New sale ↗" (cream/orange, glass background)
             Button {
                 vm.nextSale()
                 dismiss()
             } label: {
                 HStack(spacing: BrandSpacing.sm) {
                     Image(systemName: "arrow.forward.circle.fill")
-                    Text("New sale")
+                    Text("New sale ↗")
                         .font(.brandTitleMedium())
                 }
                 .frame(maxWidth: .infinity)
@@ -474,6 +913,10 @@ public struct PosReceiptView: View {
             .accessibilityHint("Clears the cart and returns to the POS")
             .accessibilityIdentifier("pos.receipt.newSale")
         }
+        .padding(BrandSpacing.md)
+        // §16.24 — Glass background on the CTA bar (chrome role per Liquid Glass rules)
+        .background(Color.bizarreSurfaceBase.opacity(0.85))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
     }
 
     private func secondaryActionButton(
@@ -539,5 +982,61 @@ public struct PosReceiptView: View {
         paidAt: Date()
     )
     .preferredColorScheme(.light)
+}
+#endif
+
+// MARK: - §16.7 — PDF File Document (FileExporter support)
+
+#if canImport(UIKit)
+import UniformTypeIdentifiers
+
+/// Wraps a locally-generated PDF file URL for use with `.fileExporter`.
+public struct ReceiptPDFDocument: FileDocument {
+    public static var readableContentTypes: [UTType] { [.pdf] }
+
+    let url: URL
+
+    public init(url: URL) { self.url = url }
+
+    public init(configuration: ReadConfiguration) throws {
+        throw CocoaError(.fileReadUnsupportedScheme)
+    }
+
+    public func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let data = try Data(contentsOf: url)
+        return FileWrapper(regularFileWithContents: data)
+    }
+}
+
+/// ViewModifier that conditionally attaches a `.fileExporter` when a PDF URL
+/// is ready. SwiftUI's `.fileExporter` requires a non-Optional document, so
+/// we gate on `url != nil` here.
+struct ReceiptPDFExporterModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    @Binding var url: URL?
+    let invoiceId: Int64
+
+    private var filename: String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return "Receipt-\(invoiceId)-\(f.string(from: Date())).pdf"
+    }
+
+    func body(content: Content) -> some View {
+        if let readyURL = url {
+            content.fileExporter(
+                isPresented: $isPresented,
+                document: ReceiptPDFDocument(url: readyURL),
+                contentType: .pdf,
+                defaultFilename: filename
+            ) { result in
+                if case .failure(let err) = result {
+                    AppLog.pos.error("Receipt PDF export failed: \(err.localizedDescription)")
+                }
+            }
+        } else {
+            content
+        }
+    }
 }
 #endif

@@ -129,6 +129,64 @@ public enum HapticPatternLibrary: Sendable {
         singleTap(name: "notification", intensity: 0.6, sharpness: 0.6)
     }
 
+    // MARK: - §66.2 Named catalog patterns
+
+    /// 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart) + chime association.
+    /// Use for sale-complete confirmation (§66 table).
+    public static var saleSuccess: HapticPatternDescriptor {
+        crescendo(name: "saleSuccess", intensities: [0.1, 0.2, 0.4], sharpness: 0.65, interval: 0.04)
+    }
+
+    /// Two sharp heavy taps (0.9, 0.9, 80ms apart) — card declined.
+    public static var cardDecline: HapticPatternDescriptor {
+        twoTap(name: "cardDecline", intensity: 0.9, sharpness: 0.95, interval: 0.08)
+    }
+
+    /// Single medium thump — cash drawer open.
+    public static var drawerOpen: HapticPatternDescriptor {
+        singleTap(name: "drawerOpen", intensity: 0.8, sharpness: 0.3)
+    }
+
+    /// Single gentle click — barcode scan matched.
+    public static var scanMatch: HapticPatternDescriptor {
+        singleTap(name: "scanMatch", intensity: 0.4, sharpness: 0.85)
+    }
+
+    /// Double sharp taps — barcode scan unmatched (warning).
+    public static var scanUnmatched: HapticPatternDescriptor {
+        twoTap(name: "scanUnmatched", intensity: 0.75, sharpness: 0.9, interval: 0.07)
+    }
+
+    /// Ramp 0.2 → 0.6 over 150ms — status advancing forward.
+    public static var statusAdvance: HapticPatternDescriptor {
+        ramp(name: "statusAdvance", startIntensity: 0.2, endIntensity: 0.6, duration: 0.15)
+    }
+
+    /// Reverse ramp 0.6 → 0.2 over 150ms — undo action.
+    public static var undo: HapticPatternDescriptor {
+        ramp(name: "undo", startIntensity: 0.6, endIntensity: 0.2, duration: 0.15)
+    }
+
+    /// Triple subtle, low intensity — signature committed.
+    public static var signatureComplete: HapticPatternDescriptor {
+        crescendo(name: "signatureComplete", intensities: [0.2, 0.2, 0.2], sharpness: 0.4, interval: 0.06)
+    }
+
+    // MARK: - §16.25 / §4 Repair / Pickup patterns
+
+    /// Four-tap ascending chime pattern (0.2 → 0.35 → 0.55 → 0.8) —
+    /// played when a ticket transitions to "Ready for Pickup" so the
+    /// cashier / tech gets a distinct tactile confirmation distinct from
+    /// the generic sale-success crescendo.
+    public static var pickupConfirm: HapticPatternDescriptor {
+        crescendo(
+            name: "pickupConfirm",
+            intensities: [0.2, 0.35, 0.55, 0.8],
+            sharpness: 0.55,
+            interval: 0.07
+        )
+    }
+
     // MARK: - Private builders
 
     private static func singleTap(

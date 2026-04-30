@@ -78,6 +78,7 @@ public struct CampaignCreateView: View {
             messageSection
             if vm.needsSubject { subjectSection }
             scheduleSection
+            complianceSection
             abSection
             if vm.recipientsEstimate > 0 { costSection }
             if let err = vm.errorMessage {
@@ -233,35 +234,14 @@ public struct CampaignCreateView: View {
 
     private var scheduleSection: some View {
         Section("Schedule") {
-            Picker("Send", selection: scheduleBinding) {
-                Text("Send now").tag(0)
-                Text("Pick date & time").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Schedule option")
-
-            if case .scheduled(let currentDate) = vm.schedule {
-                DatePicker(
-                    "Send at",
-                    selection: Binding(
-                        get: { currentDate },
-                        set: { vm.schedule = .scheduled($0) }
-                    ),
-                    in: Date()...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .accessibilityLabel("Send date and time")
-            }
+            CampaignScheduleSectionView(
+                kind: $vm.scheduleKind,
+                sendAt: $vm.scheduledSendAt,
+                recurrence: $vm.recurrenceConfig,
+                trigger: $vm.triggerConfig
+            )
         }
         .listRowBackground(Color.bizarreSurface1)
-    }
-
-    private var scheduleBinding: Binding<Int> {
-        Binding {
-            if case .now = vm.schedule { return 0 } else { return 1 }
-        } set: { v in
-            vm.schedule = v == 0 ? .now : .scheduled(Date().addingTimeInterval(3600))
-        }
     }
 
     private var abSection: some View {
@@ -286,6 +266,16 @@ public struct CampaignCreateView: View {
             Text("A/B Variants")
         }
         .listRowBackground(Color.bizarreSurface1)
+    }
+
+    private var complianceSection: some View {
+        Section {
+            CampaignComplianceView(config: $vm.compliance)
+                .listRowInsets(EdgeInsets())
+        } header: {
+            Text("Compliance")
+        }
+        .listRowBackground(Color.clear)
     }
 
     private var costSection: some View {

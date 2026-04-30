@@ -101,6 +101,26 @@ public final class AppointmentCalendarGridViewModel {
         cal.isDateInToday(day)
     }
 
+    /// Returns appointments that span the full day (no specific start time, or
+    /// the start time resolves to exactly midnight local time) for a given day.
+    public func allDayAppointments(on day: Date) -> [Appointment] {
+        let start = cal.startOfDay(for: day)
+        guard let end = cal.date(byAdding: .day, value: 1, to: start) else { return [] }
+        return appointments.filter { appt in
+            // No start time → treat as all-day.
+            guard let raw = appt.startTime else { return true }
+            guard let date = Self.parseDate(raw) else { return false }
+            guard date >= start && date < end else { return false }
+            let comps = cal.dateComponents([.hour, .minute, .second], from: date)
+            return (comps.hour ?? -1) == 0 && (comps.minute ?? -1) == 0 && (comps.second ?? -1) == 0
+        }
+    }
+
+    /// `true` when the week shown contains today.
+    public var isShowingCurrentWeek: Bool {
+        cal.isDate(weekStart, equalTo: Self.startOfWeek(for: Date()), toGranularity: .weekOfYear)
+    }
+
     // MARK: - Helpers
 
     static func startOfWeek(for date: Date) -> Date {
@@ -223,21 +243,84 @@ public struct AppointmentCalendarGridView: View {
 
     private var gridBody: some View {
         ScrollView {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 7),
-                spacing: 1
-            ) {
-                // Column headers
-                ForEach(vm.weekDays, id: \.self) { day in
-                    columnHeader(for: day)
+            VStack(spacing: 0) {
+                // All-day section — pinned above the scrollable timed grid.
+                allDaySection
+                    .background(Color.bizarreSurface1)
+                Divider()
+                // Timed appointment grid.
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 7),
+                    spacing: 1
+                ) {
+                    // Column headers
+                    ForEach(vm.weekDays, id: \.self) { day in
+                        columnHeader(for: day)
+                    }
+                    // Appointment chips — one cell per day
+                    ForEach(vm.weekDays, id: \.self) { day in
+                        dayColumn(for: day)
+                    }
                 }
-                // Appointment chips — one cell per day
-                ForEach(vm.weekDays, id: \.self) { day in
-                    dayColumn(for: day)
+                .background(Color.bizarreSurface2)
+            }
+        }
+    }
+
+    // MARK: - All-day section
+
+    /// Horizontal strip above the timed grid listing all-day appointments for
+    /// each day of the week. Hidden when no day has an all-day appointment.
+    @ViewBuilder
+    private var allDaySection: some View {
+        let allDayCounts = vm.weekDays.map { vm.allDayAppointments(on: $0) }
+        let hasAnyAllDay = allDayCounts.contains { !$0.isEmpty }
+        if hasAnyAllDay {
+            HStack(spacing: 1) {
+                // Left gutter label.
+                Text("All-day")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(width: 48, alignment: .trailing)
+                    .padding(.trailing, BrandSpacing.xs)
+                    .accessibilityHidden(true)
+
+                // One cell per weekday.
+                ForEach(Array(zip(vm.weekDays, allDayCounts)), id: \.0) { day, appts in
+                    VStack(spacing: 2) {
+                        ForEach(appts) { appt in
+                            Text(appt.title ?? "Appointment")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.bizarreOrange, in: RoundedRectangle(cornerRadius: 3))
+                                .accessibilityLabel(allDayChipA11y(for: appt, on: day))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .top)
+                    .padding(.vertical, BrandSpacing.xxs)
                 }
             }
-            .background(Color.bizarreSurface2)
+            .padding(.horizontal, BrandSpacing.xs)
+            .padding(.vertical, BrandSpacing.xs)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("All-day appointments")
         }
+    }
+
+    private func allDayChipA11y(for appt: Appointment, on day: Date) -> String {
+        let df = DateFormatter()
+        df.dateStyle = .long
+        df.timeStyle = .none
+        var parts = [df.string(from: day)]
+        parts.append("All day")
+        parts.append(appt.title ?? "Appointment")
+        if let customer = appt.customerName { parts.append(customer) }
+        if let status = appt.status { parts.append("Status \(status)") }
+        return parts.joined(separator: ", ")
     }
 
     private func columnHeader(for day: Date) -> some View {
@@ -336,13 +419,37 @@ public struct AppointmentCalendarGridView: View {
         }
     }
 
+    /// Full VoiceOver utterance for a timed appointment chip.
+    ///
+    /// Format: "<weekday, date> at <time>. <title>. <customer>. with <assignee>.
+    ///          Duration <N> minutes. Status <status>."
+    ///
+    /// Every non-nil field is included so a screen-reader user gets the same
+    /// information as a sighted user who can read the chip and the column header.
     private func chipA11y(for appt: Appointment) -> String {
         var parts: [String] = []
+
         if let raw = appt.startTime, let date = AppointmentCalendarGridViewModel.parseDate(raw) {
-            parts.append(Self.timeFormatter.string(from: date))
+            // Full date so the user knows which column the chip belongs to.
+            let dayDF = DateFormatter()
+            dayDF.dateFormat = "EEEE, MMMM d"
+            parts.append("\(dayDF.string(from: date)) at \(Self.timeFormatter.string(from: date))")
+
+            // Duration — derive from end time if available.
+            if let endRaw = appt.endTime,
+               let endDate = AppointmentCalendarGridViewModel.parseDate(endRaw) {
+                let mins = Int(endDate.timeIntervalSince(date) / 60)
+                if mins > 0 {
+                    parts.append("Duration \(mins) \(mins == 1 ? "minute" : "minutes")")
+                }
+            }
         }
+
         parts.append(appt.title ?? "Appointment")
-        if let status = appt.status { parts.append("Status \(status)") }
-        return parts.joined(separator: ", ")
+        if let customer = appt.customerName { parts.append(customer) }
+        if let assignee = appt.assignedName  { parts.append("with \(assignee)") }
+        if let status   = appt.status        { parts.append("Status \(status)") }
+
+        return parts.joined(separator: ". ")
     }
 }

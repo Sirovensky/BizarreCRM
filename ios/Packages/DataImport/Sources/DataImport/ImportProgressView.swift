@@ -22,12 +22,20 @@ public struct ImportProgressView: View {
 
                 statsGrid
 
+                // §48.3 Pause / resume / cancel
+                if job?.status.isRunning == true || job?.status.isPaused == true {
+                    pauseResumeControls
+                }
+
                 if let j = job, j.errorCount > 0 {
                     viewErrorsButton
+                    // §48.2 Error report download
+                    errorExportControls
                 }
 
                 if job?.status == .failed {
                     failedBanner
+                    errorExportControls
                 }
 
                 if job?.canRollback == true {
@@ -171,5 +179,109 @@ public struct ImportProgressView: View {
         }
         .padding(.horizontal, DesignTokens.Spacing.lg)
         .accessibilityLabel("Rollback is available. You can undo this import within 24 hours.")
+    }
+
+    // MARK: - §48.3 Pause / resume / cancel controls
+
+    @ViewBuilder
+    private var pauseResumeControls: some View {
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            if job?.status.isRunning == true {
+                HStack(spacing: DesignTokens.Spacing.md) {
+                    Button {
+                        Task { await vm.pauseImport() }
+                    } label: {
+                        HStack(spacing: DesignTokens.Spacing.xs) {
+                            if vm.isPausing {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "pause.circle")
+                            }
+                            Text(vm.isPausing ? "Pausing…" : "Pause")
+                        }
+                    }
+                    .buttonStyle(.brandGlass)
+                    .disabled(vm.isPausing)
+                    .accessibilityIdentifier("import.progress.pause")
+                    .accessibilityLabel("Pause import")
+
+                    Button(role: .destructive) {
+                        Task { await vm.cancelImport() }
+                    } label: {
+                        HStack(spacing: DesignTokens.Spacing.xs) {
+                            if vm.isCancelling {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "xmark.circle")
+                            }
+                            Text(vm.isCancelling ? "Cancelling…" : "Cancel")
+                        }
+                    }
+                    .buttonStyle(.brandGlass)
+                    .disabled(vm.isCancelling)
+                    .accessibilityIdentifier("import.progress.cancel")
+                    .accessibilityLabel("Cancel import")
+                }
+            } else if job?.status.isPaused == true {
+                Button {
+                    Task { await vm.resumeImport() }
+                } label: {
+                    HStack(spacing: DesignTokens.Spacing.xs) {
+                        if vm.isResuming {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "play.circle")
+                        }
+                        Text(vm.isResuming ? "Resuming…" : "Resume")
+                    }
+                }
+                .buttonStyle(.brandGlassProminent)
+                .tint(.bizarreOrange)
+                .disabled(vm.isResuming)
+                .accessibilityIdentifier("import.progress.resume")
+                .accessibilityLabel("Resume import")
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.lg)
+    }
+
+    // MARK: - §48.2 Error report download
+
+    @ViewBuilder
+    private var errorExportControls: some View {
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            if let url = vm.errorExportURL {
+                ShareLink(
+                    item: url,
+                    subject: Text("Import Error Report"),
+                    message: Text("Row errors from your import")
+                ) {
+                    Label("Share Error Report", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                        .font(.brandBodyMedium().weight(.semibold))
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityIdentifier("import.errors.shareReport")
+            }
+
+            Button {
+                Task { await vm.exportErrors() }
+            } label: {
+                HStack {
+                    if vm.isExportingErrors {
+                        ProgressView().controlSize(.small)
+                        Text("Preparing…").font(.brandBodyMedium())
+                    } else {
+                        Label("Download Error Report", systemImage: "arrow.down.doc")
+                            .font(.brandBodyMedium().weight(.semibold))
+                    }
+                }
+            }
+            .buttonStyle(.brandGlass)
+            .disabled(vm.isExportingErrors || vm.jobId == nil)
+            .accessibilityIdentifier("import.errors.download")
+            .accessibilityLabel(vm.isExportingErrors ? "Preparing error report" : "Download error report as CSV")
+        }
+        .padding(.horizontal, DesignTokens.Spacing.lg)
     }
 }

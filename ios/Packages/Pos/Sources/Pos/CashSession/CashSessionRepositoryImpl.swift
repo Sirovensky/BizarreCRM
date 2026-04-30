@@ -4,8 +4,9 @@ import Persistence
 
 /// §39 — Production implementation of `CashSessionRepository`.
 ///
-/// Network calls hit confirmed POS routes. Local session lifecycle
-/// delegates to `CashRegisterStore` (actor-isolated, GRDB-backed).
+/// Network calls hit confirmed POS routes via typed `APIClient+CashRegister`
+/// wrappers (§20 containment — no raw `.get`/`.post` path strings here).
+/// Local session lifecycle delegates to `CashRegisterStore` (actor-isolated, GRDB-backed).
 ///
 /// Thread safety: `Sendable` actor-isolated storage is handled entirely
 /// by the underlying `APIClient` and `CashRegisterStore` actors.
@@ -20,9 +21,26 @@ public struct CashSessionRepositoryImpl: CashSessionRepository {
     }
 
     // MARK: - Network layer (confirmed server routes)
+    // Calls go through typed APIClient+CashRegister wrappers — no bare path strings.
 
     public func fetchRegisterState() async throws -> RegisterStateDTO {
-        try await api.get("/api/v1/pos/register", as: RegisterStateDTO.self)
+        let response = try await api.getPosRegisterState()
+        return RegisterStateDTO(
+            cashIn: response.cashIn,
+            cashOut: response.cashOut,
+            cashSales: response.cashSales,
+            net: response.net,
+            entries: response.entries.map {
+                RegisterEntryDTO(
+                    id: $0.id,
+                    type: $0.type,
+                    amount: $0.amount,
+                    reason: $0.reason,
+                    userName: $0.userName,
+                    createdAt: $0.createdAt
+                )
+            }
+        )
     }
 
     public func postCashIn(amountCents: Int, reason: String?) async throws -> RegisterEntryDTO {
@@ -32,9 +50,15 @@ public struct CashSessionRepositoryImpl: CashSessionRepository {
         guard amountCents <= 5_000_000 else {
             throw CashSessionValidationError.exceedsLimit
         }
-        let req = CashMoveRequest(amount: amountCents, reason: reason)
-        let wrapper = try await api.post("/api/v1/pos/cash-in", body: req, as: CashMoveResponseWrapper.self)
-        return wrapper.entry
+        let response = try await api.postPosCashIn(amountCents: amountCents, reason: reason)
+        return RegisterEntryDTO(
+            id: response.entry.id,
+            type: response.entry.type,
+            amount: response.entry.amount,
+            reason: response.entry.reason,
+            userName: response.entry.userName,
+            createdAt: response.entry.createdAt
+        )
     }
 
     public func postCashOut(amountCents: Int, reason: String?) async throws -> RegisterEntryDTO {
@@ -44,9 +68,15 @@ public struct CashSessionRepositoryImpl: CashSessionRepository {
         guard amountCents <= 5_000_000 else {
             throw CashSessionValidationError.exceedsLimit
         }
-        let req = CashMoveRequest(amount: amountCents, reason: reason)
-        let wrapper = try await api.post("/api/v1/pos/cash-out", body: req, as: CashMoveResponseWrapper.self)
-        return wrapper.entry
+        let response = try await api.postPosCashOut(amountCents: amountCents, reason: reason)
+        return RegisterEntryDTO(
+            id: response.entry.id,
+            type: response.entry.type,
+            amount: response.entry.amount,
+            reason: response.entry.reason,
+            userName: response.entry.userName,
+            createdAt: response.entry.createdAt
+        )
     }
 
     // MARK: - Local session lifecycle

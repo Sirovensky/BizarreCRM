@@ -22,6 +22,23 @@ public struct FirstRunServerPickerView: View {
     private let recentURLs: [String]
     private let onConfirm: (String) -> Void
 
+    // MARK: Paste normalisation
+
+    /// Normalise a pasted or typed URL string:
+    /// - Strips leading/trailing whitespace and newlines
+    /// - Prepends `https://` when no scheme is present
+    /// - Lowercases the scheme + host portion
+    private static func normalise(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip any accidentally-pasted trailing path that ends with a newline
+        if let newline = s.firstIndex(of: "\n") { s = String(s[s.startIndex..<newline]) }
+        // Auto-prepend scheme if missing
+        if !s.lowercased().hasPrefix("http://") && !s.lowercased().hasPrefix("https://") {
+            s = "https://" + s
+        }
+        return s
+    }
+
     // MARK: Constants
 
     private static let canonicalURL = "https://bizarrecrm.com"
@@ -36,12 +53,24 @@ public struct FirstRunServerPickerView: View {
     // MARK: Subviews
 
     /// URL text field with platform-appropriate keyboard type.
+    ///
+    /// Paste handling: on change, if the new value looks like it came from a paste
+    /// (i.e. it's longer than one character added at a time or contains whitespace),
+    /// `normalise(_:)` is applied so the field always holds a clean URL.
     @ViewBuilder
     private var serverURLField: some View {
         let field = TextField("https://your-server.example.com", text: $customURL)
             .autocorrectionDisabled()
             .accessibilityLabel("Server URL")
-            .accessibilityHint("Enter the full URL of your Bizarre CRM server")
+            .accessibilityHint("Enter the full URL of your Bizarre CRM server, for example https://my-shop.bizarrecrm.com")
+            // §36 paste handling — normalise the value whenever it changes so that
+            // pasting "  shop.example.com\n" or "https://..." with surrounding spaces
+            // all produce a clean, valid URL ready for submission.
+            .onChange(of: customURL) { _, new in
+                let cleaned = Self.normalise(new)
+                if cleaned != new { customURL = cleaned }
+                showURLError = false
+            }
         #if canImport(UIKit)
         field
             .keyboardType(.URL)

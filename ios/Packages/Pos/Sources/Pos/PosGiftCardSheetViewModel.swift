@@ -23,6 +23,11 @@ final class PosGiftCardSheetViewModel {
     private(set) var isLookingUp: Bool = false
     private(set) var isRedeeming: Bool = false
 
+    /// §16.6 — "Check balance only" result: populated by `checkBalanceOnly(card:)`,
+    /// cleared by `dismissBalanceCheck()` or the next `lookup()`. Lets cashier
+    /// show the customer remaining balance without committing the card to a tender.
+    private(set) var balanceCheckResult: GiftCard? = nil
+
     private(set) var storeCredit: StoreCreditBalance?
     private(set) var isLoadingStoreCredit: Bool = false
 
@@ -71,6 +76,7 @@ final class PosGiftCardSheetViewModel {
         let trimmed = codeInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         errorMessage = nil
+        balanceCheckResult = nil  // clear stale balance-check on re-lookup
         isLookingUp = true
         defer { isLookingUp = false }
         do {
@@ -83,6 +89,19 @@ final class PosGiftCardSheetViewModel {
         } catch {
             errorMessage = "Gift card lookup failed: \(error.localizedDescription)"
         }
+    }
+
+    /// §16.6 — Show the card's current balance without applying it to the cart.
+    /// Populates `balanceCheckResult` which the view displays as an info pill.
+    /// The card model from lookup is already the live balance; this just surfaces
+    /// it explicitly so the cashier can read it aloud to the customer.
+    func checkBalanceOnly(card: GiftCard) {
+        balanceCheckResult = card
+    }
+
+    /// Dismiss the balance-check info pill.
+    func dismissBalanceCheck() {
+        balanceCheckResult = nil
     }
 
     /// Redeem against the loaded card. On success append an

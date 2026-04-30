@@ -11,6 +11,7 @@ import Networking
 ///
 /// **Audit:** every reprint logs `POST /sales/:id/reprint-event` so the
 /// shrinkage team can flag patterns of unusual reprint volume.
+/// API calls go through `ReprintRepository` (§20 containment).
 @MainActor
 @Observable
 public final class ReprintViewModel {
@@ -59,19 +60,33 @@ public final class ReprintViewModel {
 
     // MARK: - Dependencies
 
-    private let api: APIClient
+    private let repository: any ReprintRepository
     private let onDispatchPrintJob: (PosReceiptRenderer.Payload) -> Void
 
     // MARK: - Init
 
+    /// Designated init — accepts any `ReprintRepository` (live or test double).
     public init(
+        sale: SaleRecord,
+        repository: any ReprintRepository,
+        onDispatchPrintJob: @escaping (PosReceiptRenderer.Payload) -> Void
+    ) {
+        self.sale               = sale
+        self.repository         = repository
+        self.onDispatchPrintJob = onDispatchPrintJob
+    }
+
+    /// Convenience init accepting a live `APIClient`.
+    public convenience init(
         sale: SaleRecord,
         api: APIClient,
         onDispatchPrintJob: @escaping (PosReceiptRenderer.Payload) -> Void
     ) {
-        self.sale               = sale
-        self.api                = api
-        self.onDispatchPrintJob = onDispatchPrintJob
+        self.init(
+            sale: sale,
+            repository: ReprintRepositoryImpl(api: api),
+            onDispatchPrintJob: onDispatchPrintJob
+        )
     }
 
     // MARK: - State transitions
@@ -153,20 +168,9 @@ public final class ReprintViewModel {
         )
     }
 
-    /// Server-side audit log. Non-fatal — if it fails we log and swallow
-    /// because the customer already has the printed receipt.
+    /// Server-side audit log via `ReprintRepository`. Non-fatal — if it fails we
+    /// log and swallow because the customer already has the printed receipt.
     private func logReprintEvent(saleId: Int64, reason: ReprintReason) async throws {
-        struct ReprintEventBody: Encodable, Sendable {
-            let reason: String
-        }
-        _ = try await api.post(
-            "/sales/\(saleId)/reprint-event",
-            body: ReprintEventBody(reason: reason.rawValue),
-            as: EmptyReprintResponse.self
-        )
+        try await repository.logReprintEvent(saleId: saleId, reason: reason.rawValue)
     }
 }
-
-// MARK: - Private empty response
-
-private struct EmptyReprintResponse: Decodable, Sendable {}

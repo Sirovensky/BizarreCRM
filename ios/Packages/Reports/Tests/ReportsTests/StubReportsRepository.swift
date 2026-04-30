@@ -45,6 +45,16 @@ actor StubReportsRepository: ReportsRepository {
                         recipientEmails: ["a@b.com"], isActive: true, nextRunAt: nil)
     )
     var emailReportError: Error? = nil
+    var technicianResult: Result<[TechnicianPerfRow], Error> = .success([])
+    var taxReportResult: Result<TaxReportResponse, Error> = .success(TaxReportResponse())
+    // §15.2
+    var topCustomersResult: Result<[TopCustomerRow], Error> = .success([])
+    // §15.3
+    var ticketsTrendResult: Result<[TicketDayPoint], Error> = .success([])
+    var busyHoursResult: Result<[BusyHourCell], Error> = .success([])
+    var slaSummaryResult: Result<SLABreachSummary, Error> = .failure(
+        ReportsRepositoryError.endpointNotImplemented("/reports/sla")
+    )
 
     // MARK: - Call tracking
 
@@ -53,6 +63,8 @@ actor StubReportsRepository: ReportsRepository {
     private(set) var revenueLastFrom: String?
     private(set) var scheduledDeletedIds: [Int64] = []
     private(set) var emailCallCount = 0
+    private(set) var inventoryReportCallCount = 0
+    private(set) var ticketsByStatusCallCount = 0
 
     // MARK: - Protocol conformance
 
@@ -71,7 +83,8 @@ actor StubReportsRepository: ReportsRepository {
     }
 
     func getTicketsByStatus(from: String, to: String) async throws -> [TicketStatusPoint] {
-        try ticketsResult.get()
+        ticketsByStatusCallCount += 1
+        return try ticketsResult.get()
     }
 
     func getTicketsReport(from: String, to: String) async throws -> TicketsReportResponse {
@@ -87,7 +100,8 @@ actor StubReportsRepository: ReportsRepository {
     }
 
     func getInventoryReport(from: String, to: String) async throws -> InventoryReport {
-        try inventoryReportResult.get()
+        inventoryReportCallCount += 1
+        return try inventoryReportResult.get()
     }
 
     func getInventoryTurnover(from: String, to: String) async throws -> [InventoryTurnoverRow] {
@@ -128,6 +142,67 @@ actor StubReportsRepository: ReportsRepository {
     func emailReport(recipient: String, pdfBase64: String) async throws {
         emailCallCount += 1
         if let err = emailReportError { throw err }
+    }
+
+    func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow] {
+        try technicianResult.get()
+    }
+
+    func getTaxReport(from: String, to: String) async throws -> TaxReportResponse {
+        try taxReportResult.get()
+    }
+
+    // §15.2
+    func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow] {
+        try topCustomersResult.get()
+    }
+
+    // §15.3
+    func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint] {
+        try ticketsTrendResult.get()
+    }
+
+    func getBusyHours(from: String, to: String) async throws -> [BusyHourCell] {
+        try busyHoursResult.get()
+    }
+
+    func getSLASummary(from: String, to: String) async throws -> SLABreachSummary {
+        try slaSummaryResult.get()
+    }
+
+    // §15.7 Insights stubs — return empty/nil gracefully for existing tests
+    func getWarrantyClaims(from: String, to: String) async throws -> [WarrantyClaimsPoint] { [] }
+    func getDeviceModelsRepaired(from: String, to: String) async throws -> [DeviceModelRepaired] { [] }
+    func getPartsUsage(from: String, to: String) async throws -> [PartUsageRow] { [] }
+    func getTechHours(from: String, to: String) async throws -> [TechHoursRow] { [] }
+    func getStalledTickets(from: String, to: String) async throws -> StalledTicketsSummary {
+        StalledTicketsSummary(stalledCount: 0, overdueCount: 0, avgDaysStalled: 0)
+    }
+    func getCustomerAcquisitionChurn(from: String, to: String) async throws -> CustomerAcquisitionChurn {
+        CustomerAcquisitionChurn(newCustomers: 0, churnedCustomers: 0, returningCustomers: 0)
+    }
+
+    // §15.9 BI built-in stubs
+    func getRevenueByCategory(from: String, to: String) async throws -> [RevenueByCategoryRow] { [] }
+    func getRepeatCustomerStats(from: String, to: String) async throws -> RepeatCustomerStats {
+        RepeatCustomerStats(repeatRatePct: 0, avgDaysToRepeat: 0, oneTimeCount: 0, repeatCount: 0)
+    }
+    func getAvgTicketValueTrend(from: String, to: String) async throws -> [AvgTicketValueTrendPoint] { [] }
+    func getConversionFunnel(from: String, to: String) async throws -> ConversionFunnelStats {
+        ConversionFunnelStats(leadsCount: 0, estimatesCount: 0, ticketsCount: 0, invoicesCount: 0, paidCount: 0)
+    }
+    func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow] { [] }
+
+    // §15.2 Cohort retention stub
+    var cohortRetentionResult: Result<CohortRetentionData, Error> = .success(CohortRetentionData(cohorts: []))
+    func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData {
+        try cohortRetentionResult.get()
+    }
+
+    // §15.5 Shrinkage report stub
+    var shrinkageResult: Result<ShrinkageReport, Error> = .success(ShrinkageReport(rows: []))
+    func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport {
+        try shrinkageResult.get()
     }
 }
 

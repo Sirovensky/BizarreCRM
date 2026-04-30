@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import XCTest
 import ImageIO
 import UniformTypeIdentifiers
@@ -164,3 +165,4 @@ final class ExifStripperTests: XCTestCase {
         }
     }
 }
+#endif

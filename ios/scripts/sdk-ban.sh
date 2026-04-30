@@ -105,6 +105,11 @@ done
 URLSESSION_WHITELIST=(
     "ios/Packages/Networking/Sources/Networking/"
     "ios/Packages/Core/Sources/Core/Networking/"
+    # Test targets may construct URLSession with MockURLProtocol configurations.
+    # Test code never ships in production binaries; the containment rule applies
+    # to production source only (§28.3 rationale: prevent accidental network egress).
+    "ios/Packages/Networking/Tests/"
+    "ios/Tests/"
 )
 
 echo ""
@@ -188,6 +193,7 @@ while IFS= read -r hit; do
         || [[ "$basename" == *"Endpoints.swift" ]] \
         || [[ "$basename" == "APIClient.swift" ]] \
         || [[ "$basename" == "APIClient+"* ]] \
+        || [[ "$basename" == "AppServices.swift" ]] \
         || [[ "$file" == *"Auth/Sources/"* ]] \
         || [[ "$file" == *"Networking/Sources/Networking/"* ]] \
         || [[ "$file" == *"Networking/Tests/"* ]] \

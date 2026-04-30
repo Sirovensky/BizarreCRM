@@ -88,6 +88,24 @@ public final class NotificationListViewModel {
     public func dismissBanner() { successBanner = nil }
 }
 
+// MARK: - Day header view (§13.1)
+
+/// Glass day-header shown in the grouped notification list.
+private struct DayHeader: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.brandLabelLarge())
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.xs)
+            .background(Color.bizarreSurfaceBase)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 /// Helper: make a copy of the row with `read` flipped. `NotificationItem`
 /// is Decodable-only so we reconstruct via the `isRead` field; keeping
 /// the model pure means no mutable bleed into view code.
@@ -164,20 +182,28 @@ public struct NotificationListView: View {
         } else if vm.items.isEmpty {
             emptyState(icon: "bell.slash", text: "You're all caught up")
         } else {
+            // §13.1 Group by day — glass day-header per calendar day.
+            let sections = NotificationDaySectionBuilder.build(from: vm.items)
             List {
-                ForEach(vm.items) { note in
-                    Row(note: note)
-                        .listRowBackground(Color.bizarreSurface1)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            if !note.read {
-                                Button {
-                                    Task { await vm.markRead(id: note.id) }
-                                } label: {
-                                    Label("Mark read", systemImage: "envelope.open")
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.items) { note in
+                            Row(note: note)
+                                .listRowBackground(Color.bizarreSurface1)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    if !note.read {
+                                        Button {
+                                            Task { await vm.markRead(id: note.id) }
+                                        } label: {
+                                            Label("Mark read", systemImage: "envelope.open")
+                                        }
+                                        .tint(.bizarreTeal)
+                                    }
                                 }
-                                .tint(.bizarreTeal)
-                            }
                         }
+                    } header: {
+                        DayHeader(label: section.header)
+                    }
                 }
             }
             .listStyle(.plain)

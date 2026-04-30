@@ -47,6 +47,7 @@ public final class SupplierListViewModel {
 public struct SupplierListView: View {
     @State private var vm: SupplierListViewModel
     @State private var selectedSupplier: Supplier?
+    @State private var showingComparison: Bool = false
     private let api: APIClient
 
     public init(api: APIClient) {
@@ -84,6 +85,18 @@ public struct SupplierListView: View {
             .sheet(item: $vm.editTarget) { s in
                 SupplierEditorSheet(supplier: s, api: api) { Task { await vm.load() } }
             }
+            // §58 Supplier comparison sheet
+            .sheet(isPresented: $showingComparison) {
+                NavigationStack {
+                    SupplierComparisonView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showingComparison = false }
+                            }
+                        }
+                }
+                .presentationDetents([.large])
+            }
         }
     }
 
@@ -106,8 +119,22 @@ public struct SupplierListView: View {
             .sheet(item: $vm.editTarget) { s in
                 SupplierEditorSheet(supplier: s, api: api) { Task { await vm.load() } }
             }
+            // §58 Supplier comparison sheet (iPad — also shown from toolbar)
+            .sheet(isPresented: $showingComparison) {
+                NavigationStack {
+                    SupplierComparisonView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showingComparison = false }
+                            }
+                        }
+                }
+                .presentationDetents([.large])
+            }
         } detail: {
-            if let s = selectedSupplier {
+            if showingComparison {
+                SupplierComparisonView(api: api)
+            } else if let s = selectedSupplier {
                 supplierDetail(s)
             } else {
                 emptyDetail
@@ -123,6 +150,16 @@ public struct SupplierListView: View {
                 Image(systemName: "plus").accessibilityLabel("Add Supplier")
             }
             .keyboardShortcut("n", modifiers: .command)
+        }
+        // §58 Supplier comparison — available when ≥2 suppliers exist
+        if vm.suppliers.count >= 2 {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showingComparison = true } label: {
+                    Label("Compare", systemImage: "chart.bar.doc.horizontal")
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .accessibilityLabel("Compare suppliers side by side")
+            }
         }
     }
 

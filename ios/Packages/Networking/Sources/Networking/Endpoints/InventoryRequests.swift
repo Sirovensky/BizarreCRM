@@ -114,6 +114,50 @@ public struct UpdateInventoryItemRequest: Codable, Sendable {
     }
 }
 
+// MARK: - §6.1 Import CSV/JSON
+
+/// `POST /api/v1/inventory/import-csv` request body.
+/// `csvData` is a raw CSV string with header row (name,sku,quantity,retail_price).
+public struct InventoryImportCSVRequest: Encodable, Sendable {
+    public let csvData: String
+
+    public init(csvData: String) { self.csvData = csvData }
+
+    enum CodingKeys: String, CodingKey {
+        case csvData = "csv_data"
+    }
+}
+
+/// Response from `POST /api/v1/inventory/import-csv`.
+public struct InventoryImportResult: Decodable, Sendable {
+    public let imported: Int
+    public let errors: [InventoryImportRowError]
+
+    public init(imported: Int, errors: [InventoryImportRowError]) {
+        self.imported = imported
+        self.errors = errors
+    }
+}
+
+public struct InventoryImportRowError: Decodable, Sendable, Identifiable {
+    public var id: Int { row }
+    public let row: Int
+    public let message: String
+}
+
+// MARK: - §6.2 Tax class update
+
+/// `PATCH /api/v1/inventory/:id` — sparse update for tax class.
+public struct InventoryTaxClassRequest: Encodable, Sendable {
+    public let taxClass: String
+
+    public init(taxClass: String) { self.taxClass = taxClass }
+
+    enum CodingKeys: String, CodingKey {
+        case taxClass = "tax_class"
+    }
+}
+
 public extension APIClient {
     /// Server responds `201 { success: true, data: <full row> }`. We decode
     /// only `id` for navigation — mirrors `createCustomer`'s contract.
@@ -124,5 +168,19 @@ public extension APIClient {
     /// Server responds `200 { success: true, data: <full row> }`.
     func updateInventoryItem(id: Int64, _ req: UpdateInventoryItemRequest) async throws -> CreatedResource {
         try await put("/api/v1/inventory/\(id)", body: req, as: CreatedResource.self)
+    }
+
+    /// §6.2 Soft-deactivate (DELETE /api/v1/inventory/:id).
+    /// Server sets is_active = 0; preserves all historical references.
+    func deactivateInventoryItem(id: Int64) async throws {
+        try await delete("/api/v1/inventory/\(id)")
+    }
+
+    /// §6.2 Update tax class (admin only). PATCH /api/v1/inventory/:id
+    @discardableResult
+    func updateInventoryTaxClass(id: Int64, taxClass: String) async throws -> CreatedResource {
+        try await patch("/api/v1/inventory/\(id)",
+                        body: InventoryTaxClassRequest(taxClass: taxClass),
+                        as: CreatedResource.self)
     }
 }

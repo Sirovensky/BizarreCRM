@@ -45,7 +45,7 @@ public struct VoicemailPlayerView: View {
                     VStack(spacing: DesignTokens.Spacing.sm) {
                         Image(systemName: "voicemail")
                             .font(.system(size: 52))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(.bizarrePrimary)
                             .accessibilityHidden(true)
                         Text(entry.customerName ?? entry.phoneNumber)
                             .font(.title2)
@@ -67,7 +67,7 @@ public struct VoicemailPlayerView: View {
                                 p.seek(to: target)
                             }
                         }
-                        .tint(.blue)
+                        .tint(.bizarrePrimary)
                         .accessibilityLabel("Playback position")
                         .accessibilityValue("\(Int(elapsed))s of \(Int(duration))s")
 
@@ -91,7 +91,7 @@ public struct VoicemailPlayerView: View {
                     } label: {
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 64))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(.bizarrePrimary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isPlaying ? "Pause" : "Play")
@@ -109,11 +109,11 @@ public struct VoicemailPlayerView: View {
                             .padding(.vertical, DesignTokens.Spacing.xs)
                             .background(
                                 playbackRate == speed.rate
-                                    ? Color.blue.opacity(0.15)
+                                    ? Color.bizarrePrimary.opacity(0.15)
                                     : Color.clear,
                                 in: Capsule()
                             )
-                            .foregroundStyle(playbackRate == speed.rate ? .blue : .secondary)
+                            .foregroundStyle(playbackRate == speed.rate ? .bizarrePrimary : .secondary)
                             .accessibilityLabel("Playback speed \(speed.label)")
                             .accessibilityAddTraits(playbackRate == speed.rate ? .isSelected : [])
                         }

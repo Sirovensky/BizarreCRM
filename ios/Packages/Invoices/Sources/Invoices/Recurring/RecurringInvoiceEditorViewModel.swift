@@ -10,6 +10,8 @@ import Networking
 public final class RecurringInvoiceEditorViewModel {
     public var customerId: Int64?
     public var templateInvoiceId: Int64?
+    /// §7.11 Display name of the picked template; kept in sync by RecurringInvoiceEditorSheet.
+    public var selectedTemplateName: String?
     public var frequency: RecurringFrequency = .monthly
     public var dayOfMonth: Int = 1
     public var startDate: Date = .now

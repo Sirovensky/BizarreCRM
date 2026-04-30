@@ -129,7 +129,7 @@ public struct CallLogView: View {
         if let id = selectedCallId,
            case .loaded(let calls) = viewModel.state,
            let entry = calls.first(where: { $0.id == id }) {
-            CallDetailView(entry: entry)
+            CallDetailView(entry: entry, api: api)
         } else {
             VStack(spacing: DesignTokens.Spacing.lg) {
                 Image(systemName: "phone.badge.waveform")
@@ -193,7 +193,7 @@ public struct CallLogView: View {
                             } label: {
                                 Label("Call back", systemImage: "phone.fill")
                             }
-                            .tint(.green)
+                            .tint(.bizarreSuccess)
                         }
                         .hoverEffect(.highlight)
                         .contextMenu {
@@ -323,6 +323,20 @@ extension View {
 
 private struct CallDetailView: View {
     let entry: CallLogEntry
+    let api: APIClient
+
+    @State private var showRecordingPlayer: Bool = false
+    @State private var resolvedRecordingURL: URL?
+
+    private func loadResolvedRecordingURL() async {
+        guard let urlStr = entry.recordingUrl else { return }
+        if let absolute = URL(string: urlStr), absolute.scheme != nil {
+            resolvedRecordingURL = absolute
+            return
+        }
+        guard let base = await api.currentBaseURL() else { return }
+        resolvedRecordingURL = URL(string: urlStr, relativeTo: base)?.absoluteURL
+    }
 
     var body: some View {
         ScrollView {
@@ -334,7 +348,7 @@ private struct CallDetailView: View {
                               ? "phone.arrow.down.left"
                               : "phone.arrow.up.right")
                             .font(.system(size: 32))
-                            .foregroundStyle(entry.isInbound ? .blue : .green)
+                            .foregroundStyle(entry.isInbound ? .bizarreTeal : .bizarreSuccess)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
                             Text(entry.customerName ?? entry.phoneNumber)
@@ -358,6 +372,19 @@ private struct CallDetailView: View {
                     transcriptSection(text)
                 }
 
+                // Recording playback — §42.1
+                if resolvedRecordingURL != nil {
+                    Button {
+                        showRecordingPlayer = true
+                    } label: {
+                        Label("Play Recording", systemImage: "waveform")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.brandGlass)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .accessibilityLabel("Play call recording")
+                }
+
                 // Call back button
                 Button {
                     CallQuickAction.placeCall(to: entry.phoneNumber)
@@ -375,6 +402,14 @@ private struct CallDetailView: View {
         }
         .navigationTitle(entry.customerName ?? entry.phoneNumber)
         .navigationBarTitleDisplayMode(.large)
+        .task { await loadResolvedRecordingURL() }
+        .sheet(isPresented: $showRecordingPlayer) {
+            if let url = resolvedRecordingURL {
+                CallRecordingPlayerView(entry: entry, recordingURL: url) {
+                    showRecordingPlayer = false
+                }
+            }
+        }
     }
 
     private var metaSection: some View {
@@ -491,7 +526,7 @@ private struct CallLogRow: View {
     }
 
     private var directionColor: Color {
-        entry.isInbound ? .blue : .green
+        entry.isInbound ? .bizarreTeal : .bizarreSuccess
     }
 
     private func formatDuration(_ seconds: Int) -> String {

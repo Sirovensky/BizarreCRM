@@ -9,12 +9,20 @@ import Sync
 /// Full Reports dashboard — Phase 8 §15.
 ///
 /// iPhone: single-column card scroll.
-/// iPad: 3-column `LazyVGrid`.
+/// iPad: shared `ReportsGrid` (top-aligned columns, §91.16 audit).
 ///
 /// Liquid Glass only on toolbar and hero tile chrome; never on chart surfaces.
+///
+/// Per-card CTA routing (§91.16):
+///   `onNavigateToPOS`             — zero-sales cards → Point of Sale
+///   `onNavigateToInventoryCreate` — zero-inventory cards → create item flow
+///   `onNavigateToCustomerCreate`  — zero-customer cards → create customer flow
 public struct ReportsView: View {
     @State private var vm: ReportsViewModel
     private let exportService: ReportExportService
+
+    // §15.9 compare-periods picker state
+    @State private var showComparePicker = false
 
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
@@ -26,16 +34,41 @@ public struct ReportsView: View {
     @State private var exportError: String?
     @State private var emailRecipient = ""
     @State private var showEmailSheet  = false
+    // §15.4 Per-tech detail drill
+    @State private var selectedTechForDrill: TechnicianPerfRow?
 
     private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
+    // §91.16 per-card CTA destinations
+    private let onNavigateToPOS: (() -> Void)?
+    private let onNavigateToInventoryCreate: (() -> Void)?
+    private let onNavigateToCustomerCreate: (() -> Void)?
 
-    public init(repository: ReportsRepository,
-                onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
+    public init(
+        repository: ReportsRepository,
+        onTapSaleRecord: @escaping (Int64) -> Void = { _ in },
+        onNavigateToPOS: (() -> Void)? = nil,
+        onNavigateToInventoryCreate: (() -> Void)? = nil,
+        onNavigateToCustomerCreate: (() -> Void)? = nil
+    ) {
         _vm = State(wrappedValue: ReportsViewModel(repository: repository))
         self.exportService = ReportExportService(repository: repository)
         self.csvService = ReportCSVService()
         self.onTapSaleRecord = onTapSaleRecord
+        self.onNavigateToPOS = onNavigateToPOS
+        self.onNavigateToInventoryCreate = onNavigateToInventoryCreate
+        self.onNavigateToCustomerCreate = onNavigateToCustomerCreate
+    }
+
+    // MARK: - CTA dispatch helper
+
+    /// Routes a `ReportCardActionDestination` tap to the appropriate callback.
+    private func handleCardCTA(_ destination: ReportCardActionDestination) {
+        switch destination {
+        case .pos:             onNavigateToPOS?()
+        case .inventoryCreate: onNavigateToInventoryCreate?()
+        case .customerCreate:  onNavigateToCustomerCreate?()
+        }
     }
 
     // MARK: - Body
@@ -54,7 +87,20 @@ public struct ReportsView: View {
             DrillThroughSheet(
                 context: ctx,
                 repository: vm.repository,
-                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) }
+                fromDate: vm.fromDateString,
+                toDate: vm.toDateString,
+                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) },
+                onCrossReportDrill: { target in
+                    drillContext = nil
+                    // Apply the target's date range if provided
+                    if let f = target.fromDate, let t = target.toDate,
+                       let fromDate = ISO8601DateFormatter.compareFullDate().date(from: f),
+                       let toDate   = ISO8601DateFormatter.compareFullDate().date(from: t) {
+                        vm.applyCustomRange(from: fromDate, to: toDate)
+                        Task { await vm.loadAll() }
+                    }
+                    vm.selectedSubTab = target.targetSubTab
+                }
             )
         }
         .sheet(isPresented: $showCSATDetail) {
@@ -74,6 +120,10 @@ public struct ReportsView: View {
             if let url = exportURL {
                 ShareLink(item: url)
             }
+        }
+        // §15.4 Per-tech detail drill-through
+        .sheet(item: $selectedTechForDrill) { tech in
+            TechDetailSheet(row: tech)
         }
         .alert("Email Report", isPresented: $showEmailSheet) {
             TextField("Recipient email", text: $emailRecipient)
@@ -96,6 +146,8 @@ public struct ReportsView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
+                        // §91.6 — pickers scroll with content so the sync-chip cluster
+                        // never overlaps body copy when the user scrolls.
                         dateRangePicker
                             .padding(.horizontal, BrandSpacing.base)
                         heroTile
@@ -108,8 +160,20 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
+                // §91.6 — prevent content bleed through the navigation bar by
+                // giving it an opaque/glass background rather than letting it go
+                // fully transparent as the scroll offset grows.
+                .scrollContentBackground(.hidden)
             }
+            // §91.8 — inline display mode shows "Reports" centred in the nav bar
+            // (same pattern as POS "POS" and Dashboard "Dashboard").  Large-title
+            // mode scrolls the headline under the bar and is avoided here.
             .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
+            // §91.8 — opaque background so scrolled content is fully occluded;
+            // POS and Dashboard rely on the system default (also opaque) rather
+            // than ultraThinMaterial which lets content bleed through the bar.
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -129,23 +193,22 @@ public struct ReportsView: View {
                         if vm.isLoading {
                             loadingPlaceholders
                         } else {
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md),
-                                    GridItem(.flexible(), spacing: BrandSpacing.md)
-                                ],
-                                spacing: BrandSpacing.md
-                            ) {
+                            // §91.16 grid alignment audit: ReportsGrid enforces top-aligned
+                            // cells, consistent breakpoint columns, and uniform padding.
+                            ReportsGrid {
                                 cardItems
                             }
-                            .padding(.horizontal, BrandSpacing.base)
                         }
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
+                // §91.8 — same opaque backing on iPad (matches phone layout).
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
+            // §91.8 — opaque to match POS / Dashboard (see phone layout above).
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -154,8 +217,60 @@ public struct ReportsView: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
+        // §91.8 — search affordance in top-trailing, matching the POS scan
+        // button placement pattern. Toggles `vm.isSearching` which can be
+        // wired to a searchable overlay or sheet by future agents.
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                vm.isSearching.toggle()
+            } label: {
+                Image(systemName: vm.isSearching
+                      ? "magnifyingglass.circle.fill"
+                      : "magnifyingglass")
+                    .accessibilityLabel(vm.isSearching ? "Close search" : "Search reports")
+            }
+            .accessibilityIdentifier("reports.toolbar.search")
+        }
+        // §91.8 — sync chip moved from .principal to .topBarTrailing so the
+        // centred "Reports" title shows in the navigation bar, matching
+        // Dashboard (StalenessIndicator in .topBarTrailing) and POS patterns.
+        ToolbarItem(placement: .topBarTrailing) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+        // §15.9 Compare periods toggle
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                Button {
+                    Task { await vm.setComparePeriod(nil) }
+                } label: {
+                    Label("No comparison", systemImage: "xmark.circle")
+                }
+                .disabled(vm.comparePeriod == nil)
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousWeek) }
+                } label: {
+                    Label("vs Prev Week", systemImage: "calendar")
+                }
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousMonth) }
+                } label: {
+                    Label("vs Prev Month", systemImage: "calendar")
+                }
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousYear) }
+                } label: {
+                    Label("vs Prev Year", systemImage: "calendar.badge.clock")
+                }
+            } label: {
+                Label(vm.comparePeriod?.displayLabel ?? "Compare",
+                      systemImage: "arrow.left.arrow.right")
+                    .font(.brandLabelSmall())
+            }
+            .brandGlass(.clear, in: Capsule())
+            .accessibilityLabel("Compare to prior period")
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
@@ -194,25 +309,99 @@ public struct ReportsView: View {
         }
     }
 
-    // MARK: - Date Range Picker + Granularity Toggle
+    // MARK: - Date Range Picker + Granularity Toggle + Sub-tab
 
     private var dateRangePicker: some View {
         VStack(spacing: BrandSpacing.sm) {
-            Picker("Date Range", selection: $vm.selectedPreset) {
-                ForEach(DateRangePreset.allCases) { preset in
-                    Text(preset.displayLabel).tag(preset)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: vm.selectedPreset) { _, _ in
-                Task { await vm.loadAll() }
-            }
-            .accessibilityLabel("Select date range preset")
+            // §15.1 Sub-routes segmented picker
+            subTabPicker
+
+            // §91.4 + §91.6 — Pill row replaces stock segmented Picker.
+            // §91.13 — minHeight enforced on each pill below for tap-target a11y.
+            periodPillRow
 
             granularityToggle
         }
     }
 
+    // MARK: - §15.1 Sub-routes picker
+
+    private var subTabPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(ReportSubTab.allCases) { tab in
+                    Button {
+                        withAnimation(.easeInOut(duration: DesignTokens.Motion.quick)) {
+                            vm.selectedSubTab = tab
+                        }
+                    } label: {
+                        Label(tab.displayLabel, systemImage: tab.systemImage)
+                            .font(.brandLabelSmall())
+                            .padding(.horizontal, BrandSpacing.md)
+                            .padding(.vertical, BrandSpacing.sm)
+                            .foregroundStyle(vm.selectedSubTab == tab ? .white : .bizarreOnSurface)
+                            .background(
+                                vm.selectedSubTab == tab
+                                    ? Color.bizarreOrange
+                                    : Color.bizarreSurface2,
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(tab.displayLabel) report section")
+                    .accessibilityAddTraits(vm.selectedSubTab == tab ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, BrandSpacing.xxs)
+        }
+        .accessibilityLabel("Report section selector")
+    }
+
+    /// §91.4 + §91.6 — Pill-based date-range selector.
+    ///
+    /// All four options (7D / 30D / 90D / Custom) render as equal Capsule pills.
+    /// The active pill fills with `bizarreOrangeContainer` and uses the on-surface
+    /// foreground; inactive pills use a low-prominence glass capsule.
+    private var periodPillRow: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            ForEach(DateRangePreset.allCases) { preset in
+                let isSelected = vm.selectedPreset == preset
+                Button {
+                    vm.selectedPreset = preset
+                    Task { await vm.loadAll() }
+                } label: {
+                    Text(preset.displayLabel)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(
+                            isSelected
+                                ? Color.bizarreOrangeContainer
+                                : Color.bizarreOnSurfaceMuted
+                        )
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, BrandSpacing.xs)
+                        // §91.13: 44pt minimum tap target for period pills so they
+                        // pass the WCAG 2.5.5 target-size criterion on iPad.
+                        .frame(maxWidth: .infinity, minHeight: DesignTokens.Touch.minTargetSide)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    isSelected
+                                        ? Color.bizarreOrange
+                                        : Color.bizarreSurface1
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Date range: \(preset.displayLabel)")
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+    }
+
+    /// §91.5 — Granularity sub-segment (Day / Week / Month).
+    ///
+    /// `.tint(.bizarreOrange)` upgrades the system-default low-contrast grey
+    /// selection indicator to the brand cream-orange treatment.
     private var granularityToggle: some View {
         Picker("Granularity", selection: $vm.granularity) {
             ForEach(ReportGranularity.allCases) { g in
@@ -220,6 +409,10 @@ public struct ReportsView: View {
             }
         }
         .pickerStyle(.segmented)
+        // §91.5 — brand-orange tint replaces the low-contrast system-grey fill.
+        .tint(.bizarreOrange)
+        // §91.13 — 44pt minimum tap target for a11y.
+        .frame(minHeight: 44)
         .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }
@@ -232,11 +425,14 @@ public struct ReportsView: View {
     private var heroTile: some View {
         HStack(spacing: BrandSpacing.base) {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                // §91.10: hero tile — subtitle uses brandBodyMedium (body/label
+                // hierarchy), value uses brandKpiValue unified token
                 Text("Revenue")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
                 Text(vm.revenueTotalDollars, format: .currency(code: "USD"))
-                    .font(.brandHeadlineLarge())
+                    .font(.brandKpiValue())
+                    .monospacedDigit()
                     .foregroundStyle(.bizarreOnSurface)
                 HStack(spacing: BrandSpacing.sm) {
                     sparklineView
@@ -305,41 +501,189 @@ public struct ReportsView: View {
         .padding(.horizontal, BrandSpacing.base)
     }
 
-    // MARK: - Card items (shared between phone/iPad)
+    // MARK: - Card items (shared between phone/iPad, filtered by sub-tab)
 
     @ViewBuilder
     private var cardItems: some View {
-        // §15.2 Revenue chart — line + bar via /reports/sales
-        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-            drillContext = .revenue(date: pt.date)
+        switch vm.selectedSubTab {
+        case .sales:
+            // §15.2 Period summary KPIs
+            SalesKPISummaryCard(totals: vm.salesTotals)
+            // §15.9 Zoomable revenue chart with optional compare overlay
+            ZoomableRevenueChartCard(
+                currentPoints: vm.revenue,
+                priorPoints: vm.priorRevenue,
+                comparePeriod: vm.comparePeriod,
+                overallVariancePct: vm.compareVariancePct ?? vm.salesTotals.revenueChangePct,
+                onDrillThrough: { pt in drillContext = .revenue(date: pt.date) }
+            )
+            // §15.2 Revenue by payment method pie
+            RevenueByMethodPieCard(points: vm.revenueByMethod)
+            // §15.9 Expenses chart
+            ExpensesChartCard(report: vm.expensesReport)
+            // §15.2 YoY growth
+            if !vm.yoyPoints.isEmpty {
+                YoYGrowthCard(
+                    points: vm.yoyPoints,
+                    overallGrowthPct: {
+                        let totalCurrent = vm.yoyPoints.reduce(0) { $0 + $1.currentRevenue }
+                        let totalPrior   = vm.yoyPoints.reduce(0) { $0 + $1.priorRevenue }
+                        guard totalPrior > 0 else { return nil }
+                        return (totalCurrent - totalPrior) / totalPrior * 100.0
+                    }()
+                )
+            }
+            // §15.2 Top 10 customers — always show; empty state has CTA (§91.16)
+            TopCustomersCard(
+                rows: vm.topCustomers,
+                onAddCustomer: onNavigateToCustomerCreate.map { cb in { cb() } }
+            )
+            // §15.2 Cohort revenue retention
+            CohortRetentionCard(data: vm.cohortRetention, isLoading: vm.isLoading && vm.cohortRetention == nil)
+
+        case .tickets:
+            // §15.3 Tickets by status
+            TicketsByStatusCard(points: vm.ticketsByStatus)
+            // §15.2 Avg ticket value
+            AvgTicketValueCard(value: vm.avgTicketValue)
+            // §15.3 Opened vs closed per day + close rate + avg turnaround
+            if !vm.ticketsTrend.isEmpty {
+                TicketsTrendCard(points: vm.ticketsTrend)
+            }
+            // §15.3 Tickets by tech bar
+            if !vm.ticketsByTech.isEmpty {
+                TicketsByTechCard(points: vm.ticketsByTech) { techId in
+                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
+                        selectedTechForDrill = row
+                    }
+                }
+            }
+            // §15.3 Busy-hours heatmap
+            if !vm.busyHours.isEmpty {
+                BusyHoursHeatmapCard(cells: vm.busyHours)
+            }
+            // §15.3 SLA breach count
+            SLABreachCard(summary: vm.slaSummary)
+
+        case .employees:
+            // §15.4 Top employees (revenue-ranked)
+            TopEmployeesCard(employees: vm.employeePerf)
+            // §15.4 Technician performance table + per-tech detail drill
+            TechnicianPerformanceCard(rows: vm.technicianPerf)
+
+        case .inventory:
+            // §15.5 Low stock / out-of-stock + inventory value (cost + retail)
+            // §91.16: always show so empty state surfaces "Add Inventory Item" CTA.
+            InventoryStockCard(
+                report: vm.inventoryReport ?? .empty,
+                isLoading: vm.isLoading && vm.inventoryReport == nil,
+                onAddItem: onNavigateToInventoryCreate.map { cb in { cb() } }
+            )
+            // §15.5 Inventory movement — CTA wired for zero-movement state (§91.16)
+            InventoryMovementCard(
+                report: vm.inventoryReport,
+                onAddItem: onNavigateToInventoryCreate.map { cb in { cb() } }
+            )
+            // §15.5 Inventory turnover
+            InventoryTurnoverCard(rows: vm.inventoryTurnover)
+            // §15.5 Shrinkage trend
+            ShrinkageTrendCard(report: vm.shrinkageReport)
+
+        case .tax:
+            // §15.6 Tax collected by class
+            TaxReportCard(report: vm.taxReport, isLoading: vm.taxReportLoading)
+
+        case .insights:
+            // §91.5: when ≥80% of insight cards have no data (new tenant / first day)
+            // show a single friendly panel instead of a wall of empty cards.
+            if insightsAreMostlyEmpty {
+                insightsAggregateEmptyState
+            } else {
+            // §15.7 CSAT + NPS
+            CSATScoreCard(score: vm.csatScore) { showCSATDetail = true }
+            NPSScoreCard(score: vm.npsScore)   { showNPSDetail  = true }
+            // §15.7 Warranty claims trend
+            WarrantyClaimsTrendCard(points: vm.warrantyClaims)
+            // §15.7 Device models repaired distribution
+            DeviceModelsRepairedCard(rows: vm.deviceModelsRepaired)
+            // §15.7 Parts usage analysis
+            PartsUsageCard(rows: vm.partsUsage)
+            // §15.7 Technician hours worked
+            TechHoursCard(rows: vm.techHours)
+            // §15.7 Stalled / overdue tickets
+            StalledTicketsCard(summary: vm.stalledTickets)
+            // §15.7 Customer acquisition + churn
+            CustomerAcquisitionChurnCard(data: vm.customerAcquisitionChurn)
+            // §15.9 Revenue / margin by category
+            RevenueByCategoryCard(rows: vm.revenueByCategory)
+            // §15.9 Repeat customer rate + time-to-repeat
+            RepeatCustomerRateCard(stats: vm.repeatCustomerStats)
+            // §15.9 Avg ticket value trend
+            AvgTicketValueTrendCard(points: vm.avgTicketValueTrend)
+            // §15.9 Conversion funnel (lead → estimate → ticket → invoice → paid)
+            ConversionFunnelCard(stats: vm.conversionFunnel)
+            // §15.9 Labor utilization by tech
+            LaborUtilizationCard(rows: vm.laborUtilization)
+            } // end else (not insightsAreMostlyEmpty)
         }
 
-        // §15.9 Expenses chart — bar via /reports/dashboard-kpis
-        ExpensesChartCard(report: vm.expensesReport)
+        // §91.3 fix 6: SLA Breaches card — hidden when zero breaches (card handles nil/zero guard).
+        SLABreachesCard(report: vm.slaBreaches)
+    }
 
-        // §15.5 Inventory movement chart — bar via /reports/inventory
-        InventoryMovementCard(report: vm.inventoryReport)
+    // MARK: - §91.5 Insights aggregate empty state
 
-        // §15.3 Tickets by status
-        TicketsByStatusCard(points: vm.ticketsByStatus)
+    /// True when ≥80% of the 13 Insights data slots are empty.
+    /// Each slot scores 1 when it has data, 0 when it doesn't.
+    private var insightsAreMostlyEmpty: Bool {
+        let scores: [Bool] = [
+            vm.csatScore != nil,
+            vm.npsScore != nil,
+            !vm.warrantyClaims.isEmpty,
+            !vm.deviceModelsRepaired.isEmpty,
+            !vm.partsUsage.isEmpty,
+            !vm.techHours.isEmpty,
+            vm.stalledTickets != nil,
+            vm.customerAcquisitionChurn != nil,
+            !vm.revenueByCategory.isEmpty,
+            vm.repeatCustomerStats != nil,
+            !vm.avgTicketValueTrend.isEmpty,
+            vm.conversionFunnel != nil,
+            !vm.laborUtilization.isEmpty
+        ]
+        let withData = scores.filter { $0 }.count
+        // 80% threshold: fewer than 3 of 13 slots have data
+        return Double(withData) / Double(scores.count) < 0.20
+    }
 
-        // §15.2 Avg ticket value KPI
-        AvgTicketValueCard(value: vm.avgTicketValue)
-
-        // §15.4 Employee performance
-        TopEmployeesCard(employees: vm.employeePerf)
-
-        // §15.5 Inventory turnover (category table)
-        InventoryTurnoverCard(rows: vm.inventoryTurnover)
-
-        // §15.7 CSAT + NPS
-        CSATScoreCard(score: vm.csatScore) {
-            showCSATDetail = true
+    private var insightsAggregateEmptyState: some View {
+        VStack(spacing: BrandSpacing.lg) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 48))
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.45))
+                .accessibilityHidden(true)
+            VStack(spacing: BrandSpacing.xs) {
+                Text("Insights need more activity")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Complete your first sales, tickets, and services to unlock CSAT, NPS, technician performance, and other insight cards.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-
-        NPSScoreCard(score: vm.npsScore) {
-            showNPSDetail = true
-        }
+        .frame(maxWidth: .infinity)
+        .padding(BrandSpacing.xxl)
+        .background(Color.bizarreSurface1,
+                    in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .padding(.horizontal, BrandSpacing.base)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Insights need more activity. Complete your first sales, tickets, and services to unlock insight cards.")
     }
 
     // MARK: - Export

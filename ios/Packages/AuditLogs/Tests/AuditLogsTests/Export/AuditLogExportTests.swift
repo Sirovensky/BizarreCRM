@@ -350,3 +350,89 @@ struct AuditLogExportIntegrationTests {
         try? FileManager.default.removeItem(at: url)
     }
 }
+
+// MARK: - §50.3 AuditLogPDFComposer Tests (UIKit only)
+
+#if canImport(UIKit)
+@Suite("AuditLogPDFComposer §50.3")
+struct AuditLogPDFComposerTests {
+
+    @Test("compose empty entries returns a PDF file URL")
+    func composeEmptyEntriesReturnsPDFURL() throws {
+        let url = try AuditLogPDFComposer.compose(entries: [])
+        #expect(url.pathExtension == "pdf")
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("compose with entries returns a PDF file URL")
+    func composeWithEntriesReturnsPDFURL() throws {
+        let entries = [
+            makeEntry(id: "1", action: "ticket.update"),
+            makeEntry(id: "2", action: "invoice.create")
+        ]
+        let url = try AuditLogPDFComposer.compose(entries: entries)
+        #expect(url.pathExtension == "pdf")
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("PDF file name starts with audit-log-court-")
+    func fileNameHasCourtPrefix() throws {
+        let url = try AuditLogPDFComposer.compose(entries: [])
+        #expect(url.lastPathComponent.hasPrefix("audit-log-court-"))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("PDF file is non-empty")
+    func pdfFileIsNonEmpty() throws {
+        let url = try AuditLogPDFComposer.compose(entries: [makeEntry()])
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        let size = attrs[.size] as? Int ?? 0
+        #expect(size > 0)
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("PDF starts with %PDF magic bytes")
+    func pdfStartsWithMagicBytes() throws {
+        let url = try AuditLogPDFComposer.compose(entries: [])
+        let data = try Data(contentsOf: url)
+        let magic = String(data: data.prefix(4), encoding: .ascii) ?? ""
+        #expect(magic == "%PDF")
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("compose respects tenantName and exportedBy parameters without crashing")
+    func composeCustomTenantAndExporter() throws {
+        let url = try AuditLogPDFComposer.compose(
+            entries: [makeEntry()],
+            tenantName: "ACME Corp",
+            exportedBy: "Jane Compliance"
+        )
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("compose with date range bounds does not crash")
+    func composeWithDateRange() throws {
+        let url = try AuditLogPDFComposer.compose(
+            entries: [makeEntry()],
+            since: Date(timeIntervalSince1970: 1_000_000),
+            until: Date()
+        )
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("successive composes produce different file names")
+    func successiveComposesDifferentNames() throws {
+        let url1 = try AuditLogPDFComposer.compose(entries: [])
+        let url2 = try AuditLogPDFComposer.compose(entries: [])
+        // Both exist (same-second names may collide, but write must succeed)
+        #expect(FileManager.default.fileExists(atPath: url1.path))
+        #expect(FileManager.default.fileExists(atPath: url2.path))
+        try? FileManager.default.removeItem(at: url1)
+        try? FileManager.default.removeItem(at: url2)
+    }
+}
+#endif

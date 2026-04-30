@@ -36,6 +36,15 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
     /// When `true`, opening the cash drawer without a sale requires manager PIN + reason.
     public let noSaleRequiresManager: Bool
 
+    // MARK: - Refund gates (§16.9)
+
+    /// Refunds at or below this amount in cents do NOT require a manager
+    /// PIN. Anything strictly above triggers `ManagerPinSheet` before
+    /// `POST /pos/returns` runs. Default 5000 = $50.00 — large enough to
+    /// keep typical "wrong-item" refunds friction-free, small enough that
+    /// fraudulent staff cannot drain a register without a manager seeing.
+    public let refundManagerPinThresholdCents: Int
+
     // MARK: - Init
 
     public init(
@@ -43,13 +52,15 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
         maxCashierDiscountCents: Int,
         priceOverrideThresholdCents: Int,
         voidRequiresManager: Bool,
-        noSaleRequiresManager: Bool
+        noSaleRequiresManager: Bool,
+        refundManagerPinThresholdCents: Int = 5000
     ) {
         self.maxCashierDiscountPercent = maxCashierDiscountPercent
         self.maxCashierDiscountCents = maxCashierDiscountCents
         self.priceOverrideThresholdCents = priceOverrideThresholdCents
         self.voidRequiresManager = voidRequiresManager
         self.noSaleRequiresManager = noSaleRequiresManager
+        self.refundManagerPinThresholdCents = refundManagerPinThresholdCents
     }
 
     // MARK: - Factory defaults
@@ -65,7 +76,8 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
         maxCashierDiscountCents: 2000,
         priceOverrideThresholdCents: 5000,
         voidRequiresManager: true,
-        noSaleRequiresManager: true
+        noSaleRequiresManager: true,
+        refundManagerPinThresholdCents: 5000
     )
 
     // MARK: - UserDefaults persistence
@@ -76,6 +88,7 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
         static let priceOverrideThreshold     = "pos.limits.priceOverrideThreshold"
         static let voidRequiresManager        = "pos.limits.voidRequiresManager"
         static let noSaleRequiresManager      = "pos.limits.noSaleRequiresManager"
+        static let refundManagerPinThreshold  = "pos.limits.refundManagerPinThreshold"
     }
 
     /// Load limits from `UserDefaults`, falling back to `.default` for any missing key.
@@ -93,7 +106,9 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
             voidRequiresManager: ud.object(forKey: Keys.voidRequiresManager)
                 .flatMap { $0 as? Bool } ?? `default`.voidRequiresManager,
             noSaleRequiresManager: ud.object(forKey: Keys.noSaleRequiresManager)
-                .flatMap { $0 as? Bool } ?? `default`.noSaleRequiresManager
+                .flatMap { $0 as? Bool } ?? `default`.noSaleRequiresManager,
+            refundManagerPinThresholdCents: ud.object(forKey: Keys.refundManagerPinThreshold)
+                .flatMap { $0 as? Int } ?? `default`.refundManagerPinThresholdCents
         )
     }
 
@@ -105,5 +120,42 @@ public struct PosTenantLimits: Sendable, Equatable, Codable {
         ud.set(limits.priceOverrideThresholdCents, forKey: Keys.priceOverrideThreshold)
         ud.set(limits.voidRequiresManager,       forKey: Keys.voidRequiresManager)
         ud.set(limits.noSaleRequiresManager,     forKey: Keys.noSaleRequiresManager)
+        ud.set(limits.refundManagerPinThresholdCents, forKey: Keys.refundManagerPinThreshold)
+    }
+}
+
+// MARK: - §16.9 Refund reason presets
+
+/// Standard reason presets surfaced in `PosRefundSheet`. Selecting `.other`
+/// reveals a free-text field for staff to describe an off-list reason. The
+/// wire payload merges the preset label with any free text.
+public enum PosRefundReason: String, CaseIterable, Identifiable, Sendable {
+    case none
+    case defective
+    case wrongItem
+    case customerChangedMind
+    case duplicateCharge
+    case sizeOrFit
+    case lateDelivery
+    case priceMatch
+    case other
+
+    public var id: String { rawValue }
+
+    /// User-visible label for the picker. `none` is a neutral placeholder
+    /// that reads as "Pick a reason…" so the list always has an explicit
+    /// default state without forcing a choice.
+    public var label: String {
+        switch self {
+        case .none:                return "Pick a reason…"
+        case .defective:           return "Defective / damaged"
+        case .wrongItem:           return "Wrong item"
+        case .customerChangedMind: return "Customer changed mind"
+        case .duplicateCharge:     return "Duplicate charge"
+        case .sizeOrFit:           return "Size / fit"
+        case .lateDelivery:        return "Late delivery"
+        case .priceMatch:          return "Price match"
+        case .other:               return "Other (specify)"
+        }
     }
 }

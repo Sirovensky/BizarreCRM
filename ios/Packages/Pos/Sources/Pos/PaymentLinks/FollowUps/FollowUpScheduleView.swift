@@ -135,7 +135,7 @@ struct FollowUpRow: View {
     private var statusChip: some View {
         let (label, color): (String, Color) = {
             switch followUp.status {
-            case .scheduled:  return ("PENDING", .orange)
+            case .scheduled:  return ("PENDING", .bizarreWarning)
             case .sent:       return ("SENT", .blue)
             case .delivered:  return ("DELIVERED", .green)
             case .failed:     return ("FAILED", .red)

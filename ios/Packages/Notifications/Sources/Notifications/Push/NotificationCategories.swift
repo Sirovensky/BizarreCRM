@@ -11,6 +11,7 @@ public enum NotificationCategoryID: String, Sendable, CaseIterable {
     case lowStock              = "bizarre.lowstock"
     case appointmentReminder   = "bizarre.appointment.reminder"
     case paymentReceived       = "bizarre.payment.received"
+    case paymentFailed         = "bizarre.payment.failed"
     case deadLetterAlert       = "bizarre.deadletter"
     case mention               = "bizarre.mention"
     case scheduleChange        = "bizarre.schedule.change"
@@ -43,6 +44,10 @@ public enum NotificationActionID {
     // payment.received
     public static let paymentView    = "bizarre.payment.view"
     public static let paymentPrint   = "bizarre.payment.print"
+
+    // payment.failed
+    public static let paymentFailedOpen  = "bizarre.payment.failed.open"
+    public static let paymentRetry       = "bizarre.payment.failed.retry"
 
     // deadletter.alert
     public static let dlView         = "bizarre.dl.view"
@@ -84,6 +89,7 @@ public enum NotificationCategories {
             lowStockCategory(),
             appointmentReminderCategory(),
             paymentReceivedCategory(),
+            paymentFailedCategory(),
             deadLetterAlertCategory(),
             mentionCategory(),
             scheduleChangeCategory()
@@ -92,23 +98,23 @@ public enum NotificationCategories {
 
     // MARK: - Category builders
 
-    /// `bizarre.ticket.update` — text-input reply + view + snooze 1h.
+    /// `bizarre.ticket.update` — text-input reply + open ticket + snooze 1h.
     private static func ticketUpdateCategory() -> UNNotificationCategory {
         let replyAction = UNTextInputNotificationAction(
             identifier: NotificationActionID.ticketReply,
-            title: "Reply",
+            title: "Reply to Ticket",
             options: [],
             textInputButtonTitle: "Send",
             textInputPlaceholder: "Write a reply…"
         )
         let viewAction = UNNotificationAction(
             identifier: NotificationActionID.ticketView,
-            title: "View",
+            title: "Open Ticket",
             options: [.foreground]
         )
         let snoozeAction = UNNotificationAction(
             identifier: NotificationActionID.ticketSnooze1h,
-            title: "Snooze 1h",
+            title: "Snooze 1 Hour",
             options: []
         )
         return UNNotificationCategory(
@@ -120,7 +126,7 @@ public enum NotificationCategories {
         )
     }
 
-    /// `bizarre.sms.reply` — quick text reply + view.
+    /// `bizarre.sms.reply` — quick text reply + open thread.
     private static func smsReplyCategory() -> UNNotificationCategory {
         let quickReply = UNTextInputNotificationAction(
             identifier: NotificationActionID.smsQuickReply,
@@ -131,7 +137,7 @@ public enum NotificationCategories {
         )
         let viewAction = UNNotificationAction(
             identifier: NotificationActionID.smsView,
-            title: "Open",
+            title: "Open Thread",
             options: [.foreground]
         )
         return UNNotificationCategory(
@@ -211,11 +217,32 @@ public enum NotificationCategories {
         )
     }
 
+    /// `bizarre.payment.failed` — open invoice + retry charge.
+    private static func paymentFailedCategory() -> UNNotificationCategory {
+        let open = UNNotificationAction(
+            identifier: NotificationActionID.paymentFailedOpen,
+            title: "Open Invoice",
+            options: [.foreground]
+        )
+        let retry = UNNotificationAction(
+            identifier: NotificationActionID.paymentRetry,
+            title: "Retry Charge",
+            options: [.foreground, .authenticationRequired]
+        )
+        return UNNotificationCategory(
+            identifier: NotificationCategoryID.paymentFailed.rawValue,
+            actions: [open, retry],
+            intentIdentifiers: [],
+            hiddenPreviewsBodyPlaceholder: "Payment failed",
+            options: []
+        )
+    }
+
     /// `bizarre.deadletter` — view dead-letter queue + dismiss.
     private static func deadLetterAlertCategory() -> UNNotificationCategory {
         let view = UNNotificationAction(
             identifier: NotificationActionID.dlView,
-            title: "View",
+            title: "View Sync Issues",
             options: [.foreground]
         )
         let dismiss = UNNotificationAction(
@@ -243,7 +270,7 @@ public enum NotificationCategories {
         )
         let markRead = UNNotificationAction(
             identifier: NotificationActionID.mentionMarkRead,
-            title: "Mark Read",
+            title: "Mark as Read",
             options: []
         )
         return UNNotificationCategory(
@@ -255,16 +282,16 @@ public enum NotificationCategories {
         )
     }
 
-    /// `bizarre.schedule.change` — view + accept.
+    /// `bizarre.schedule.change` — view schedule + accept shift.
     private static func scheduleChangeCategory() -> UNNotificationCategory {
         let view = UNNotificationAction(
             identifier: NotificationActionID.scheduleView,
-            title: "View",
+            title: "View Schedule",
             options: [.foreground]
         )
         let accept = UNNotificationAction(
             identifier: NotificationActionID.scheduleAccept,
-            title: "Accept",
+            title: "Accept Shift",
             options: []
         )
         return UNNotificationCategory(

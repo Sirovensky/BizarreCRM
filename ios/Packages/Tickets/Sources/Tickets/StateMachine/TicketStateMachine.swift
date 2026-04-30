@@ -93,6 +93,8 @@ public enum TicketTransition: String, Sendable, CaseIterable, Hashable {
 
 public enum StateMachineError: Error, Sendable, Equatable {
     case illegalTransition(from: TicketStatus, transition: TicketTransition)
+    /// §4.6 — A prerequisite has not been satisfied (e.g. "checklist not signed").
+    case prerequisiteNotMet(transition: TicketTransition, requirement: String)
 }
 
 extension StateMachineError: LocalizedError {
@@ -100,7 +102,91 @@ extension StateMachineError: LocalizedError {
         switch self {
         case let .illegalTransition(from, transition):
             return "Cannot \(transition.displayName.lowercased()) from \"\(from.displayName)\"."
+        case let .prerequisiteNotMet(_, requirement):
+            return requirement
         }
+    }
+}
+
+// MARK: - Transition prerequisites
+
+/// §4.6 — Per-transition prerequisites that the client enforces before calling the server.
+///
+/// Each prerequisite is a named condition with a human-readable "blocked" message
+/// that matches the spec copy: "Can't mark Ready — no photo."
+public struct TransitionPrerequisite: Sendable {
+    public let id: String
+    public let blockedMessage: String
+
+    public init(id: String, blockedMessage: String) {
+        self.id = id
+        self.blockedMessage = blockedMessage
+    }
+
+    // Named prerequisite IDs — used by the UI to check off individual conditions.
+    public static let checklistSigned   = "checklist_signed"
+    public static let photoTaken        = "photo_taken"
+    public static let noteAdded         = "note_added"
+    public static let depositCollected  = "deposit_collected"
+    public static let qcSignOff         = "qc_sign_off"
+}
+
+public extension TicketStateMachine {
+    /// §4.6 — Returns the prerequisites required before `transition` can be applied.
+    ///
+    /// The host view is responsible for checking whether each prerequisite is met
+    /// and calling `checkPrerequisites(…)` before sending the transition to the server.
+    static func prerequisites(for transition: TicketTransition) -> [TransitionPrerequisite] {
+        switch transition {
+        case .diagnose:
+            // Checklist must be signed before "Start Diagnosing".
+            return [
+                TransitionPrerequisite(
+                    id: TransitionPrerequisite.checklistSigned,
+                    blockedMessage: "Can't diagnose — pre-conditions checklist not completed. Open the device checklist first."
+                )
+            ]
+        case .finishRepair:
+            // Photo required before "Finish Repair".
+            return [
+                TransitionPrerequisite(
+                    id: TransitionPrerequisite.photoTaken,
+                    blockedMessage: "Can't mark Ready — no repair photo. Add at least one photo first."
+                )
+            ]
+        case .pickup:
+            // QC sign-off required before "Picked Up".
+            return [
+                TransitionPrerequisite(
+                    id: TransitionPrerequisite.qcSignOff,
+                    blockedMessage: "Can't mark Picked Up — QC sign-off not completed."
+                )
+            ]
+        default:
+            return []
+        }
+    }
+
+    /// §4.6 — Validates that all prerequisites for `transition` are met.
+    ///
+    /// - Parameters:
+    ///   - transition: The transition being attempted.
+    ///   - metPrerequisiteIds: A set of prerequisite IDs that are currently satisfied.
+    /// - Returns: `.failure(.prerequisiteNotMet)` if any prerequisite is unmet,
+    ///            `.success(())` otherwise.
+    static func checkPrerequisites(
+        _ transition: TicketTransition,
+        met metPrerequisiteIds: Set<String>
+    ) -> Result<Void, StateMachineError> {
+        for prerequisite in prerequisites(for: transition) {
+            if !metPrerequisiteIds.contains(prerequisite.id) {
+                return .failure(.prerequisiteNotMet(
+                    transition: transition,
+                    requirement: prerequisite.blockedMessage
+                ))
+            }
+        }
+        return .success(())
     }
 }
 

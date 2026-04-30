@@ -26,11 +26,19 @@ public final class GlobalSearchViewModel {
     public var query: String = ""
     public var selectedFilter: EntityFilter = .all
 
+    // MARK: - §18.1 Type-ahead preview state
+
+    /// Top-3 hits shown in dropdown before full search runs.
+    public private(set) var typeAheadHits: [TypeAheadHit] = []
+    /// True while the dropdown should be visible (non-empty query, before "See all" tap).
+    public var showTypeAhead: Bool = false
+
     // MARK: - Private
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let ftsStore: FTSIndexStore?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var typeAheadTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -44,6 +52,7 @@ public final class GlobalSearchViewModel {
     public func onChange(_ new: String) {
         query = new
         searchTask?.cancel()
+        typeAheadTask?.cancel()
         if new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             results = nil
             localHits = []
@@ -51,14 +60,47 @@ public final class GlobalSearchViewModel {
             scopeCounts = .zero
             errorMessage = nil
             isLoading = false
+            typeAheadHits = []
+            showTypeAhead = false
             return
         }
         searchTask = Task { @MainActor in
-            // 300ms debounce — cancellable on each keystroke.
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            // §18.1 250ms debounce — cancel prior request on each keystroke.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
+            await fetchTypeAhead(new)
+        }
+        searchTask = Task { @MainActor in
+            // §18.1 250ms debounce — cancel prior request on each keystroke.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if Task.isCancelled { return }
+            // Full search hides type-ahead once results are ready.
+            showTypeAhead = false
             await fetchLocal()
             await fetchRemote()
+        }
+    }
+
+    /// Feeds top-3 hits from local FTS into `typeAheadHits`.
+    private func fetchTypeAhead(_ q: String) async {
+        guard let store = ftsStore else { return }
+        let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let hits = try await store.search(query: trimmed, entity: nil, limit: 3)
+            typeAheadHits = hits.map { hit in
+                TypeAheadHit(
+                    id: hit.id,
+                    type: hit.entity,
+                    title: hit.title,
+                    subtitle: hit.snippet.isEmpty ? nil : hit.snippet,
+                    badge: nil,
+                    entityId: Int64(hit.entityId)
+                )
+            }
+            showTypeAhead = !typeAheadHits.isEmpty
+        } catch {
+            // Silent — full search will cover this.
         }
     }
 
@@ -72,29 +114,51 @@ public final class GlobalSearchViewModel {
 
     private func fetchLocal() async {
         guard let store = ftsStore else { return }
-        let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
-        async let hitsResult = store.search(query: query, entity: filter, limit: 50)
-        async let countsResult = store.scopeCounts(query: query)
-        let (hits, counts) = (try? await (hitsResult, countsResult)) ?? ([], .zero)
-        localHits = hits
-        scopeCounts = counts
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // §18.1 phone-number / IMEI match — normalise digits-only identifiers
+        // so the FTS index can match formatted variants stored in the body.
+        let normalised = QueryNormalizer.normalise(trimmed).value
+        let effective = normalised.isEmpty ? trimmed : normalised
+        do {
+            let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
+            async let hitsResult = store.search(query: effective, entity: filter, limit: 50)
+            async let countsResult = store.scopeCounts(query: effective)
+            let (hits, counts) = try await (hitsResult, countsResult)
+            localHits = hits
+            scopeCounts = counts
+        } catch {
+            // FTS5 schema not yet migrated (first run) or store error — degrade gracefully.
+            AppLog.ui.error("FTS local search error: \(error.localizedDescription, privacy: .public)")
+            localHits = []
+        }
         updateMergedRows()
     }
 
     private func fetchRemote() async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            isLoading = false
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
+        // §18.1 phone-number / IMEI match — pass digits-only canonical form
+        // so the server `q=` parameter can hit indexed contact / IMEI columns.
+        let normalised = QueryNormalizer.normalise(trimmed).value
+        let effective = normalised.isEmpty ? trimmed : normalised
         do {
-            let remote = try await api.globalSearch(query)
+            let remote = try await api.globalSearch(effective)
             results = remote
             // Merge scope counts with remote results.
             scopeCounts = scopeCounts.merged(with: remote)
             updateMergedRows()
         } catch {
-            AppLog.ui.error("Search failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
-            results = nil
+            AppLog.ui.error("Search remote failed: \(error.localizedDescription, privacy: .public)")
+            if results == nil {
+                errorMessage = error.localizedDescription
+            }
             updateMergedRows()
         }
     }
@@ -119,6 +183,11 @@ public struct GlobalSearchView: View {
     @State private var filters: SearchFilters = SearchFilters()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// §18.1 — ⌘F focuses the search field. Flipping this bool is the simplest
+    /// way to re-focus `.searchable` without UIKit introspection.
+    @State private var searchFocused: Bool = false
+    /// §18.1 — callback invoked when user taps a type-ahead hit to deep-link navigate.
+    public var onSelectTypeAheadHit: ((TypeAheadHit) -> Void)?
 
     private let recentStore: RecentSearchStore?
     private let savedStore: SavedSearchStore?
@@ -143,10 +212,20 @@ public struct GlobalSearchView: View {
     // MARK: - Body
 
     public var body: some View {
-        if horizontalSizeClass == .regular {
-            ipadLayout
-        } else {
-            iphoneLayout
+        ZStack {
+            if horizontalSizeClass == .regular {
+                ipadLayout
+            } else {
+                iphoneLayout
+            }
+            // §18.1 — Invisible button captures ⌘F globally and flips searchFocused.
+            // The layouts use `.searchable(text:isPresented:)` which responds to
+            // the focused state flip on iPad/Mac. On iPhone the toolbar search
+            // icon uses the same toggle.
+            Button("") { searchFocused = true }
+                .opacity(0)
+                .accessibilityHidden(true)
+                .keyboardShortcut("f", modifiers: .command)
         }
     }
 
@@ -154,7 +233,7 @@ public struct GlobalSearchView: View {
 
     private var iphoneLayout: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     entityFilterBar
@@ -163,12 +242,28 @@ public struct GlobalSearchView: View {
                         .brandGlass(in: Rectangle())
                     content
                 }
+                // §18.1 Type-ahead preview dropdown — floats above content below the filter bar.
+                if vm.showTypeAhead && !vm.typeAheadHits.isEmpty {
+                    typeAheadOverlay
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.top, 52) // approximately below filter bar height
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(10)
+                }
             }
             .navigationTitle("Search")
             .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
+            // §18.1 Voice input — dictation works inside `.searchable`; turn off
+            // smart-punctuation / autocorrect so dictated names + numbers don't
+            // get mangled (e.g. "555-1212" stays as-is, no curly quotes).
+            .autocorrectionDisabled()
+            #if !os(macOS)
+            .textInputAutocapitalization(.never)
+            #endif
             .onChange(of: queryText) { _, new in vm.onChange(new) }
             .onSubmit(of: .search) {
                 Task {
+                    vm.showTypeAhead = false
                     await vm.submit()
                     if !queryText.isEmpty { await recentStore?.add(queryText) }
                 }
@@ -178,6 +273,27 @@ public struct GlobalSearchView: View {
             .sheet(isPresented: $showingSaved) { savedSheet }
             .task { await loadRecent() }
         }
+    }
+
+    /// §18.1 — Floating type-ahead card with top-3 hits + "See all" footer.
+    @ViewBuilder
+    private var typeAheadOverlay: some View {
+        TypeAheadPreviewView(
+            query: queryText,
+            hits: vm.typeAheadHits,
+            onSelectHit: { hit in
+                withAnimation(BrandMotion.snappy) { vm.showTypeAhead = false }
+                onSelectTypeAheadHit?(hit)
+            },
+            onSeeAll: {
+                withAnimation(BrandMotion.snappy) { vm.showTypeAhead = false }
+                Task {
+                    await vm.submit()
+                    if !queryText.isEmpty { await recentStore?.add(queryText) }
+                }
+            }
+        )
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
     }
 
     // MARK: - iPad layout
@@ -232,6 +348,13 @@ public struct GlobalSearchView: View {
             }
             .navigationTitle("Search")
             .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
+            // §18.1 Voice input — dictation works inside `.searchable`; turn off
+            // smart-punctuation / autocorrect so dictated names + numbers don't
+            // get mangled (e.g. "555-1212" stays as-is, no curly quotes).
+            .autocorrectionDisabled()
+            #if !os(macOS)
+            .textInputAutocapitalization(.never)
+            #endif
             .onChange(of: queryText) { _, new in vm.onChange(new) }
             .onSubmit(of: .search) {
                 Task {
@@ -487,9 +610,16 @@ public struct GlobalSearchView: View {
     // MARK: - Merged result list
 
     private var mergedResultList: some View {
-        List {
+        // §18.7 — When offline and server hasn't responded, all rows are from local cache.
+        let isOffline = !Reachability.shared.isOnline && vm.results == nil
+        return List {
             ForEach(vm.mergedRows) { row in
-                MergedResultRow(row: row, query: queryText)
+                // Local-only rows shown while offline carry a "cached" stale badge.
+                let isLocalOffline: Bool = {
+                    if case .local = row { return isOffline }
+                    return false
+                }()
+                MergedResultRow(row: row, query: queryText, isOfflineResult: isLocalOffline)
                     .listRowBackground(Color.bizarreSurface1)
                     #if os(iOS)
                     .hoverEffect(.highlight)
@@ -516,6 +646,8 @@ public struct GlobalSearchView: View {
 private struct MergedResultRow: View {
     let row: SearchResultMerger.MergedRow
     let query: String
+    /// §18.7 — When true, row came from local cache while offline; show stale badge.
+    var isOfflineResult: Bool = false
     @State private var copied: Bool = false
 
     var body: some View {
@@ -529,7 +661,19 @@ private struct MergedResultRow: View {
                     .foregroundStyle(.bizarreOnSurface)
                     .lineLimit(1)
                 subtitleContent
-                entityBadge
+                HStack(spacing: BrandSpacing.xs) {
+                    entityBadge
+                    // §18.7 Offline stale badge — indicates result is from local cache.
+                    if isOfflineResult {
+                        Text("cached")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreWarning)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+                            .accessibilityLabel("Offline cached result")
+                    }
+                }
             }
             Spacer()
             copiedIndicator

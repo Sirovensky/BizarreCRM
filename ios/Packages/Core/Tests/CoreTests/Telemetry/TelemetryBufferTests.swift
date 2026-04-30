@@ -132,11 +132,14 @@ final class TelemetryBufferTests: XCTestCase {
         let spy = SpyFlusher()
         let buffer = TelemetryBuffer(flusher: spy, capacity: 100, startTimer: false)
 
-        XCTAssertEqual(await buffer.pendingCount, 0)
+        let count0 = await buffer.pendingCount
+        XCTAssertEqual(count0, 0)
         await buffer.enqueue(.stub())
-        XCTAssertEqual(await buffer.pendingCount, 1)
+        let count1 = await buffer.pendingCount
+        XCTAssertEqual(count1, 1)
         await buffer.enqueue(.stub())
-        XCTAssertEqual(await buffer.pendingCount, 2)
+        let count2 = await buffer.pendingCount
+        XCTAssertEqual(count2, 2)
     }
 
     // MARK: - Error handling / re-queue

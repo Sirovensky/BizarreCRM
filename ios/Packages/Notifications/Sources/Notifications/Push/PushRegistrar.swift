@@ -193,6 +193,34 @@ public actor PushRegistrar {
         }
     }
 
+    /// §21.1 Token rotation — called when APNs issues a new token.
+    /// Deletes the old token from the server, persists the new one, and re-registers.
+    /// Safe to call every app launch — no-ops if the token has not changed.
+    public func rotateDeviceTokenIfNeeded(_ data: Data) async throws {
+        let newHex = data.map { String(format: "%02x", $0) }.joined()
+        let existing = KeychainPushStore.load()
+
+        // No-op when token hasn't changed.
+        if existing == newHex {
+            AppLog.ui.debug("APNs token rotation: token unchanged, skip")
+            return
+        }
+
+        // Unregister old token from server (best-effort; old token naturally expires in 30d).
+        if let old = existing {
+            do {
+                try await api.unregisterDeviceToken(old)
+                AppLog.ui.info("APNs token rotation: old token removed from server")
+            } catch {
+                AppLog.ui.warning("APNs token rotation: failed to remove old token (non-fatal): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // Register new token.
+        try await receiveDeviceToken(data)
+        AppLog.ui.info("APNs token rotation: new token registered \(newHex.prefix(8), privacy: .public)…")
+    }
+
     /// Called from `AppDelegate.application(_:didFailToRegisterForRemoteNotificationsWithError:)`.
     public func handleRegistrationFailure(_ error: Error) {
         state = .failed(error.localizedDescription)

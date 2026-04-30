@@ -22,8 +22,7 @@ public final class AutoResponderListViewModel: Sendable {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let resp = try await api.get("/api/v1/sms/auto-responders", as: AutoResponderListResponse.self)
-            rules = resp.rules
+            rules = try await api.listAutoResponders()
         } catch {
             AppLog.ui.error("AutoResponder load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -40,11 +39,7 @@ public final class AutoResponderListViewModel: Sendable {
             rules[idx] = updated
         }
         do {
-            _ = try await api.patch(
-                "/api/v1/sms/auto-responders/\(rule.id)",
-                body: AutoResponderToggleRequest(enabled: !rule.enabled),
-                as: AutoResponderRule.self
-            )
+            _ = try await api.toggleAutoResponder(id: rule.id, enabled: !rule.enabled)
         } catch {
             AppLog.ui.error("AutoResponder toggle: \(error.localizedDescription, privacy: .public)")
             await load() // revert optimistic update on failure
@@ -54,7 +49,7 @@ public final class AutoResponderListViewModel: Sendable {
     public func delete(_ rule: AutoResponderRule) async {
         rules.removeAll { $0.id == rule.id }
         do {
-            try await api.delete("/api/v1/sms/auto-responders/\(rule.id)")
+            try await api.deleteAutoResponder(id: rule.id)
         } catch {
             AppLog.ui.error("AutoResponder delete: \(error.localizedDescription, privacy: .public)")
             await load()
@@ -246,12 +241,5 @@ private struct RuleRow: View {
     }
 }
 
-// MARK: - Supporting types
-
-public struct AutoResponderListResponse: Decodable, Sendable {
-    public let rules: [AutoResponderRule]
-}
-
-private struct AutoResponderToggleRequest: Encodable, Sendable {
-    let enabled: Bool
-}
+// Note: AutoResponderListResponse and AutoResponderToggleRequest live in
+// AutoResponderEndpoints.swift (the §20-compliant location for API types).
