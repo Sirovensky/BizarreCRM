@@ -16,7 +16,7 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
 /**
  * Step 23 — Backup destination.
  *
- * Mirrors `#screen-23` in `docs/setup-wizard-preview.html`. Owners pick where
+ * Mirrors `#screen-23` in `mockups/web-setup-wizard.html`. Owners pick where
  * encrypted nightly snapshots land:
  *
  *   1. `local`     — folder on the same machine. Cheapest, but useless against

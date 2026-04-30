@@ -7,7 +7,7 @@ import { authApi } from '@/api/endpoints';
 /**
  * Step 1 (self-host) — First login.
  *
- * Mirrors `#screen-1` in `docs/setup-wizard-preview.html`. The shop owner
+ * Mirrors `#screen-1` in `mockups/web-setup-wizard.html`. The shop owner
  * arrives at `https://shop.local/login` with the seeded `admin / admin123`
  * credentials. The form posts to `authApi.login`, then queries
  * `authApi.setupStatus()` to read the `force_password_change` flag (when

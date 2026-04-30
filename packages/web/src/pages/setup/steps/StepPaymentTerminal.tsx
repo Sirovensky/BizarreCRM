@@ -17,7 +17,7 @@ import type { StepProps } from '../wizardTypes';
 /**
  * Step 14 — Payment terminal (BlockChyp).
  *
- * Mirrors `#screen-14` in `docs/setup-wizard-preview.html`. Two stacked cards:
+ * Mirrors `#screen-14` in `mockups/web-setup-wizard.html`. Two stacked cards:
  *
  *   1. BlockChyp credentials — API key, bearer token, signing key. All three
  *      are sensitive, so each input renders as a `password` field with an

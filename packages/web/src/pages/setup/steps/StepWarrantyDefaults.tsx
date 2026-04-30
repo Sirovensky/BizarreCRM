@@ -11,7 +11,7 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
  * is persisted as a string into store_config (matches PendingWrites + the
  * server's ALLOWED_CONFIG_KEYS string contract).
  *
- * Visual layout follows `docs/setup-wizard-preview.html#screen-22`: a card
+ * Visual layout follows `mockups/web-setup-wizard.html#screen-22`: a card
  * with a 2-column grid of (label + number input + "months" suffix) rows on
  * desktop, single-column on mobile, with a full-width font-mono textarea
  * for the disclaimer below.

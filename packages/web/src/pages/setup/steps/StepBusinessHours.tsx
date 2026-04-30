@@ -48,7 +48,7 @@ const DAY_LABELS: Array<[keyof WeekHours, string]> = [
  *     on every change AND once again right before `onNext` / `onSkip`, so
  *     partial state is captured even if the owner skips the wizard.
  *
- * Mirrors `<section id="screen-10">` in `docs/setup-wizard-preview.html`.
+ * Mirrors `<section id="screen-10">` in `mockups/web-setup-wizard.html`.
  */
 export function StepBusinessHours({
   pending,

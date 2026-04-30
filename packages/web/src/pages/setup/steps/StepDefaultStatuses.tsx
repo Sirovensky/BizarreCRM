@@ -15,7 +15,7 @@ import { settingsApi } from '@/api/endpoints';
 /**
  * Step 9 — Default ticket statuses (notification defaults).
  *
- * Mirrors `#screen-9` in `docs/setup-wizard-preview.html`. Surfaces the seeded
+ * Mirrors `#screen-9` in `mockups/web-setup-wizard.html`. Surfaces the seeded
  * ticket statuses so the shop owner can decide which ones auto-send an SMS to
  * the customer. The seed (`packages/shared/src/constants/statuses.ts`) ships
  * sensible defaults — customer-facing states like "Ready for pickup" default

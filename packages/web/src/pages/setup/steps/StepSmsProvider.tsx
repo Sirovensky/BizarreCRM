@@ -8,7 +8,7 @@
  *
  * Linear-flow rewrite (Agent W5-18) — replaces the legacy `SubStepProps`
  * version that lived inside the deprecated Extras Hub. Mirrors the layout
- * defined by `<section id="screen-16">` in `docs/setup-wizard-preview.html`.
+ * defined by `<section id="screen-16">` in `mockups/web-setup-wizard.html`.
  *
  * "None" is a sentinel — picking it clears `sms_provider_type` and any
  * provider-specific creds so they don't leak into the bulk PUT. The owner

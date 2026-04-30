@@ -7,7 +7,7 @@ import type { StepProps } from '../wizardTypes';
 /**
  * Step 19 — Receipt printer.
  *
- * Mirrors `#screen-19` in `docs/setup-wizard-preview.html` and follows the
+ * Mirrors `#screen-19` in `mockups/web-setup-wizard.html` and follows the
  * same small-card pattern used by `StepCashDrawer`. Three sections in a
  * single card:
  *
