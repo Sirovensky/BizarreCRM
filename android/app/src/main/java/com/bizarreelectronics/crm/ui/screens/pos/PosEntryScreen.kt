@@ -144,13 +144,28 @@ fun PosEntryScreen(
                           // overlay). Stuffing it into the bottomBar slot would
                           // collide with that overlay.
     ) { innerPadding ->
-    // Drop the bottom inset from innerPadding so the SearchBar (BottomCenter)
-    // pins to the actual visual bottom rather than floating above the empty
-    // PosFlowScaffold shelf. The shelf is empty when bottomBar = null, so
-    // overlapping it gives back the wasted vertical space.
+    val isTablet = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
+    // Tablet: render the entry content in the left column and the
+    // persistent cart panel on the right (iPad-POS mockup parity).
+    // Phone: cart panel hidden — cashier reaches it via bottom nav.
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier
+            .fillMaxSize()
+            // Phone path keeps the original top-only inset so the SearchBar
+            // can pin to the actual visual bottom (PosFlowScaffold's bottom
+            // shelf is empty when bottomBar=null). Tablet applies the full
+            // inset so the cart panel's Checkout CTA isn't clipped by the
+            // system nav-bar / wave footer.
+            .padding(
+                top = innerPadding.calculateTopPadding(),
+                bottom = if (com.bizarreelectronics.crm.util.isMediumOrExpandedWidth())
+                    innerPadding.calculateBottomPadding()
+                else 0.dp,
+            ),
+    ) {
     Box(modifier = Modifier
+        .weight(1f)
         .fillMaxSize()
-        .padding(top = innerPadding.calculateTopPadding())
     ) {
         // TASK-4: offline banner defensive placement (top of entry screen)
         PosOfflineBanner(
@@ -165,8 +180,9 @@ fun PosEntryScreen(
             modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
         )
         // ── Content layer ───────────────────────────────────────────────────
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = !searchExpanded,
+            modifier = Modifier,
             enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)),
             exit = fadeOut(spring(stiffness = Spring.StiffnessMediumLow)),
         ) {
@@ -289,7 +305,19 @@ fun PosEntryScreen(
                 },
             )
         }
+    } // end content Box (weight=1)
+    if (isTablet) {
+        androidx.compose.material3.VerticalDivider(
+            color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+            thickness = 1.dp,
+            modifier = Modifier.fillMaxHeight(),
+        )
+        com.bizarreelectronics.crm.ui.screens.pos.components.PosCartSidePanel(
+            coordinator = viewModel.sharedCoordinator,
+            onCheckout = onNavigateToCart,
+        )
     }
+    } // end Row
     } // end Scaffold content lambda
 
     LaunchedEffect(state.errorMessage) {

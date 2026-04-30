@@ -55,6 +55,14 @@ class PosEntryViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PosEntryUiState())
     val uiState: StateFlow<PosEntryUiState> = _uiState.asStateFlow()
 
+    /**
+     * Expose the singleton coordinator so the tablet-side cart panel
+     * (`PosCartSidePanel`) can subscribe to the same session as the
+     * VM. Read-only — UI must not mutate the session directly; route
+     * through the existing VM verbs (`attachCustomer`, etc.).
+     */
+    val sharedCoordinator: PosCoordinator get() = coordinator
+
     private val _rawQuery = MutableStateFlow("")
 
     init {

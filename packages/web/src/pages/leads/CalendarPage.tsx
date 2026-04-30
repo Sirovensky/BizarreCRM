@@ -228,7 +228,7 @@ function CreateAppointmentModal({
     title: string;
     start_time: string;
     end_time?: string;
-    assigned_to?: number | null;
+    assigned_to?: number;
     status: string;
     notes?: string;
   }
@@ -310,9 +310,9 @@ function CreateAppointmentModal({
               title: form.title,
               start_time: startTime,
               end_time: endTime,
-              assigned_to: assignedId,
+              assigned_to: assignedId ?? undefined,
               status: form.status,
-              notes: form.notes || null,
+              notes: form.notes || undefined,
             });
           }}
         >
