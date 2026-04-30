@@ -107,16 +107,8 @@ private struct MacPointerModifier: ViewModifier {
 public extension View {
     /// Applies the BizarreCRM branded hover effect.
     ///
-    /// On iOS/iPadOS this maps to the standard `.hoverEffect(…)`.
-    /// On Mac Catalyst the appropriate pointer style is also applied.
-    ///
-    /// - Parameter style: The visual style to use (default: `.automatic`).
-    func brandHover(_ style: BrandHoverStyle = .automatic) -> some View {
-        modifier(BrandHoverModifier(style: style))
-    }
-
     /// Applies the pointer (hand) branded hover — shorthand for
-    /// `.brandHover(.pointer)`.  Use on tappable controls.
+    /// `.brandHoverPointer()`.  Use on tappable controls.
     func brandHoverPointer() -> some View {
         modifier(BrandHoverModifier(style: .pointer))
     }

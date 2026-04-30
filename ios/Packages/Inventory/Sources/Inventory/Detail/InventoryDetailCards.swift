@@ -821,7 +821,7 @@ public struct StockCountHistoryCard: View {
     }
 }
 
-extension StockCountHistoryCard: AXChartDescriptorRepresentable {
+extension StockCountHistoryCard: @preconcurrency AXChartDescriptorRepresentable {
     public func makeChartDescriptor() -> AXChartDescriptor {
         let xAxis = AXCategoricalDataAxisDescriptor(
             title: "Date",
@@ -831,7 +831,7 @@ extension StockCountHistoryCard: AXChartDescriptorRepresentable {
             title: "Quantity on hand",
             range: 0...Double(history.map(\.quantity).max() ?? 1),
             gridlinePositions: []
-        ) { "\($0, specifier: "%.0f") units" }
+        ) { "\(Int($0)) units" }
         let series = AXDataSeriesDescriptor(
             name: "Stock count",
             isContinuous: true,

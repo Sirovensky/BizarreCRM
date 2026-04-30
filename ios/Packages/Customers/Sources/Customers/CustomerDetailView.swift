@@ -570,13 +570,13 @@ private struct RecommendationBanner: View {
 // MARK: - Recent invoices
 
 private struct RecentInvoicesSection: View {
-    let invoices: [InvoiceSummary]
+    let invoices: [Networking.InvoiceSummary]
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Recent invoices").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             VStack(spacing: BrandSpacing.xs) {
-                ForEach(invoices.prefix(5)) { inv in
+                ForEach(Array(invoices.prefix(5))) { inv in
                     let totalFormatted = formattedTotal(inv.total)
                     let statusName = inv.status?.capitalized ?? "Unknown"
                     HStack {
@@ -620,7 +620,7 @@ private struct RecentInvoicesSection: View {
         return f.string(from: NSNumber(value: v)) ?? String(format: "$%.2f", v)
     }
 
-    private func statusColor(_ kind: InvoiceSummary.Status) -> Color {
+    private func statusColor(_ kind: Networking.InvoiceSummary.Status) -> Color {
         switch kind {
         case .paid:    return .bizarreTeal
         case .unpaid:  return .bizarreError

@@ -69,17 +69,17 @@ public final class AccountDeleteRequestViewModel {
 
 // MARK: - API extension
 
+private struct _DeleteEmptyBody: Encodable {}
+private struct _DeleteEmptyResponse: Decodable {}
+
 private extension APIClient {
     func requestAccountDeletion() async throws {
-        struct EmptyBody: Encodable {}
         _ = try await post(
             "/auth/request-account-deletion",
-            body: EmptyBody(),
-            as: EmptyResponse.self
+            body: _DeleteEmptyBody(),
+            as: _DeleteEmptyResponse.self
         )
     }
-
-    private struct EmptyResponse: Decodable {}
 }
 
 // MARK: - View

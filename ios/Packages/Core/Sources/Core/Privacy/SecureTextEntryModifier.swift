@@ -45,7 +45,7 @@ public struct SecureTextEntryModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .introspectSecure()
+            .pixelSecure()
             // Blur as a fallback on iOS < 17 when isCaptured is active.
             // The blur is invisible under normal use; it only activates
             // while screen-capture is detected by the environment service.
@@ -99,11 +99,11 @@ private final class _SecureMarkerView: UIView {
     private func markParentSecure() {
         guard let parent = superview else { return }
         if #available(iOS 17.0, *) {
-            parent.isSecure = true
+            parent.setValue(true, forKey: "isSecure")
         }
         // Walk one level up to catch SwiftUI host cell wrappers.
         if let grandparent = parent.superview, #available(iOS 17.0, *) {
-            grandparent.isSecure = true
+            grandparent.setValue(true, forKey: "isSecure")
         }
     }
 }

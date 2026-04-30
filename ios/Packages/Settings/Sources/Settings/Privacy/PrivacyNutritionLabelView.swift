@@ -14,13 +14,13 @@ import DesignSystem
 // MARK: - PrivacyDataRow
 
 /// A single row in the nutrition label table.
-struct PrivacyDataRow: Identifiable, Sendable {
-    let id: String
-    let category: String
-    let type: String
-    let linkedToUser: Bool
-    let usedForTracking: Bool
-    let purposes: [String]
+public struct PrivacyDataRow: Identifiable, Sendable {
+    public let id: String
+    public let category: String
+    public let type: String
+    public let linkedToUser: Bool
+    public let usedForTracking: Bool
+    public let purposes: [String]
 }
 
 // MARK: - PrivacyNutritionLabelData

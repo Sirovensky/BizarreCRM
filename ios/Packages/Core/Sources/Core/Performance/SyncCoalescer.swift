@@ -41,11 +41,7 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     // MARK: - State
 
     private let lock = NSLock()
-
-    // The boxed task is stored as `AnyObject` to work around Sendable
-    // constraints on `Task<Resource, Error>` in a Sendable class.
-    // We re-cast on retrieval.
-    private var _inflight: [String: Task<Resource, Error>] = [:]
+    private nonisolated(unsafe) var _inflight: [String: Task<Resource, Error>] = [:]
 
     // MARK: - Init
 
@@ -67,28 +63,11 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     /// - Throws: Any error thrown by `work`, forwarded to all waiters.
     @discardableResult
     public func execute(key: String, work: @escaping @Sendable () async throws -> Resource) async throws -> Resource {
-        lock.lock()
-        if let existing = _inflight[key] {
-            lock.unlock()
-            return try await existing.value
+        let (task, created) = _getOrCreate(key: key, work: work)
+        if created {
+            defer { _evict(key: key, task: task) }
+            return try await task.value
         }
-
-        let task = Task<Resource, Error> {
-            try await work()
-        }
-        _inflight[key] = task
-        lock.unlock()
-
-        defer {
-            lock.lock()
-            // Only evict if this is still the same task (concurrent reset
-            // might have already replaced it).
-            if _inflight[key] === task {
-                _inflight.removeValue(forKey: key)
-            }
-            lock.unlock()
-        }
-
         return try await task.value
     }
 
@@ -109,7 +88,7 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     /// Call on session logout or scene termination to prevent orphaned tasks.
     public func cancelAll() {
         lock.lock()
-        let tasks = _inflight.values
+        let tasks = Array(_inflight.values)
         _inflight.removeAll(keepingCapacity: true)
         lock.unlock()
         tasks.forEach { $0.cancel() }
@@ -122,5 +101,22 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _inflight.count
+    }
+
+    // MARK: - Synchronous helpers (safe to call from any context)
+
+    private func _getOrCreate(key: String, work: @escaping @Sendable () async throws -> Resource) -> (task: Task<Resource, Error>, created: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = _inflight[key] { return (existing, false) }
+        let task = Task<Resource, Error> { try await work() }
+        _inflight[key] = task
+        return (task, true)
+    }
+
+    private func _evict(key: String, task: Task<Resource, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        if _inflight[key] == task { _inflight.removeValue(forKey: key) }
     }
 }

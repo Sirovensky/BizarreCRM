@@ -46,7 +46,7 @@ public enum ColorMigrationAudit {
 
     /// Total number of inline-color warnings emitted this process lifetime.
     /// Exposed for snapshot-test assertions.
-    public private(set) static var warningCount: Int = 0
+    public nonisolated(unsafe) static var warningCount: Int = 0
 
     /// Emit a runtime warning when an inline `Color(red:green:blue:)` is detected
     /// at `file:line`, suggesting the `suggestedToken` as the migration target.

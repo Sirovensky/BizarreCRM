@@ -180,7 +180,6 @@ public struct JailbreakDetector: Sendable {
 
     /// Checks if jailbreak-related URL schemes can be opened.
     /// On a stock device these will always return `false`.
-    @MainActor
     private func checkURLSchemes() -> [JailbreakSignal] {
         #if canImport(UIKit)
         let schemes = ["cydia://", "sileo://", "zbra://"]

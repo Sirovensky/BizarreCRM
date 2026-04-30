@@ -549,11 +549,9 @@ public struct ReportsView: View {
                 TicketsTrendCard(points: vm.ticketsTrend)
             }
             // §15.3 Tickets by tech bar
-            if !vm.ticketsByTech.isEmpty {
-                TicketsByTechCard(points: vm.ticketsByTech) { techId in
-                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
-                        selectedTechForDrill = row
-                    }
+            if !vm.employeePerf.isEmpty {
+                TicketsByTechCard(employees: vm.employeePerf) { techName in
+                    selectedTechForDrill = vm.technicianPerf.first(where: { $0.name == techName })
                 }
             }
             // §15.3 Busy-hours heatmap

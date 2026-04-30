@@ -346,15 +346,7 @@ public struct OwnerPLView: View {
                 .strokeBorder(color.opacity(0.25), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(title): \(String(format: "$%.2f", value))"
-            + (marginPct.map { String(format: ", %.1f%% margin", $0 * 100) } ?? "")
-            + (badge.map { ", \($0)" } ?? "")
-            + (yoyPct.map { pct in
-                let sign = pct >= 0 ? "up" : "down"
-                return String(format: ", %@ %.1f%% year over year", sign, abs(pct * 100))
-            } ?? "")
-        )
+        .accessibilityLabel(accessibilityLabel(title: title, value: value, marginPct: marginPct, badge: badge, yoyPct: yoyPct))
     }
 
     // MARK: - Expenses breakdown card (pie-like BarChart)
@@ -507,6 +499,14 @@ public struct OwnerPLView: View {
     }
 
     // MARK: - Helpers
+
+    private func accessibilityLabel(title: String, value: Double, marginPct: Double?, badge: String?, yoyPct: Double?) -> String {
+        var s = "\(title): \(String(format: "$%.2f", value))"
+        if let m = marginPct { s += String(format: ", %.1f%% margin", m * 100) }
+        if let b = badge     { s += ", \(b)" }
+        if let p = yoyPct    { s += String(format: ", %@ %.1f%% year over year", p >= 0 ? "up" : "down", abs(p * 100)) }
+        return s
+    }
 
     private var strokeBorder: some View {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)

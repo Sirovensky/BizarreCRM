@@ -18,7 +18,7 @@ import DesignSystem
 public final class ManagerPinRepromptState {
 
     // MARK: - Configuration
-    public static let defaultWindowSeconds: TimeInterval = 300   // 5 min
+    public nonisolated(unsafe) static let defaultWindowSeconds: TimeInterval = 300   // 5 min
 
     private let windowSeconds: TimeInterval
 
@@ -26,7 +26,7 @@ public final class ManagerPinRepromptState {
     private(set) var lastApprovalDate: Date? = nil
     private(set) var approvedManagerId: Int64? = nil
 
-    public init(windowSeconds: TimeInterval = ManagerPinRepromptState.defaultWindowSeconds) {
+    public nonisolated init(windowSeconds: TimeInterval = ManagerPinRepromptState.defaultWindowSeconds) {
         self.windowSeconds = windowSeconds
     }
 
@@ -49,7 +49,7 @@ public final class ManagerPinRepromptState {
     public func recordApproval(managerId: Int64) {
         lastApprovalDate = Date()
         approvedManagerId = managerId
-        AppLog.pos.info("Manager PIN re-prompt: approval recorded managerId=\(managerId), window=\(Int(windowSeconds))s")
+        AppLog.pos.info("Manager PIN re-prompt: approval recorded managerId=\(managerId), window=\(Int(self.windowSeconds))s")
     }
 
     /// Explicitly expire the approval (e.g., on register close or role change).
@@ -63,7 +63,7 @@ public final class ManagerPinRepromptState {
 // MARK: - EnvironmentKey
 
 private struct ManagerPinRepromptStateKey: EnvironmentKey {
-    static let defaultValue: ManagerPinRepromptState = ManagerPinRepromptState()
+    nonisolated(unsafe) static let defaultValue: ManagerPinRepromptState = ManagerPinRepromptState()
 }
 
 public extension EnvironmentValues {

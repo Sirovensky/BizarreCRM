@@ -63,7 +63,7 @@ public final class TimeSpentTodayViewModel {
 
     private let api: APIClient
     private let userId: Int64
-    private var tickTask: Task<Void, Never>?
+    nonisolated(unsafe) private var tickTask: Task<Void, Never>?
 
     public init(api: APIClient, userId: Int64) {
         self.api = api

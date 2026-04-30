@@ -75,10 +75,9 @@ public struct BrandAudioGraphDescriptor: AXChartDescriptorRepresentable {
             let dataPoints = s.dataPoints.map { point in
                 AXDataPoint(
                     x: point.x,
-                    label: nil,
-                    associatedValues: [
-                        AXDataPoint.AssociatedValue(label: "value", value: point.y)
-                    ]
+                    y: point.y,
+                    additionalValues: [],
+                    label: nil
                 )
             }
             return AXDataSeriesDescriptor(

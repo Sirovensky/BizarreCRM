@@ -228,7 +228,7 @@ private struct AttachmentRemovalConfirmationModifier<T: Identifiable & Sendable>
                 Button("Cancel", role: .cancel) { item = nil }
             } message: {
                 if let t = item {
-                    Text(""\(fileName(t))" will be permanently deleted. This cannot be undone.")
+                    Text(verbatim: "\u{201C}\(fileName(t))\u{201D} will be permanently deleted. This cannot be undone.")
                 }
             }
     }

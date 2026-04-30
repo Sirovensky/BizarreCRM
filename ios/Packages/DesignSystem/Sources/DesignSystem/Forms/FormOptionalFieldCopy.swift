@@ -51,8 +51,8 @@ public struct FormOptionalFieldLabel: View {
                 .font(.custom("Roboto-Medium", size: 15, relativeTo: .subheadline))
                 .foregroundStyle(Color.bizarreText)
 
-            Text(.optionalFieldSuffix)
-                .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption1))
+            Text(verbatim: .optionalFieldSuffix)
+                .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption))
                 .foregroundStyle(Color.bizarreTextSecondary)
         }
     }
@@ -100,7 +100,7 @@ private extension Text {
 private extension Text {
     static var optionalSuffix: Text {
         Text(verbatim: .optionalFieldSuffix)
-            .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption1))
+            .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption))
             .foregroundStyle(Color.bizarreTextSecondary)
     }
 }

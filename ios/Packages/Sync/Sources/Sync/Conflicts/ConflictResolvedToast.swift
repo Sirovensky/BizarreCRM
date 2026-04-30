@@ -76,7 +76,7 @@ public struct ConflictResolvedToastModifier: ViewModifier {
 
     @State private var isVisible: Bool = false
     @State private var resolvedId: Int = 0
-    @State private var resolvedResolution: Resolution = .serverWins
+    @State private var resolvedResolution: Resolution = .keepServer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let autoDismissDelay: TimeInterval = 3.0

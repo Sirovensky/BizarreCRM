@@ -117,7 +117,7 @@ public struct MultiSelectRowModifier<ID: Hashable>: ViewModifier {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                 .font(.title3)
-                .padding(.leading, BrandSpacing.small)
+                .padding(.leading, BrandSpacing.sm)
                 .transition(.scale.combined(with: .opacity))
                 .animation(MultiSelectConstants.selectionAnimation, value: isSelected)
         }
@@ -169,7 +169,7 @@ public struct BulkActionBar: View {
 
     public var body: some View {
         if selectedCount > 0 {
-            HStack(spacing: BrandSpacing.medium) {
+            HStack(spacing: BrandSpacing.md) {
                 // Count label
                 Text("\(selectedCount) selected")
                     .font(.subheadline.weight(.medium))
@@ -198,12 +198,12 @@ public struct BulkActionBar: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            .padding(.horizontal, BrandSpacing.medium)
-            .padding(.vertical, BrandSpacing.small)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: -2)
-            .padding(.horizontal, BrandSpacing.medium)
-            .padding(.bottom, BrandSpacing.small)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.bottom, BrandSpacing.sm)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .animation(MultiSelectConstants.selectionAnimation, value: selectedCount)
         }

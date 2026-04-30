@@ -49,9 +49,9 @@ public final class ListPrefetchScheduler: Sendable {
     // MARK: - State
 
     private let lock = NSLock()
-    private var _lastPrefetchIndex: Int = -1
-    private var _pendingTask: Task<Void, Never>?
-    private var _lastFiredAt: Date = .distantPast
+    private nonisolated(unsafe) var _lastPrefetchIndex: Int = -1
+    private nonisolated(unsafe) var _pendingTask: Task<Void, Never>?
+    private nonisolated(unsafe) var _lastFiredAt: Date = .distantPast
 
     // MARK: - Init
 

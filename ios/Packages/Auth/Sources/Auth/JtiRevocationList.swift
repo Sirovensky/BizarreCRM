@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Persistence
 
 // §28.14 Session & token — JTI revocation list helper

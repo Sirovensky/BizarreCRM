@@ -47,10 +47,10 @@ public final class ImageHashDeduplicator: Sendable {
     private let lock = NSLock()
 
     /// url.absoluteString → SHA-256 hex string
-    private var _urlToHash: [String: String] = [:]
+    private nonisolated(unsafe) var _urlToHash: [String: String] = [:]
 
     /// SHA-256 hex string → canonical (first-seen) URL string
-    private var _hashToCanonicalURL: [String: String] = [:]
+    private nonisolated(unsafe) var _hashToCanonicalURL: [String: String] = [:]
 
     // MARK: - Init
 

@@ -85,17 +85,17 @@ public final class DataExportRequestViewModel {
 
 // MARK: - API extension
 
+private struct _ExportEmptyBody: Encodable {}
+private struct _ExportEmptyResponse: Decodable {}
+
 private extension APIClient {
     func requestPersonalDataExport() async throws {
-        struct EmptyBody: Encodable {}
         _ = try await post(
             "/exports/personal-data-request",
-            body: EmptyBody(),
-            as: EmptyResponse.self
+            body: _ExportEmptyBody(),
+            as: _ExportEmptyResponse.self
         )
     }
-
-    private struct EmptyResponse: Decodable {}
 }
 
 // MARK: - View

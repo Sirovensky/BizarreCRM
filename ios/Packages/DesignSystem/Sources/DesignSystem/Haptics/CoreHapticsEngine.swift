@@ -147,7 +147,7 @@ public actor CoreHapticsEngine {
             // Triple subtle, low intensity
             return try crescendoPattern(intensities: [0.2, 0.2, 0.2], interval: 0.05)
 
-        case .addToCart, .longPressMenu:
+        case .addToCart, .longPressMenu, .swipeActionCommit:
             return try singleTapPattern(intensity: 0.5, sharpness: 0.6)
 
         case .validationError:
@@ -178,6 +178,15 @@ public actor CoreHapticsEngine {
         case .cardHoverActivate:
             // Soft click for pointer enter on iPad.
             return try singleTapPattern(intensity: 0.20, sharpness: 0.85)
+
+        case .drawerOpen:
+            return try singleTapPattern(intensity: 0.55, sharpness: 0.60)
+
+        case .successConfirm:
+            return try singleTapPattern(intensity: 0.60, sharpness: 0.70)
+
+        case .errorShake:
+            return try singleTapPattern(intensity: 0.80, sharpness: 0.90)
         }
     }
 

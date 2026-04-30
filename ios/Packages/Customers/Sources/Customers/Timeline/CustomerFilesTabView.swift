@@ -336,7 +336,7 @@ public struct CustomerFilesTabView: View {
                     // Loading or failure — show shimmer placeholder with MIME icon
                     AttachmentThumbnailPlaceholder(
                         mimeType: file.mimeType,
-                        showShimmer: phase == .empty
+                        showShimmer: { if case .empty = phase { return true }; return false }()
                     )
                 }
             }

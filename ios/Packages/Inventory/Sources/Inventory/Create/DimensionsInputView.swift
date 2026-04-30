@@ -100,7 +100,7 @@ public struct DimensionsInputView: View {
             .padding(.horizontal, BrandSpacing.xs)
             .padding(.vertical, BrandSpacing.xxs)
             .background(
-                RoundedRectangle(cornerRadius: BrandCornerRadius.sm)
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
                     .fill(Color.bizarreSurface1)
             )
             .onChange(of: text.wrappedValue) { _, new in

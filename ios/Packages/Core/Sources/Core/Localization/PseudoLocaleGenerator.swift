@@ -89,7 +89,7 @@ public enum PseudoLocaleGenerator {
     /// preprocessor constant is Release but a hidden debug menu is available).
     ///
     /// Defaults to `false` in production; automatically `true` in DEBUG.
-    public static var isEnabled: Bool = {
+    public nonisolated(unsafe) static var isEnabled: Bool = {
 #if DEBUG
         return true
 #else

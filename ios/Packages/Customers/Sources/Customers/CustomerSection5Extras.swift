@@ -647,7 +647,7 @@ public struct CustomerLinkRelationshipSheet: View {
 
     private var noResultsState: some View {
         VStack(spacing: BrandSpacing.sm) {
-            Text("No customers matching "\(searchText)"")
+            Text(verbatim: "No customers matching \u{201C}\(searchText)\u{201D}")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
@@ -698,6 +698,8 @@ public struct CustomerRelationshipLinkRequest: Encodable, Sendable {
     }
 }
 
+private struct _CustomerRelationshipEmptyResponse: Decodable {}
+
 public extension APIClient {
     /// `POST /api/v1/customers/:id/relationships` — link two customers.
     func linkCustomerRelationship(
@@ -705,13 +707,12 @@ public extension APIClient {
         relatedCustomerId: Int64,
         relationshipType: CustomerRelationship.RelationshipType
     ) async throws {
-        struct Empty: Decodable {}
         let body = CustomerRelationshipLinkRequest(
             relatedCustomerId: relatedCustomerId,
             relationshipType: relationshipType.rawValue
         )
         _ = try await post("/api/v1/customers/\(customerId)/relationships",
-                           body: body, as: Empty.self)
+                           body: body, as: _CustomerRelationshipEmptyResponse.self)
     }
 }
 
@@ -1009,19 +1010,19 @@ public struct AccessibleTagChips: View {
 // string, e.g. "Member since April 3, 2023".
 
 public enum CustomerSinceDateFormatter {
-    private static let isoFull: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let isoFull: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    private static let isoBasic: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let isoBasic: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
 
-    private static let isoDate: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let isoDate: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
         return f

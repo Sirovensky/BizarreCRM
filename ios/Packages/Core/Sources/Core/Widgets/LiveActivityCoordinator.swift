@@ -376,7 +376,7 @@ public final class LiveActivityPushTokenService {
         orderId: String,
         customerName: String?,
         service: String?,
-        api: APIClient
+        registerPushToken: (LiveActivityPushTokenRequest) async throws -> Void
     ) async throws -> String {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             throw LiveActivityPushTokenError.activitiesDisabled
@@ -411,7 +411,7 @@ public final class LiveActivityPushTokenService {
         }
 
         // Upload token to server so it can push ActivityKit content updates.
-        try await api.registerLiveActivityPushToken(LiveActivityPushTokenRequest(
+        try await registerPushToken(LiveActivityPushTokenRequest(
             activityId: activity.id,
             pushToken: hex,
             activityType: "ticket",
@@ -429,7 +429,7 @@ public final class LiveActivityPushTokenService {
         cashierName: String,
         initialCartTotalCents: Int,
         itemCount: Int,
-        api: APIClient
+        registerPushToken: (LiveActivityPushTokenRequest) async throws -> Void
     ) async throws -> String {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             throw LiveActivityPushTokenError.activitiesDisabled
@@ -458,7 +458,7 @@ public final class LiveActivityPushTokenService {
             throw LiveActivityPushTokenError.noTokenReceived
         }
 
-        try await api.registerLiveActivityPushToken(LiveActivityPushTokenRequest(
+        try await registerPushToken(LiveActivityPushTokenRequest(
             activityId: activity.id,
             pushToken: hex,
             activityType: "sale",
@@ -503,19 +503,6 @@ public struct LiveActivityPushTokenRequest: Encodable, Sendable {
         case pushToken    = "push_token"
         case activityType = "activity_type"
         case referenceId  = "reference_id"
-    }
-}
-
-// MARK: - APIClient extension for live-activity token upload
-
-public extension APIClient {
-    /// `POST /api/v1/live-activities/register` — registers an ActivityKit push token.
-    func registerLiveActivityPushToken(_ request: LiveActivityPushTokenRequest) async throws {
-        _ = try await post(
-            "/api/v1/live-activities/register",
-            body: request,
-            as: DeviceRegisterResponse.self
-        )
     }
 }
 

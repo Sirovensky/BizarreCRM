@@ -112,7 +112,7 @@ public struct TwoUpEditorLayout<Leading: View, Trailing: View>: View {
                 Text(trailingTitle).tag(TwoUpTab.trailing)
             }
             .pickerStyle(.segmented)
-            .padding(BrandSpacing.small)
+            .padding(BrandSpacing.sm)
             .background(Color(uiColor: .secondarySystemBackground))
 
             Divider()
@@ -141,8 +141,8 @@ public struct TwoUpEditorLayout<Leading: View, Trailing: View>: View {
                 .foregroundStyle(.primary)
             Spacer()
         }
-        .padding(.horizontal, BrandSpacing.medium)
-        .padding(.vertical, BrandSpacing.xSmall)
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.xs)
         .background(Color(uiColor: .secondarySystemBackground))
 
         Divider()

@@ -50,7 +50,7 @@ public enum GRDBPragmaHelper {
     /// - Parameter db: The freshly opened GRDB `Database` connection.
     /// - Throws: If any PRAGMA statement fails (extremely unlikely — treated as
     ///   programmer error so this propagates rather than being swallowed).
-    public static func applyPerformancePragmas(to db: Database) throws {
+    public static func applyPerformancePragmas(to db: GRDB.Database) throws {
         // WAL mode — applied once; subsequent connections inherit it from the
         // DB file header, but re-issuing the pragma is idempotent and cheap.
         try db.execute(sql: "PRAGMA journal_mode = WAL")
@@ -73,7 +73,7 @@ public enum GRDBPragmaHelper {
     /// Returns a snapshot of current PRAGMA values for the connection.
     ///
     /// Useful in tests and Settings → Diagnostics to verify pragmas are active.
-    public static func diagnosticSnapshot(from db: Database) throws -> PragmaSnapshot {
+    public static func diagnosticSnapshot(from db: GRDB.Database) throws -> PragmaSnapshot {
         let journalMode = try String.fetchOne(db, sql: "PRAGMA journal_mode") ?? "unknown"
         let synchronous = try Int.fetchOne(db, sql: "PRAGMA synchronous") ?? -1
         let cacheSize   = try Int.fetchOne(db, sql: "PRAGMA cache_size") ?? 0

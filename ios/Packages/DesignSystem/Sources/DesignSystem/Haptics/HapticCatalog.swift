@@ -41,6 +41,12 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case listItemAppear
     /// Fired on card hover-lift (iPad pointer enter, strong enough to be felt on M-series).
     case cardHoverActivate
+    /// Fired when a slide-over drawer or bottom sheet finishes opening.
+    case drawerOpen
+    /// Fired on a generic success confirmation (e.g. checkmark animation complete).
+    case successConfirm
+    /// Fired together with an error shake animation.
+    case errorShake
 }
 
 // MARK: - HapticCatalog
@@ -128,11 +134,20 @@ public enum HapticCatalog: Sendable {
             g.prepare()
             g.impactOccurred()
 
-        case .sheetPresented:
-            // Sheets are large view transitions — use medium to acknowledge.
+        case .sheetPresented, .drawerOpen:
             let g = UIImpactFeedbackGenerator(style: .medium)
             g.prepare()
             g.impactOccurred()
+
+        case .successConfirm:
+            let g = UINotificationFeedbackGenerator()
+            g.prepare()
+            g.notificationOccurred(.success)
+
+        case .errorShake:
+            let g = UINotificationFeedbackGenerator()
+            g.prepare()
+            g.notificationOccurred(.error)
         }
         #endif
     }

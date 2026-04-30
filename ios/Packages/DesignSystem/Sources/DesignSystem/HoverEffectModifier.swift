@@ -55,16 +55,7 @@ public struct HoverHighlightModifier: ViewModifier {
             // to use "long press" to access it.
             .accessibilityHint("Long press for more options")
 
-        if #available(iOS 17.5, *) {
-            switch pointer {
-            case .default:
-                highlighted.pointerStyle(.automatic)
-            case .link:
-                highlighted.pointerStyle(.link)
-            }
-        } else {
-            highlighted
-        }
+        highlighted
         #else
         content
         #endif

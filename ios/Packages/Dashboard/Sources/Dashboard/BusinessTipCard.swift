@@ -9,7 +9,7 @@ import DesignSystem
 // Dismissed per-day via UserDefaults; reappears next day automatically.
 
 private let businessTips: [String] = [
-    "Follow up with customers 48 hours after pickup — a quick "How's the device?" drives repeat visits and 5-star reviews.",
+    "Follow up with customers 48 hours after pickup — a quick \u{201C}How\u{2019}s the device?\u{201D} drives repeat visits and 5-star reviews.",
     "Batch-print repair labels at the start of each shift to cut search time and keep the bench organised.",
     "A low-stock alert on your three best-selling parts can prevent turning away same-day repairs.",
     "Offer a diagnostic fee that converts to a repair credit — it sets expectations and improves close rates.",

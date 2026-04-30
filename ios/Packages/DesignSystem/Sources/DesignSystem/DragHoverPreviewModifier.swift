@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // §22.7 — Drag-and-drop hover preview (card-style miniature + drop target
 // highlight on hover).
@@ -167,7 +168,7 @@ private struct _HoverOverlayWrapper<Content: View>: View {
             // Capture isTargeted from any dropDestination in parent context
             // via onDrop preference — approximated here with an invisible
             // drop zone that just tracks hover.
-            .onDrop(of: [], isTargeted: $isTargeted) { _ in false }
+            .onDrop(of: [UTType.data], isTargeted: $isTargeted) { _ in false }
             .animation(
                 .easeInOut(duration: HoverDropHighlightModifier.animationDuration),
                 value: isTargeted
