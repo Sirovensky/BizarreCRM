@@ -30,7 +30,7 @@ import SwiftUI
 ///     }
 /// }
 /// ```
-public struct EquatableContent<Value: Equatable, Content: View>: View, Equatable {
+public struct EquatableContent<Value: Equatable, Content: View>: View, @preconcurrency Equatable {
     public let value: Value
     public let content: (Value) -> Content
 
@@ -43,7 +43,7 @@ public struct EquatableContent<Value: Equatable, Content: View>: View, Equatable
         content(value)
     }
 
-    nonisolated public static func == (lhs: Self, rhs: Self) -> Bool {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.value == rhs.value
     }
 }

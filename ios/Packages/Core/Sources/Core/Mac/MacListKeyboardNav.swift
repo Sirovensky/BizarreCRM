@@ -62,6 +62,7 @@ public struct MacListKeyboardNavModifier: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
+#if os(macOS)
         content
             .focusable(isEnabled)
             .onMoveCommand { direction in
@@ -75,11 +76,18 @@ public struct MacListKeyboardNavModifier: ViewModifier {
                     break
                 }
             }
-            // ↵ Return — open the highlighted row.
             .onSubmit {
                 guard isEnabled, count > 0 else { return }
                 onOpen(Self.clamp(selection, count: count))
             }
+#else
+        content
+            .focusable(isEnabled)
+            .onSubmit {
+                guard isEnabled, count > 0 else { return }
+                onOpen(Self.clamp(selection, count: count))
+            }
+#endif
     }
 
     /// Public for tests — clamps `index` to `[0, count - 1]`, returning 0 when

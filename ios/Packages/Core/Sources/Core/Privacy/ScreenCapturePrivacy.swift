@@ -51,7 +51,7 @@ public final class ScreenCapturePrivacy: ScreenCapturePrivacyProtocol, @unchecke
 
     // MARK: - Private state
 
-    nonisolated(unsafe) private var observerToken: Any?
+    @ObservationIgnored nonisolated(unsafe) private var observerToken: Any?
 
     // MARK: - Init
 

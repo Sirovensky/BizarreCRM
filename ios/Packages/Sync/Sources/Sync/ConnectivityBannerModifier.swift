@@ -73,7 +73,7 @@ public struct ConnectivityBannerModifier: ViewModifier {
                 // Poll SyncManager.shared.pendingCount via observation.
                 // @Observable propagates MainActor changes through AsyncStream.
                 // We read the value directly since SyncManager is @MainActor + @Observable.
-                pendingCount = await SyncManager.shared.pendingCount
+                pendingCount = SyncManager.shared.pendingCount
             }
             .onChange(of: reachability.isOnline) { _, _ in
                 Task { @MainActor in

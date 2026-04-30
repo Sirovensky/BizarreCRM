@@ -78,7 +78,7 @@ public struct StalenessIndicator: View {
     // Allow external time injection for testing.
     public let now: Date
 
-    public init(lastSyncedAt: Date?, now: Date = Date()) {
+    public nonisolated init(lastSyncedAt: Date?, now: Date = Date()) {
         self.lastSyncedAt = lastSyncedAt
         self.now = now
     }

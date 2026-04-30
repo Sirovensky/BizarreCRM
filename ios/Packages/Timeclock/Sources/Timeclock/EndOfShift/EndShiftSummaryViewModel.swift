@@ -166,7 +166,7 @@ public final class EndShiftSummaryViewModel {
             // Store handoff amount for next opener if cashier chose to enter one.
             if handoffCashCents > 0 {
                 let handoff = ShiftHandoffRequest(openingCashCents: handoffCashCents)
-                try? await api.submitShiftHandoff(employeeId: employeeId, body: handoff)
+                _ = try? await api.submitShiftHandoff(employeeId: employeeId, body: handoff)
             }
 
             // Update local summary with final counts for the done screen.

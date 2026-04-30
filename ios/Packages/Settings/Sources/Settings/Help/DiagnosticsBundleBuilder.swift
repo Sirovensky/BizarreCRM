@@ -133,8 +133,8 @@ public struct SystemDeviceInfoProvider: DeviceInfoProvider, Sendable {
 
     public func currentInfo() -> DeviceInfo {
         #if canImport(UIKit)
-        let iosVersion = UIDevice.current.systemVersion
-        let deviceModel = UIDevice.current.model
+        let iosVersion = MainActor.assumeIsolated { UIDevice.current.systemVersion }
+        let deviceModel = MainActor.assumeIsolated { UIDevice.current.model }
         #else
         let iosVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let deviceModel = "Mac"

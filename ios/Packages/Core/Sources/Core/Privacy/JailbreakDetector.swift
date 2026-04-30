@@ -184,7 +184,10 @@ public struct JailbreakDetector: Sendable {
         #if canImport(UIKit)
         let schemes = ["cydia://", "sileo://", "zbra://"]
         for scheme in schemes {
-            if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
+            let canOpen = MainActor.assumeIsolated {
+                URL(string: scheme).map { UIApplication.shared.canOpenURL($0) } ?? false
+            }
+            if canOpen {
                 return [JailbreakSignal(id: "url.scheme", detail: "Can open \(scheme)", weight: .low)]
             }
         }

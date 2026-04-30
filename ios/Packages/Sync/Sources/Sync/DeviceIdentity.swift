@@ -64,7 +64,7 @@ public final class DeviceIdentity: @unchecked Sendable {
 
     private static func seedIdentifier() -> String {
         #if canImport(UIKit)
-        if let idfv = UIDevice.current.identifierForVendor?.uuidString {
+        if let idfv = MainActor.assumeIsolated({ UIDevice.current.identifierForVendor?.uuidString }) {
             return idfv
         }
         #endif

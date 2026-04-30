@@ -104,6 +104,13 @@ public final class Cart {
     // up with a zombie "active" row, and lets the POS UI rebuild the share
     // URL without a follow-up GET.
 
+    /// §40.x Recurring charge schedule attached to this cart, or nil.
+    public var recurringRule: RecurringChargeRule? = nil
+
+    public func setRecurringRule(_ rule: RecurringChargeRule?) {
+        self.recurringRule = rule
+    }
+
     /// Server id of the payment link currently attached to the cart, or
     /// `nil`. Drives the Charge-disabled state and the post-sale cancel path.
     public private(set) var pendingPaymentLinkId: Int64?

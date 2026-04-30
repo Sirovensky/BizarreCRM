@@ -387,7 +387,7 @@ public extension BrandIcon {
     /// SF Symbols 4+ ships built-in directionality metadata, but we also maintain
     /// this explicit list so that custom brand icons and future additions default
     /// to the safe choice (non-directional) until explicitly opted in.
-    public var isDirectional: Bool {
+    var isDirectional: Bool {
         switch self {
         case .chevronRight, .chevronLeft,
              .arrowRight, .arrowUpRight, .arrowDownRight,
@@ -412,7 +412,7 @@ public extension BrandIcon {
     /// BrandIcon.arrowRight.directionalImage()
     ///     .accessibilityLabel(BrandIcon.arrowRight.accessibilityLabel)
     /// ```
-    public func directionalImage() -> some View {
+    func directionalImage() -> some View {
         Image(systemName: systemName)
             .flipsForRightToLeftLayoutDirection(isDirectional)
     }
@@ -420,7 +420,7 @@ public extension BrandIcon {
     /// Returns a role-sensitive directional image.
     ///
     /// Combines the fill/outline role resolution with RTL flipping in one call.
-    public func directionalImage(for role: BrandIconRole) -> some View {
+    func directionalImage(for role: BrandIconRole) -> some View {
         Image(systemName: resolvedSymbolName(for: role))
             .flipsForRightToLeftLayoutDirection(isDirectional)
     }
@@ -433,7 +433,7 @@ public extension BrandIcon {
     ///
     /// Falls back to `systemName` when the icon does not have a distinct
     /// fill/outline pair.
-    public func resolvedSymbolName(for role: BrandIconRole) -> String {
+    func resolvedSymbolName(for role: BrandIconRole) -> String {
         switch role {
         case .active: return filledSystemName
         case .navigation: return outlineSystemName

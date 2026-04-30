@@ -57,8 +57,6 @@ public struct BrandSortableTable<
 
     public var body: some View {
         let sorted = rows.sorted(using: sortOrder)
-        Table(sorted, sortOrder: $sortOrder) {
-            columns()
-        }
+        Table(sorted, sortOrder: $sortOrder, columns: columns)
     }
 }

@@ -68,7 +68,7 @@ extension SessionFingerprint {
 
         let iOSVersion: String
         #if os(iOS) || os(tvOS)
-        iOSVersion = UIDevice.current.systemVersion
+        iOSVersion = MainActor.assumeIsolated { UIDevice.current.systemVersion }
         #else
         iOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
         #endif

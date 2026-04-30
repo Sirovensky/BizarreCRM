@@ -26,7 +26,7 @@ public enum CallQuickAction {
               let url = URL(string: "tel:\(cleaned)") else { return }
 #if canImport(UIKit)
         // Perform UIApplication call only on iOS/tvOS — macOS test host has no UIApplication.
-        openURLIfPossible(url)
+        Task { @MainActor in openURLIfPossible(url) }
 #endif
     }
 
@@ -60,6 +60,7 @@ public enum CallQuickAction {
 import UIKit
 import SwiftUI
 
+@MainActor
 private func openURLIfPossible(_ url: URL) {
     UIApplication.shared.open(url)
 }

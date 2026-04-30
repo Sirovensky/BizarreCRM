@@ -471,7 +471,7 @@ public extension APIClient {
     /// `GET /api/v1/customers/:id/portal-link` — generate a single-use login URL for the
     /// customer self-service portal.  Moved here from Customers package so InvoiceDetailView
     /// can call it without a cross-package dependency on Customers.
-    public func customerPortalLink(customerId: Int64) async throws -> CustomerPortalLinkResponse {
+    func customerPortalLink(customerId: Int64) async throws -> CustomerPortalLinkResponse {
         try await get("/api/v1/customers/\(customerId)/portal-link", as: CustomerPortalLinkResponse.self)
     }
 }

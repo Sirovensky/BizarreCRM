@@ -85,7 +85,7 @@ public enum MainActorHopGuard {
     ///
     /// - Parameter label: Label for the debug log.
     public static func ensureOffMain(label: String = #function) async {
-        if await MainActor.run(resultType: Bool.self) { Thread.isMainThread } {
+        if await MainActor.run(resultType: Bool.self, body: { Thread.isMainThread }) {
             #if DEBUG
             HopLog.shared.recordIfNew(label: label)
             #endif

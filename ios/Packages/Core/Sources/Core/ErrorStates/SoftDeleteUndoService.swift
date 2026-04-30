@@ -134,7 +134,7 @@ private final class _SoftDeleteBox: @unchecked Sendable {
 }
 
 private struct SoftDeleteUndoServiceKey: EnvironmentKey {
-    nonisolated(unsafe) static let _box = _SoftDeleteBox()
+    static let _box = _SoftDeleteBox()
     static var defaultValue: SoftDeleteUndoService { _box.value }
 }
 

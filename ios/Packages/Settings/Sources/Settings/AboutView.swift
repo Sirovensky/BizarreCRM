@@ -233,7 +233,10 @@ public struct AboutView: View {
         if size > 0 {
             var machine = [CChar](repeating: 0, count: size)
             sysctlbyname("hw.machine", &machine, &size, nil, 0)
-            let identifier = String(cString: machine)
+            let identifier = machine.withUnsafeBufferPointer { buf -> String in
+                let bytes = buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+                return String(decoding: bytes, as: UTF8.self)
+            }
             if let name = DeviceModelMap.name(for: identifier) {
                 return name
             }

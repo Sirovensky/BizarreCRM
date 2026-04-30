@@ -47,7 +47,7 @@ public struct SignpostInterval: Sendable {
 
     /// Reuses the same subsystem/category as `PerformanceMeasurement` so all
     /// perf signposts appear in the same Instruments lane.
-    nonisolated(unsafe) static let log = OSLog(
+    static let log = OSLog(
         subsystem: "com.bizarrecrm",
         category: "bizarrecrm.perf"
     )

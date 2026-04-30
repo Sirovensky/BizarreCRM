@@ -97,7 +97,7 @@ public final class LogThrottle: @unchecked Sendable {
     /// Useful after a state transition that makes the previous suppressed
     /// log irrelevant (e.g. reconnection after an offline period).
     public func reset(key: String) {
-        queue.sync { table.removeValue(forKey: key) }
+        queue.sync { _ = table.removeValue(forKey: key) }
     }
 
     /// Reset all keys.

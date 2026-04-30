@@ -92,7 +92,7 @@ public final class ScreenshotAuditCounter: ScreenshotAuditCounterProtocol, @unch
 
     // MARK: - Private state
 
-    nonisolated(unsafe) private var observerToken: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var observerToken: NSObjectProtocol?
     private var currentScreenIdentifier: String?
     private var currentUserID: String?
     private var onScreenshotHandler: (@Sendable (ScreenshotAuditEntry) -> Void)?

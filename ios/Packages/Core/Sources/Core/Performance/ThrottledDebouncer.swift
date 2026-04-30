@@ -119,13 +119,7 @@ public final class ThrottledDebouncer<Value: Sendable>: @unchecked Sendable {
                     return // Cancelled — newer event will handle.
                 }
 
-                self.lock.lock()
-                let toFire = self.pendingValue
-                self.pendingValue = nil
-                self.lastFireTime = ContinuousClock.now
-                self.debounceTask = nil
-                self.lock.unlock()
-
+                let toFire = self._consumePending()
                 if let toFire {
                     await handler(toFire)
                 }
@@ -135,6 +129,15 @@ public final class ThrottledDebouncer<Value: Sendable>: @unchecked Sendable {
             debounceTask = newTask
             lock.unlock()
         }
+    }
+
+    private func _consumePending() -> Value? {
+        lock.lock(); defer { lock.unlock() }
+        let v = pendingValue
+        pendingValue = nil
+        lastFireTime = ContinuousClock.now
+        debounceTask = nil
+        return v
     }
 
     /// Cancels any pending debounce without firing.

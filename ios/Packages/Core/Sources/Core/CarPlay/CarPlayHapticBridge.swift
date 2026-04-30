@@ -67,14 +67,12 @@ public final class CarPlayHapticBridge: @unchecked Sendable {
                 UISelectionFeedbackGenerator().selectionChanged()
             }
         case .notificationArrived:
-            let generator = UINotificationFeedbackGenerator()
             DispatchQueue.main.async {
-                generator.notificationOccurred(.success)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
         case .actionFailed:
-            let generator = UINotificationFeedbackGenerator()
             DispatchQueue.main.async {
-                generator.notificationOccurred(.error)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
         #endif

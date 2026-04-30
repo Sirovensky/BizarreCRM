@@ -46,7 +46,7 @@ public final class WebSocketConnection: @unchecked Sendable {
         AppLog.sync.info("WebSocketConnection: closed \(self.url.absoluteString, privacy: .public)")
     }
 
-    public func ping(onComplete: ((Error?) -> Void)? = nil) {
+    public func ping(onComplete: (@Sendable (Error?) -> Void)? = nil) {
         wsTask?.sendPing { error in
             if let error {
                 AppLog.sync.error("WebSocketConnection: ping failed: \(error.localizedDescription, privacy: .public)")

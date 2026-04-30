@@ -50,7 +50,7 @@ public actor RecentPushStore {
 
     // MARK: - Shared
 
-    nonisolated(unsafe) public static let shared = RecentPushStore()
+    public static let shared = RecentPushStore()
 
     // MARK: - Constants
 

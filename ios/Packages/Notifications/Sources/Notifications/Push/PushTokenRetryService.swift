@@ -15,7 +15,7 @@ public actor PushTokenRetryService {
 
     // MARK: - Shared
 
-    nonisolated(unsafe) public static let shared = PushTokenRetryService()
+    public static let shared = PushTokenRetryService()
 
     // MARK: - Constants
 

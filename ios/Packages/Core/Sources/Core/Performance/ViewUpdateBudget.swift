@@ -210,7 +210,7 @@ final class ViewUpdateBudgetRegistry: @unchecked Sendable {
 
     /// Reuses the `bizarrecrm.perf` log so events appear in the same
     /// Instruments lane as `SignpostInterval` and `PerformanceMeasurement`.
-    nonisolated(unsafe) static let log = OSLog(
+    static let log = OSLog(
         subsystem: "com.bizarrecrm",
         category: "bizarrecrm.perf"
     )

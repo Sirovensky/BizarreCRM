@@ -43,7 +43,7 @@ public struct ProMotionDetector: Sendable {
     public static var isProMotion: Bool {
         #if canImport(UIKit)
         if #available(iOS 15, *) {
-            return UIScreen.main.maximumFramesPerSecond >= 120
+            return MainActor.assumeIsolated { UIScreen.main.maximumFramesPerSecond } >= 120
         } else {
             // Fallback: check CADisplayLink — not available at static init time,
             // so default to `false` (safe, not a crash path).

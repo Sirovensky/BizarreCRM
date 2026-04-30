@@ -27,7 +27,7 @@ public enum PerformanceMeasurement: Sendable {
     ///
     /// Using `.default` point-of-interest type keeps the events visible
     /// in the Instruments "Points of Interest" track.
-    nonisolated(unsafe) static let log = OSLog(
+    static let log = OSLog(
         subsystem: "com.bizarrecrm",
         category: "bizarrecrm.perf"
     )

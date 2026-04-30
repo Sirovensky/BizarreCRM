@@ -743,7 +743,7 @@ private struct FPSMemoryHUDView: View {
         .onAppear {
             refreshMetrics()
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                refreshMetrics()
+                Task { @MainActor in refreshMetrics() }
             }
         }
         .onDisappear {
@@ -835,7 +835,7 @@ private struct GlassLayerCounterHUD: View {
         .onAppear {
             refresh()
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-                refresh()
+                Task { @MainActor in refresh() }
             }
         }
         .onDisappear {

@@ -21,16 +21,20 @@ import Foundation
 //
 // Wired from APIClientImpl.get(...) — see APIClient.swift.
 
+/// Type-erased Sendable wrapper. Required because Swift 6 forbids
+/// `Task<Any, Error>` (Any is not Sendable). The wrapper carries an
+/// arbitrary value across concurrency domains; the caller casts back
+/// to the originally requested generic T.
+public struct AnySendable: @unchecked Sendable {
+    public let value: Any
+    public init(_ value: Any) { self.value = value }
+}
+
 public actor RequestCoalescer {
 
     public static let shared = RequestCoalescer()
 
-    // Type-erased in-flight tasks keyed by request fingerprint.
-    // Value is `Task<Any, Error>` because the caller decodes a generic T;
-    // we store as Any and unsafe-cast on retrieval to avoid generic-Task
-    // existential gymnastics. Cast is type-safe because the key encodes
-    // the response shape implicitly via the URL path.
-    private var inFlight: [String: Task<Any, Error>] = [:]
+    private var inFlight: [String: Task<AnySendable, Error>] = [:]
 
     public init() {}
 
@@ -42,21 +46,19 @@ public actor RequestCoalescer {
         work: @Sendable @escaping () async throws -> T
     ) async throws -> T {
         if let existing = inFlight[key] {
-            // Another caller already started this exact request — await theirs.
-            let value = try await existing.value
-            guard let typed = value as? T else {
-                // Should not happen: same key always carries same response shape.
+            let boxed = try await existing.value
+            guard let typed = boxed.value as? T else {
                 throw CoalescerError.typeMismatch
             }
             return typed
         }
-        let task = Task<Any, Error> {
-            try await work() as Any
+        let task = Task<AnySendable, Error> {
+            AnySendable(try await work())
         }
         inFlight[key] = task
         defer { inFlight.removeValue(forKey: key) }
-        let value = try await task.value
-        guard let typed = value as? T else {
+        let boxed = try await task.value
+        guard let typed = boxed.value as? T else {
             throw CoalescerError.typeMismatch
         }
         return typed

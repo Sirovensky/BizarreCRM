@@ -145,7 +145,7 @@ private final class _SceneUndoManagerBox: @unchecked Sendable {
 }
 
 private struct SceneUndoManagerKey: EnvironmentKey {
-    nonisolated(unsafe) static let _box = _SceneUndoManagerBox()
+    static let _box = _SceneUndoManagerBox()
     static var defaultValue: SceneUndoManager { _box.value }
 }
 

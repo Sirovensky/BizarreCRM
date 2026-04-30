@@ -97,15 +97,4 @@ public extension View {
     }
 }
 
-// MARK: - Binding projection helper
-
-@available(iOS 18.0, *)
-private extension Binding where Value == NamespacedScrollPosition {
-    /// Projects the inner `ScrollPosition` for use with `.scrollPosition(_:)`.
-    var position: Binding<ScrollPosition> {
-        Binding<ScrollPosition>(
-            get: { wrappedValue.position },
-            set: { wrappedValue.position = $0 }
-        )
-    }
-}
+// (Binding's @dynamicMemberLookup projects `position.position` automatically.)

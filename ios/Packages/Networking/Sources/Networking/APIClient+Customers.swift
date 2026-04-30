@@ -228,7 +228,7 @@ public extension APIClient {
     /// `POST /api/v1/customers` — create a single customer from a Contacts import candidate.
     /// Called by `CustomerRepositoryImpl.createFromContact(_:)`.
     func createCustomerFromContact(_ req: some Encodable & Sendable) async throws {
-        try await post("/api/v1/customers", body: req, as: EmptyResponse.self)
+        _ = try await post("/api/v1/customers", body: req, as: EmptyResponse.self)
     }
 }
 

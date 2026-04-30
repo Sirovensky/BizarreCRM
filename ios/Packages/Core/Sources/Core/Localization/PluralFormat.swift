@@ -108,7 +108,7 @@ public enum PluralFormat {
         if let path = bundle.path(forResource: localeIdentifier, ofType: "lproj"),
            let b = Bundle(path: path) {
             lprojBundle = b
-        } else if let languageCode = locale.languageCode,
+        } else if let languageCode = locale.language.languageCode?.identifier,
                   let path = bundle.path(forResource: languageCode, ofType: "lproj"),
                   let b = Bundle(path: path) {
             // Fall back to the language-only lproj (e.g. "ar" for "ar_SA").

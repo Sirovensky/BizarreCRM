@@ -14,6 +14,16 @@ import Networking
 // LazyVGrid of toggle cards so admins can see every option at once on the
 // wider canvas (CLAUDE.md: iPhone vs iPad must look different).
 
+// MARK: - DTO
+
+public struct TicketRequiredFieldsDTO: Codable, Sendable {
+    public let requiredFields: [String]
+    public init(requiredFields: [String]) { self.requiredFields = requiredFields }
+    enum CodingKeys: String, CodingKey {
+        case requiredFields = "required_fields"
+    }
+}
+
 // MARK: - Field catalog
 
 public struct TicketIntakeField: Identifiable, Hashable, Sendable {
@@ -72,7 +82,7 @@ public final class TicketRequiredFieldsViewModel {
         defer { isLoading = false }
         errorMessage = nil
         do {
-            let dto = try await api.fetchTicketRequiredFields()
+            let dto = try await api.get("/api/v1/settings/tickets/required-fields", as: TicketRequiredFieldsDTO.self)
             requiredFields = Set(dto.requiredFields)
         } catch {
             errorMessage = error.localizedDescription
@@ -85,7 +95,7 @@ public final class TicketRequiredFieldsViewModel {
         errorMessage = nil
         do {
             let body = TicketRequiredFieldsDTO(requiredFields: Array(requiredFields).sorted())
-            let saved = try await api.saveTicketRequiredFields(body)
+            let saved = try await api.put("/api/v1/settings/tickets/required-fields", body: body, as: TicketRequiredFieldsDTO.self)
             requiredFields = Set(saved.requiredFields)
             successMessage = "Required fields saved."
         } catch {

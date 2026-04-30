@@ -36,7 +36,7 @@ public struct NanoTexturedDisplayTint: Sendable {
     ///   at runtime.
     public static var displaySurface: DisplaySurfaceKind {
         #if canImport(UIKit)
-        let gamut = UIScreen.main.traitCollection.displayGamut
+        let gamut = MainActor.assumeIsolated { UIScreen.main.traitCollection.displayGamut }
         return gamut == .P3 ? .wideGamutP3 : .standard
         #else
         return .standard

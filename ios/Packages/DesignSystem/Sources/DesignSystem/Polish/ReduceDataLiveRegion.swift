@@ -76,7 +76,7 @@ public struct ReduceDataLiveRegionModifier<V: Equatable>: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .onChange(of: value) { _ in
+            .onChange(of: value) { _, _ in
                 postAnnouncementIfAllowed()
             }
             .onReceive(

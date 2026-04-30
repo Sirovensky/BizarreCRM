@@ -483,12 +483,14 @@ private struct AppIconPickerSection: View {
             return
         }
         UIApplication.shared.setAlternateIconName(name) { error in
-            if let error {
-                errorMessage = error.localizedDescription
-                AppLog.ui.error("setAlternateIconName failed: \(error.localizedDescription, privacy: .public)")
-            } else {
-                activeIcon = name
-                errorMessage = nil
+            MainActor.assumeIsolated {
+                if let error {
+                    errorMessage = error.localizedDescription
+                    AppLog.ui.error("setAlternateIconName failed: \(error.localizedDescription, privacy: .public)")
+                } else {
+                    activeIcon = name
+                    errorMessage = nil
+                }
             }
         }
         #endif

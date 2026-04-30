@@ -136,7 +136,7 @@ public final class MembershipAutoRenewViewModel {
         let newValue = !membership.autoRenew
         do {
             struct Body: Encodable { let auto_renew: Bool }
-            try await api.patch(
+            _ = try await api.patch(
                 "/api/v1/memberships/\(membership.id)",
                 body: Body(auto_renew: newValue),
                 as: EmptyResponse.self

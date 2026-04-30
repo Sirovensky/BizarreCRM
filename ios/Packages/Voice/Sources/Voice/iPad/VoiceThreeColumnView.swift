@@ -121,7 +121,6 @@ public struct VoiceThreeColumnView: View {
         .toolbarBackground(.visible, for: .navigationBar)
     }
 
-    @ViewBuilder
     private var unheardBadge: BrandGlassBadge? {
         guard case .loaded(let items) = voicemailViewModel.state else { return nil }
         let count = items.filter { !$0.heard }.count

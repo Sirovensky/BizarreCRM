@@ -103,7 +103,10 @@ public struct BrandPasteButton: View {
 
         let group = DispatchGroup()
         let queue = DispatchQueue(label: "BrandPasteButton.collect")
-        var results: [String] = []
+        // Use a class box so Swift 6 capture analysis doesn't flag concurrent mutation
+        // (queue.sync already serializes all writes).
+        final class Box: @unchecked Sendable { var values: [String] = [] }
+        let box = Box()
 
         for provider in providers {
             group.enter()
@@ -114,9 +117,9 @@ public struct BrandPasteButton: View {
                 provider.loadItem(forTypeIdentifier: textType, options: nil) { item, _ in
                     queue.sync {
                         if let s = item as? String {
-                            results.append(s)
+                            box.values.append(s)
                         } else if let d = item as? Data, let s = String(data: d, encoding: .utf8) {
-                            results.append(s)
+                            box.values.append(s)
                         }
                     }
                     group.leave()
@@ -125,7 +128,7 @@ public struct BrandPasteButton: View {
                 provider.loadItem(forTypeIdentifier: urlType, options: nil) { item, _ in
                     queue.sync {
                         if let url = item as? URL {
-                            results.append(url.absoluteString)
+                            box.values.append(url.absoluteString)
                         }
                     }
                     group.leave()
@@ -136,7 +139,7 @@ public struct BrandPasteButton: View {
         }
 
         group.notify(queue: .main) {
-            completion(results)
+            completion(box.values)
         }
     }
 }

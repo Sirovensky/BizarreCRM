@@ -28,8 +28,8 @@ public enum PasteboardCopyHelper {
     // MARK: - Internal de-dupe state
 
     private static let dedupeWindow: TimeInterval = 3
-    private static var lastValueHash: Int = 0
-    private static var lastWriteAt: Date = .distantPast
+    nonisolated(unsafe) private static var lastValueHash: Int = 0
+    nonisolated(unsafe) private static var lastWriteAt: Date = .distantPast
     private static let lock = NSLock()
 
     // MARK: - Public API

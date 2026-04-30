@@ -179,14 +179,16 @@ public struct VoicemailPlayerView: View {
             guard let item else { return }
             let e = time.seconds
             let d = item.duration.seconds.isNaN ? 1 : item.duration.seconds
-            elapsed = e
-            duration = max(1, d)
-            let newProgress = d > 0 ? e / d : 0
-            if reduceMotion {
-                progress = newProgress
-            } else {
-                withAnimation(.linear(duration: 0.1)) {
+            MainActor.assumeIsolated {
+                elapsed = e
+                duration = max(1, d)
+                let newProgress = d > 0 ? e / d : 0
+                if reduceMotion {
                     progress = newProgress
+                } else {
+                    withAnimation(.linear(duration: 0.1)) {
+                        progress = newProgress
+                    }
                 }
             }
         }

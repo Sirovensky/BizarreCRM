@@ -151,7 +151,7 @@ public final class RecoveryReportWriter: @unchecked Sendable {
 
     /// Delete all stored recovery reports.
     public func deleteAll() {
-        guard let dir = recoveryDirectory() else { return }
+        guard recoveryDirectory() != nil else { return }
         let urls = allReportURLs()
         for url in urls {
             try? fileManager.removeItem(at: url)

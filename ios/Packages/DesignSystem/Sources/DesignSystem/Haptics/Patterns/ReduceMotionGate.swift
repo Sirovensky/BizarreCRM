@@ -28,7 +28,7 @@ public struct SystemAccessibilityFlags: AccessibilityFlagsProviding {
 
     public var isReduceMotionEnabled: Bool {
         #if canImport(UIKit)
-        return UIAccessibility.isReduceMotionEnabled
+        return MainActor.assumeIsolated { UIAccessibility.isReduceMotionEnabled }
         #else
         return false
         #endif
@@ -36,7 +36,7 @@ public struct SystemAccessibilityFlags: AccessibilityFlagsProviding {
 
     public var isReduceTransparencyEnabled: Bool {
         #if canImport(UIKit)
-        return UIAccessibility.isReduceTransparencyEnabled
+        return MainActor.assumeIsolated { UIAccessibility.isReduceTransparencyEnabled }
         #else
         return false
         #endif
