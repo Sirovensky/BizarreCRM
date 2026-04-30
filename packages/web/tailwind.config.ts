@@ -63,22 +63,26 @@ export default {
           900: '#1e3a8a',
         },
         surface: {
-          // Tailwind 'stone' ramp — warm neutrals to complement the cream
-          // primary. Originally mapped to 'zinc' (cool) which clashed with
-          // brand warmth. Mockup at docs/setup-wizard-preview.html uses
-          // stone explicitly (#1C1917 / #292524 / etc.) — switching globally
-          // brings every surface in line with the design intent.
-          50:  '#FAFAF9',
-          100: '#F5F5F4',
-          200: '#E7E5E4',
-          300: '#D6D3D1',
-          400: '#A8A29E',
-          500: '#78716C',
-          600: '#57534E',
-          700: '#44403C',
-          800: '#292524',
-          900: '#1C1917',
-          950: '#0C0A09',
+          // Surface ramp via CSS vars so dark mode can swap to iPad's
+          // Liquid Glass palette while light mode keeps the warm stone tones
+          // that complement the cream primary. Light values + dark overrides
+          // live in src/styles/globals.css under :root and .dark.
+          //
+          // Light = stone (warm neutrals: #FAFAF9 → #0C0A09).
+          // Dark  = iPad mockup hex (mockups/ios-ipad-pos.html):
+          //   --bg-deep #050403, --bg #0c0b09, --surface-solid #141211,
+          //   --surface-elev #1b1917. Cream primary stays identical.
+          50:  'rgb(var(--surface-50) / <alpha-value>)',
+          100: 'rgb(var(--surface-100) / <alpha-value>)',
+          200: 'rgb(var(--surface-200) / <alpha-value>)',
+          300: 'rgb(var(--surface-300) / <alpha-value>)',
+          400: 'rgb(var(--surface-400) / <alpha-value>)',
+          500: 'rgb(var(--surface-500) / <alpha-value>)',
+          600: 'rgb(var(--surface-600) / <alpha-value>)',
+          700: 'rgb(var(--surface-700) / <alpha-value>)',
+          800: 'rgb(var(--surface-800) / <alpha-value>)',
+          900: 'rgb(var(--surface-900) / <alpha-value>)',
+          950: 'rgb(var(--surface-950) / <alpha-value>)',
         },
         // WEB-FQ-004 / FIXED-by-Fixer-JJJ 2026-04-25 — semantic status palette.
         // 244+ raw `text-red-*`/`bg-green-*` callsites currently bake the brand

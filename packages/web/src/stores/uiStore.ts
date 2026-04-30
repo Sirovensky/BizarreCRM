@@ -29,6 +29,33 @@ const applyTheme = (theme: 'light' | 'dark' | 'system') => {
   document.documentElement.classList.toggle('dark', isDark);
 };
 
+// Wrap a theme apply with the `theme-transition` class so the surface CSS
+// vars cross-fade across the whole tree (see globals.css `html.theme-transition *`
+// rule). Without this every element repaints instantly at the same frame and
+// the swap reads as a strobe. Class is removed after the transition window
+// (200ms anim + 120ms slack) so per-element transitions don't keep firing on
+// unrelated interactions like hover/focus.
+const THEME_TRANSITION_MS = 320;
+let pendingThemeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+const applyThemeWithFade = (theme: 'light' | 'dark' | 'system') => {
+  if (typeof document === 'undefined') {
+    applyTheme(theme);
+    return;
+  }
+  const root = document.documentElement;
+  // If the user mashes the toggle, restart the window instead of stacking
+  // multiple removals racing each other.
+  if (pendingThemeTransitionTimer !== null) {
+    clearTimeout(pendingThemeTransitionTimer);
+  }
+  root.classList.add('theme-transition');
+  applyTheme(theme);
+  pendingThemeTransitionTimer = setTimeout(() => {
+    root.classList.remove('theme-transition');
+    pendingThemeTransitionTimer = null;
+  }, THEME_TRANSITION_MS);
+};
+
 // Apply on load (SSR-safe)
 if (typeof window !== 'undefined') {
   applyTheme(getInitialTheme());
@@ -84,7 +111,7 @@ export const useUiStore = create<UiState>((set) => ({
     // step nobody else reads synchronously). Net: no observable race
     // window where the store and the document class disagree.
     set({ theme });
-    applyTheme(theme);
+    applyThemeWithFade(theme);
     safeWrite('theme', theme);
   },
 
@@ -111,7 +138,7 @@ export const useUiStore = create<UiState>((set) => ({
 let themeMqAttached = false;
 const handleSystemThemeChange = (): void => {
   const current = useUiStore.getState().theme;
-  if (current === 'system') applyTheme('system');
+  if (current === 'system') applyThemeWithFade('system');
 };
 
 if (typeof window !== 'undefined') {
