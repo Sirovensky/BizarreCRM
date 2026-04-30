@@ -12,7 +12,7 @@
  * The endpoint isn't wrapped in `@/api/endpoints` yet, so we use plain `fetch`
  * with `credentials: 'include'` so the auth cookie tags along.
  *
- * Mockup: `docs/setup-wizard-preview.html` `<section id="screen-15">`.
+ * Mockup: `mockups/web-setup-wizard.html` `<section id="screen-15">`.
  */
 import { useId, useState } from 'react';
 import type { JSX } from 'react';
@@ -38,7 +38,7 @@ interface EmployeeInvite {
   email: string;
   role: EmployeeRole;
   /** Self-host PIN for clock-in/out + register access. Optional 4-digit string.
-   *  Mockup explicitly includes this field per docs/setup-wizard-preview.html
+   *  Mockup explicitly includes this field per mockups/web-setup-wizard.html
    *  #screen-15. SaaS shops can ignore — backend drops the value if PIN-auth
    *  isn't enabled for the tenant. */
   pin?: string;

@@ -9,7 +9,7 @@ import { api } from '@/api/client';
  * Step 13 — Logo & color.
  *
  * Linear-flow rewrite (Agent W5-15). Mirrors `#screen-13` in
- * `docs/setup-wizard-preview.html`:
+ * `mockups/web-setup-wizard.html`:
  *
  *   - Pill breadcrumb (Step 12 · Receipts → Step 13 · Logo → Step 14 · Payment terminal)
  *   - Logo upload card (PNG/JPG/WebP/GIF, ≤ 2 MB, MIME + magic-byte sniff)

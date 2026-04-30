@@ -12,7 +12,7 @@
  * `booking_max_days_ahead`, `booking_walkins_enabled`) are allow-listed
  * server-side in `settings.routes.ts`.
  *
- * Mockup: `docs/setup-wizard-preview.html` `<section id="screen-21">`.
+ * Mockup: `mockups/web-setup-wizard.html` `<section id="screen-21">`.
  * The mockup shows a radio + dropdown layout, but the agreed contract for
  * this step is a pair of independent pill toggles plus two numeric inputs
  * that reveal only when online booking is on. This matches the actual

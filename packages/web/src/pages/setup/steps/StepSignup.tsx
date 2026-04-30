@@ -1,7 +1,7 @@
 /**
  * StepSignup — Step 1 of the SaaS setup wizard.
  *
- * Mockup: docs/setup-wizard-preview.html § <section id="screen-saas-1">
+ * Mockup: mockups/web-setup-wizard.html § <section id="screen-saas-1">
  *
  * Collects:
  *   - name (single field, split first+last on first space)

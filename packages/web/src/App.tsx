@@ -200,10 +200,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Gate 3 (SSW1): setup_wizard_completed=false AND skip count < 3 AND user is admin.
   // Uses the granular setup_wizard_* keys written by the new SetupPage handlers.
   // Only fires when authSetupData has loaded (undefined = query still in-flight → don't block).
+  //
+  // 24h cooldown after a skip: without this, Gate 3 re-fires the instant the
+  // user lands back on '/' after skipping, which (combined with SetupPage's
+  // own redirect on terminal wizard_completed states) causes an infinite
+  // /setup ↔ / bounce. The skip is meant to defer the prompt, not dismiss it
+  // for one navigation tick.
   if (authSetupData !== undefined && !location.pathname.startsWith('/setup')) {
-    const { setupWizardCompleted, setupWizardSkipCount } = authSetupData.data.data;
+    const { setupWizardCompleted, setupWizardSkipCount, setupWizardSkippedAt } = authSetupData.data.data;
     const isAdmin = user?.role === 'admin';
-    if (!setupWizardCompleted && setupWizardSkipCount < 3 && isAdmin) {
+    const SKIP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    const skipCooldownActive =
+      setupWizardSkippedAt !== null &&
+      Date.now() - new Date(setupWizardSkippedAt).getTime() < SKIP_COOLDOWN_MS;
+    if (!setupWizardCompleted && setupWizardSkipCount < 3 && isAdmin && !skipCooldownActive) {
       return <Navigate to="/setup" replace />;
     }
   }

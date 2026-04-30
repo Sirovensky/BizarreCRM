@@ -5,7 +5,7 @@ import type { StepProps } from '../wizardTypes';
 /**
  * Step 12 — Receipt Layout (linear flow rewrite).
  *
- * Mirrors `#screen-12` in `docs/setup-wizard-preview.html`. The owner sets the
+ * Mirrors `#screen-12` in `mockups/web-setup-wizard.html`. The owner sets the
  * header, footer, and an optional title that appear on every thermal/A4
  * receipt. A live preview pane on the right (md+) shows the result so the
  * shape of the printed slip is obvious before they continue.

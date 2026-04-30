@@ -1,7 +1,7 @@
 # Setup Wizard Implementation Plan
 
 **Branch:** `todofixes426` — agents check out a worktree at this branch's HEAD. They never `git pull` on the canonical repo (see Safety Protocol below).
-**Visual source of truth:** `docs/setup-wizard-preview.html` — every requirement below maps to a `<section id="screen-N">` in that file. When in doubt, open that file and read the corresponding section's annotations panel.
+**Visual source of truth:** `mockups/web-setup-wizard.html` — every requirement below maps to a `<section id="screen-N">` in that file. When in doubt, open that file and read the corresponding section's annotations panel.
 **Tenancy modes:** Self-host (single-tenant LAN) and SaaS (multi-tenant). Wizard reads `isMultiTenant` from `GET /api/v1/auth/setup-status` and renders mode-specific entry screens.
 
 ---

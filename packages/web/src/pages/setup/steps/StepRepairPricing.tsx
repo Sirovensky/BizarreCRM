@@ -14,7 +14,7 @@ type PricingMode = 'tier' | 'matrix' | 'auto_margin';
  * `pricing_tier_<a|b|c>_<service>` — matches `PendingWrites` and the
  * server's ALLOWED_CONFIG_KEYS contract.
  *
- * Tier rationale (per `docs/setup-wizard-preview.html#screen-8`):
+ * Tier rationale (per `mockups/web-setup-wizard.html#screen-8`):
  *   Tier A (0-2 yr) — flagship profit drivers, premium labor.
  *   Tier B (3-5 yr) — bread-and-butter mainstream volume.
  *   Tier C (6+ yr) — get-in-door pricing, thin labor margin.
@@ -186,7 +186,7 @@ export function StepRepairPricing({
         </p>
       </div>
 
-      {/* Segmented mode picker (matches docs/setup-wizard-preview.html#screen-8 mockup) */}
+      {/* Segmented mode picker (matches mockups/web-setup-wizard.html#screen-8 mockup) */}
       <div className="mb-6 flex justify-center">
         <div className="inline-flex flex-wrap gap-1 rounded-full border border-surface-200 bg-surface-100 p-1 dark:border-surface-700 dark:bg-surface-800">
           {MODES.map((m) => {

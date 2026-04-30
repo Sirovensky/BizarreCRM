@@ -7,7 +7,7 @@ import type { StepProps } from '../wizardTypes';
 /**
  * Step 2 (SaaS) — Verify email.
  *
- * Mockup: docs/setup-wizard-preview.html `<section id="screen-saas-2">`.
+ * Mockup: mockups/web-setup-wizard.html `<section id="screen-saas-2">`.
  *
  * Behaviour:
  *  - Echoes back the email captured in Step 1 (`pending.signup_email`).

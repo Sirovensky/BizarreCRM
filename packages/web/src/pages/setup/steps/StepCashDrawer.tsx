@@ -7,7 +7,7 @@ import type { StepProps } from '../wizardTypes';
 /**
  * Step 20 — Cash drawer.
  *
- * Mirrors `#screen-20` in `docs/setup-wizard-preview.html`. The shop owner
+ * Mirrors `#screen-20` in `mockups/web-setup-wizard.html`. The shop owner
  * picks how their cash drawer pops on a sale:
  *
  *   1. `kicked_by_printer` — receipt printer fires the kick code (most common

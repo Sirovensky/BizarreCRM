@@ -255,9 +255,14 @@ export function SetupPage() {
   // intentionally to show the StepDone screen with its deep-link cards before
   // they leave. Without this exception the gate fires immediately after
   // setPhase('done') and the user never sees the Done UI.
+  //
+  // 'skipped' is intentionally NOT in this list: when App.tsx Gate 3 forces an
+  // admin back here after a prior skip (skip_count < 3), the wizard must re-render
+  // instead of bouncing back to '/'. Otherwise Gate 3 ↔ this redirect form an
+  // infinite loop until the browser kills history API calls.
   if (
     phase !== 'done' &&
-    (wizardCompleted === 'true' || wizardCompleted === 'skipped' || wizardCompleted === 'grandfathered')
+    (wizardCompleted === 'true' || wizardCompleted === 'grandfathered')
   ) {
     return <Navigate to="/" replace />;
   }

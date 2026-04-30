@@ -42,7 +42,7 @@ interface ShopTypeOption {
   Icon: typeof Smartphone;
 }
 
-// Three mockup-aligned cards (docs/setup-wizard-preview.html#screen-5):
+// Three mockup-aligned cards (mockups/web-setup-wizard.html#screen-5):
 //   Phone repair  (143 models, 11 services) — most common shop type, shown first
 //   Multi-device  (236 models, ~30 services) — covers phones + tablets + laptops + consoles
 //   Console / PC  (19 models, 4 services)   — niche, thin seed today (DPI-12)

@@ -7,7 +7,7 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
 /**
  * Step 18 — Notification templates.
  *
- * Mirrors `#screen-18` in `docs/setup-wizard-preview.html`. Owner reviews and
+ * Mirrors `#screen-18` in `mockups/web-setup-wizard.html`. Owner reviews and
  * tweaks the three default customer-facing message templates the CRM fires on
  * common ticket events:
  *

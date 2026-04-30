@@ -286,7 +286,7 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'blockchyp_terminal_ip',
   // Step 18 — Notification templates (Agent 20). Per-template enabled flags
   // and the new appointment-reminder template added 2026-04-28 to match
-  // docs/setup-wizard-preview.html#screen-18 mockup.
+  // mockups/web-setup-wizard.html#screen-18 mockup.
   'notif_tpl_received_enabled', 'notif_tpl_received_subj', 'notif_tpl_received_body',
   'notif_tpl_ready_enabled', 'notif_tpl_ready_subj', 'notif_tpl_ready_body',
   'notif_tpl_invoice_paid_enabled', 'notif_tpl_invoice_paid_subj', 'notif_tpl_invoice_paid_body',

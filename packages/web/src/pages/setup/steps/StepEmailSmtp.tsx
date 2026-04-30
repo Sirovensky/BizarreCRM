@@ -7,7 +7,7 @@ import { api } from '@/api/client';
 /**
  * Step 17 — Email (SMTP).
  *
- * Mirrors `#screen-17` in `docs/setup-wizard-preview.html`. Collects outgoing
+ * Mirrors `#screen-17` in `mockups/web-setup-wizard.html`. Collects outgoing
  * mail server credentials for customer emails (receipts, notifications, portal
  * links). `smtp_pass` is encrypted at rest on the server.
  *
