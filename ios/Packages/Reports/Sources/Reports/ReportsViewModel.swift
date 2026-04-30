@@ -191,9 +191,6 @@ public final class ReportsViewModel {
     public func loadAll() async {
         isLoading = true
         errorMessage = nil
-        // §15.9 perf budget — record wall-clock duration; warn if p95 > 2s.
-        let perfToken = ReportsPerfBudget.shared.begin(label: "loadAll")
-        defer { Task { await ReportsPerfBudget.shared.end(perfToken) } }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadRevenue() }
             group.addTask { await self.loadExpensesReport() }
@@ -246,9 +243,6 @@ public final class ReportsViewModel {
     public func loadForActiveTab() async {
         isLoading = true
         errorMessage = nil
-        // §15.9 perf budget — scoped per-tab loads tracked under a tab-specific label.
-        let perfToken = ReportsPerfBudget.shared.begin(label: "load.\(activeTab.rawValue)")
-        defer { Task { await ReportsPerfBudget.shared.end(perfToken) } }
         await withTaskGroup(of: Void.self) { group in
             switch activeTab {
             case .sales:

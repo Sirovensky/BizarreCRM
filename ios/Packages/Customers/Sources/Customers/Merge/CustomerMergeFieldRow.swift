@@ -60,13 +60,12 @@ struct CustomerMergeFieldRowView: View {
                 isSelected ? Color.bizarreOrange.opacity(0.10) : Color.bizarreSurface2,
                 in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
             )
-            // §26.5 — Increase Contrast: thicker, opaque border on selected
-            // cards; faint separator on deselected cards. SwiftUI re-renders
-            // automatically when the user toggles "Increase Contrast".
-            .selectedCardBorder(
-                isSelected: isSelected,
-                cornerRadius: DesignTokens.Radius.sm,
-                selectedColor: .bizarreOrange
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                    .strokeBorder(
+                        isSelected ? Color.bizarreOrange.opacity(0.5) : Color.clear,
+                        lineWidth: 1
+                    )
             )
         }
         .buttonStyle(.plain)

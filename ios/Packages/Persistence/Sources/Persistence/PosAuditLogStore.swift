@@ -91,7 +91,6 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
         case "manager_approved_refund": return "Manager refund"
         case "cash_drop":             return "Cash drop"
         case "drawer_open":           return "Drawer opened"
-        case "manager_override":      return "Manager override"
         case "receipt_skipped":       return "Receipt skipped"
         default:                      return eventType
         }
@@ -121,11 +120,6 @@ public extension PosAuditEntry {
         /// (e.g. "cash" or "cash, check"). Used by loss-prevention reports to
         /// surface unexpected drawer opens.
         public static let drawerOpen             = "drawer_open"
-        /// §16 — A manager explicitly overrode a system limit or policy
-        /// (e.g. sold below cost, bypassed a quantity cap, unlocked a locked
-        /// period outside a refund). The `managerId` field is always non-nil
-        /// for this event. `context` keys: `policy` (string), `overrideDetail`.
-        public static let managerOverride        = "manager_override"
         /// §39.5 — Cashier dismissed the post-sale receipt prompt without
         /// printing or sending the receipt. Surfaced by `MissingReceiptCounter`
         /// in the Z-report and end-of-shift summary.

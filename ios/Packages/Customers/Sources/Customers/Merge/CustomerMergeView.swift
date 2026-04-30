@@ -176,9 +176,6 @@ public struct CustomerMergeView: View {
                             CustomerMergeFieldRowView(row: row) { winner in
                                 vm.setWinner(winner, forRowId: row.id)
                             }
-                            // §26.7 — keep ≥ 8pt between adjacent tappable rows
-                            // so 44pt tap targets cannot overlap.
-                            .adjacentRowSpacing()
                         }
                     }
                 }

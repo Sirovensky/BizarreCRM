@@ -41,29 +41,11 @@ public struct InvoiceDetailView: View {
 
     // §7.9 Installment plan
     @State private var installmentPlan: InstallmentPlan?
-    // §7 LateFee policy (§7.12) cached for auto-apply / pre-fee scheduling.
-    @State private var lateFeePolicy: LateFeePolicy?
     @State private var showInstallmentEditor = false
     // §7.7 Late fee waiver
     @State private var showLateFeeWaiver = false
     // §7.13 Discount code input
     @State private var showDiscountInput = false
-    // §7 (1277) Apply late fee
-    @State private var isApplyingLateFee = false
-    @State private var lateFeeError: String?
-    @State private var lateFeeAppliedToast: String?
-    // §7 (1278) Past-due reminder
-    @State private var isSendingPastDueReminder = false
-    @State private var pastDueReminderError: String?
-    @State private var pastDueReminderToast: String?
-    // §7 (1281) Pre-late-fee reminder
-    @State private var isSendingPreFeeReminder = false
-    @State private var preFeeReminderError: String?
-    @State private var preFeeReminderToast: String?
-    // §7 (1282) Late-fee-applied notification
-    @State private var isSendingFeeAppliedNotification = false
-    @State private var feeAppliedNotificationError: String?
-    @State private var feeAppliedNotificationToast: String?
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let repo: InvoiceDetailRepository
@@ -95,7 +77,6 @@ public struct InvoiceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await vm.load()
-            await loadLateFeePolicy()
             if case let .loaded(inv) = vm.state {
                 await loadInstallmentPlan(invoiceId: inv.id)
             }
@@ -471,57 +452,6 @@ public struct InvoiceDetailView: View {
                             }
                             .accessibilityLabel("Waive applied late fee")
                         }
-                        // §7 (1278) Send past-due reminder — visible only when past due
-                        if pastDueDecision(for: inv).isPastDue {
-                            Button {
-                                Task { await sendPastDueReminder(inv) }
-                            } label: {
-                                Label(isSendingPastDueReminder ? "Sending…" : "Send Past-Due Reminder",
-                                      systemImage: "bell.badge")
-                            }
-                            .disabled(isSendingPastDueReminder
-                                      || !pastDueDecision(for: inv).shouldSendReminder)
-                            .accessibilityLabel("Send past-due reminder by SMS and email")
-                        }
-                        // §7 (1281) Send pre-late-fee reminder — visible only when in lead window
-                        if let win = preLateFeeWindow(for: inv), win.isInWindow {
-                            Button {
-                                Task { await sendPreLateFeeReminder(inv, leadDays: win.leadDays) }
-                            } label: {
-                                Label(isSendingPreFeeReminder
-                                      ? "Sending…"
-                                      : "Send Pre-Fee Reminder (\(win.leadDays)d lead)",
-                                      systemImage: "calendar.badge.exclamationmark")
-                            }
-                            .disabled(isSendingPreFeeReminder)
-                            .accessibilityLabel("Send pre-late-fee reminder to customer")
-                        }
-                        // §7 (1277) Apply late fee — visible only when overdue past grace
-                        if let decision = lateFeeDecision(for: inv), decision.shouldApply {
-                            Button {
-                                Task { await applyLateFee(inv, feeCents: decision.computedFeeCents) }
-                            } label: {
-                                Label(isApplyingLateFee
-                                      ? "Applying…"
-                                      : "Apply Late Fee (\(formatDollars(decision.computedFeeCents)))",
-                                      systemImage: "exclamationmark.circle.fill")
-                            }
-                            .disabled(isApplyingLateFee)
-                            .accessibilityLabel("Apply computed late fee to this invoice")
-                        }
-                        // §7 (1282) Notify customer fee was applied — visible after fee applied
-                        if let lastFee = lateFeeAppliedToast, !lastFee.isEmpty {
-                            Button {
-                                Task { await sendFeeAppliedNotification(inv) }
-                            } label: {
-                                Label(isSendingFeeAppliedNotification
-                                      ? "Sending…"
-                                      : "Notify Customer of Late Fee",
-                                      systemImage: "envelope.badge")
-                            }
-                            .disabled(isSendingFeeAppliedNotification)
-                            .accessibilityLabel("Notify customer that the late fee was applied")
-                        }
                         // §7.13 Apply discount code
                         if inv.canEditLines {
                             Button {
@@ -548,178 +478,6 @@ public struct InvoiceDetailView: View {
         } catch {
             // No plan yet — leave nil; not an error condition
             installmentPlan = nil
-        }
-    }
-
-    // MARK: - §7 Late-fee policy + derived decisions
-
-    @MainActor
-    private func loadLateFeePolicy() async {
-        if lateFeePolicy != nil { return }
-        do {
-            // Try to fetch tenant policy. Fallback: a sane default so derived
-            // CTAs still surface (server is authoritative on application).
-            lateFeePolicy = try await api.get(
-                "/api/v1/settings/late-fee-policy",
-                query: nil,
-                as: LateFeePolicy.self
-            )
-        } catch {
-            lateFeePolicy = LateFeePolicy(
-                percentPerDay: 0.05,
-                gracePeriodDays: 7,
-                compoundDaily: false,
-                maxFeeCents: 5_000
-            )
-        }
-    }
-
-    private func parseDueDate(_ inv: InvoiceDetail) -> Date? {
-        guard let raw = inv.dueOn, !raw.isEmpty else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f.date(from: String(raw.prefix(10)))
-    }
-
-    private func invoiceForFeeCalc(_ inv: InvoiceDetail) -> InvoiceForFeeCalc {
-        let balanceCents = Int(((inv.amountDue ?? 0) * 100).rounded())
-        return InvoiceForFeeCalc(balanceCents: balanceCents, dueDate: parseDueDate(inv))
-    }
-
-    private func lateFeeDecision(for inv: InvoiceDetail) -> LateFeeApplicationService.Decision? {
-        guard let policy = lateFeePolicy else { return nil }
-        return LateFeeApplicationService.evaluate(
-            invoice: invoiceForFeeCalc(inv),
-            asOf: Date(),
-            policy: policy
-        )
-    }
-
-    private func pastDueDecision(for inv: InvoiceDetail) -> InvoicePastDueDetector.Result {
-        let balanceCents = Int(((inv.amountDue ?? 0) * 100).rounded())
-        return InvoicePastDueDetector.evaluate(
-            balanceCents: balanceCents,
-            dueDate: parseDueDate(inv),
-            status: inv.status,
-            asOf: Date()
-        )
-    }
-
-    private func preLateFeeWindow(for inv: InvoiceDetail) -> LateFeeReminderScheduler.Window? {
-        guard let policy = lateFeePolicy else { return nil }
-        return LateFeeReminderScheduler.computeWindow(
-            dueDate: parseDueDate(inv),
-            gracePeriodDays: policy.gracePeriodDays,
-            asOf: Date()
-        )
-    }
-
-    private func formatDollars(_ cents: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$\(cents/100)"
-    }
-
-    // MARK: - §7 (1277) Apply late fee action
-
-    @MainActor
-    private func applyLateFee(_ inv: InvoiceDetail, feeCents: Int) async {
-        guard !isApplyingLateFee else { return }
-        isApplyingLateFee = true
-        lateFeeError = nil
-        defer { isApplyingLateFee = false }
-        do {
-            let resp = try await api.applyLateFee(
-                invoiceId: inv.id,
-                body: ApplyLateFeeRequest(feeCents: feeCents)
-            )
-            lateFeeAppliedToast = "Applied \(formatDollars(resp.appliedCents ?? feeCents))."
-            await vm.load()
-        } catch {
-            lateFeeError = error.localizedDescription
-            AppLog.ui.error("Apply late fee failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    // MARK: - §7 (1278) Past-due reminder action
-
-    @MainActor
-    private func sendPastDueReminder(_ inv: InvoiceDetail) async {
-        guard !isSendingPastDueReminder else { return }
-        isSendingPastDueReminder = true
-        pastDueReminderError = nil
-        defer { isSendingPastDueReminder = false }
-        let channel: PastDueReminderRequest.Channel = {
-            let hasPhone = (inv.customerPhone ?? "").isEmpty == false
-            return hasPhone ? .both : .email
-        }()
-        do {
-            _ = try await api.sendPastDueReminder(
-                invoiceId: inv.id,
-                body: PastDueReminderRequest(channel: channel)
-            )
-            pastDueReminderToast = "Past-due reminder sent."
-        } catch {
-            pastDueReminderError = error.localizedDescription
-            AppLog.ui.error("Past-due reminder failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    // MARK: - §7 (1281) Pre-late-fee reminder action
-
-    @MainActor
-    private func sendPreLateFeeReminder(_ inv: InvoiceDetail, leadDays: Int) async {
-        guard !isSendingPreFeeReminder else { return }
-        isSendingPreFeeReminder = true
-        preFeeReminderError = nil
-        defer { isSendingPreFeeReminder = false }
-        let channel: PreLateFeeReminderRequest.Channel = {
-            let hasPhone = (inv.customerPhone ?? "").isEmpty == false
-            return hasPhone ? .both : .email
-        }()
-        do {
-            _ = try await api.sendPreLateFeeReminder(
-                invoiceId: inv.id,
-                body: PreLateFeeReminderRequest(leadDays: leadDays, channel: channel)
-            )
-            preFeeReminderToast = "Pre-fee reminder sent."
-        } catch {
-            preFeeReminderError = error.localizedDescription
-            AppLog.ui.error("Pre-fee reminder failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    // MARK: - §7 (1282) Late-fee-applied notification action
-
-    @MainActor
-    private func sendFeeAppliedNotification(_ inv: InvoiceDetail) async {
-        guard !isSendingFeeAppliedNotification else { return }
-        isSendingFeeAppliedNotification = true
-        feeAppliedNotificationError = nil
-        defer { isSendingFeeAppliedNotification = false }
-        let feeCents = lateFeeDecision(for: inv)?.computedFeeCents ?? 0
-        let newBalance = Int(((inv.amountDue ?? 0) * 100).rounded())
-        let payLink = "https://pay.bizarrecrm.com/invoice/\(inv.id)"
-        let channel: LateFeeAppliedNotificationRequest.Channel = {
-            let hasPhone = (inv.customerPhone ?? "").isEmpty == false
-            return hasPhone ? .both : .email
-        }()
-        do {
-            _ = try await api.sendLateFeeAppliedNotification(
-                invoiceId: inv.id,
-                body: LateFeeAppliedNotificationRequest(
-                    feeCents: feeCents,
-                    newBalanceCents: newBalance,
-                    paymentLinkURL: payLink,
-                    channel: channel
-                )
-            )
-            feeAppliedNotificationToast = "Customer notified of late fee."
-        } catch {
-            feeAppliedNotificationError = error.localizedDescription
-            AppLog.ui.error("Late-fee notification failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -838,9 +596,6 @@ public struct InvoiceDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
-                // §22.1 — detail panes cap at 720 pt on wide iPad screens so
-                // line items + totals stay scannable; no-op on iPhone (<720 pt).
-                .maxContentWidth()
             }
             // §7.2 Deposit invoice detail drill-through
             .sheet(

@@ -14,15 +14,14 @@ import Foundation
 // MARK: - MetricKitManager
 
 /// Subscribes to `MXMetricManager` and uploads hourly performance payloads
-/// and diagnostic payloads to the tenant server.
+/// to the tenant server.
 ///
 /// **Wiring:** call `MetricKitManager.shared.start()` from `AppServices`
 /// at app launch, alongside `CrashReporter.shared.start()`.
 ///
-/// **Upload closure:** inject via `MetricKitManager(upload:uploadDiagnostic:)` in
-/// `AppServices`, binding the `APIClient` of the active session. Metric payloads
-/// POST to `"/telemetry/metrics"`; diagnostic payloads POST to
-/// `"/diagnostics/report"` (same endpoint used by `CrashReporter`).
+/// **Upload closure:** inject via `MetricKitManager(upload:)` in `AppServices`,
+/// binding the `APIClient` of the active session. The closure should POST to
+/// `"/telemetry/metrics"` on the tenant server.
 public final class MetricKitManager: @unchecked Sendable {
 
     // MARK: — Singleton (no-op upload until AppServices wires it up)
@@ -35,17 +34,11 @@ public final class MetricKitManager: @unchecked Sendable {
 
     // MARK: — Init
 
-    /// - Parameters:
-    ///   - upload: Called for each serialized `MXMetricPayload` JSON.
-    ///     Receives the UTF-8 JSON bytes. Should POST to `/telemetry/metrics`.
-    ///     Defaults to a no-op (useful for previews / test targets).
-    ///   - uploadDiagnostic: Called for each `MXDiagnosticPayload` JSON envelope.
-    ///     Should POST to `/diagnostics/report`. Defaults to a no-op.
-    public init(
-        upload: @escaping @Sendable (Data) async throws -> Void = { _ in },
-        uploadDiagnostic: @escaping @Sendable (Data) async throws -> Void = { _ in }
-    ) {
-        self.delegate = MetricKitDelegate(upload: upload, uploadDiagnostic: uploadDiagnostic)
+    /// - Parameter upload: Called for each serialized `MXMetricPayload` JSON.
+    ///   Receives the UTF-8 JSON bytes. Should POST to `/telemetry/metrics`.
+    ///   Defaults to a no-op (useful for previews / test targets).
+    public init(upload: @escaping @Sendable (Data) async throws -> Void = { _ in }) {
+        self.delegate = MetricKitDelegate(upload: upload)
     }
 
     // MARK: — Lifecycle
@@ -66,14 +59,9 @@ public final class MetricKitManager: @unchecked Sendable {
 final class MetricKitDelegate: NSObject, MXMetricManagerSubscriber {
 
     private let upload: @Sendable (Data) async throws -> Void
-    private let uploadDiagnostic: @Sendable (Data) async throws -> Void
 
-    init(
-        upload: @escaping @Sendable (Data) async throws -> Void,
-        uploadDiagnostic: @escaping @Sendable (Data) async throws -> Void
-    ) {
+    init(upload: @escaping @Sendable (Data) async throws -> Void) {
         self.upload = upload
-        self.uploadDiagnostic = uploadDiagnostic
     }
 
     /// Called by MetricKit approximately once per hour while the app is active.
@@ -103,32 +91,9 @@ final class MetricKitDelegate: NSObject, MXMetricManagerSubscriber {
         }
     }
 
-    /// §32.2 — Receive hitch-rate and CPU-exception diagnostic payloads from MetricKit.
-    ///
-    /// MetricKit delivers `MXDiagnosticPayload` on the next app launch after an
-    /// anomaly (hang, hitch, CPU exception, disk write exception). We upload the
-    /// full JSON representation to `POST /diagnostics/report` on the tenant server
-    /// (same endpoint used by `CrashReporter` for `MXCrashDiagnostic`).
-    ///
-    /// **Data-sovereignty rule:** payloads go to `APIClient.baseURL` only — no
-    /// third-party crash SaaS. `MXDiagnosticPayload` contains stack frames and
-    /// timing data; no heap snapshots or user-facing strings are included by Apple.
-    func didReceive(_ payloads: [MXDiagnosticPayload]) {
-        let blobs: [Data] = payloads.map { $0.jsonRepresentation() }
-        let send = uploadDiagnostic
-        Task.detached(priority: .utility) {
-            for blob in blobs {
-                let envelope = MetricPayloadEnvelope(
-                    kind: "diagnostic_payload",
-                    platform: "iOS",
-                    appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
-                    payloadJSON: blob
-                )
-                guard let data = try? JSONEncoder.metricKit.encode(envelope) else { continue }
-                try? await send(data)
-            }
-        }
-    }
+    /// Diagnostic payloads (crash, hang, disk write, CPU) are handled by
+    /// `CrashReporter`; this subscriber intentionally ignores them.
+    func didReceive(_ payloads: [MXDiagnosticPayload]) {}
 }
 
 // MARK: - MetricPayloadEnvelope

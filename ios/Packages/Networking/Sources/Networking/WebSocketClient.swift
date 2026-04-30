@@ -114,12 +114,6 @@ public enum WSEvent: Decodable, Sendable {
     case smsTyping(String)
     case invoicePaid(InvoiceDTO)
     case notification(NotificationDTO)
-    /// §14.5 Team chat — server pushes a freshly inserted message. Server hookup
-    /// is §74 gap; iOS decodes & ignores until then so future deploys turn live
-    /// updates on without a client release.
-    case chatMessage(TeamChatMessageDTO)
-    /// §14.5 Team chat typing indicator — payload is the channel id.
-    case chatTyping(TeamChatTypingDTO)
     case unknown(String)
 
     enum CodingKeys: String, CodingKey { case type, data }
@@ -134,8 +128,6 @@ public enum WSEvent: Decodable, Sendable {
         case "sms.typing":     self = .smsTyping(try c.decode(String.self, forKey: .data))
         case "invoice.paid":   self = .invoicePaid(try c.decode(InvoiceDTO.self, forKey: .data))
         case "notification":   self = .notification(try c.decode(NotificationDTO.self, forKey: .data))
-        case "chat.message":   self = .chatMessage(try c.decode(TeamChatMessageDTO.self, forKey: .data))
-        case "chat.typing":    self = .chatTyping(try c.decode(TeamChatTypingDTO.self, forKey: .data))
         default:               self = .unknown(type)
         }
     }
@@ -145,18 +137,6 @@ public struct TicketDTO: Decodable, Sendable      { public let id: Int64; public
 public struct SmsDTO: Decodable, Sendable         { public let id: Int64; public let threadId: Int64; public let body: String; public let createdAt: Date }
 public struct InvoiceDTO: Decodable, Sendable     { public let id: Int64; public let displayId: String; public let totalCents: Int; public let paidAt: Date? }
 public struct NotificationDTO: Decodable, Sendable{ public let id: Int64; public let title: String; public let body: String; public let createdAt: Date }
-public struct TeamChatMessageDTO: Decodable, Sendable {
-    public let id: Int64
-    public let channelId: Int64
-    public let userId: Int64
-    public let body: String
-    public let createdAt: Date
-}
-public struct TeamChatTypingDTO: Decodable, Sendable {
-    public let channelId: Int64
-    public let userId: Int64
-    public let username: String?
-}
 
 public extension JSONDecoder {
     static let bizarre: JSONDecoder = {

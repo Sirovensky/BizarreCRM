@@ -39,18 +39,6 @@ struct PosCartPanel: View {
     /// Line-edit sheet state — the item currently being edited inline.
     @State private var editingLineItem: CartItem?
 
-    // MARK: - §16 Sale note state
-    /// Whether the cart-level sale note editor is expanded inline.
-    @State private var showSaleNoteEditor: Bool = false
-    /// Draft text while the note editor is open.
-    @State private var saleNoteDraft: String = ""
-    /// Tracks the task used to announce accessibility changes on note save.
-    @State private var totalAnnounceTask: Task<Void, Never>?
-
-    // MARK: - §16 Recurring charge sheet state
-    /// Whether the recurring-charge frequency selector sheet is visible.
-    @State private var showRecurringSheet: Bool = false
-
     // MARK: - §16 Cart undo toast state
 
     /// The most-recently deleted cart item. Non-nil while the undo window is open.
@@ -141,10 +129,6 @@ struct PosCartPanel: View {
                     cart.remove(id: item.id)
                 }
             )
-        }
-        // §16 Recurring charge selector sheet
-        .sheet(isPresented: $showRecurringSheet) {
-            PosRecurringChargeSheet(cart: cart)
         }
     }
 
@@ -273,27 +257,6 @@ struct PosCartPanel: View {
                         } label: {
                             Label("Edit price", systemImage: "dollarsign")
                         }
-                        // §16 Cart quick-action: duplicate the line with a fresh UUID
-                        // so the cashier can quickly sell the same item twice without
-                        // re-picking from the catalog. Duplicate starts with qty 1.
-                        Button {
-                            let duplicate = CartItem(
-                                inventoryItemId: item.inventoryItemId,
-                                name: item.name,
-                                sku: item.sku,
-                                quantity: 1,
-                                unitPrice: item.unitPrice,
-                                taxRate: item.taxRate,
-                                discountCents: item.discountCents,
-                                notes: item.notes
-                            )
-                            cart.add(duplicate)
-                            BrandHaptics.tap()
-                        } label: {
-                            Label("Duplicate line", systemImage: "plus.square.on.square")
-                        }
-                        .accessibilityLabel("Duplicate \(item.name)")
-                        Divider()
                         Button(role: .destructive) {
                             let snapshot = item
                             cart.remove(id: item.id)
@@ -309,11 +272,6 @@ struct PosCartPanel: View {
                 quickActionRow
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 6, trailing: 16))
-
-                // §16 Sale note inline editor — shown when cashier taps "+ Note"
-                saleNoteSection
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
 
                 // Ticket link chip — §16.3
                 HStack(spacing: BrandSpacing.sm) {
@@ -358,85 +316,7 @@ struct PosCartPanel: View {
         HStack(spacing: 8) {
             quickActionBtn("+ Misc") { onShowFees?() }
             quickActionBtn("+ Discount") { onShowDiscount?() }
-            // §16 Sale note — tap toggles the inline note editor below the
-            // item list. If a note is already set the button text changes to
-            // "Edit note" so the cashier knows something is recorded.
-            quickActionBtn(cart.saleNote != nil ? "Edit note" : "+ Note") {
-                saleNoteDraft = cart.saleNote ?? ""
-                withAnimation(BrandMotion.snappy) { showSaleNoteEditor.toggle() }
-                BrandHaptics.tap()
-            }
-        }
-    }
-
-    // MARK: - §16 Sale note inline editor
-
-    @ViewBuilder
-    private var saleNoteSection: some View {
-        if showSaleNoteEditor {
-            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-                HStack {
-                    Text("Sale note")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .textCase(.uppercase)
-                        .kerning(0.8)
-                    Spacer()
-                    Text("\(saleNoteDraft.count) / 500")
-                        .font(.brandLabelSmall().monospacedDigit())
-                        .foregroundStyle(saleNoteDraft.count >= 500
-                            ? Color.bizarreError : .bizarreOnSurfaceMuted)
-                        .accessibilityIdentifier("pos.cart.saleNote.counter")
-                }
-
-                TextEditor(text: $saleNoteDraft)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                    .frame(minHeight: 60, maxHeight: 100)
-                    .scrollContentBackground(.hidden)
-                    .padding(BrandSpacing.xs)
-                    .background(Color.bizarreSurface2.opacity(0.7),
-                                in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.bizarreOutline.opacity(0.6), lineWidth: 0.5)
-                    )
-                    .onChange(of: saleNoteDraft) { _, new in
-                        if new.count > 500 { saleNoteDraft = String(new.prefix(500)) }
-                    }
-                    .accessibilityLabel("Sale note, optional. Prints on receipt.")
-                    .accessibilityIdentifier("pos.cart.saleNote.editor")
-
-                HStack(spacing: BrandSpacing.sm) {
-                    if cart.saleNote != nil {
-                        Button {
-                            cart.setSaleNote(nil)
-                            withAnimation(BrandMotion.snappy) { showSaleNoteEditor = false }
-                        } label: {
-                            Text("Clear")
-                                .font(.brandLabelLarge())
-                                .foregroundStyle(.bizarreError)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("pos.cart.saleNote.clear")
-                    }
-                    Spacer()
-                    Button {
-                        cart.setSaleNote(saleNoteDraft)
-                        BrandHaptics.success()
-                        withAnimation(BrandMotion.snappy) { showSaleNoteEditor = false }
-                    } label: {
-                        Text("Save note")
-                            .font(.brandLabelLarge().weight(.semibold))
-                            .foregroundStyle(.bizarreOrange)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("pos.cart.saleNote.save")
-                }
-            }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            quickActionBtn("+ Note") { /* note for cart, not line */ }
         }
     }
 
@@ -585,57 +465,6 @@ struct PosCartPanel: View {
                 }
             }
 
-            // §16 Recurring charge entry / indicator.
-            // When no rule is set: a ghost "Set recurring" link (optional feature).
-            // When a rule is set: a tinted row showing the cadence; tap to change.
-            if cart.recurringRule == nil {
-                Button {
-                    BrandHaptics.tap()
-                    showRecurringSheet = true
-                } label: {
-                    HStack(spacing: BrandSpacing.xs) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .accessibilityHidden(true)
-                        Text("Set recurring charge")
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, BrandSpacing.xs)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Set recurring charge frequency")
-                .accessibilityIdentifier("pos.cart.setRecurring")
-            } else if let rule = cart.recurringRule {
-                Button {
-                    BrandHaptics.tap()
-                    showRecurringSheet = true
-                } label: {
-                    HStack(spacing: BrandSpacing.sm) {
-                        Image(systemName: "arrow.clockwise.circle")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.bizarreOrange)
-                            .accessibilityHidden(true)
-                        Text("Recurring · \(rule.frequencyLabel)")
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreOnSurface)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                    }
-                    .padding(.horizontal, BrandSpacing.sm)
-                    .padding(.vertical, BrandSpacing.xs)
-                    .background(Color.bizarreOrange.opacity(0.08),
-                                in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Recurring charge: \(rule.frequencyLabel). Tap to change.")
-                .accessibilityIdentifier("pos.cart.recurringIndicator")
-            }
-
             // §40 — applied tenders
             if !cart.appliedTenders.isEmpty {
                 ForEach(cart.appliedTenders) { tender in
@@ -669,6 +498,9 @@ struct PosCartPanel: View {
             Divider().background(.bizarreOutline)
         }
     }
+
+    /// Cancellable task for the debounced VoiceOver announcement (§16 A11y).
+    @State private var totalAnnounceTask: Task<Void, Never>?
 
     private var taxRateLabel: String {
         // Show the effective tax rate if we can derive it from the first taxed item
@@ -778,103 +610,72 @@ struct PosCartStrip: View {
     @Bindable var cart: Cart
     var onChange: (() -> Void)?
     var onRemove: (() -> Void)?
-    /// §16 Customer-tag color stripe — the hex color of the customer's highest-
-    /// priority tag (e.g. "#FFD700" for VIP). When non-nil a 3pt leading stripe
-    /// and a subtle tint are applied so the cashier can identify the customer
-    /// tier at a glance without reading the tag name.
-    var tagColor: Color? = nil
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            HStack(spacing: 10) {
-                // §16 Customer-tag color stripe — 3pt accent bar at leading edge.
-                // Hidden from VoiceOver (decorative — tag info is in context banners).
-                if let color = tagColor {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(color)
-                        .frame(width: 3)
-                        .padding(.vertical, 4)
-                        .accessibilityHidden(true)
-                        .accessibilityIdentifier("pos.cart.customerStrip.tagStripe")
-                }
-
-                // 26pt teal avatar
-                ZStack {
-                    Circle()
-                        .fill(
-                            tagColor.map { c in
-                                LinearGradient(
-                                    colors: [c.opacity(0.8), c.opacity(0.5)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            } ?? LinearGradient(
-                                colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+        HStack(spacing: 10) {
+            // 26pt teal avatar
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                    Text(customer.initials)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x002D35))
-                }
-                .frame(width: 26, height: 26)
-                .accessibilityHidden(true)
+                    )
+                Text(customer.initials)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color(hex: 0x002D35))
+            }
+            .frame(width: 26, height: 26)
+            .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(customer.displayName)
-                        .font(.system(size: 13.5, weight: .bold))
-                        .foregroundStyle(.bizarreOnSurface)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(customer.displayName)
+                    .font(.system(size: 13.5, weight: .bold))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+                if let sub = stripSubtitle {
+                    Text(sub)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
-                    if let sub = stripSubtitle {
-                        Text(sub)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                // Right side: cream Capsule chip showing line count (mockup: .chip.primary)
-                if cart.lineCount > 0 {
-                    Text(cart.lineCount == 1 ? "1 line" : "\(cart.lineCount) lines")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.bizarreOnOrange)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.bizarreOrange, in: Capsule())
-                        .accessibilityLabel("\(cart.lineCount) cart lines")
-                }
-
-                // Remove customer
-                if let onRemove {
-                    Button {
-                        BrandHaptics.tap()
-                        onRemove()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Remove customer")
-                    .accessibilityIdentifier("pos.cart.removeCustomer")
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+
+            Spacer()
+
+            // Right side: cream Capsule chip showing line count (mockup: .chip.primary)
+            if cart.lineCount > 0 {
+                Text(cart.lineCount == 1 ? "1 line" : "\(cart.lineCount) lines")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.bizarreOnOrange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.bizarreOrange, in: Capsule())
+                    .accessibilityLabel("\(cart.lineCount) cart lines")
+            }
+
+            // Remove customer
+            if let onRemove {
+                Button {
+                    BrandHaptics.tap()
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove customer")
+                .accessibilityIdentifier("pos.cart.removeCustomer")
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(
-            Group {
-                if let color = tagColor {
-                    color.opacity(0.06)
-                        .background(.ultraThinMaterial)
-                } else {
-                    Color.bizarreSurface1.opacity(0.35)
-                        .background(.ultraThinMaterial)
-                }
-            }
+            Color.bizarreSurface1.opacity(0.35)
+                .background(.ultraThinMaterial)
         )
         .overlay(alignment: .bottom) {
             Divider().background(.bizarreOutline)

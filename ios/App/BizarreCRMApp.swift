@@ -21,12 +21,6 @@ struct BizarreCRMApp: App {
                 .environment(appState)
                 .tint(.bizarreOrange)
                 .preferredColorScheme(appState.forcedColorScheme)
-                // §22.7 — Stage Manager / Split View: refuse to shrink below
-                // 700 × 500 pt. Below that threshold ShellLayout falls through
-                // to compact (iPhone) layout, but this also guarantees the
-                // OS-level resize handle stops at the same boundary so the
-                // user can't drag a window into a half-rendered state.
-                .splitViewMinSize()
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }

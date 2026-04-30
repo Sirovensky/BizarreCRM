@@ -375,17 +375,6 @@ public struct BrandGlassBadge: View {
         self.tint = tint
     }
 
-    /// §30 — three-level glass intensity convenience. Maps the named intensity
-    /// onto the underlying `BrandGlassVariant` so call sites can express intent
-    /// (`.strong` / `.medium` / `.minimal`) without knowing the variant table.
-    public init(
-        _ label: String,
-        intensity: BrandGlassIntensity,
-        tint: Color? = nil
-    ) {
-        self.init(label, variant: intensity.variant, tint: tint)
-    }
-
     public var body: some View {
         Text(label)
             .font(.system(size: 12, weight: .semibold, design: .rounded))

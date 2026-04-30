@@ -379,9 +379,7 @@ public struct ReportsView: View {
                         )
                         .padding(.horizontal, BrandSpacing.sm)
                         .padding(.vertical, BrandSpacing.xs)
-                        // §91.13: 44pt minimum tap target for period pills so they
-                        // pass the WCAG 2.5.5 target-size criterion on iPad.
-                        .frame(maxWidth: .infinity, minHeight: DesignTokens.Touch.minTargetSide)
+                        .frame(maxWidth: .infinity)
                         .background(
                             Capsule()
                                 .fill(
@@ -594,11 +592,6 @@ public struct ReportsView: View {
             TaxReportCard(report: vm.taxReport, isLoading: vm.taxReportLoading)
 
         case .insights:
-            // §91.5: when ≥80% of insight cards have no data (new tenant / first day)
-            // show a single friendly panel instead of a wall of empty cards.
-            if insightsAreMostlyEmpty {
-                insightsAggregateEmptyState
-            } else {
             // §15.7 CSAT + NPS
             CSATScoreCard(score: vm.csatScore) { showCSATDetail = true }
             NPSScoreCard(score: vm.npsScore)   { showNPSDetail  = true }
@@ -624,66 +617,10 @@ public struct ReportsView: View {
             ConversionFunnelCard(stats: vm.conversionFunnel)
             // §15.9 Labor utilization by tech
             LaborUtilizationCard(rows: vm.laborUtilization)
-            } // end else (not insightsAreMostlyEmpty)
         }
 
         // §91.3 fix 6: SLA Breaches card — hidden when zero breaches (card handles nil/zero guard).
         SLABreachesCard(report: vm.slaBreaches)
-    }
-
-    // MARK: - §91.5 Insights aggregate empty state
-
-    /// True when ≥80% of the 13 Insights data slots are empty.
-    /// Each slot scores 1 when it has data, 0 when it doesn't.
-    private var insightsAreMostlyEmpty: Bool {
-        let scores: [Bool] = [
-            vm.csatScore != nil,
-            vm.npsScore != nil,
-            !vm.warrantyClaims.isEmpty,
-            !vm.deviceModelsRepaired.isEmpty,
-            !vm.partsUsage.isEmpty,
-            !vm.techHours.isEmpty,
-            vm.stalledTickets != nil,
-            vm.customerAcquisitionChurn != nil,
-            !vm.revenueByCategory.isEmpty,
-            vm.repeatCustomerStats != nil,
-            !vm.avgTicketValueTrend.isEmpty,
-            vm.conversionFunnel != nil,
-            !vm.laborUtilization.isEmpty
-        ]
-        let withData = scores.filter { $0 }.count
-        // 80% threshold: fewer than 3 of 13 slots have data
-        return Double(withData) / Double(scores.count) < 0.20
-    }
-
-    private var insightsAggregateEmptyState: some View {
-        VStack(spacing: BrandSpacing.lg) {
-            Image(systemName: "chart.bar.doc.horizontal")
-                .font(.system(size: 48))
-                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.45))
-                .accessibilityHidden(true)
-            VStack(spacing: BrandSpacing.xs) {
-                Text("Insights need more activity")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text("Complete your first sales, tickets, and services to unlock CSAT, NPS, technician performance, and other insight cards.")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(BrandSpacing.xxl)
-        .background(Color.bizarreSurface1,
-                    in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-        )
-        .padding(.horizontal, BrandSpacing.base)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Insights need more activity. Complete your first sales, tickets, and services to unlock insight cards.")
     }
 
     // MARK: - Export

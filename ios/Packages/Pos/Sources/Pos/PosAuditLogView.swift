@@ -52,20 +52,6 @@ public struct PosAuditLogView: View {
 
     private var auditList: some View {
         List {
-            // §16 — manager override summary row: surfaces today's count so a
-            // loss-prevention manager sees unusual overrides at a glance.
-            let todayOverrides = managerOverrideCountToday
-            if todayOverrides > 0 {
-                Section {
-                    managerOverrideSummaryRow(count: todayOverrides)
-                        .listRowBackground(Color.bizarreWarning.opacity(0.08))
-                } header: {
-                    Text("Today's manager overrides")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-            }
-
             // §39 — no-sale summary row: a dedicated header section that
             // surfaces today's no-sale count at a glance for loss prevention,
             // even before the manager scrolls into the chronological log.
@@ -92,44 +78,6 @@ public struct PosAuditLogView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-    }
-
-    // MARK: - §16 Manager override summary row
-
-    /// Count of manager_override events from today.
-    private var managerOverrideCountToday: Int {
-        let calendar = Calendar.current
-        return entries.filter {
-            $0.eventType == PosAuditEntry.EventType.managerOverride &&
-            calendar.isDateInToday($0.date)
-        }.count
-    }
-
-    /// Prominent summary row shown when there are manager override events today.
-    private func managerOverrideSummaryRow(count: Int) -> some View {
-        HStack(spacing: BrandSpacing.md) {
-            Image(systemName: "person.badge.shield.checkmark.fill")
-                .font(.system(size: 20))
-                .foregroundStyle(Color.bizarreWarning)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Manager overrides today")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text("A manager bypassed a system limit or policy.")
-                    .font(.brandBodySmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            Spacer()
-            Text("\(count)")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(count > 2 ? Color.bizarreError : Color.bizarreWarning)
-                .monospacedDigit()
-                .accessibilityLabel("\(count) manager override events today")
-        }
-        .padding(.vertical, BrandSpacing.xs)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("pos.auditLog.managerOverrideSummary")
     }
 
     // MARK: - §39 No-sale summary row
@@ -325,7 +273,6 @@ private struct AuditEntryRow: View {
         case "manager_approved_refund": return "REFUND"
         case "cash_drop":               return "DROP"
         case "drawer_open":             return "DRAWER"
-        case "manager_override":        return "MGR OVR"
         default:                        return entry.eventType.uppercased()
         }
     }
@@ -340,7 +287,6 @@ private struct AuditEntryRow: View {
         case "manager_approved_refund": return .orange
         case "cash_drop":               return .teal
         case "drawer_open":             return .teal
-        case "manager_override":        return .bizarreWarning
         default:                        return .gray
         }
     }

@@ -65,19 +65,6 @@ public extension BrandMotion {
     /// "pops" into place rather than drifting.
     /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
     static let fabScaleIn: Animation = .interactiveSpring(response: 0.26, dampingFraction: 0.68)
-
-    // MARK: §29.8 — Responsive interactive spring (perf budget)
-
-    /// `.interactiveSpring` tuned for "responsiveness over polish" — used on
-    /// gesture-driven interactions (drag tracks, slider thumbs, swipe-row
-    /// reveals) where the UI must follow the finger with no perceptible lag.
-    ///
-    /// Per §29.8 Animations: prefer `.interactiveSpring` for responsiveness.
-    /// Lower response (0.18) than `brandSpring` so the spring resolves quickly
-    /// when the user releases — no overshoot lingering past the touch.
-    ///
-    /// Reduce Motion alt: nil (instant) via ReduceMotionFallback.
-    static let responsive: Animation = .interactiveSpring(response: 0.18, dampingFraction: 0.86)
 }
 
 // MARK: - ReduceMotionFallback §30 convenience
@@ -130,12 +117,5 @@ public extension ReduceMotionFallback {
     /// Pre-resolved token for FAB scale-in spring, honouring Reduce Motion.
     static func fabScaleIn(reduced: Bool) -> Animation? {
         animation(BrandMotion.fabScaleIn, reduced: reduced)
-    }
-
-    /// Pre-resolved token for the §29.8 responsive interactive spring,
-    /// honouring Reduce Motion. Returns nil when reduced so gesture-tracking
-    /// updates apply instantly.
-    static func responsive(reduced: Bool) -> Animation? {
-        animation(BrandMotion.responsive, reduced: reduced)
     }
 }

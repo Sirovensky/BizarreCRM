@@ -25,12 +25,6 @@ final class LateFeePolicyEditorViewModel {
     var maxFeeString: String = ""
     var maxFeeCents: Int = 0
 
-    // §7 (1283) Jurisdiction selection (e.g. "US-CA"). nil = no validation.
-    var jurisdictionCode: String? = nil
-    /// Reference invoice total in cents used for percent-of-invoice cap checks
-    /// when validating flat fees. Defaults to $1 000 = 100 000 cents.
-    var referenceInvoiceTotalCents: Int = 100_000
-
     var isSubmitting: Bool = false
     var errorMessage: String?
     var didSave: Bool = false
@@ -55,20 +49,6 @@ final class LateFeePolicyEditorViewModel {
             maxFeeCents = p.maxFeeCents ?? 0
             maxFeeString = useMaxFee ? String(format: "%.2f", Double(maxFeeCents) / 100.0) : ""
         }
-    }
-
-    /// §7 (1283) Compliance warnings against the selected jurisdiction.
-    /// Returns empty when no jurisdiction is selected.
-    var jurisdictionWarnings: [LateFeeJurisdictionValidator.Warning] {
-        guard
-            let code = jurisdictionCode,
-            let limit = LateFeeJurisdictionRegistry.limit(for: code)
-        else { return [] }
-        return LateFeeJurisdictionValidator.validate(
-            policy: currentPolicy,
-            invoiceTotalCents: referenceInvoiceTotalCents,
-            limit: limit
-        )
     }
 
     var currentPolicy: LateFeePolicy {
@@ -183,32 +163,6 @@ public struct LateFeePolicyEditorView: View {
                             .onChange(of: vm.maxFeeString) { _, new in vm.updateMaxFee(from: new) }
                             .accessibilityLabel("Maximum late fee cap in dollars")
                     }
-                }
-            }
-
-            // §7 (1283) Jurisdiction limits — surface warnings when the
-            // configured policy exceeds known statutory caps.
-            Section("Jurisdiction") {
-                Picker("Jurisdiction", selection: Binding(
-                    get: { vm.jurisdictionCode ?? "" },
-                    set: { vm.jurisdictionCode = $0.isEmpty ? nil : $0 }
-                )) {
-                    Text("None").tag("")
-                    ForEach(LateFeeJurisdictionRegistry.all, id: \.regionCode) { lim in
-                        Text("\(lim.displayName) (\(lim.regionCode))").tag(lim.regionCode)
-                    }
-                }
-                .accessibilityLabel("Tenant jurisdiction for late-fee compliance check")
-
-                ForEach(vm.jurisdictionWarnings, id: \.kind) { w in
-                    HStack(alignment: .top, spacing: BrandSpacing.sm) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.bizarreWarning)
-                        Text(w.message)
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreOnSurface)
-                    }
-                    .accessibilityLabel("Compliance warning: \(w.message)")
                 }
             }
 

@@ -3,12 +3,6 @@ import Core
 import DesignSystem
 import Networking
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 // MARK: - NeedsAttentionCard (§3.3)
 //
 // Polished "Needs attention" card with per-row action chips:
@@ -133,10 +127,18 @@ public struct NeedsAttentionCard: View {
                 }
             }
 
-            // Empty state (all dismissed) — §3.3 "All clear" + sparkle illustration
+            // Empty state (all dismissed)
             if visibleTickets.isEmpty && visibleInvoices.isEmpty
                && attention.missingPartsCount == 0 && attention.lowStockCount == 0 {
-                NeedsAttentionEmptyState()
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.bizarreSuccess)
+                    Text("All clear. Nothing needs your attention.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .padding(.vertical, BrandSpacing.sm)
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(BrandSpacing.md)
@@ -177,17 +179,6 @@ private struct StaleTicketRow: View {
     @State private var showSnoozeMenu: Bool = false
 
     var body: some View {
-        rowContent
-            .modifier(NeedsAttentionSwipeActions(
-                onSnooze: { showSnoozeMenu = true },
-                onDismiss: {
-                    BrandHaptics.selection()
-                    onDismiss()
-                }
-            ))
-    }
-
-    private var rowContent: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             HStack(spacing: BrandSpacing.xs) {
                 Image(systemName: "clock.badge.exclamationmark.fill")
@@ -228,42 +219,13 @@ private struct StaleTicketRow: View {
         }
         .padding(.vertical, BrandSpacing.sm)
         .contextMenu {
-            // §3.3 iPad/Mac: full action set + Copy ID
-            Button {
-                BrandHaptics.selection()
-                onView()
-            } label: { Label("View ticket", systemImage: "arrow.up.right.square") }
-
-            Button {
-                BrandHaptics.selection()
-                if let url = URL(string: "bizarrecrm://tickets/\(ticket.id)?action=sms") {
-                    UIApplicationOpenURLBridge.open(url)
-                }
-            } label: { Label("SMS customer", systemImage: "message") }
-
-            Button {
-                BrandHaptics.success()
-                onDismiss()
-            } label: { Label("Mark resolved", systemImage: "checkmark.circle") }
-
-            Menu {
-                Button("4 hours") { BrandHaptics.selection(); onDismiss() }
-                Button("Tomorrow") { BrandHaptics.selection(); onDismiss() }
-                Button("Next week") { BrandHaptics.selection(); onDismiss() }
-            } label: { Label("Snooze", systemImage: "clock.arrow.circlepath") }
-
-            Divider()
-
-            Button {
-                NeedsAttentionClipboard.copy(ticket.orderId)
-            } label: { Label("Copy ID", systemImage: "doc.on.doc") }
-
-            Divider()
-
-            Button(role: .destructive) {
-                BrandHaptics.selection()
-                onDismiss()
-            } label: { Label("Dismiss", systemImage: "xmark.circle") }
+            Button("View ticket") { onView() }
+            Menu("Snooze") {
+                Button("4 hours") { onDismiss() }
+                Button("Tomorrow") { onDismiss() }
+                Button("Next week") { onDismiss() }
+            }
+            Button("Dismiss", role: .destructive) { onDismiss() }
         }
         .confirmationDialog("Snooze ticket \(ticket.orderId)?", isPresented: $showSnoozeMenu) {
             Button("4 hours") { BrandHaptics.selection(); onDismiss() }
@@ -284,17 +246,6 @@ private struct OverdueInvoiceRow: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        rowContent
-            .modifier(NeedsAttentionSwipeActions(
-                onSnooze: nil,
-                onDismiss: {
-                    BrandHaptics.selection()
-                    onDismiss()
-                }
-            ))
-    }
-
-    private var rowContent: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             HStack(spacing: BrandSpacing.xs) {
                 Image(systemName: "doc.text.fill")
@@ -331,37 +282,8 @@ private struct OverdueInvoiceRow: View {
         }
         .padding(.vertical, BrandSpacing.sm)
         .contextMenu {
-            // §3.3 iPad/Mac: full action set + Copy ID
-            Button {
-                BrandHaptics.selection()
-                onView()
-            } label: { Label("View invoice", systemImage: "arrow.up.right.square") }
-
-            Button {
-                BrandHaptics.selection()
-                if let url = URL(string: "bizarrecrm://invoices/\(invoice.id)?action=sms") {
-                    UIApplicationOpenURLBridge.open(url)
-                }
-            } label: { Label("SMS customer", systemImage: "message") }
-
-            Button {
-                BrandHaptics.success()
-                onDismiss()
-            } label: { Label("Mark resolved", systemImage: "checkmark.circle") }
-
-            Divider()
-
-            Button {
-                let copyValue = invoice.orderId ?? "INV-\(invoice.id)"
-                NeedsAttentionClipboard.copy(copyValue)
-            } label: { Label("Copy ID", systemImage: "doc.on.doc") }
-
-            Divider()
-
-            Button(role: .destructive) {
-                BrandHaptics.selection()
-                onDismiss()
-            } label: { Label("Dismiss", systemImage: "xmark.circle") }
+            Button("View invoice") { onView() }
+            Button("Dismiss", role: .destructive) { onDismiss() }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Overdue invoice, \(invoice.daysOverdue) days overdue")
@@ -444,163 +366,5 @@ private struct ActionChip: View {
         .hoverEffect(.highlight)
         #endif
         .accessibilityLabel(label)
-    }
-}
-
-// MARK: - §3.3 NeedsAttentionEmptyState (sparkle illustration)
-
-/// "All clear" empty state with a sparkle illustration. Shown when every
-/// stale ticket / overdue invoice has been dismissed and there are no
-/// missing-parts or low-stock alerts. Reduce-Motion aware.
-private struct NeedsAttentionEmptyState: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(spacing: BrandSpacing.sm) {
-            ZStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.bizarreSuccess)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.bizarreOrange)
-                    .offset(x: 18, y: -16)
-                    .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
-                Image(systemName: "sparkle")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.bizarreTeal)
-                    .offset(x: -20, y: 12)
-            }
-            .accessibilityHidden(true)
-
-            Text("All clear")
-                .font(.brandTitleSmall())
-                .foregroundStyle(.bizarreOnSurface)
-
-            Text("Nothing needs your attention.")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, BrandSpacing.md)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("All clear. Nothing needs your attention.")
-    }
-}
-
-// MARK: - §3.3 NeedsAttentionSwipeActions (iPhone leading=snooze, trailing=dismiss)
-
-/// Drag-gesture–based swipe actions for VStack rows in the Needs-attention
-/// card. iPhone-only (Platform.isCompact); iPad/Mac users get the
-/// `.contextMenu` instead. Provides:
-///   - Leading swipe → optional snooze callback (revealed icon: clock).
-///   - Trailing swipe → dismiss with `.selection` haptic (revealed icon: xmark).
-///
-/// Threshold is 64pt; past that, the row snaps closed and fires the
-/// callback. Below threshold the row springs back. Reduce-Motion aware.
-private struct NeedsAttentionSwipeActions: ViewModifier {
-    let onSnooze: (() -> Void)?
-    let onDismiss: () -> Void
-
-    @State private var dragOffset: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let threshold: CGFloat = 64
-
-    func body(content: Content) -> some View {
-        if Platform.isCompact {
-            content
-                .offset(x: dragOffset)
-                .background(alignment: .leading) {
-                    if onSnooze != nil, dragOffset > 8 {
-                        HStack {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .foregroundStyle(.white)
-                                .padding(.leading, BrandSpacing.md)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.bizarreOrange)
-                    }
-                }
-                .background(alignment: .trailing) {
-                    if dragOffset < -8 {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.white)
-                                .padding(.trailing, BrandSpacing.md)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.bizarreError)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .gesture(
-                    DragGesture(minimumDistance: 16, coordinateSpace: .local)
-                        .onChanged { value in
-                            // Allow leading drag only when snooze is wired.
-                            let dx = value.translation.width
-                            if dx > 0 && onSnooze == nil { return }
-                            dragOffset = dx
-                        }
-                        .onEnded { value in
-                            let dx = value.translation.width
-                            if dx <= -threshold {
-                                BrandHaptics.selection()
-                                withAnimation(reduceMotion ? .linear(duration: 0.1) : BrandMotion.snappy) {
-                                    dragOffset = 0
-                                }
-                                onDismiss()
-                            } else if dx >= threshold, let onSnooze {
-                                withAnimation(reduceMotion ? .linear(duration: 0.1) : BrandMotion.snappy) {
-                                    dragOffset = 0
-                                }
-                                onSnooze()
-                            } else {
-                                withAnimation(reduceMotion ? .linear(duration: 0.1) : BrandMotion.snappy) {
-                                    dragOffset = 0
-                                }
-                            }
-                        }
-                )
-        } else {
-            content
-        }
-    }
-}
-
-// MARK: - §3.3 Clipboard helper (Copy ID)
-
-/// Tiny pasteboard helper used by the Needs-attention context menu's
-/// "Copy ID" action. Plain-text only — no URL payload — because the
-/// stale-ticket / overdue-invoice rows expose only a record identifier,
-/// not a destination resolvable by `DeepLinkBuilder` here.
-private enum NeedsAttentionClipboard {
-    @MainActor
-    static func copy(_ value: String) {
-        BrandHaptics.selection()
-        #if canImport(UIKit)
-        UIPasteboard.general.string = value
-        #elseif canImport(AppKit)
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(value, forType: .string)
-        #endif
-    }
-}
-
-// MARK: - §3.3 openURL bridge for context-menu actions
-
-/// `Environment(\.openURL)` lives at the View level; context-menu Button
-/// closures don't see it. Use the platform application directly.
-private enum UIApplicationOpenURLBridge {
-    @MainActor
-    static func open(_ url: URL) {
-        #if canImport(UIKit)
-        UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        #elseif canImport(AppKit)
-        NSWorkspace.shared.open(url)
-        #endif
     }
 }

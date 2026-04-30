@@ -43,25 +43,6 @@ public enum LogRedactor {
 
     // Patterns are ordered: more-specific before more-general.
     private static let rules: [Rule] = [
-        // §32 Network error redactor — strip credentials and query params from URLs
-        // before they reach any log sink or telemetry payload.
-        //
-        // 1. Userinfo in URLs: scheme://user:pass@host → scheme://*SECRET*@host
-        Rule(
-            #"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@/\s]+:[^@/\s]+)@"#,
-            "$1*SECRET*@"
-        ),
-        // 2. Query-string values: ?key=VALUE&key2=VALUE2 → ?key=*REDACTED*&…
-        //    Preserves key names (useful for routing) but masks values (may be tokens / IDs).
-        Rule(
-            #"(?<=[?&])([^=&\s]+)=([^&\s#]+)"#,
-            "$1=*REDACTED*"
-        ),
-        // 3. URL fragments that look like tokens (# followed by base64-ish segment)
-        Rule(
-            #"#[A-Za-z0-9+/\-_]{16,}={0,2}\b"#,
-            "#*SECRET*"
-        ),
         // Email addresses  (RFC-5321 simplified)
         Rule(
             #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#,
@@ -171,51 +152,4 @@ public enum LogRedactor {
     public static func redactAddress(_ input: String) -> String {
         input.isEmpty ? input : "*ADDRESS*"
     }
-
-    // MARK: — §32.6 Field-shape detection fallback (`*LIKELY_PII*`)
-
-    /// §32.6 — Defensive redaction pass for untagged / legacy call sites.
-    ///
-    /// First runs the standard `redact(_:)` rule table (which covers known
-    /// labelled patterns: emails, PANs, phones, tokens, etc.), then applies a
-    /// looser fallback that substitutes any remaining string still shaped like
-    /// PII with the catch-all placeholder `*LIKELY_PII*`.
-    ///
-    /// False positives are acceptable; raw PII leaks are not.  Use this when a
-    /// string is being serialized into a telemetry payload but the call site
-    /// did not declare the field type up front.
-    public static func redactWithLikelyPIIFallback(_ input: String) -> String {
-        var result = redact(input)
-        for rule in fallbackRules {
-            result = rule.regex.stringByReplacingMatches(
-                in: result,
-                options: [],
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: rule.placeholder
-            )
-        }
-        return result
-    }
-
-    /// Looser shape-detection rules. They run *after* the strict table so
-    /// labelled / well-known patterns keep their canonical placeholders.
-    private static let fallbackRules: [Rule] = [
-        // Phone-shaped: any 7+ contiguous digit run that survived the strict
-        // pass (e.g. partially-formatted numbers without separators).
-        Rule(
-            #"\b\d{7,}\b"#,
-            "*LIKELY_PII*"
-        ),
-        // Email-shaped without TLD enforcement (catches obfuscated "user[at]domain")
-        Rule(
-            #"[A-Za-z0-9._%+\-]+\s*(?:\[?(?:at|@)\]?)\s*[A-Za-z0-9.\-]+"#,
-            "*LIKELY_PII*"
-        ),
-        // Token-shaped: 20+ char alphanumeric mixed-case-or-with-digits run
-        // (catches pre-base64 secrets the strict 32+ rule missed).
-        Rule(
-            #"\b(?=[A-Za-z0-9]{20,}\b)(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9]{20,}\b"#,
-            "*LIKELY_PII*"
-        ),
-    ]
 }

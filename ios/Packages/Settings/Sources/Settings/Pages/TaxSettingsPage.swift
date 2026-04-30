@@ -13,39 +13,15 @@ public struct TaxRate: Identifiable, Equatable, Sendable {
     public var applyToAll: Bool
     public var isExempt: Bool
     public var isArchived: Bool
-    /// §19.8 — when true, rate stacks with other nested rates (state + county + city).
-    public var isNested: Bool
-    /// §19.8 — jurisdiction tier label ("state" / "county" / "city" / "").
-    public var jurisdiction: String
 
     public init(id: String, name: String, rate: Double,
-                applyToAll: Bool = true, isExempt: Bool = false, isArchived: Bool = false,
-                isNested: Bool = false, jurisdiction: String = "") {
+                applyToAll: Bool = true, isExempt: Bool = false, isArchived: Bool = false) {
         self.id = id
         self.name = name
         self.rate = rate
         self.applyToAll = applyToAll
         self.isExempt = isExempt
         self.isArchived = isArchived
-        self.isNested = isNested
-        self.jurisdiction = jurisdiction
-    }
-}
-
-/// §19.8 — jurisdiction tier presets for nested-tax rates.
-public enum TaxJurisdiction: String, CaseIterable, Identifiable {
-    case none   = ""
-    case state  = "state"
-    case county = "county"
-    case city   = "city"
-    public var id: String { rawValue }
-    public var label: String {
-        switch self {
-        case .none:   return "None"
-        case .state:  return "State"
-        case .county: return "County"
-        case .city:   return "City"
-        }
     }
 }
 
@@ -67,8 +43,6 @@ public final class TaxSettingsViewModel: Sendable {
     var draftRate: String = ""
     var draftApplyToAll: Bool = true
     var draftIsExempt: Bool = false
-    var draftIsNested: Bool = false
-    var draftJurisdiction: TaxJurisdiction = .none
 
     var draftRateValue: Double? { Double(draftRate) }
     var isDraftValid: Bool {
@@ -92,9 +66,7 @@ public final class TaxSettingsViewModel: Sendable {
                     id: $0.id, name: $0.name, rate: $0.rate,
                     applyToAll: $0.applyToAll ?? true,
                     isExempt: $0.isExempt ?? false,
-                    isArchived: $0.isArchived ?? false,
-                    isNested: $0.isNested ?? false,
-                    jurisdiction: $0.jurisdiction ?? ""
+                    isArchived: $0.isArchived ?? false
                 )
             }
         } catch {
@@ -107,8 +79,6 @@ public final class TaxSettingsViewModel: Sendable {
         draftRate = ""
         draftApplyToAll = true
         draftIsExempt = false
-        draftIsNested = false
-        draftJurisdiction = .none
         editingRate = nil
         showAddSheet = true
     }
@@ -118,8 +88,6 @@ public final class TaxSettingsViewModel: Sendable {
         draftRate = String(rate.rate)
         draftApplyToAll = rate.applyToAll
         draftIsExempt = rate.isExempt
-        draftIsNested = rate.isNested
-        draftJurisdiction = TaxJurisdiction(rawValue: rate.jurisdiction) ?? .none
         editingRate = rate
         showAddSheet = true
     }
@@ -134,9 +102,7 @@ public final class TaxSettingsViewModel: Sendable {
                 name: draftName,
                 rate: value,
                 applyToAll: draftApplyToAll,
-                isExempt: draftIsExempt,
-                isNested: draftIsNested,
-                jurisdiction: draftJurisdiction.rawValue
+                isExempt: draftIsExempt
             )
             if let existing = editingRate {
                 _ = try await api.updateTaxRate(id: existing.id, body)
@@ -153,10 +119,7 @@ public final class TaxSettingsViewModel: Sendable {
     func archiveRate(_ rate: TaxRate) async {
         guard let api else { return }
         do {
-            let body = TaxRateCreateDTO(name: rate.name, rate: rate.rate,
-                                        applyToAll: rate.applyToAll, isExempt: true,
-                                        isNested: rate.isNested,
-                                        jurisdiction: rate.jurisdiction)
+            let body = TaxRateCreateDTO(name: rate.name, rate: rate.rate, applyToAll: rate.applyToAll, isExempt: true)
             _ = try await api.updateTaxRate(id: rate.id, body)
             await load()
         } catch {
@@ -184,25 +147,6 @@ public struct TaxSettingsPage: View {
                 }
             }
 
-            // §19.8 — show combined nested-tax stack so admin can verify the stacked rate.
-            let nestedActive = vm.taxRates.filter { !$0.isArchived && $0.isNested && !$0.isExempt }
-            if nestedActive.count > 1 {
-                Section {
-                    let total = nestedActive.reduce(0.0) { $0 + $1.rate }
-                    LabeledContent("Stacked total") {
-                        Text(String(format: "%.2f%%", total))
-                            .foregroundStyle(.bizarreOrange)
-                            .monospacedDigit()
-                    }
-                    .accessibilityLabel("Combined nested tax: \(String(format: "%.2f", total)) percent")
-                    Text(nestedActive.map { "\($0.name) \(String(format: "%.2f", $0.rate))%" }.joined(separator: " + "))
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                } header: {
-                    Text("Nested tax stack")
-                }
-            }
-
             Section("Tax rates") {
                 ForEach(vm.taxRates.filter { !$0.isArchived }) { rate in
                     HStack {
@@ -215,12 +159,6 @@ public struct TaxSettingsPage: View {
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
                         }
                         Spacer()
-                        if rate.isNested {
-                            Text(rate.jurisdiction.isEmpty ? "Nested" : rate.jurisdiction.capitalized)
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOrange)
-                                .accessibilityLabel("Nested tax\(rate.jurisdiction.isEmpty ? "" : ", \(rate.jurisdiction)")")
-                        }
                         if rate.applyToAll {
                             Text("All")
                                 .font(.brandLabelSmall())
@@ -297,23 +235,6 @@ struct TaxRateFormSheet: View {
                         .accessibilityIdentifier("tax.draftApplyToAll")
                     Toggle("Tax-exempt category", isOn: $vm.draftIsExempt)
                         .accessibilityIdentifier("tax.draftIsExempt")
-                }
-                // §19.8 — Nested tax (state + county + city stacking).
-                Section {
-                    Toggle("Nested (stacks with other rates)", isOn: $vm.draftIsNested)
-                        .accessibilityIdentifier("tax.draftIsNested")
-                    if vm.draftIsNested {
-                        Picker("Jurisdiction", selection: $vm.draftJurisdiction) {
-                            ForEach(TaxJurisdiction.allCases) { tier in
-                                Text(tier.label).tag(tier)
-                            }
-                        }
-                        .accessibilityIdentifier("tax.draftJurisdiction")
-                    }
-                } header: {
-                    Text("Nested tax")
-                } footer: {
-                    Text("Use nested rates when state, county, and city tax must stack on the same line. Each rate adds independently to the line subtotal.")
                 }
             }
             .navigationTitle(vm.editingRate == nil ? "New Tax Rate" : "Edit Tax Rate")

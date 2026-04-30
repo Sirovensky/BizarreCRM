@@ -82,13 +82,6 @@ public struct PaymentSettingsDTO: Codable, Sendable {
     public var tippingEnabled: Bool?
     public var tipPresets: [Int]?
     public var manualKeyedCardAllowed: Bool?
-    // §19.9 — Refund policy + Batch close time
-    /// Maximum days since sale that a refund can be processed (0 = no limit).
-    public var refundMaxDaysSinceSale: Int?
-    /// Refunds above this amount require manager approval (0 = always allowed).
-    public var refundManagerApprovalAbove: Double?
-    /// Auto-close card batch every day at this minute-of-day (0–1439). `nil` = manual close only.
-    public var batchCloseMinuteOfDay: Int?
 
     public init(cashEnabled: Bool?, cardEnabled: Bool?, giftCardEnabled: Bool?,
                 storeCreditEnabled: Bool?, checkEnabled: Bool?,
@@ -96,10 +89,7 @@ public struct PaymentSettingsDTO: Codable, Sendable {
                 cardSurchargeEnabled: Bool? = nil,
                 tippingEnabled: Bool? = nil,
                 tipPresets: [Int]? = nil,
-                manualKeyedCardAllowed: Bool? = nil,
-                refundMaxDaysSinceSale: Int? = nil,
-                refundManagerApprovalAbove: Double? = nil,
-                batchCloseMinuteOfDay: Int? = nil) {
+                manualKeyedCardAllowed: Bool? = nil) {
         self.cashEnabled = cashEnabled; self.cardEnabled = cardEnabled
         self.giftCardEnabled = giftCardEnabled; self.storeCreditEnabled = storeCreditEnabled
         self.checkEnabled = checkEnabled; self.blockChypApiKey = blockChypApiKey
@@ -108,9 +98,6 @@ public struct PaymentSettingsDTO: Codable, Sendable {
         self.tippingEnabled = tippingEnabled
         self.tipPresets = tipPresets
         self.manualKeyedCardAllowed = manualKeyedCardAllowed
-        self.refundMaxDaysSinceSale = refundMaxDaysSinceSale
-        self.refundManagerApprovalAbove = refundManagerApprovalAbove
-        self.batchCloseMinuteOfDay = batchCloseMinuteOfDay
     }
 }
 
@@ -124,28 +111,14 @@ public struct SmsSettingsDTO: Codable, Sendable {
     public var a2pStatus: String?
     // §19.10 — MMS support toggle
     public var mmsEnabled: Bool?
-    // §19.10 — Auto-responses (out-of-hours auto-reply)
-    public var autoReplyEnabled: Bool?
-    public var autoReplyMessage: String?
-    // §19.10 — Compliance (opt-out keywords + carrier-required footer)
-    public var optOutKeywords: [String]?
-    public var complianceFooter: String?
 
     public init(provider: String?, fromNumber: String?, twilioAccountSid: String?,
                 twilioAuthToken: String?, a2pStatus: String?,
-                mmsEnabled: Bool? = nil,
-                autoReplyEnabled: Bool? = nil,
-                autoReplyMessage: String? = nil,
-                optOutKeywords: [String]? = nil,
-                complianceFooter: String? = nil) {
+                mmsEnabled: Bool? = nil) {
         self.provider = provider; self.fromNumber = fromNumber
         self.twilioAccountSid = twilioAccountSid; self.twilioAuthToken = twilioAuthToken
         self.a2pStatus = a2pStatus
         self.mmsEnabled = mmsEnabled
-        self.autoReplyEnabled = autoReplyEnabled
-        self.autoReplyMessage = autoReplyMessage
-        self.optOutKeywords = optOutKeywords
-        self.complianceFooter = complianceFooter
     }
 }
 
@@ -201,10 +174,6 @@ public struct TaxRateDTO: Codable, Sendable {
     public var applyToAll: Bool?
     public var isExempt: Bool?
     public var isArchived: Bool?
-    /// §19.8 — when true, this rate stacks on top of other rates (state + county + city).
-    public var isNested: Bool?
-    /// §19.8 — jurisdiction tier label for nested rates: "state", "county", "city".
-    public var jurisdiction: String?
 }
 
 public struct TaxRateCreateDTO: Encodable, Sendable {
@@ -212,15 +181,9 @@ public struct TaxRateCreateDTO: Encodable, Sendable {
     public var rate: Double
     public var applyToAll: Bool
     public var isExempt: Bool
-    /// §19.8 — nested-stacking flag.
-    public var isNested: Bool
-    /// §19.8 — jurisdiction tier ("state" / "county" / "city" / "").
-    public var jurisdiction: String
 
-    public init(name: String, rate: Double, applyToAll: Bool, isExempt: Bool,
-                isNested: Bool = false, jurisdiction: String = "") {
+    public init(name: String, rate: Double, applyToAll: Bool, isExempt: Bool) {
         self.name = name; self.rate = rate
-        self.isNested = isNested; self.jurisdiction = jurisdiction
         self.applyToAll = applyToAll; self.isExempt = isExempt
     }
 }
@@ -340,42 +303,6 @@ public extension APIClient {
     /// `PATCH /tax-rates/:id` — update an existing tax rate.
     func updateTaxRate(id: String, _ body: TaxRateCreateDTO) async throws -> TaxRateDTO {
         try await patch("/tax-rates/\(id)", body: body, as: TaxRateDTO.self)
-    }
-
-    // MARK: §19.6 Ticket Required Fields
-
-    /// `GET /settings/tickets` — fetches the ticket-creation field policy
-    /// (which intake fields are required vs optional). Server stores under
-    /// `tickets.required_fields` array of field keys.
-    func fetchTicketRequiredFields() async throws -> TicketRequiredFieldsDTO {
-        try await get("/settings/tickets/required-fields", as: TicketRequiredFieldsDTO.self)
-    }
-
-    /// `PUT /settings/tickets/required-fields` — persist required-field policy.
-    func saveTicketRequiredFields(_ body: TicketRequiredFieldsDTO) async throws -> TicketRequiredFieldsDTO {
-        try await put("/settings/tickets/required-fields", body: body, as: TicketRequiredFieldsDTO.self)
-    }
-}
-
-// MARK: - §19.6 Ticket required-fields DTO
-
-public struct TicketRequiredFieldsDTO: Codable, Sendable, Equatable {
-    /// Field-key list that the intake form must require before allowing save.
-    /// Known keys: customer, deviceModel, imei, passcode, accessories,
-    /// reportedIssue, estimatedCost, depositCollected, dueDate, technician.
-    public var requiredFields: [String]
-
-    public init(requiredFields: [String] = []) {
-        self.requiredFields = requiredFields
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case requiredFields = "required_fields"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.requiredFields = (try? c.decode([String].self, forKey: .requiredFields)) ?? []
     }
 }
 

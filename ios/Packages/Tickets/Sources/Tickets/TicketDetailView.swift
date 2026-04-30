@@ -179,37 +179,6 @@ public struct TicketDetailView: View {
             }
         }
         .animation(.spring(duration: 0.25), value: vm.permissionDeniedToast)
-        // §4.13 — Network error on refresh (cached data still visible) — glass retry pill
-        .overlay(alignment: .top) {
-            if vm.networkErrorBanner {
-                HStack(spacing: BrandSpacing.sm) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .foregroundStyle(.bizarreOnSurface)
-                        .accessibilityHidden(true)
-                    Text("Showing cached data")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreOnSurface)
-                    Button {
-                        Task { await vm.load() }
-                    } label: {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                            .font(.brandLabelLarge().bold())
-                            .foregroundStyle(.bizarreOrange)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Retry loading ticket")
-                }
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.vertical, BrandSpacing.sm)
-                .brandGlass(.clear, in: Capsule())
-                .padding(.top, BrandSpacing.sm)
-                .padding(.horizontal, BrandSpacing.lg)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Network error. Showing cached ticket data. Tap Retry to refresh.")
-            }
-        }
-        .animation(.spring(duration: 0.25), value: vm.networkErrorBanner)
         // §4.4 — concurrent-edit 409 banner
         .safeAreaInset(edge: .top, spacing: 0) {
             if vm.concurrentEditBanner {
@@ -513,21 +482,6 @@ public struct TicketDetailView: View {
                         Label("Duplicate Ticket", systemImage: "doc.on.doc")
                     }
                     .accessibilityIdentifier("ticket.duplicate")
-
-                    // §4.1 — Pin / unpin (bookmarks the ticket to the top of the list)
-                    if let api {
-                        Button {
-                            Task { await vm.togglePin(api: api) }
-                        } label: {
-                            if vm.isPinned {
-                                Label("Unpin Ticket", systemImage: "pin.slash.fill")
-                            } else {
-                                Label("Pin to Top", systemImage: "pin.fill")
-                            }
-                        }
-                        .accessibilityIdentifier("ticket.togglePin")
-                        .accessibilityLabel(vm.isPinned ? "Unpin ticket" : "Pin ticket to top of list")
-                    }
 
                     // §4 — Merge / Split
                     Button { showingMerge = true } label: {
@@ -866,16 +820,6 @@ private struct CustomerQuickActionsRow: View {
                    let enc = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                    let url = URL(string: "mailto:\(enc)") {
                     quickChip("Email", icon: "envelope.fill", color: .bizarreOrange, url: url)
-                }
-                // §4.2 — Open customer detail (Universal Link → DeepLinkRouter)
-                if let cid = customer.id,
-                   let url = URL(string: "https://app.bizarrecrm.com/customers/\(cid)") {
-                    quickChip("Open Customer", icon: "person.crop.circle.fill", color: .bizarreOrange, url: url)
-                }
-                // §4.2 — Create new ticket pre-seeded with this customer
-                if let cid = customer.id,
-                   let url = URL(string: "https://app.bizarrecrm.com/tickets/new?customer_id=\(cid)") {
-                    quickChip("New Ticket", icon: "plus.square.fill", color: .bizarreTeal, url: url)
                 }
             }
             .padding(.horizontal, BrandSpacing.base)

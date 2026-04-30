@@ -22,36 +22,17 @@ public final class CustomerDetailViewModel {
     public private(set) var errorMessage: String?
     public let customerId: Int64
 
-    /// Per-customer currency override (ISO 4217), or `nil` to use tenant default.
-    /// §5 lines 978–979.  Loaded from `CustomerCurrencyOverrideStore` on `load()`.
-    public private(set) var currencyOverrideCode: String?
-
     @ObservationIgnored private let repo: CustomerDetailRepository
-    @ObservationIgnored private let currencyOverrides: CustomerCurrencyOverrideStore
 
-    public init(
-        repo: CustomerDetailRepository,
-        customerId: Int64,
-        currencyOverrides: CustomerCurrencyOverrideStore = .shared
-    ) {
+    public init(repo: CustomerDetailRepository, customerId: Int64) {
         self.repo = repo
         self.customerId = customerId
-        self.currencyOverrides = currencyOverrides
-    }
-
-    /// Persist a per-customer currency override and refresh the cached value.
-    public func setCurrencyOverride(_ code: String?) async {
-        await currencyOverrides.setOverride(code, customerId: Int(customerId))
-        currencyOverrideCode = await currencyOverrides.override(customerId: Int(customerId))
     }
 
     public func load() async {
         if snapshot.detail == nil { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
-
-        // Per-customer currency override (offline-first; §5 line 979).
-        currencyOverrideCode = await currencyOverrides.override(customerId: Int(customerId))
 
         // Primary fetch — fail the screen if we can't even load the core detail.
         do {

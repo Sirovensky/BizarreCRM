@@ -317,11 +317,6 @@ public struct RailSidebarView: View {
                             keyEquivalent(for: index),
                             modifiers: .command
                         )
-                        // §91.7: ensure each button row sits flush-center in the rail
-                        // regardless of isExpanded. Without this the button's intrinsic
-                        // width can drift a pt left/right on icon-only collapse due to
-                        // fractional layout rounding.
-                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
                 .padding(.horizontal, 8)

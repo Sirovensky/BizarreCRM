@@ -130,9 +130,7 @@ public struct CohortRevenueRetentionCard: View {
         Group {
             if let pct {
                 Text(String(format: "%.0f%%", pct))
-                    // §91.13: minimum 12 pt for Dynamic Type compliance.
-                    // Previously `.system(size: 11)` which failed legibility test.
-                    .font(.brandChartAxisLabel().monospacedDigit())
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
                     .foregroundStyle(cellTextColor(pct: pct))
                     .frame(width: 44, height: 30)
                     .background(cellBackground(pct: pct), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xs))

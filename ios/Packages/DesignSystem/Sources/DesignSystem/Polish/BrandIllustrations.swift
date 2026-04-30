@@ -102,7 +102,7 @@ public struct BrandIllustration: View {
             ForEach(IllustrationType.allCases, id: \.rawValue) { type in
                 VStack(spacing: 8) {
                     BrandIllustration(type)
-                        .brandIllustrationTinted()   // §30.9 brand-tint convenience
+                        .foregroundStyle(.orange)
                         .frame(width: 60, height: 60)
                     Text(type.rawValue.split(separator: ".").last.map(String.init) ?? "")
                         .font(.caption2)

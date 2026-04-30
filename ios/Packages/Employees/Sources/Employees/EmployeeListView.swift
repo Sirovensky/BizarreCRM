@@ -109,7 +109,6 @@ public struct EmployeeListView: View {
     @State private var showCommissionRules: Bool = false
     @State private var showFilters: Bool = false
     @State private var showClockedInNow: Bool = false
-    @State private var showTeamChat: Bool = false  // §14.5 Team chat
     @State private var selectedEmployee: Employee?
     @State private var showInvite: Bool = false    // §14.4 Invite
     /// §14.1 iPad/Mac — toggle between sidebar-list and Table view
@@ -155,16 +154,6 @@ public struct EmployeeListView: View {
                         }
                 }
             }
-            .sheet(isPresented: $showTeamChat) {
-                NavigationStack {
-                    TeamChatView(api: api)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Done") { showTeamChat = false }
-                            }
-                        }
-                }
-            }
             .task { await vm.load() }
             .refreshable { await vm.forceRefresh() }
         }
@@ -197,16 +186,6 @@ public struct EmployeeListView: View {
                                 }
                         }
                     }
-                    .sheet(isPresented: $showTeamChat) {
-                        NavigationStack {
-                            TeamChatView(api: api)
-                                .toolbar {
-                                    ToolbarItem(placement: .cancellationAction) {
-                                        Button("Done") { showTeamChat = false }
-                                    }
-                                }
-                        }
-                    }
                 }
             } else {
                 NavigationSplitView {
@@ -228,16 +207,6 @@ public struct EmployeeListView: View {
                                 .toolbar {
                                     ToolbarItem(placement: .cancellationAction) {
                                         Button("Done") { showClockedInNow = false }
-                                    }
-                                }
-                        }
-                    }
-                    .sheet(isPresented: $showTeamChat) {
-                        NavigationStack {
-                            TeamChatView(api: api)
-                                .toolbar {
-                                    ToolbarItem(placement: .cancellationAction) {
-                                        Button("Done") { showTeamChat = false }
                                     }
                                 }
                         }
@@ -462,14 +431,6 @@ public struct EmployeeListView: View {
                 Image(systemName: "clock.badge.checkmark")
             }
             .accessibilityLabel("Who's clocked in now")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                showTeamChat = true
-            } label: {
-                Image(systemName: "bubble.left.and.bubble.right")
-            }
-            .accessibilityLabel("Open team chat")
         }
         ToolbarItem(placement: .automatic) {
             Button {

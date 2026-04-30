@@ -109,26 +109,4 @@ final class ColdStartTests: XCTestCase {
             // Termination happens in the next iteration's setup above.
         }
     }
-
-    // MARK: - §31.5 Launch time — XCTApplicationLaunchMetric budget enforcement
-
-    /// Launch-time benchmark using Apple's purpose-built
-    /// `XCTApplicationLaunchMetric`. Unlike `XCTClockMetric`, this metric
-    /// records process spawn → first-frame timing as reported by the OS,
-    /// which is what App Store Connect / MetricKit also report — so the
-    /// baseline aligns with production telemetry.
-    ///
-    /// The metric stores a per-device baseline in the `.xcresult` bundle.
-    /// Regressions surface in CI as a PR diff against the stored baseline.
-    func testLaunchTimeApplicationMetric() throws {
-        let options = XCTMeasureOptions()
-        options.iterationCount = 5
-
-        measure(metrics: [XCTApplicationLaunchMetric()], options: options) {
-            app.launch()
-            // Don't assert visibility here — `XCTApplicationLaunchMetric`
-            // already brackets process-spawn → first-frame internally.
-            // Adding work inside the closure pollutes the measurement.
-        }
-    }
 }

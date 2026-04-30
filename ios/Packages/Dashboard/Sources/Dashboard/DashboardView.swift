@@ -11,8 +11,6 @@ import UIKit
 public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
-    /// §3 Refresh-on-foreground: re-fetch KPIs when the app returns to active.
-    @Environment(\.scenePhase) private var scenePhase
 
     /// Called when the user taps a KPI tile. The App layer should handle
     /// navigation to the filtered list (e.g. push Tickets with `status_group=open`).
@@ -56,10 +54,6 @@ public struct DashboardView: View {
     public var userAvatarURL: String?
     /// Initials shown when no avatar URL is available (e.g. "JD").
     public var userInitials: String?
-    /// First name of the signed-in user used in the greeting (e.g. "Jane").
-    /// When nil the greeting falls back to an impersonal time-of-day string
-    /// with a subtle "Complete your profile" nudge (§3.9).
-    public var userName: String?
     /// Long-press on the avatar chip → Switch user (§2.5). Nil disables long-press.
     public var onSwitchUser: (() -> Void)?
 
@@ -119,7 +113,6 @@ public struct DashboardView: View {
         onDismissAttentionItem: ((AttentionRowKind) -> Void)? = nil,
         userAvatarURL: String? = nil,
         userInitials: String? = nil,
-        userName: String? = nil,
         onSwitchUser: (() -> Void)? = nil
     ) {
         self.api = api
@@ -144,7 +137,6 @@ public struct DashboardView: View {
         self.onDismissAttentionItem = onDismissAttentionItem
         self.userAvatarURL = userAvatarURL
         self.userInitials = userInitials
-        self.userName = userName
         self.onSwitchUser = onSwitchUser
     }
 
@@ -157,17 +149,6 @@ public struct DashboardView: View {
                 #endif
                 .refreshable { await vm.forceRefresh() }
                 .task { await vm.load() }
-                // §3 Refresh-on-foreground: when the user returns to the app
-                // (scenePhase .active) kick a soft refresh so KPIs are never
-                // stale after background. Debounced implicitly by `load()`
-                // which no-ops if the state is already .loaded and the
-                // previous fetch is recent; `forceRefresh()` is used so the
-                // StalenessIndicator updates even when data hasn't changed.
-                .onChange(of: scenePhase) { _, newPhase in
-                    if newPhase == .active {
-                        Task { await vm.forceRefresh() }
-                    }
-                }
                 .toolbar {
                     // §3.10 Sync-status badge (leading)
                     ToolbarItem(placement: .topBarLeading) {
@@ -259,8 +240,7 @@ public struct DashboardView: View {
                     onTapGreeting: onTapGreeting,
                     onDismissAttentionItem: onDismissAttentionItem,
                     onSeeFullLeaderboard: onSeeFullLeaderboard,
-                    currentUserId: currentUserId,
-                    userName: userName
+                    currentUserId: currentUserId
                 )
                 // §3.14 — Sticky glass banner when showing cached KPIs after a
                 // network failure. Retains last good data so the screen doesn't go blank.
@@ -302,9 +282,6 @@ private struct LoadedBody: View {
     var onSeeFullLeaderboard: (() -> Void)?
     // §3 Time-spent-today — current user ID for timeclock endpoint (0 = stub).
     var currentUserId: Int64 = 0
-    // §3.9 Hero-greeting fallback — first name from /auth/me. Nil triggers
-    // an impersonal greeting + "Complete your profile" nudge.
-    var userName: String? = nil
 
     // §22.1 — `fourColumnIfWide` replaced by `dashboardStatGridColumnCount`
     // (GeometryReader-driven) so the grid responds to split-view / Stage Manager
@@ -316,20 +293,8 @@ private struct LoadedBody: View {
                 // §3.7 Announcements banner — above everything
                 AnnouncementsBanner(api: api)
 
-                // §3 Holiday hours alert — shows when today is a configured
-                // holiday or has modified hours. Hides itself otherwise.
-                HolidayHoursAlert(api: api)
-
                 greeting
                 ClockInOutTile(vm: clockVM)
-
-                // §3 Appointments today — compact card showing today's count
-                // and next upcoming appointment. Hides when none scheduled.
-                AppointmentsTodayWidget(api: api)
-
-                // §3 Weather-aware service banner — contextual tip based on
-                // current conditions (heat/cold/rain). Hides itself on clear days.
-                WeatherServiceBanner(api: api)
 
                 // §3 Weekly summary banner — week-to-date revenue / closed / avg ticket.
                 // Hides itself when the endpoint is absent (new tenant or unimplemented).
@@ -388,56 +353,33 @@ private struct LoadedBody: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    /// §3.9 — dynamic greeting by hour, personalised when `userName` is set.
-    /// Falls back to an impersonal time-of-day string and shows a subtle
-    /// "Complete your profile" nudge when `userName` is nil — which happens
-    /// until `GET /auth/me` is wired and the host passes the first name.
+    /// §3.9 — dynamic greeting by hour. Reads the current locale's first
+    /// day-part name, falls back to "Hello" if the clock lies. No server
+    /// round trip; the user's first name would need `/auth/me` which is
+    /// still TBD, so for now we keep it impersonal.
     ///
     /// Tap navigates to Settings → Profile (§3.9). If `onTapGreeting` is nil
     /// the greeting is still displayed but non-interactive.
     private var greeting: some View {
-        let base = dashboardGreeting(for: Date())
-        let greetingText: String = {
-            if let name = userName, !name.trimmingCharacters(in: .whitespaces).isEmpty {
-                return "\(base), \(name.trimmingCharacters(in: .whitespaces))"
-            }
-            return base
-        }()
-        let showFallbackNudge = (userName == nil || userName?.trimmingCharacters(in: .whitespaces).isEmpty == true)
-
-        return VStack(alignment: .leading, spacing: 4) {
-            Group {
-                if let onTapGreeting {
-                    Button {
-                        onTapGreeting()
-                    } label: {
-                        Text(greetingText)
-                            .font(.brandTitleLarge())
-                            .foregroundStyle(.bizarreOnSurface)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(greetingText + ". Tap to open Profile settings.")
-                    .accessibilityHint("Opens your profile settings.")
-                } else {
-                    Text(greetingText)
+        Group {
+            if let onTapGreeting {
+                Button {
+                    onTapGreeting()
+                } label: {
+                    Text(dashboardGreeting(for: Date()))
                         .font(.brandTitleLarge())
                         .foregroundStyle(.bizarreOnSurface)
                 }
-            }
-            .accessibilityAddTraits(.isHeader)
-
-            // §3.9 Hero-greeting fallback — when the profile has no name
-            // yet, show a gentle nudge so the greeting doesn't stay generic forever.
-            if showFallbackNudge, let onTapGreeting {
-                Button(action: onTapGreeting) {
-                    Label("Complete your profile", systemImage: "person.crop.circle.badge.plus")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOrange)
-                }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Complete your profile. Tap to open profile settings.")
+                .accessibilityLabel(dashboardGreeting(for: Date()) + ". Tap to open Profile settings.")
+                .accessibilityHint("Opens your profile settings.")
+            } else {
+                Text(dashboardGreeting(for: Date()))
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
             }
         }
+        .accessibilityAddTraits(.isHeader)
     }
 
     // greetingText extracted to module-level `dashboardGreeting(for:)` for testability.

@@ -135,9 +135,6 @@ public struct CustomerDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
-                // §22.1 — detail panes cap at 720 pt on wide iPad screens so
-                // long lines stay readable; on iPhone (<720 pt) it's a no-op.
-                .maxContentWidth()
             }
         }
     }

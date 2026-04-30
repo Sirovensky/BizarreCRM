@@ -145,15 +145,10 @@ public final class TicketListViewModel {
         await fetch()
     }
 
-    /// §4.1: apply sort dropdown selection; applies client-side sort
-    /// immediately and re-partitions pinned tickets to the top so the
-    /// bookmark order is preserved across sort changes.
+    /// §4.1: apply sort dropdown selection; applies client-side sort immediately.
     public func applySort(_ order: TicketSortOrder) {
         sortOrder = order
-        let sorted = order.apply(to: tickets)
-        let pinned = sorted.filter { $0.isPinned }
-        let unpinned = sorted.filter { !$0.isPinned }
-        tickets = pinned + unpinned
+        tickets = order.apply(to: tickets)
     }
 
     /// Called on every keystroke from the search field. Debounces 300ms
@@ -230,13 +225,8 @@ public final class TicketListViewModel {
                 urgency: urgencyFilter,
                 keyword: searchQuery.isEmpty ? nil : searchQuery
             )
-            // §4.1: apply sort order immediately after fetch, then partition
-            // pinned/bookmarked tickets to the top so the user's flagged work
-            // is always one tap away regardless of the active sort.
-            let sorted = sortOrder.apply(to: results)
-            let pinned = sorted.filter { $0.isPinned }
-            let unpinned = sorted.filter { !$0.isPinned }
-            tickets = pinned + unpinned
+            // §4.1: apply sort order immediately after fetch
+            tickets = sortOrder.apply(to: results)
             if let cached = cachedRepo {
                 lastSyncedAt = await cached.lastSyncedAt
             }

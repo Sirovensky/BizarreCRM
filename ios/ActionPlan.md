@@ -460,10 +460,6 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Business tip of the day** — rotating locally-seeded tip (20 tips, cycled by day-of-year); dismissible per-day via `UserDefaults`; reappears automatically next day. Orange accent, glass chrome header. (`Dashboard/BusinessTipCard.swift`)
 - [x] **Time-spent-today widget** — read-only clock summary for the signed-in employee; fetches `GET /api/v1/employees/:id/timeclock/today`; live-ticks every 60 s while clocked in; hides for untimed roles (404). (`Dashboard/TimeSpentTodayWidget.swift`)
 - [x] **Leaderboard preview** — compact 3-row snapshot of the tech leaderboard on the main dashboard; reuses `TechLeaderboardViewModel`/`DashboardBIRepository`; "See all" → `onSeeFullLeaderboard` callback. (`Dashboard/LeaderboardPreviewCard.swift`)
-- [x] **Appointments-today widget** — compact card showing today's appointment count + next upcoming customer/time; fetches `GET /api/v1/leads/appointments?date=<today>`; hides on empty or 404; tap → `bizarrecrm://appointments` or `onTapAppointments` callback. (`Dashboard/AppointmentsTodayWidget.swift`)
-- [x] **Weather-aware service banner** — contextual tip card for extreme heat (≥95 °F → battery-health), extreme cold (≤32 °F → screen-crack warning), or rain (water-damage upsell); fetches `GET /api/v1/store/weather`; dismissible per condition per day via `UserDefaults`; hides on clear weather or 404. (`Dashboard/WeatherServiceBanner.swift`)
-- [x] **Holiday hours alert** — glass banner when today is a configured holiday or modified-hours day; fetches `GET /api/v1/store/hours/today`; dismissible per day via `UserDefaults`; hides on normal days or 404. (`Dashboard/HolidayHoursAlert.swift`)
-- [x] **Dashboard stats refresh-on-foreground** — `DashboardView` observes `scenePhase`; calls `vm.forceRefresh()` when transitioning to `.active` so KPIs are never stale after background. (`DashboardView.swift` `.onChange(of: scenePhase)`)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
@@ -480,10 +476,10 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.3 Needs-attention surface
 - [x] Base card — shipped.
 - [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (feat(§3): NeedsAttentionCard + StaleTicketRow + OverdueInvoiceRow + ActionChip; 9cd0b5b8)
-- [x] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss. (`NeedsAttentionCard.swift` `NeedsAttentionSwipeActions` ViewModifier — DragGesture wrapper, 64pt threshold, leading orange-clock reveal, trailing red-xmark reveal, Reduce-Motion aware, gated on `Platform.isCompact`.)
-- [x] **Context menu** (iPad/Mac) with all row actions + "Copy ID". (`NeedsAttentionCard.swift` StaleTicketRow + OverdueInvoiceRow `.contextMenu` extended: View · SMS customer (deep-link) · Mark resolved · Snooze submenu · Copy ID (UIPasteboard / NSPasteboard) · Dismiss; `NeedsAttentionClipboard` helper.)
+- [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
+- [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
-- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`NeedsAttentionCard.swift` `NeedsAttentionEmptyState` — checkmark + sparkles + sparkle SF Symbols, `.variableColor.iterative` symbolEffect (Reduce-Motion gated).)
+- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). (`MyQueueView.swift` integrated into `DashboardView.LoadedBody`; b04ae99b)
@@ -519,7 +515,6 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
 - [x] Tap greeting → Settings → Profile. (`DashboardView.greeting` + `LoadedBody.onTapGreeting` callback; when provided, greeting becomes a `Button` → App layer navigates; `DashboardView.init(onTapGreeting:)` parameter added; agent-9 b9)
 - [x] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5). (`DashboardView.swift` `DashboardUserAvatarChip` toolbar item gated on `Platform.isCompact`; `onSwitchUser` callback; LongPressGesture; agent-9 b10)
-- [x] **Hero-greeting fallback for empty profile** — `DashboardView` accepts `userName: String?`; when set, greeting personalises to "Good morning, Jane"; when nil (profile incomplete / `/auth/me` not yet wired), shows impersonal greeting + subtle "Complete your profile" nudge `Label` tapping into `onTapGreeting`. (`DashboardView.swift` `LoadedBody.greeting`; `userName` property on `DashboardView`)
 
 ### 3.10 Sync-status badge
 - [x] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline". (`SyncStatusBadge.swift`; b04ae99b)
@@ -545,12 +540,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.". (`DashboardView.swift` `StatTileCard` overlay pattern; `isPermissionGated` param; agent-9 b10)
 - [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
 - [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
-- [x] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48) (`DashboardCardEmptyStates.swift` `TicketsSectionEmptyState` — wrench-and-screwdriver SF Symbol, orange tint, "Create your first ticket" CTA + underlined "Or import from old system" sub-link.)
+- [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48)
 - [ ] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates (Phone/Laptop/TV repair) seed ~20 common items
 - [ ] Customers empty: CTA "Add first customer" or "Import from contacts" via `CNContactStore` with explicit explanation
 - [ ] SMS empty: CTA "Connect SMS provider" → Settings § SMS
 - [ ] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default (hardware-not-required mode)
-- [x] Reports empty: placeholder chart with "Come back after your first sale" (`DashboardCardEmptyStates.swift` `ReportsSectionEmptyState` — layered ghost chart-bar SF Symbols + "No data yet" headline + "Reports populate once you record your first sale. Come back after your first transaction." copy.)
+- [ ] Reports empty: placeholder chart with "Come back after your first sale"
 - [ ] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard
 - [x] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear — `SampleDataOptInStepView` (opt-in step 14) + Settings → Tenant Admin → Onboarding → "Remove Sample Data" button (`TenantAdminView.onboardingSection`, `TenantAdminViewModel.removeSampleData`, `DELETE /api/v1/onboarding/sample-data`). agent worktree-agent-af62694d19f10fb9c
 - [ ] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist
@@ -614,7 +609,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
-- [x] **Pinned/bookmarked** tickets at top (⭐ toggle). `TicketListViewModel.fetch` and `applySort` partition `isPinned` tickets to the front of the array after every sort/refresh; `TicketDetailViewModel.togglePin(api:)` flips the pin via `PATCH /tickets/:id { pinned }` with optimistic `pinnedOverride` state, and the detail Actions menu shows a "Pin to Top" / "Unpin Ticket" toggle wired to it. feat(§4)
+- [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `SLABadge` (icon + color from `slaStatus`: breached=red/xmark, warning=amber/exclaim, ok=gray) + `DueDateBadge` (days countdown: red overdue, amber &lt;24h, yellow &lt;3d, gray safe). Both shown inline on `TicketRow`. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [x] **Attachment-count badge on ticket row** — `AttachmentCountBadge` (paperclip icon + count) rendered in `TicketRow` trailing column when `ticket.attachmentCount > 0`. `attachmentCount: Int?` added to `TicketSummary` DTO (server field `attachment_count`). This commit.
@@ -640,12 +635,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **QR code** — 81130f8c — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [x] **Copy link to ticket** — 81130f8c — Universal Link `app.bizarrecrm.com/tickets/:id`.
-- [x] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer. `CustomerQuickActionsRow` in `TicketDetailView` adds two new chips: "Open Customer" (Universal Link `https://app.bizarrecrm.com/customers/<id>` → DeepLinkRouter) and "New Ticket" (Universal Link `.../tickets/new?customer_id=<id>` to pre-seed the create flow). This commit.
+- [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
 - [x] **Time-spent counter** — `BenchTimerToggleCard` collapsed header now shows a live `timer.displayTime` monospaced label (orange when running, muted when paused/idle); `BenchTimerView` accepts an injected `BenchTimerState` so the card header and expanded body share the same timer instance. This commit.
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
-- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]". `TicketDetailViewModel.load()` flips `deletedOnServerBanner` on `.notFound` from `AppError.from`; `TicketDetailView` renders a red `safeAreaInset` banner with `trash.circle.fill` icon, "Ticket removed." copy, and a Close button that calls `dismiss()`. Cached detail stays visible behind the banner. This commit (re-confirmed wiring).
+- [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
 
 ### 4.3 Create — full-fidelity multi-step
@@ -747,9 +742,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.13 Empty / error states
 - [x] No tickets — glass illustration — db339de3 + "Create your first ticket".
-- [x] Network error on detail — keep cached data, glass retry pill. `TicketDetailViewModel.load()` records `hadCachedDetail` and on `AppError.network`/`.offline` flips `networkErrorBanner` while leaving `.loaded(detail)` intact; `TicketDetailView` overlays a `.brandGlass(.clear, in: Capsule())` retry pill with `wifi.exclamationmark` + Retry button. feat(§4)
-- [x] Deleted on server → banner "Ticket removed. [Close]". `TicketDetailViewModel.deletedOnServerBanner` flips on `AppError.notFound`; `TicketDetailView` renders red `safeAreaInset` banner with `trash.circle.fill` + Close → `dismiss()`. feat(§4)
-- [x] Permission denied on action → inline toast "Ask your admin to enable this.". `TicketDetailViewModel.handleActionError(_:)` funnels delete/convert/duplicate/togglePin through `AppError.from`; `.forbidden` flips `permissionDeniedToast` (3s auto-dismiss capsule). feat(§4)
+- [ ] Network error on detail — keep cached data, glass retry pill.
+- [ ] Deleted on server → banner "Ticket removed. [Close]".
+- [ ] Permission denied on action → inline toast "Ask your admin to enable this.".
 - [x] 409 stale edit — db339de3 → "This ticket changed. [Reload]".
 - [ ] Waiver PDF templates managed server-side; iOS renders.
 - [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§5), marketing consent (TCPA SMS / email opt-in).
@@ -980,11 +975,11 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Privacy: read-only; never writes back to Contacts — `CNContactPickerViewController` is read-only by design; privacy note in UI. (f026f0d6)
 - [x] Clear imported data if user revokes permission — `ContactsBulkImportViewModel.handlePermissionRevoked()` resets to `.picking` phase; permission-denied state shown with Settings link. (f026f0d6)
 - [x] A11y: VoiceOver announces counts at each step — count label on review section, summaryView announces counts, each candidate row has combined `.accessibilityLabel`. (f026f0d6)
-- [x] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale. — `CustomerCurrencyTemplate` struct with `SymbolPlacement` enum + thousands/decimal separator overrides; `CustomerCurrencyFormat.format(cents:tenant:)` honors all three. (CustomerCurrencyFormat.swift)
-- [x] Per-customer override of tenant default. — `CustomerCurrencyOverrideStore` actor (UserDefaults-backed, offline-first); `CustomerDetailViewModel.currencyOverrideCode` loaded on `load()`; `setCurrencyOverride(_:)` persists. (CustomerCurrencyFormat.swift + CustomerDetailViewModel.swift)
-- [x] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`. — `CustomerCurrencyTemplate.presets` (`US`/`EU-FR`/`JP`/`CH`) all four covered with locale-aware formatting; minor-unit table mirrors `Core.LocaleFormatter`. (CustomerCurrencyFormat.swift)
-- [x] Money input parsing accepts multiple locales; normalize to storage. — `CustomerCurrencyFormat.parse(input:tenant:)` strips symbols/ISO codes/NBSPs, tries tenant-locale + 4 preset (decimal, thousands) pairs, returns integer minor units; ambiguity-guard rejects multi-decimal strings. (CustomerCurrencyFormat.swift)
-- [x] VoiceOver accessibility: read full currency phrasing. — `CustomerCurrencyFormat.voiceOverPhrase(cents:tenant:)` uses `NumberFormatter.currencyPlural` ("twelve dollars and fifty cents") with spell-out fallback; `View.accessibilityCurrencyValue(cents:tenant:)` modifier wires it as `accessibilityLabel`. (CustomerCurrencyFormat.swift)
+- [ ] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale.
+- [ ] Per-customer override of tenant default.
+- [ ] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`.
+- [ ] Money input parsing accepts multiple locales; normalize to storage.
+- [ ] VoiceOver accessibility: read full currency phrasing.
 - [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity).
 - [ ] See §28 for the full list.
 - [x] **Birthday gift reminder chip** — shown in customer detail Info tab when birthday is ≤ 14 days away; taps open `CustomerBirthdayAutomationSheet`; reads `birthday` field via `CustomerDetail.birthday` keyed UserDefaults cache. `BirthdayGiftReminderChip`. (CustomerExtra5Items.swift)
@@ -1093,10 +1088,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Mass label print** — select items → label format → print (AirPrint or MFi thermal). (see §6.1 above — `InventoryLabelPrintSheet` + `InventoryLabelRenderer`; MFi thermal deferred to Agent 2. feat(§6.8) b10 f8ddc6f9)
 - [x] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`. (`InventoryAsset` model backed by server `loaner_devices` table; `AssetStatus` enum; `UpsertAssetRequest`/`LoanAssetRequest`/`ReturnAssetRequest` DTOs; `AssetEndpoints` wires all CRUD + loan/return lifecycle to `/api/v1/loaners`; `AssetManagerView` + `AssetEditorSheet` admin CRUD UI; 13 model tests. feat(§6.8) b11 09789eef)
 - [x] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket. (Discovered: ticket detail UI = Agent 3 domain; Inventory provides asset picker protocol — `InventoryAssetPickerView` + `AssetPickerViewModel` searchable sheet with `listAvailableAssets()` for Agent 3 to inject; `loanAsset(id:request:)` + `returnAsset(id:request:)` endpoints exposed. feat(§6.8) b11 09789eef)
-- [x] Return flow: inspect → mark available; release any BlockChyp hold. (`AssetReturnSheet` + `AssetReturnViewModel` — condition + new-status `available`/`retired` + notes; "Request deposit hold release" toggle annotates the audit note for Agent 1 POS to action. Wired into `AssetManagerView` swipe-leading + context-menu when `status == .loaned`. iPhone single-column Form, iPad two-column ScrollView. POST /api/v1/loaners/:id/return via `APIClient.returnAsset`. feat(§6.8): asset return flow)
+- [ ] Return flow: inspect → mark available; release any BlockChyp hold. (Agent 3 + Agent 1 POS; cross-domain. Discovered.)
 - [ ] Deposit hold via BlockChyp (optional, per asset policy). (Agent 1 POS/BlockChyp domain. Discovered.)
 - [ ] Auto-SMS at ready-for-pickup + overdue-> 7d escalation push to manager. (server-side cron + SMS; Agent 7 Communications. Discovered.)
-- [x] Depreciation (linear / declining balance) + asset-book-value dashboard tile. (`AssetDepreciation.swift` — `DepreciationMethod.linear/.decliningBalance` enum, `AssetDepreciationInput` struct, pure `AssetDepreciationCalculator` (`bookValueCents`/`accumulatedDepreciationCents`/`monthlyDepreciationCents`) clamped to `[salvage, cost]` with overflow + zero-life guards; `AssetBookValueSummary` Decodable DTO + `APIClient.assetBookValueSummary()` GET /api/v1/loaners/book-value-summary feeds the dashboard tile (Agent 9). 12 XCTests in `AssetDepreciationTests`. feat(§6.8): asset depreciation calc + dashboard feed)
+- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile. (Agent 9 Dashboard domain for tile; Agent 6 Financial. Discovered.)
 - [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required. (FieldService location tracking (§57) + Notifications (Agent 9). Discovered.)
 - [x] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping. (see §6.11 — `InventoryBundle` + `BundleEditorSheet` + `BundleUnpacker` already done above — stale checkbox; 711a7ab8)
 - [x] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %". (see §6.11 — `BundleEditorSheet` form with component rows + savings preview. feat(ios post-phase §6))
@@ -1140,10 +1135,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] Report: inventory aged > N days since last sale (`AgeReport.swift` — `AgeReportView` with tier distribution chart + item list sorted by days. feat(§6.8) b9)
 - [x] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d) (`AgingTier` enum with daysThreshold; `AgingCalculator.groupByTier`; 9 tests. feat(§6.8) b9)
 - [x] Action: clearance pricing suggestions (`AgingCalculator.clearanceSuggestions` + clearance sheet in `AgeReportView`. feat(§6.8) b9)
-- [x] Action: bundle with hot-selling item (§16) (`AgingCalculator.hotSeller(in:)` picks the freshest in-stock item; `AgingCalculator.bundleSuggestionText(for:hotSeller:)` renders concrete copy ("Bundle with iPhone 15 Case (top mover) at a small discount.") with a graceful fallback when no hot seller exists. Surfaced as a `shippingbox.and.arrow.backward` row beneath each clearance suggestion in `AgeReportView.clearanceSuggestionsSheet`. 5 new XCTests in `AgingCalculatorTests`. feat(§6.8): age-report bundle suggestion text)
-- [x] Action: return to vendor if eligible (`APIClient.requestVendorReturn(itemId:qty:)` POST /api/v1/inventory/items/:id/vendor-return with `VendorReturnRequestBody { qty, source: "age_report" }` → `VendorReturnRequestResponse`. `AgeReportViewModel.returnToVendor(_:)` tracks per-item in-flight set + success id; on success the row is optimistically dropped from `suggestions` + `items` and grouped tier counts recomputed. UI: bordered "Return to vendor" button per clearance row with `ProgressView` while in-flight + green "Requested" check on success. feat(§6.8): age-report return-to-vendor action)
+- [ ] Action: bundle with hot-selling item (§16) (POS cross-domain — Agent 1 owns bundle+POS; Inventory age report surfaces suggestion text only. Discovered.)
+- [ ] Action: return to vendor if eligible (requires PO vendor return flow — already tracked in §7.6 Agent 6 domain. Discovered.)
 - [ ] Action: donate for tax write-off (out of scope for iOS; finance/accounting web flow. Discovered.)
-- [x] Alerts: quarterly push "N items hit dead tier — plan action" (in-app surface: `AgingCalculator.shouldShowDeadTierAlert(items:)` (≥10 items in fleet, ≥3 dead/obsolete, ≥10% share); banner shown atop `AgeReportView` with item count + close button; dismiss persisted per calendar quarter via `DeadStockAlertDismissal` (`UserDefaults` key `ios.inventory.ageReport.deadStockAlert.dismissedQuarter`). Server cron + push remain Agent 9 domain — this guarantees iOS visibility without push enabled. 5 new XCTests in `AgingCalculatorTests`. feat(§6.8): in-app dead-tier alert banner)
+- [ ] Alerts: quarterly push "N items hit dead tier — plan action" (server-side cron + push — Notifications/push (Agent 9 domain). Discovered.)
 - [x] Visibility: inventory list chip "Stale" / "Dead" badge (`InventoryListViewModel.agingTierMap [Int64:AgingTier]` loaded from AgeReport API post-list; `InventoryRow` shows Stale/Dead/Obsolete Capsule chip in brand warning/error/gray colours; fresh items hidden. feat(§6.8) b10 96ed5da5)
 - [x] Per vendor: average days from order → receipt (`SupplierPanelCard` in `InventoryDetailCards.swift` — `lead_time` days from `/inventory/:id/supplier`. feat(§6/§10) b5ae5c51)
 - [x] Computed from PO history (server computes from PO receive timestamps; iOS reads `leadTime` from `InventorySupplierDetailResponse`. feat(§6.2) b5)
@@ -1279,13 +1274,13 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Model: flat fee / percentage / compounding (`LateFeePolicy.flatFeeCents` + `percentPerDay` + `compoundDaily`; `LateFeeCalculator.compute` implements all three branches. feat(ios post-phase §7))
 - [x] Model: grace period before applying (`LateFeePolicy.gracePeriodDays`; `LateFeeCalculator` skips fee when `totalDaysLate ≤ gracePeriodDays`. feat(ios post-phase §7))
 - [x] Model: max cap (`LateFeePolicy.maxFeeCents`; `LateFeeCalculator` applies `min(feeCents, cap)`. feat(ios post-phase §7))
-- [x] Application: auto-added to invoice on overdue (feat(§7): `LateFeeApplicationService.evaluate` (pure decision: balance / due-date / grace / already-applied delta) + `POST /api/v1/invoices/:id/apply-late-fee` + "Apply Late Fee" toolbar entry in `InvoiceDetailView` gated on `decision.shouldApply`)
-- [x] Status change to "Past due" triggers reminder (feat(§7): `InvoicePastDueDetector.evaluate` (3-day reminder cooldown, excludes paid/void) + `POST /api/v1/invoices/:id/past-due-reminder` (sms/email/both) + "Send Past-Due Reminder" entry gated on `isPastDue && shouldSendReminder`)
+- [ ] Application: auto-added to invoice on overdue
+- [ ] Status change to "Past due" triggers reminder
 - [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6) — **wired** into `InvoiceDetailView` toolbar ⋯ menu. ([actionplan agent-6 b11] b556eef5)
 - [x] Threshold above which manager PIN required. (`kLateFeeWaiverManagerPinThresholdCents` = $50 (5 000 cents); `requiresManagerPin` gate in `LateFeeWaiverViewModel`; 13 tests. [actionplan agent-6 b9] 482309e6)
-- [x] Customer communication: reminder SMS/email before fee applied (1-3d lead) (feat(§7): `LateFeeReminderScheduler.computeWindow` (lead clamped 1...3, sendOn = due + grace + 1) + `POST /api/v1/invoices/:id/pre-late-fee-reminder` + entry only appears `isInWindow`)
-- [x] Customer communication: fee-applied notification with payment link (feat(§7): `LateFeeAppliedNotificationService.formatMessage` (locale-aware currency) + `POST /api/v1/invoices/:id/late-fee-applied-notification` `{fee_cents,new_balance_cents,payment_link_url,channel}`)
-- [x] Jurisdiction limits: some jurisdictions cap late fees by law (feat(§7): `LateFeeJurisdictionLimit` + `LateFeeJurisdictionRegistry` (CA/NY/TX/FL/IL w/ statutory citations) + `LateFeeJurisdictionValidator.validate` warnings (flat-pct / APR / max-fee) + jurisdiction Picker + warning rows in `LateFeePolicyEditorView`)
+- [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead)
+- [ ] Customer communication: fee-applied notification with payment link
+- [ ] Jurisdiction limits: some jurisdictions cap late fees by law
 - [ ] Tenant-configurable max; warn on violation
 
 ### 7.8 Recurring invoices
@@ -1730,8 +1725,8 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
 - [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (feat(§13): kEntityTypeAllowlist in NotificationDeepLinkCoordinator + deepLinkPath allowlist in NotificationListPolishedView — verified b14; 4ecb468d)
-- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours. (`NotificationHandler.willPresent` calls `QuietHoursGate.shouldSuppress(eventType:)`; non-time-sensitive banners suppressed inside the user's window, badge still updates so unread counts stay accurate; critical / `.timeSensitive` events bypass.) (feat(§13/§21))
-- [x] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach. (`NotificationHandler.willPresent` stamps `NotificationInterruptionLevelMapper.level(for:)` on the live content; `scheduleSnooze` re-applies on the snooze re-fire so overdue / SLA events keep escaping Focus + Scheduled Summary.) (feat(§13/§21))
+- [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
+- [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
 
 ### 13.3 In-app toast
 - [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`ForegroundPushToast.swift` — coordinator + glass overlay + `.foregroundPushToastOverlay()` modifier; 09e6a602)
@@ -1806,10 +1801,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Custom role creation** — Settings → Team → Roles matrix. (Covered by §47.2: `CreateRoleSheet`, `RolesMatrixViewModel.createRole`, `RolesRepository`.)
 
 ### 14.5 Team chat
-- [x] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`). (feat(§14): `APIClient+TeamChat` list/post/delete against `/api/v1/team-chat/...` + `TeamChatRepositoryImpl` resolves seeded `general` channel; bubble icon entry on `EmployeeListView` toolbar)
-- [x] Messages with @mentions; real-time via WS. (feat(§14): 4s polling tail in `TeamChatViewModel` + mention regex highlights inline + `WSEvent.chatMessage`/`chatTyping` decoded so server push lands without client release)
-- [x] Image / file attachment. (feat(§14): `TeamChatPhotoPicker` + `TeamChatFilePicker`; attachment metadata encoded with `TeamChatAttachmentEncoder` `[[attach:url|mime|name]]` shim until server adds attachment columns)
-- [x] Pin messages. (feat(§14): `UserDefaultsPinnedMessagesStore` per-channel; iPad sidebar panel + iPhone pinned sheet; row context-menu pin/unpin)
+- [ ] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`).
+- [ ] Messages with @mentions; real-time via WS.
+- [ ] Image / file attachment.
+- [ ] Pin messages.
 
 ### 14.6 Team shifts (weekly schedule)
 - [x] **Week grid** (7 columns, employees rows) — `ShiftSchedulePostView` (iPhone list / iPad horizontal grid); `ShiftScheduleConflictChecker` pure engine (double-booking + PTO overlap); `ShiftPublishBanner` Liquid Glass sticky footer; `POST /team/shifts`, `GET /team/shifts`. (feat(ios post-phase §14))
@@ -1958,7 +1953,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Export at any level: share current filtered view as PDF / CSV. ([actionplan agent-6 b6] ef704dd0)
 - [x] "Save this drill as dashboard tile" saves with query. ([actionplan agent-6 b6] ef704dd0)
 - [x] Cross-report drilling: jump into related report with same filters applied. ([actionplan agent-6 b7] 55e60eb3)
-- [x] Perf budget: server query index hints, p95 < 2s. Client-side p95 tracker shipped: `ReportsPerfBudget` actor with rolling 50-sample window, 2.0s budget, nearest-rank p95; wired in `ReportsViewModel.loadAll()` + `loadForActiveTab()` via begin/end tokens; `os.Logger` warns when single load or rolling p95 exceeds budget; on-device only, no analytics SDK. 5 unit tests. (Server query index hints out of iOS scope.)
+- [ ] Perf budget: server query index hints, p95 < 2s.
 - [ ] See §39 for the full list.
 - [ ] See §6 for the full list.
 - [ ] See §19 for the full list.
@@ -2003,9 +1998,6 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Clear cart** — `Clear cart` toolbar action with ⌘⇧⌫ shortcut (destructive confirm lands with the first real-tender phase).
 - [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
 - [x] **Cart undo toast (last delete)** — swipe-to-remove and context-menu Remove in `PosCartPanel` now capture the deleted `CartItem` snapshot and show a 5-second snackbar ("Removed · [name] · Undo" button). `showUndo(for:)` starts an auto-dismiss Task; tapping Undo calls `cart.add(item)` and cancels the timer; Reduce Motion + VoiceOver labelled; toast pins above totals footer via ZStack overlay; `accessibilityIdentifier: pos.cart.undoToast / pos.cart.undoRemove`. (feat(§16.3): cart undo toast)
-- [x] **Cart quick-action context menu — Duplicate line** — cart-row `.contextMenu` gains a "Duplicate line" action (`plus.square.on.square` icon) that clones the tapped `CartItem` with a fresh `UUID` and qty 1 and appends it via `cart.add(_:)`; light haptic on tap; `Divider()` separates it from the destructive Remove action. `pos.cartRow.<id>` context menu accessible to VoiceOver via `.accessibilityLabel("Duplicate <name>")`. `PosCartPanel.swift`. (feat(§16.3): cart context-menu duplicate line)
-- [x] **Sale note field** — cashier-level note for the whole sale (not a line). `Cart.saleNote: String?` + `Cart.setSaleNote(_:)` 500-char capped mutator; cleared on `cart.clear()`. Inline editor in `PosCartPanel`: the "＋ Note" ghost button in `quickActionRow` toggles an inline `TextEditor` with a live `N / 500` counter (red at limit), Save + Clear buttons, and `.animation(BrandMotion.snappy)` slide; button label flips to "Edit note" when a note is already set. `accessibilityIdentifier: pos.cart.saleNote.*`. `PosCartPanel.swift`, `Cart.swift`. (feat(§16.3): cart sale-note field)
-- [x] **Recurring-charge selector** — `PosRecurringChargeSheet` lets cashier tag a cart as the first occurrence of a recurring series. `RecurringChargeRule` model (`frequencyLabel`, `frequencyKey`, `dayOfMonth?`, `endDate?`); `Cart.recurringRule: RecurringChargeRule?` + `Cart.setRecurringRule(_:)`; cleared on `cart.clear()`. Sheet: 5 frequency chip presets (weekly/bi-weekly/monthly/quarterly/yearly), day-of-month `Picker` (for monthly/quarterly only), optional end-date `DatePicker`, live summary card ("Charges monthly · starting today · indefinitely"). Recurring indicator row in `PosCartPanel` totals footer (tinted arrow.clockwise row when set, ghost "Set recurring charge" link when unset). `pos.recurring.*` a11y IDs. `PosRecurringChargeSheet.swift`, `Cart.swift`, `PosCartPanel.swift`. (feat(§16.3): recurring-charge selector)
 
 ### 16.4 Customer pick
 - [x] **Attach existing** — `PosCustomerPickerSheet` with debounced 300ms `CustomerRepository.list(keyword:)`; tap row → `cart.attach(customer:)`; CartPill renders chip (initials or walk-in ghost). Loyalty tier badge deferred to §38.
@@ -2018,7 +2010,6 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Customer-specific pricing** — if customer is in a Customer Group with discount override, apply automatically (banner "Group discount applied"). PosCustomerContextBanners + applyGroupDiscountIfNeeded. (d7edd4a1)
 - [x] **Tax exemption** — if customer has tax-exempt flag, cart removes tax with banner; show exemption cert # if stored. PosCustomerContextBanners + applyTaxExemptionIfNeeded + tag heuristic. (d7edd4a1)
 - [x] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled. PosCustomerContextBanners + loyaltyPointsPreview(cartTotalCents:). (d7edd4a1)
-- [x] **Customer-tag color stripe** — `PosCartStrip` accepts a `tagColor: Color?` param (default `nil`). When non-nil: 3pt rounded leading stripe in the tag color + avatar gradient tinted to match + 6% opacity wash on the whole strip background; decorative / `accessibilityHidden`. Call site passes the hex of the customer's highest-priority `CustomerTagColor` from the `defaultPalette` (e.g. gold for "vip", red for "late-payer"). Cashier recognizes tier at a glance without reading the tag name. `PosCartPanel.swift`. (feat(§16.4): customer-tag color stripe in PosCartStrip)
 
 ### 16.5 Payment — BlockChyp (primary card rail)
 
@@ -2116,7 +2107,6 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Discount ceiling** — `PosCartDiscountSheet` checks `PosTenantLimits.maxCashierDiscountPercent/Cents`; over → nested `ManagerPinSheet`; on approval logs `discount_override` with originalCents + appliedCents.
 - [x] **Price override alert** — `PosEditPriceSheet` gates override when delta ≥ `priceOverrideThresholdCents`; logs `price_override`.
 - [x] **Delete-line audit** — `Cart.removeLine` without `managerId` logs `delete_line`; ghosted on Z-report via `ZReportAggregates` loss-prevention tile (void/no-sale/discount-override counts).
-- [x] **Manager override audit-log row** — new `PosAuditEntry.EventType.managerOverride = "manager_override"` constant in `PosAuditLogStore.swift`. `eventTypeLabel` → "Manager override"; `badgeLabel` → "MGR OVR"; `badgeColor` → `.bizarreWarning`. `PosAuditLogView` gains `managerOverrideCountToday` computed prop + `managerOverrideSummaryRow(count:)` (amber badge, `person.badge.shield.checkmark.fill` icon, count in warning/error colour ≤2/> 2) rendered as the first `Section` above the no-sale section. `accessibilityIdentifier: pos.auditLog.managerOverrideSummary`. `PosAuditLogStore.swift`, `PosAuditLogView.swift`. (feat(§16.11): manager-override audit-log row)
 
 ### 16.12 Offline POS mode
 - [x] **Local catalog** — full inventory + pricing cached (GRDB), daily refresh on launch. `PosCatalogOfflineStore` (actor) + `PosCatalogRefreshService` @MainActor service; fetches `GET /inventory/items?pos=true&per_page=500`; 24h threshold; replaces cache atomically. (feat(§16.12): local catalog GRDB cache cad69018)
@@ -2881,10 +2871,10 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 **Tasks (blocked until parity):**
 - [ ] NFC-PARITY-001 (root TODO) resolved — server schema + web UX + Android implementation done first.
-- [x] **Core NFC** read — scan tag with device serial → populate Ticket device-serial field. (feat(§17): `NFCTagReadService.readNDEF(prompt:)` runs one-shot `NFCNDEFReaderSession`, returns `NFCReadResult(payload:format:)`)
+- [ ] **Core NFC** read — scan tag with device serial → populate Ticket device-serial field.
 - [ ] **Core NFC write** (optional) — write tenant-issued tag to a customer device for warranty tracking.
-- [x] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags if tenant requests. (feat(§17): `NFCTagFormat` enum (`.ndef`/`.mifare`/`.felica`) + `NFCTagFormatStore` UserDefaults; `requiresEntitlementUpdate` flag per case)
-- [x] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI. (feat(§17): `NFCAvailabilityService` @Observable + `.nfcFeatureGate(...)` ViewModifier)
+- [ ] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags if tenant requests.
+- [ ] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI.
 
 **Already unblocked (independent of parity):**
 - [x] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. `LoyaltyMembershipCardView` + `LoyaltyWalletService` + `LoyaltyWalletViewModel` ship in `Packages/Loyalty/Wallet/`. Commit `feat(ios phase-6 §24+§38+§40)`.
@@ -3082,11 +3072,11 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] BlockChyp iOS SDK added to `ios/Packages/Pos/Package.swift` (BLOCKER — nothing below can ship without this).
 - [ ] `BlockChypService` actor + `BlockChypRepository`.
 - [ ] Terminal pairing UI (Settings → Hardware → Terminal) with Keychain storage.
-- [x] Heartbeat on POS load + 30s polling + status chip in toolbar. (feat(§17): `BlockChypHeartbeatView.init(api:pollingInterval:)`; default upped from hard-coded 10s to spec'd 30s)
+- [ ] Heartbeat on POS load + 30s polling + status chip in toolbar.
 - [ ] `processPayment` with idempotency key.
 - [ ] `captureSignature` wired to `SignatureRouter` (§16.26 dependency).
 - [ ] `void` + `adjustTip` wired from tender / post-approval flows.
-- [x] `PosPaymentError` enum with localized messages. (feat(§17): 9-case enum w/ `errorDescription`/`recommendedAction`/`allowsRetry`/`requiresManagerOverride` + `from(_:)` mapper for `ChargeCoordinatorError`/`TerminalError`/`URLError`)
+- [ ] `PosPaymentError` enum with localized messages.
 - [ ] Tests: `BlockChypServiceTests` mock SDK calls; assert error-mapping for each decline/timeout case. Coverage ≥ 80%.
 
 ---
@@ -3109,11 +3099,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
 - [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
-- [x] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers). (`GlobalSearchView` `.autocorrectionDisabled()` + `.textInputAutocapitalization(.never)` after each `.searchable`; iPhone + iPad layouts)
+- [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
 - [x] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom. (`GlobalSearchView` `typeAheadOverlay`; `GlobalSearchViewModel` `fetchTypeAhead` 100ms debounce → `TypeAheadPreviewView`; agent-9 b10)
-- [x] **Phone-number match** — strip formatting, match on last 10 digits. (`Search/Filters/QueryNormalizer.swift`; `GlobalSearchViewModel.fetchLocal/fetchRemote` normalise digits-only queries before FTS + `GET /search?q=`)
-- [x] **IMEI match** — 15-digit serial lookup; falls through to device-linked ticket. (`QueryNormalizer.normalise` returns `.imei` for 15-digit runs; same fetchLocal/fetchRemote path uses canonical digits)
+- [ ] **Phone-number match** — strip formatting, match on last 10 digits.
+- [ ] **IMEI match** — 15-digit serial lookup; falls through to device-linked ticket.
 - [ ] **Barcode/SKU** — scan button in search field → auto-fills + submits.
 
 ### 18.2 Scoped search (per-list)
@@ -3150,10 +3140,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 ### 18.7 Offline search
 - [x] **Local index** — unified `search_index` FTS5 table (porter tokenizer); `FTSIndexStore` actor; `FTSReindexCoordinator` feeds on domain NC events. (feat(ios post-phase §18))
 - [x] **Offline result** stale badge — indicate from-cache date. (`GlobalSearchView` `MergedResultRow` `isOfflineResult` → "cached" capsule badge when `.local` row + offline; agent-9 b10)
-- [x] **Merge** — online + offline results deduplicated by id. (`Search/FTS/SearchResultMerger.swift`; local hits first then remote rows whose `(entity, id)` is already in the local key set are dropped; `GlobalSearchViewModel.updateMergedRows` calls it on every fetch)
+- [ ] **Merge** — online + offline results deduplicated by id.
 
 ### 18.8 Privacy gates
-- [x] **SSN / tax-ID** — never searchable; hashed server-side. (`Search/FTS/SensitiveDataScrubber.swift` redacts SSN / EIN / tax-id digit runs from `customer.notes` before they're written to the FTS5 body in `FTSIndexStore.indexCustomer`)
+- [ ] **SSN / tax-ID** — never searchable; hashed server-side.
 - [ ] **Sensitive notes** — only searchable by authors/admins (server enforces).
 - [ ] FTS5 pipeline: on each GRDB insert/update of indexed models (tickets / customers / inventory / invoices / sms messages), triggers update the matching FTS5 virtual table.
 - [ ] Stop-word list per locale; stemming via Snowball (English) or language-specific.
@@ -3251,11 +3241,11 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Auto-send** reminders — 3 days before due / day of / 3 days after / weekly overdue. (`InvoiceSettingsPage.swift` `reminderDays` toggles for [7,3,1,0,-3,-7,-14]; agent-9 b10)
 - [x] **Allowed payment methods** — Card / Cash / Check / ACH / Financing. (`InvoiceSettingsPage.swift` `allowedPaymentMethods` toggle set; agent-9 b10)
 - [x] **Fees** — processing surcharge (% or $); restocking fee default. (`InvoiceSettingsPage.swift` `surchargePct` field; agent-9 b10)
-- [x] **Accepted payment methods surface** on customer portal. (`InvoiceSettings.portalShowAcceptedMethods` Bool with `portal_show_accepted_methods` JSON key + tolerant decoder default true; "Show on customer portal" toggle in `paymentMethodsSection` so the customer-facing "Pay this invoice" page lists accepted methods; persisted via `PUT /api/v1/settings/invoices`. `InvoiceSettingsPage.swift`; this commit)
+- [ ] **Accepted payment methods surface** on customer portal.
 
 ### 19.8 Tax
 - [x] **Tax rates** — list (name, rate, applies-to); add/edit/archive. (`Settings/Pages/TaxSettingsPage.swift`; `TaxSettingsViewModel`; `POST/PATCH /tax-rates`.)
-- [x] **Nested tax** — state + county + city stacking. (`TaxRate.isNested` + `jurisdiction` fields; `TaxJurisdiction` enum (none/state/county/city); `TaxRateDTO`/`TaxRateCreateDTO` extended; "Nested tax" section in form with jurisdiction Picker; row badge shows tier; "Nested tax stack" section sums combined rate when ≥2 nested rates active. `TaxSettingsPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
+- [ ] **Nested tax** — state + county + city stacking.
 - [x] **Tax-exempt categories** — isExempt toggle per rate. (`TaxSettingsPage.swift` draftIsExempt field.)
 - [ ] **Per-customer override** — default handled in customer record.
 - [ ] **Automated rate lookup** (Avalara/TaxJar integration toggle — stretch).
@@ -3276,8 +3266,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Template library** — Ticket-ready / Estimate / Invoice / Payment confirmation / Appointment reminder / Post-service survey.
 - [ ] **Variable tokens** — `{customer.first_name}`, `{ticket.status}`, `{invoice.amount}`, `{eta.date}`, etc.; token picker.
 - [x] **Test send** to current user's phone. (`SmsProviderPage.swift`)
-- [x] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START). (`SmsSettingsDTO.autoReplyEnabled` + `autoReplyMessage`; `SmsProviderViewModel` loads/persists via `GET/PUT /settings/sms`; "Auto-responses" Section toggle + multi-line TextField; footer explains shop-hours gating. `SmsProviderPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
-- [x] **Compliance** — opt-out keywords, carrier-required footers. (`SmsSettingsDTO.optOutKeywords` `[String]` + `complianceFooter` String; "Compliance" Section with comma-separated keyword TextField (auto-uppercased on save) + footer TextField; persisted via `PUT /settings/sms`. `SmsProviderPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
+- [ ] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START).
+- [ ] **Compliance** — opt-out keywords, carrier-required footers.
 - [x] **MMS** toggle if plan supports. (`SmsProviderPage` "Messaging capabilities" section; `mmsEnabled` in `SmsProviderViewModel` + `SmsSettingsDTO`; persisted via `PUT /settings/sms`.)
 
 ### 19.11 Automations
@@ -3351,7 +3341,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 ### 19.23 Data (local)
 - [ ] **Force full sync** — wipes GRDB, re-fetches all domains.
 - [x] **Sync queue inspector** — pending writes + retry age + dead-letter (tap to retry / drop). (`Settings/SyncDiagnosticsView.swift` with per-row Retry / Discard backed by `SyncQueueStore`.)
-- [x] **Clear cache** — images + catalog (not queued writes). (`SyncDiagnosticsViewModel.clearCache()` clears `URLCache.shared` then walks Caches directory removing items; "Clear image & catalogue cache" Button in Data actions Section gated by confirm alert; queued GRDB writes intentionally untouched. `Settings/SyncDiagnosticsView.swift`; this commit)
+- [ ] **Clear cache** — images + catalog (not queued writes).
 - [ ] **Reset GRDB** — nuclear option (sign out + wipe).
 - [x] **Disk usage** — breakdown: images X MB, GRDB Y MB, logs Z MB. (`SyncDiagnosticsView` "Disk usage" section; `SyncDiagnosticsViewModel.refreshDiskUsage()` walks Documents + Caches + Library/Logs with `ByteCountFormatter`.)
 - [ ] **Export DB** (dev build only) — share sheet → `.sqlite` file.
@@ -3402,7 +3392,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Empty state: "No settings match 'xyz'. Try synonyms: card, payment, cash."
 - [ ] Recently changed: small section at top with last 5 toggles
 - [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§69); production is opt-in via Settings → Accessibility (subway riders)
-- [x] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo) (`.shakeToUndo(undoManager:isGestureActive:)` in `Motion/Section30MotionExtras2.swift`. feat(§30))
+- [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
 - [ ] Accidental-trigger protection: debounce; ignore shakes during active gestures (scroll/pan)
 - [x] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
 - [ ] Automatic schedule daily/weekly/off; runs in `BGProcessingTask`; skipped if low battery
@@ -3578,7 +3568,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Every read** lands in a GRDB table; SwiftUI views observe GRDB via `@FetchRequest` equivalent (`ValueObservation`).
 - [x] **Repository pattern** — `CachedRepository` protocol + `AbstractCachedRepository<Entity, ListFilter>` generic helper: `list(filter:maxAgeSeconds:)` returns `CachedResult<[Entity]>` (cache-first, background remote refresh when stale); `create`/`update`/`delete` persist locally then enqueue `SyncOp`. (`Sync/CachedRepository.swift`)
 - [x] **Read strategies** — `networkOnly` (force) / `cacheOnly` (offline) / `cacheFirst` (default) / `cacheThenNetwork` (stale-while-revalidate). (`ReadStrategy` enum in `Sync/CachedRepository.swift`. feat(§20.1): 17a3138c)
-- [x] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min. (`CacheTTL` in `Sync/CacheTTL.swift` — `tickets/inventory/customers/reports/settings` constants + `ttl(for:)` lookup.)
+- [ ] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min.
 - [x] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago". (`Sync/StalenessIndicator.swift` + `StalenessLogic`; color thresholds: < 1h green, < 4h amber, >= 4h red; Liquid Glass capsule; a11y label; Reduce Motion respected.)
 
 ### 20.2 Write queue architecture
@@ -3618,7 +3608,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **`loadMoreIfNeeded(rowId)`** behavior:
   - Online → `GET /<entity>?cursor=<stored>&limit=50`; upsert response into GRDB; update `sync_state`; list re-renders via `ValueObservation`.
   - Offline → no network call. If locally evicted older rows exist (§20.9), un-archive from cold store. Otherwise show "Offline — can't load more right now" inline.
-- [x] **Tombstone support** — deleted items propagated as `deleted_at != null` to drop from cache. (`Tombstone` value type in `Sync/Tombstone.swift` — canonical `{id, deleted, deleted_at}` payload + `isTombstone(payload:)` decoder; wired into `AbstractCachedRepository.delete(id:)`.)
+- [ ] **Tombstone support** — deleted items propagated as `deleted_at != null` to drop from cache.
 - [ ] **Full-resync trigger** — schema bump, user-initiated, corruption detected. Clears `sync_state` + re-pulls from server cursor=null.
 - [ ] **Silent-push row insert** — fresh rows delivered via WS / silent push upserted at correct chronological rank; scroll position anchored on existing rowId so user doesn't lose place.
 - [ ] **Client adapter for legacy page-based endpoints** — any server endpoint still returning `{ page, per_page, total_pages }` wrapped by `PagedToCursorAdapter` that synthesizes cursors. iOS code never sees `page=N`.
@@ -3629,7 +3619,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier 173d99c4)
 - [x] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override). (`MeteredUploadPolicy` + `MeteredNetworkWarningModifier` + `.meteredNetworkWarning(isUploadPending:)` in `Sync/MeteredNetworkWarning.swift`; glass banner safeAreaInset; per-session user override. feat(§20.6): 7000f88c)
 - [x] **Offline banner copy variants** — distinct copy for no-signal vs cellular vs constrained-wifi. `OfflineBannerCopy` value type in `Sync/OfflineBannerCopy.swift`; `ConnectivityBannerModifier` updated to use `ConnectivityCopyChip` for non-online states; "No internet connection / Changes will sync…" vs "Using cellular data / Large uploads paused…". (feat(§20.6))
-- [x] **Stale-cache banner** — if offline > 1h on a data-heavy screen. (`StaleCacheBannerModifier` + `.staleCacheBanner(lastSyncedAt:threshold:)` in `Sync/StaleCacheBannerModifier.swift`; observes `Reachability`, refreshes age every 60s, glass chip via `safeAreaInset(.top)`.)
+- [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
 
 ### 20.7 Selective sync (large tenants)
 - [ ] **First-boot** pulls — recent 90 days of tickets / invoices; all customers / inventory / staff.
@@ -3647,10 +3637,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use. (`Core/Performance/StorageBreakdown.swift` — `ImageCachePolicy` singleton; `StorageMonitor`; tiered eviction policy with `isEvictable` per `StorageCategory`. feat(§20.9): b12)
 - [ ] **GRDB VACUUM** — monthly on-launch background task; skipped if sync queue has pending writes.
 - [x] **Size monitoring** — footer in Settings → Data shows live breakdown (§29.3 storage panel). Warn only on device-low-disk (< 2 GB free), not on app-cache growth alone. (`StorageMonitor.measure(inject:)` async scanner + `StorageBreakdown` snapshot struct in `Core/Performance/StorageBreakdown.swift`; `ImageCachePolicy.isDeviceLowOnDisk()` threshold guard. feat(§29.3): b12)
-- [x] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard. (`LowDiskGuard` `@Observable @MainActor` singleton in `Core/Performance/LowDiskGuard.swift` — `refresh()` re-measures via `attributesOfFileSystem`, `isPaused` flips at `ImageCachePolicy.lowDiskThresholdBytes`, `allowsCacheWrites` for hot-path callers.)
+- [ ] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard.
 
 ### 20.10 Multi-device consistency
-- [x] **Per-device-id** on mutations so server echoes back correct events. (`DeviceIdentity.shared.deviceId` in `Sync/DeviceIdentity.swift` — UserDefaults-backed, seeded from `UIDevice.identifierForVendor` with `UUID` fallback; `SyncOp.deviceId` field defaults to it so every enqueued mutation carries originating-device id.)
+- [ ] **Per-device-id** on mutations so server echoes back correct events.
 - [ ] **WS echo** — if user has iPad + iPhone, update on other device via WS.
 - [ ] See §19 for the full list.
 - [ ] See §16 for the full list.
@@ -3686,15 +3676,15 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (feat(§21): AppBackgroundTaskScheduler — syncRefreshID + runSyncRefresh() with cancellation handler; 4ecb468d)
 - [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (feat(§21): AppBackgroundTaskScheduler — maintenanceNightlyID + runMaintenance(); 4ecb468d)
 - [ ] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync.
-- [x] **Task budgets** — complete within 30s; defer remainder. (`AppBackgroundTaskScheduler.runWithBudget(_:taskName:onExpiry:work:)` races the work against `appRefreshBudget = 25s` (BGAppRefreshTask) / `processingBudget = 60s` (BGProcessingTask) via `withTaskGroup`; whichever finishes first wins, the loser is cancelled, `onExpiry` fires when the budget elapses, and `scheduleIfNeeded()` requeues so the next opportunistic launch resumes.) (feat(§13/§21))
+- [ ] **Task budgets** — complete within 30s; defer remainder.
 
 ### 21.5 WebSocket (Starscream)
 - [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (feat(§21): WebSocketManager multi-endpoint enum + connect/disconnect; 4ecb468d)
-- [x] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates. (`WebSocketConnection.swift` sets `Bearer <authToken>` on `Sec-WebSocket-Protocol` for the upgrade `URLRequest`; `WebSocketManager.configure(baseURL:authToken:)` plumbs the token; rotation handled by reconfiguring after `setAuthToken`.) (feat(§13/§21))
+- [ ] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates.
 - [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (feat(§21): WebSocketClient.scheduleReconnect() via min(pow(2,n),30); 4ecb468d)
 - [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (feat(§21): WebSocketManager.startHeartbeat() 25s poll + state mirror; 4ecb468d)
 - [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (feat(§21): WebSocketManager.subscribe/unsubscribe with subscriberCount lifecycle; 4ecb468d)
-- [x] **Event envelope** — `{ type, entity, id, payload, version }`. (`WebSocketEvent` struct in `WebSocketManager.swift` is `Sendable, Decodable` with the four canonical fields plus optional `version`; `WSConnection.onEvent` decodes inbound frames via `JSONDecoder` and routes to `WebSocketEventBus`.) (feat(§13/§21))
+- [ ] **Event envelope** — `{ type, entity, id, payload, version }`.
 - [ ] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side.
 - [ ] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data.
 - [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.
@@ -3739,8 +3729,8 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.1 Layout
 - [x] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column. (feat(ios §22): ThreeColumnSplitView scaffold — SplitViewDomain protocol, .balanced style, column widths, detailContentCapped())
 - [x] **Dashboard 3-column KPI grid** on wide screens; 2-column on 11"; responsive `GridItem(.adaptive(...))`. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
-- [x] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded. (feat(§22): .maxContentWidth() applied to CustomerDetailView + InvoiceDetailView ScrollView contents — caps at 720pt on iPad, no-op on iPhone)
-- [x] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`. (feat(§22): BrandAdaptiveSidebarModifier — width-driven columnVisibility (.all ≥1180pt / .doubleColumn below) + balanced style via `.brandAdaptiveSidebar(visibility:)`)
+- [ ] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded.
+- [ ] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`.
 - [x] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail. (feat(ios §22): InspectorPaneModifier — .brandInspector(isPresented:content:) with iOS 16 sheet fallback + InspectorToggleButton)
 - [x] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13". (feat(ios §22): TwoUpEditorLayout scaffold — side-by-side on width≥900pt, segmented-tab fallback on compact)
 
@@ -3763,15 +3753,15 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [x] **Scene state** restored per-window on relaunch. (feat(ios §22): SceneStateRestorer — stateRestorationActivity(for:) + restore(from:) + SceneDelegate willConnectTo restoration path)
 - [x] **Open in new window** from context menu. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [x] **Scene activities** — detail views become independent activities. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
-- [x] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits. (feat(§22): ShellLayout gates rail vs compact on geo.size.width >= 500; 1/3-split on 13" → compact, 1/2-split on 11" keeps rail)
+- [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
 
 ### 22.5 Data presentation
-- [x] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs. (feat(§22): BrandSortableTable wrapper — internal `[KeyPathComparator]` state + `sortOrder:` binding + post-sort dataset re-derivation in one call site)
-- [x] **Column chooser** — reorder / hide columns; persisted. (feat(§22): ColumnChooserState `@StateObject` (UserDefaults-backed) + ColumnChooserButton popover toolbar UI with toggle + drag-reorder)
+- [ ] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs.
+- [ ] **Column chooser** — reorder / hide columns; persisted.
 - [x] **Sort indicator** arrows on column headers. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 
 ### 22.6 Magic Keyboard / trackpad
-- [x] **Swipe gestures** translated to trackpad (2-finger). (feat(§22): TrackpadSwipeModifier — DragGesture-based 60pt activation + 20pt vertical-drift filter + leading/trailing callbacks via `.brandTrackpadSwipe(leading:trailing:)`)
+- [ ] **Swipe gestures** translated to trackpad (2-finger).
 - [x] **Right-click** menus everywhere. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
 
 ### 22.7 External display / AirPlay
@@ -3781,12 +3771,12 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Drag-to-new-window: long-press ticket row → drag out → new window with that ticket. Long-press POS tab → dedicated register window.
 - [x] `NSUserActivity` per scene persists position / ticket ID; relaunch re-opens all windows. (feat(ios §22): DetailHandoffModifier — Handoff advertisement + "Open in New Window" context menu + MultiWindowCoordinator.openDetail(routeURL:) routing helper)
 - [ ] Scene declares capabilities ("can show ticket detail", "can run POS"); drag-drop between windows validates target capability.
-- [x] Stage Manager min content area 700×500; below that → compact layout. (feat(§22): .splitViewMinSize() on WindowGroup root tightens UIScene.SizeRestrictions.minimumSize)
+- [ ] Stage Manager min content area 700×500; below that → compact layout.
 - [ ] External-display `UIScene` hosts customer-facing display (§16 POS CFD) mirrored from POS scene.
 - [ ] `UICommand` menu per scene (File / Edit / View / Window / Help) with custom items (New Ticket, Quick Find, Switch Tenant).
 - [x] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels (feat(ios §22): ArrowKeyRowSelectionModifier DS widget — ↑/↓ hidden buttons + .arrowKeyRowSelection(items:selectedId:) view extension)
-- [x] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached (feat(§22): NumericKeyboardAccessory DS modifier — .brandNumericKeyboardAccessory(focus:current:prev:next:); first wired on TaxSettingsPage rate field)
-- [x] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch` (feat(§22): FieldValidationKeyboardModifier — `.brandFieldKeyboard(.phone/.imei/.email/.url/.search/.identifier/.prose)` bundles keyboardType+textContentType+autocap+autocorrect per semantic role)
+- [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
+- [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
 - [x] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] External barcode scanner (USB/BT wedge): detect rapid keystrokes ending in Enter; route to scan handler not textfield; configurable via Settings → Hardware
 - [ ] Support Dvorak/custom layouts automatically — never hardcode layouts
@@ -3811,7 +3801,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection
 - [ ] External storage: USB-C direct photo import; file picker recognizes external drives
 - [x] Safe area: use `.ignoresSafeArea(.keyboard)` carefully; default behavior is scroll. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
-- [x] Accessory toolbar for numeric fields: `$`, `%`, next, prev, done (done closes keyboard, next moves focus). (feat(§22): same NumericKeyboardAccessory DS modifier as §22.7 row above)
+- [ ] Accessory toolbar for numeric fields: `$`, `%`, next, prev, done (done closes keyboard, next moves focus).
 - [ ] SMS/email inputs show QuickType; custom template suggestions via replacement assistant.
 - [ ] External hardware keyboard: hide onscreen keyboard automatically.
 - [ ] iPad split keyboard respected; inline accessory bar follows keyboard.
@@ -3842,13 +3832,13 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [x] **Window titles** — per-scene (e.g., "Ticket #1234 - BizarreCRM"). (`MacWindowConfigurator.titleForTicket/Customer/POS/Reports` helpers. feat(§23.2): d4afac02)
 
 ### 23.3 Mac-native UX conventions
-- [x] **`.textSelection(.enabled)`** on every ID, phone, email, invoice number, tag. (`Core/Mac/MacSelectableText.swift` — `MacSelectableIDModifier` + `.macSelectableID()` View extension; enables `.textSelection(.enabled)` on Mac/iPad, no-op on iPhone. feat(§23.3))
+- [ ] **`.textSelection(.enabled)`** on every ID, phone, email, invoice number, tag.
 - [ ] **`.fileExporter`** for PDF/CSV save dialogs (not share sheet).
-- [x] **Right-click context menus** on every tappable element. (`Core/Mac/MacRowContextMenu.swift` — `.macRowContextMenu(onOpen/onEdit/onCopyID/onShare/onArchive/onDelete:)` builds Open/Edit/Copy ID/Share/Archive/Delete via `MacContextMenuCatalog.Actions` descriptors; iPhone-suppressible via `iPhoneEnabled` flag. feat(§23.3))
+- [ ] **Right-click context menus** on every tappable element.
 - [ ] **Drag-and-drop** from Finder → attachment fields (drop a receipt PDF onto an expense).
 - [ ] **Copy formatted** — ⌘C on a table row copies TSV for Excel paste.
-- [x] **Find in page** — ⌘F in long scrolling views. (`Core/Mac/MacFindInPage.swift` — `.macFindInPage(query:matchCount:currentMatchIndex:onSubmitQuery:)` overlay bar with magnifying-glass field, "n of m" counter, ⌘G next / ⇧⌘G prev / ⎋ Done; `.keyboardShortcut("f"/"g", modifiers:)`; tested wrap + label helpers. feat(§23.3))
-- [x] **Keyboard arrows** nav through lists (↑↓) with ↵ to open. (`Core/Mac/MacListKeyboardNav.swift` — `.macListKeyboardNav(count:selection:isEnabled:onOpen:)` wires `.focusable()` + `.onMoveCommand(.up/.down)` + `.onSubmit` with clamping; tested clamp edge cases. feat(§23.3))
+- [ ] **Find in page** — ⌘F in long scrolling views.
+- [ ] **Keyboard arrows** nav through lists (↑↓) with ↵ to open.
 
 ### 23.4 Menu bar
 - [ ] **`.commands`** — full menu hierarchy (File / Edit / View / Tickets / Customers / Inventory / POS / Window / Help).
@@ -3861,7 +3851,7 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [x] **Universal clipboard** — copy ticket # on iPad, paste on Mac. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 
 ### 23.6 Missing on Mac (document)
-- [x] Widgets (limited). (`Core/Mac/MacFeatureLimits.swift` — `MacFeatureLimits` runtime catalog with `MacFeatureAvailability` (.available/.limited/.unavailable) + `MacFeatureLimit` descriptors for Widgets/LiveActivities/NFC/native barcode/Bluetooth printers/Haptics/BlockChyp; `visibleOnCurrentPlatform` filter renders Mac-only badges in Settings. feat(§23.6))
+- [ ] Widgets (limited).
 - [ ] Live Activities (unavailable).
 - [ ] NFC (unavailable).
 - [ ] BlockChyp terminal — works (IP-based transport either LAN or cloud-relay; see §17.3). No Bluetooth involved at any layer.
@@ -3944,7 +3934,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] Parameter disambiguation: ambiguous customer → Siri "Which John?"; `parameterSummary` on `CreateNewTicketIntent` + `SendSMSToCustomerIntent`; `CustomerNameOptionsProvider: DynamicOptionsProvider` reads `suggestions.recentCustomerNames` from App Group; `IntentAppError.ambiguousParameter` for unresolved cases. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
 - [x] Every intent has an `IntentView` (SwiftUI glass card) rendered inline in Shortcuts preview + Siri output. (`IntentConfirmationCard` — symbol + tint + title + body; `.regularMaterial` bg + `RoundedRectangle`; used in all 3 §64 intents; `App/Intents/ShortcutsIntents.swift`; feat(§64))
 - [x] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32). Intent errors are user-facing only via `IntentAppError: CustomLocalizedStringResourceConvertible` (`.smsBlocked`, `.customerNotFound`, `.datastoreUnavailable`, `.ambiguousParameter`); `IntentErrorCard` + `IntentResultCard` snippet views; no data leaves the tenant boundary. (`App/Intents/IntentEnhancements.swift`; feat(§24.10))
-- [x] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice). (`App/Intents/IntentAutomation.swift`; `BizarreCRMAssistantSchema` enum + `ShopManagementSchemaIntent` protocol on `CreateNewTicketIntent`/`SendSMSToCustomerIntent`/`RecordExpenseIntent` + `AssistantSchemaRegistrar.register()` writes `assistant.shopManagement.entities` to App Group; feat(§24))
+- [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 - [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
 - [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory). (feat(ios phase-6 §24))
@@ -3957,10 +3947,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [x] Automation support so tenants can wire Arrive at work → Clock in style triggers. (`App/Intents/IntentAutomation.swift`; `IntentAutomationCenter` CLLocationManager + `CLCircularRegion` 80m geofence around `automation.shop.lat`/`lon`; opt-in `automation.arriveClockIn.enabled`; `bootIfEnabled()` + `didEnterRegion` → `bizarrecrm://timeclock?action=clockin&automation=arrive`; feat(§24))
-- [x] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution. (`App/Intents/IntentAutomation.swift`; `WidgetShortcutBridge<Wrapped>: AppIntent` reads `widget.shortcut.<key>` payload from App Group + dispatches deepLink; `WidgetShortcutPublisher.publish(key:deepLink:)` writes + reloads timelines; feat(§24))
-- [x] Siri learns to invoke by donated phrases. (`App/Intents/IntentAutomation.swift`; `SiriRelevanceDonor.donateRelevantShortcuts()` builds `INRelevantShortcut`s with `INDateRelevanceProvider` (revenue 5–8pm, ticket 9–7) + `INLocationRelevanceProvider` (POS at shop fence) → `INRelevantShortcutStore.default.setRelevantShortcuts`; `suggestedInvocationPhrase` per intent; feat(§24))
-- [x] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it. (`App/Intents/IntentAutomation.swift`; `IntentSovereigntyGuard.isAllowed(_:)` allows `bizarrecrm://` always + tenant `serverHost` + opt-in `automation.allowedExternalHosts` allowlist with subdomain match; `sanctioned(_:)` wrapper for intent URL follows; feat(§24))
+- [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
+- [ ] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution.
+- [ ] Siri learns to invoke by donated phrases.
+- [ ] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it.
 
 ---
 ## §25. Spotlight, Handoff, Universal Clipboard, Share Sheet
@@ -3994,9 +3984,9 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Receipt PDF** — same renderer. Commit `ef872a82`.
 - [x] **Customer vCard** — `CNMutableContact` → `CNContactVCardSerialization` → share. Commit `ef872a82`.
 - [x] **Ticket summary plaintext + image** — formatted block copy. Commit `ef872a82`.
-- [x] **Public tracking link** — share short URL to public-tracking page (see §57). (`App/Clipboard/ShareTransferables.swift`; `TrackingLinkPayload` Transferable + `View.shareTrackingLink(_:)` ShareLink helper using `ShareItem.trackingURL`)
-- [x] **Photo** — ticket photo → share. (`App/Clipboard/ShareTransferables.swift`; `TicketPhotoPayload` Transferable exports `UIImage` as PNG `DataRepresentation` for ShareLink)
-- [x] **Image with logo watermark** — before sharing. (`App/Clipboard/ShareTransferables.swift`; `WatermarkedImagePayload` applies `UIImage.watermarked()` before PNG export so receiver always gets the branded copy)
+- [ ] **Public tracking link** — share short URL to public-tracking page (see §57).
+- [ ] **Photo** — ticket photo → share.
+- [ ] **Image with logo watermark** — before sharing.
 
 ### 25.5 Share Extension (receive sheet)
 - [x] **Accept image** — from Photos app or other apps → "Attach to ticket" picker flow. (`BizarreCRMShareExtension/ShareViewController.swift`; `UTType.image` → App Group copy; e55bb72f)
@@ -4007,8 +3997,8 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 ### 25.6 Drag-and-drop
 - [ ] **Drop image from Files/Photos** → ticket photos, expense receipts, customer avatar.
 - [ ] **Drop PDF** → invoice attachments.
-- [x] **Drop text** → note fields. (`App/Clipboard/DragDropModifiers.swift`; `DroppableTextModifier` + `View.droppableText($binding)` via `dropDestination(for: String.self)`, appends with newline separator)
-- [x] **Drag out** — ticket card draggable to other apps (e.g., drag to Notes). (`App/Clipboard/DragDropModifiers.swift`; `TicketDragPayload` Transferable carrying both plain-text summary + tracking URL representations + `View.ticketDraggable(_:)`)
+- [ ] **Drop text** → note fields.
+- [ ] **Drag out** — ticket card draggable to other apps (e.g., drag to Notes).
 
 ### 25.7 Universal Links — cloud-hosted tenants only
 
@@ -4093,10 +4083,10 @@ Always-on data (labels, hints, traits) — these cost nothing and only matter wh
 - [x] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`. (Tickets/Customers/Inventory/Invoices rows: `.accessibilityAddTraits(.isButton)` — feat(ios post-phase §26))
 - [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
 - [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
-- [x] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation. (`DesignSystem/Accessibility/A11yContainerModifier.swift` — `View.a11yContainer(label:)`; optional spoken label, keeps children individually focusable while improving rotor + escape-gesture behavior on long lists. feat(§26.1))
-- [x] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work. (`DesignSystem/Accessibility/VoiceOverGatedAnnouncement.swift` — `VoiceOverAnnouncer.announceIfRunning(_:)` + `announceErrorIfRunning(_:)`; gates on `UIAccessibility.isVoiceOverRunning` so non-VO users pay zero cost. feat(§26.1))
+- [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
+- [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
 - [x] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise. (`A11ySheetFocusModifier` + `.a11yFocusOnAppear(_:)` + `.a11yCustomAction(label:handler:)` in `Core/A11y/A11ySheetFocusModifier.swift`; 450ms settle delay. feat(§26.1): 1d61493b)
-- [x] **Custom actions** — swipe actions exposed as accessibility custom actions. (`DesignSystem/Accessibility/SwipeAccessibilityActions.swift` — `A11ySwipeAction` descriptor + `View.a11ySwipeActions(_:edge:allowsFullSwipe:)`; emits both `.swipeActions` and matching `.accessibilityAction(named:)` so call sites can't ship one without the other. feat(§26.1))
+- [ ] **Custom actions** — swipe actions exposed as accessibility custom actions.
 - [ ] **Image descriptions** — customer avatars use initials; ticket photos labeled "Photo N of M on ticket X".
 
 ### 26.2 Dynamic Type
@@ -4110,7 +4100,7 @@ iOS broadcasts the user's text-size preference via `\.dynamicTypeSize`. Layout a
 ### 26.3 Reduce Motion
 Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
-- [x] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion. (`brandSpring(_:value:)` in `DesignSystem/Motion/ReduceMotionFallback.swift` reads the OS flag and uses `ReduceMotionFallback.fadeOrFull`; wired on both `OfflineBanner` chip variants — feat(§26))
+- [ ] `@Environment(\.accessibilityReduceMotion)` gate — swap spring animations for cross-fades when the OS flag is set. If the flag is false, ship normal motion.
 - [ ] **Cart confetti** → static checkmark only when the flag is set.
 - [ ] **Parallax on Dashboard** → disabled only when the flag is set.
 - [ ] **Auto-playing animations** → paused until tap only when the flag is set (`UIAccessibility.isVideoAutoplayEnabled` for media).
@@ -4118,21 +4108,21 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
 ### 26.4 Reduce Transparency
 - [ ] `@Environment(\.accessibilityReduceTransparency)` gate — `.brandGlass` returns solid `bizarreSurfaceBase` fill only when the OS flag is set. Default ships full glass.
-- [x] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart. (`ReduceTransparencyFallbackModifier` `.onReceive` hook in `DesignSystem/ReduceTransparencyFallback.swift`; SwiftUI environment also re-renders on flag change. Wired in `BrandToast` + `BrandBanner` (`Components.swift`). feat(§26))
+- [ ] **Live switching** — observe `UIAccessibility.reduceTransparencyStatusDidChangeNotification` so the UI flips mid-session without app restart.
 
 ### 26.5 Increase Contrast
 - [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
-- [x] **Borders** around cards become visible (1pt solid stroke) only when the flag is set. (`SelectedCardBorderModifier` reads `\.colorSchemeContrast` and thickens stroke under `.increased`; wired on `CustomerMergeFieldRowView` side cards via `.selectedCardBorder(...)`. feat(§26))
-- [x] **Button states** clearer (solid vs outlined) only when the flag is set. (`DesignSystem/Accessibility/IncreaseContrastButtonStyle.swift` — `A11yPrimaryButtonStyle` swaps to solid `bizarrePrimary` fill + `bizarreOnPrimary` text under `colorSchemeContrast == .increased`; `A11ySecondaryButtonStyle` swaps to 1.5pt outlined capsule with transparent fill. `.buttonStyle(.a11yPrimary)` / `.a11ySecondary` shorthands. feat(§26.5))
+- [ ] **Borders** around cards become visible (1pt solid stroke) only when the flag is set.
+- [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
 - [x] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80. (`DesignSystem/Tokens+Accessibility.swift` — `boldTextEnabled` EnvironmentKey, `adaptiveFontWeight`, `BoldTextReader` modifier, `DesignTokens.BoldText`. feat(§80): 2e0846c9)
-- [x] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set. (`StatusPill.swift` — every `Hue` carries an SF Symbol (`tray`/`wrench`/`hourglass`/`checkmark.seal`/`flag.checkered`/`archivebox`); under DifferentiateWithoutColor the glyph weight steps to `.heavy` and a 1pt foreground-tint capsule outline is added. feat(§26))
-- [x] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true. (`DesignSystem/Accessibility/ChartDifferentiateStrokeStyle.swift` — `ChartDifferentiateStrokeStyle.style(forIndex:differentiate:)` returns a `StrokeStyle` cycling through 6 distinguishable dash patterns (solid, long-dash, short-dash, dotted, dash-dot, long-dash-gap) keyed off series index when DWC is on; solid 2pt otherwise. feat(§26.6))
+- [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
+- [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
 ### 26.7 Tap targets
 - [x] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI. (`Core/A11y/TappableFrame.swift` — `TappableFrameModifier` + `View.tappableFrame(minWidth:minHeight:)`; DEBUG `assertionFailure` via GeometryReader.onAppear; RELEASE no-op; `bare_on_tap_gesture` SwiftLint rule already in `.swiftlint.yml`. feat(§26.6): b12)
-- [x] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check). (`DesignSystem/Accessibility/AdjacentRowSpacing.swift` — `AdjacentRowSpacing.minimum = BrandSpacing.sm` (8pt); `View.adjacentRowSpacing(_:)` modifier with DEBUG `assertionFailure` on sub-8pt callers; wired on the `CustomerMergeView` field-row VStack. feat(§26))
+- [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
 
 ### 26.8 Voice Control
 Metadata emitted always; surfaced only when iOS Voice Control is active.
@@ -4198,12 +4188,12 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] **Translation service** — Lokalise / Crowdin workflow + CI sync.
 
 ### 27.2 Locale-aware formatters
-- [x] **Dates** — `Date.FormatStyle.dateTime` with locale. `LocaleFormatter.formatDateTime(_:configure:)` in `FormatStyles.swift` wraps `Date.FormatStyle(date:.abbreviated, time:.shortened).locale(locale)` with caller-supplied field composition.
-- [x] **Currency** — `Decimal.FormatStyle.Currency(code: tenantCurrency)`. `LocaleFormatter.formatCurrency(_:Decimal, currencyCode:)` uses `Decimal.formatted(.currency(code:).locale(locale))` to avoid float rounding for POS amounts.
-- [x] **Numbers** — `.number` with `.locale(Locale.current)`. `LocaleFormatter.formatNumber(_:Int)` and `formatNumber(_:Double, fractionDigits:)` use `IntegerFormatStyle`/`FloatingPointFormatStyle.number.locale(locale)`.
+- [ ] **Dates** — `Date.FormatStyle.dateTime` with locale.
+- [ ] **Currency** — `Decimal.FormatStyle.Currency(code: tenantCurrency)`.
+- [ ] **Numbers** — `.number` with `.locale(Locale.current)`.
 - [ ] **Percent** — `.percent`.
-- [x] **Distance** — `MeasurementFormatter` (rare). `LocaleFormatter.formatDistance(meters:)` and `formatDistance(_:Measurement<UnitLength>)` cache a `MeasurementFormatter` per (locale, unitOptions) and use `.naturalScale` so `en_US` shows miles, metric locales show km.
-- [x] **Relative** — `RelativeDateTimeFormatter` for "2 min ago". `LocaleFormatter.formatRelative(_:relativeTo:style:)` caches a `RelativeDateTimeFormatter` per (locale, unitsStyle) and calls `localizedString(for:relativeTo:)`.
+- [ ] **Distance** — `MeasurementFormatter` (rare).
+- [ ] **Relative** — `RelativeDateTimeFormatter` for "2 min ago".
 - [ ] **Phone** — `libPhoneNumber-iOS` or server-provided format respecting E.164 + locale.
 
 ### 27.3 Plural rules
@@ -4370,10 +4360,10 @@ Tasks:
 - [x] **`ITSAppUsesNonExemptEncryption = false`** — only use HTTPS + standard Apple crypto; skip export-compliance paperwork. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.7 Logging redaction
-- [x] **`privacySensitive()`** on password, PIN, SSN fields. (`SensitiveFieldPrivacyModifier` in `Core/Privacy/SensitiveFieldPrivacyModifier.swift`: `.passwordPrivate()` / `.pinPrivate()` / `.ssnPrivate()` View extensions wrap SwiftUI `.privacySensitive(true)` + a stable `accessibilityIdentifier` so UI tests can verify redaction; SwiftLint can flag any SecureField/PIN/SSN row missing one of the helpers. feat(§28.7))
+- [ ] **`privacySensitive()`** on password, PIN, SSN fields.
 - [x] **`OSLog` privacy levels** — `.private` on tokens, phones, emails. (`LoggingPolicy.swift` catalogs public vs private field types; `AppLog.redacted()` helper for legacy string paths. feat(§28.7): 76e64d39)
-- [x] **Crash logs** — no PII via symbolication hooks. (`CrashLogPIIScrubber` in `Core/Crash/CrashLogPIIScrubber.swift`: regex scrubber for email/phone/PAN/JWT/Bearer headers; `scrub(_:)` for free strings + `scrub(metadata:)` for breadcrumb dicts; replaces with typed placeholders so triage sees what was scrubbed without seeing who. feat(§28.7))
-- [x] **Network inspector** in dev redacts Authorization header. (`DebugNetworkLogRedactor` in `Networking/DebugNetworkLogRedactor.swift`: scheme-preserving Bearer/Basic redaction with length annotation; case-insensitive header-name match; covers `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-BlockChyp-Auth*`; URL-query redaction for `token`/`access_token`/`api_key`/`password`/`secret`. feat(§28.7))
+- [ ] **Crash logs** — no PII via symbolication hooks.
+- [ ] **Network inspector** in dev redacts Authorization header.
 
 ### 28.8 Screen protection
 
@@ -4389,7 +4379,7 @@ Three different iOS signals, three different defenses:
 Tasks:
 - [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay 173d99c4)
 - [x] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`. (`ScreenCaptureBlurModifier` + `.screenCaptureProtected()` in `Core/Privacy/ScreenCapturePrivacy.swift`; blurs at 20pt + ultraThinMaterial overlay; animated `.easeInOut(0.22)`. feat(§28.8): ebf86471)
-- [x] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it. (`ScreenshotAuditModifier` + `.screenshotAudited(screen:userID:onCapture:)` + `.screenshotAuditedToLog(screen:userID:)` in `Core/Privacy/ScreenshotAuditModifier.swift`; wraps existing `ScreenshotAuditCounter` with SwiftUI lifecycle (`.onAppear` attach, `.onDisappear` detach); `ScreenshotAuditLogSink` writes ISO-8601 entry to OSLog `com.bizarrecrm/screenshotAudit` at `.notice` with `.private` user ID per §28.7. feat(§28.8))
+- [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
 - [x] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all. (`SecureTextEntryModifier` + `.secureInput()` + `.pixelSecure()` in `Core/Privacy/SecureTextEntryModifier.swift`; UIViewRepresentable introspection sets `UIView.isSecure = true` on iOS 17+; fallback to `screenCaptureProtected()` blur on older OS; feat(§28.8))
 
 ### 28.8.1 Sovereignty note
@@ -4398,10 +4388,10 @@ Screen-protection audit entries go to the tenant server (§32), not third-party 
 ### 28.9 Pasteboard hygiene
 
 - [ ] **OTP paste** — `UITextContentType.oneTimeCode` is the right content type for the 2FA code field. iOS offers the code from the most recent Messages automatically; no need for us to read the pasteboard manually.
-- [x] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s. (`PasteboardCopyHelper.copySensitive(_:expiresIn:screen:)` in `Core/Privacy/PasteboardCopyHelper.swift`: 60 s default; sets `.expirationDate` + `.localOnly: true` so secret never syncs via Universal Clipboard; fires `PasteboardAudit.logWrite(...)` audit entry; 3-second de-dupe window prevents double-copy. feat(§28.9))
+- [ ] **OTP copy** — when server-issued codes must be displayed (rare — e.g., 2FA backup codes screen), copy with `UIPasteboard.setItems(…, options: [.expirationDate: 60])` so the code clears in 60s.
 - [ ] **Card number — we never copy it.** Our app never handles raw PAN (§16.6 + §17.3 — BlockChyp tokenizes on the terminal or in its SDK sheet). So there is no "copy card number" code path in our app to defend; the relevant pasteboard events happen entirely inside the BlockChyp SDK process.
-- [x] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive). (`PasteboardCopyHelper.copyNonSensitive(_:)` in `Core/Privacy/PasteboardCopyHelper.swift`: writes plain `UIPasteboard.general.string`, no expiration so Universal Clipboard syncs to other Apple devices; returns `Bool` so callers can suppress duplicate haptics/toasts; 3-second de-dupe across rapid taps. feat(§28.9))
-- [x] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast. (`BrandPasteButton` in `Core/Privacy/BrandPasteButton.swift`: SwiftUI wrapper around Apple `PasteButton` with `[UTType.plainText, UTType.url]`; collects strings via NSItemProvider on a background queue then dispatches `onPaste` on main; optional `auditScreen` + `auditActor` parameters fire `PasteboardAudit.logRead(...)` for sensitive screens; iOS skips the access-banner because of explicit user action. feat(§28.9))
+- [ ] **Generic copies** — ticket ID, invoice #, SKU, email, phone copy with no expiration (non-sensitive).
+- [ ] **Paste-to-app** — we use `PasteButton` (iOS 16+) for user-initiated paste so iOS doesn't show the "Allowed X to access pasteboard" toast.
 - [ ] **No pasteboard reads without user action** — SwiftLint rule forbids `UIPasteboard.general.string` in view code.
 
 ### 28.9.1 Manual card entry — disable Apple AutoFill & keyboard predictions
@@ -4422,16 +4412,16 @@ Rules:
 - [ ] **Unit test** — snapshot-inspect the view hierarchy of each field on a payment/checkout screen, assert no field has a content-type from the `.creditCard*` family.
 
 ### 28.10 Biometric auth
-- [x] **`LAContext`** — `.biometryAny` preferred; fallback to PIN. (`BiometricWithPasscodeFallback` in `Auth/Biometric/BiometricWithPasscodeFallback.swift`: uses `.deviceOwnerAuthentication` so iOS routes biometryAny → device passcode automatically; `Outcome` enum (`.biometry` / `.devicePasscode` / `.cancelled`) attributes which path succeeded by snapshotting biometry availability before evaluation. feat(§28.10))
+- [ ] **`LAContext`** — `.biometryAny` preferred; fallback to PIN.
 - [ ] **Reuse window** — 10s after unlock so confirm-on-save doesn't double-prompt.
-- [x] **Failure limits** — after 3 fails, drop to password. (`BiometricFailureLimitPolicy` in `Core/Privacy/BiometricFailureLimitPolicy.swift`: `@Observable @MainActor` state machine with `BiometricFailureLimitState.allowed(consecutiveFailures:) | requiresPasswordFallback`; configurable `failureLimit` (default 3) trips before iOS's own 5-attempt sensor lockout so the user sees the PIN sheet first; `recordSuccess()` resets counter; `reset()` clears fallback after PIN succeeds. feat(§28.10))
+- [ ] **Failure limits** — after 3 fails, drop to password.
 
 ### 28.11 Jailbreak / integrity
 - [x] **Heuristic detection** — file presence + sandbox escape checks; informational flag only (log, never block). (`JailbreakDetector` in `Core/Privacy/JailbreakDetector.swift`: suspicious-path scan, sandbox-write probe, dyld image walk, URL-scheme check; returns `JailbreakRiskLevel` + `[JailbreakSignal]`; never blocks UX. `DebuggerDetector` in `Core/Privacy/DebuggerDetector.swift`: sysctl `P_TRACED` bit; returns `DebuggerRiskEntry` for server risk payload. `CodeInjectionGuard` in `Core/Privacy/CodeInjectionGuard.swift`: DYLD_INSERT_LIBRARIES env check, hooking-framework image scan, ObjC IMP-range validation. feat(§28.11))
 - [x] **App Attest** (DeviceCheck) — verify device integrity per session. (`AppAttestService` actor in `Auth/SecurityPolish/AppAttestService.swift`; `prepare()` generates/reuses key in Keychain; `attest(challenge:)` produces DER attestation for `POST /auth/attest`; `assert(challenge:clientData:)` for step-up ops; degrades gracefully to `.unsupported` on simulator/old OS; `MockAppAttestService` for tests. feat(§28.11))
 
 ### 28.12 Tenant data sovereignty
-- [x] **Tenant DBs are sacred** — never delete tenant DB to recover from missing state; only repair. (`TenantDatabaseSanctity` in `Core/Privacy/TenantDatabaseSanctity.swift`: `TenantDatabaseDeleteReason` enum hard-codes the only two allowed reasons (sign-out/tenant-switch + user-confirmed reset); `assertDeletable(reason:)` is the greppable choke point + audit log line; `decideRecovery(integrityCheckFailed:)` returns `.repairInPlace` or `.surfaceToUser` — deletion is intentionally NOT an option. feat(§28.12))
+- [ ] **Tenant DBs are sacred** — never delete tenant DB to recover from missing state; only repair.
 - [ ] **Per-tenant crypto key** — distinct passphrase per tenant so switching doesn't decrypt wrong data.
 
 ### 28.13 Compliance
@@ -4442,7 +4432,7 @@ Rules:
 - [ ] **HIPAA** — tenant-level toggle to avoid storing PHI (applies to some vet clinics / medical-device repair).
 
 ### 28.14 Session & token
-- [x] **Access token** 1h; refresh token 30d rotating. (`SessionTokenPolicy` + `SessionTokenPolicyOverride` in `Auth/SessionTokenPolicy.swift`: canonical 1h access / 30d refresh constants with `rotatesOnRefresh=true`; `shouldProactivelyRefresh(issuedAt:now:)` triggers 5-min before expiry; `isRefreshTokenExpired(...)` for hard-stop re-auth; server override clamped 5min ≤ access ≤ 24h, 1h ≤ refresh ≤ 90d. feat(§28.14))
+- [ ] **Access token** 1h; refresh token 30d rotating.
 - [ ] **Force re-auth** — on sensitive actions (void > $X, delete customer).
 - [ ] **Token revocation** — server-sent 401 triggers global logout (already shipped).
 - [ ] **Device trust** — "Remember this device" reduces 2FA prompts; 90-day expiration.
@@ -4505,16 +4495,15 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
   - **Disk cache — full-res**: default 2 GB, user-configurable 500 MB – 20 GB or "No limit (use available storage)". LRU eviction starts only past cap. Full-res photos are the biggest, most expensive to re-fetch, and most worth pinning smartly.
   - **Pinned-offline store**: photos attached to **active** (not-archived) tickets and photos attached in last 14 days are NOT subject to LRU eviction regardless of cap. Stored under `offline_pinned/` with metadata referring to parent ticket / SKU. These count toward the user-visible "App storage" number but do not get auto-pruned.
   (`ImageCacheSizeConfig.swift` — `ImageCacheSizeConfig` struct + `TenantSizeHint`; `forTenantSize(_:)` factory maps s/m/l/xl → initial caps; `clamped()` enforces 500 MB–20 GB range; zero Nuke dependency. feat(§29.3): actionplan/§29-batch2)
-- [x] **Eviction policy — not blunt LRU**:
+- [ ] **Eviction policy — not blunt LRU**:
   - Archived-ticket photos evicted first.
   - Photos older than 90 days and not viewed in last 30 days evicted next.
   - Thumbnails evicted last (they're tiny and always useful).
   - Full-res photos attached to an active ticket or the current user's own recent activity never auto-evicted.
-  (`Core/Performance/ImageCacheEvictionPolicy.swift` — `EvictionTier` enum (5 tiers: archivedTicket → oldUnviewed → speculativeFetch → thumbnail → pinnedOffline); `ImageCacheEvictionPolicy.classify(entry:now:)` pure-Swift classifier; `CachedImageEntry` metadata struct; `sorted(_:now:)` pre-sorts entries for BGProcessingTask cleanup pass; zero Nuke dependency. feat(§29.3): §29-batch3)
 - [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
 - [x] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action). (`StorageBreakdown` + `StorageMonitor` + `ImageCachePolicy` in `Core/Performance/StorageBreakdown.swift`; `StorageCategory.isEvictable` gates clear buttons. feat(§29.3): b12)
 - [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
-- [x] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`). (`Core/Performance/ImagePrefetchGate.swift` — `@MainActor ImagePrefetchGate.shared`; `effectiveWindow` collapses to 0 on Low Power Mode, constrained path, or expensive path when `cellularAllowed=false`. feat(§29.3))
+- [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
 - [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
 - [ ] **Progressive JPEG** decode.
 - [ ] **Formats accepted on decode (iOS side)**: JPEG, PNG, **HEIC** (iOS default since iOS 11), **HEIF**, **TIFF** (multi-page supported; show first page as thumbnail, page-picker on detail), **DNG** (raw — use embedded JPEG preview for thumb, full decode on detail). Nuke relies on iOS Image I/O which handles all of the above; no custom decoder code needed for iOS.
@@ -4522,8 +4511,8 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Orientation / ICC profile** preserved through thumbnail resize; wide-gamut P3 images stay P3 on P3-capable displays.
 - [ ] **Upload encoding** — whatever the user picked stays as-is if the tenant server accepts it. Otherwise transcode to JPEG quality 0.8 before upload, keep original locally for this device (user expectation: "the photo I took is safe").
 - [ ] **Server + Android parity** for TIFF / DNG / HEIC end-to-end is tracked as `IMAGE-FORMAT-PARITY-001` in root TODO. If server or Android doesn't handle a format, iOS refuses to upload that format to that tenant and surfaces "Your shop's server doesn't accept X — please convert or attach a different file."
-- [x] **Placeholder** — SF Symbol + brand tint on load. (`DesignSystem/BrandImagePlaceholders.swift` — `BrandImagePlaceholder(systemImage:tint:)` SwiftUI view; brand-tinted SF Symbol over `bizarreSurface1`; decorative `.accessibilityHidden(true)` so callers label the slot. feat(§29.3))
-- [x] **Failure** — branded SF Symbol + retry tap. (`DesignSystem/BrandImagePlaceholders.swift` — `BrandImageFailure(systemImage:onRetry:)` SwiftUI view; danger-tinted symbol + "Tap to retry" label, full-frame button hit area, `.accessibilityLabel` calls out failure + retry. feat(§29.3))
+- [ ] **Placeholder** — SF Symbol + brand tint on load.
+- [ ] **Failure** — branded SF Symbol + retry tap.
 - [x] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override. (`ImageCacheSizeConfig.forTenantSize(_:)` + `TenantSizeHint` Codable enum. feat(§29.3): actionplan/§29-batch2)
 - [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
 - [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
@@ -4532,7 +4521,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Cursor pagination (offline-first)** — server returns `{ data, next_cursor?, stream_end_at? }`. iOS persists cursor in GRDB per `(entity, filter)` along with `oldestCachedAt` and `serverExhaustedAt`. Lists read from GRDB via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` triggers next-cursor fetch only when online.
 - [x] **Prefetch** at 80% scroll (50-item chunks) — only if online; offline skips prefetch silently. (`LazyListHelpers.swift` — `View.onNearBottom(threshold:perform:)` fires at configurable scroll fraction (default 0.80). feat(§29.4): actionplan/§29-batch2)
 - [x] **Load-more footer** — four states: `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Never ambiguous. (`LazyListHelpers.swift` — `ListPaginationState` enum + `ListLoadMoreFooter` view + `LoadMoreTrigger` invisible trigger. feat(§29.4): actionplan/§29-batch2)
-- [x] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator). (`DesignSystem/Skeletons/SkeletonFirstLoadGate.swift` — `SkeletonFirstLoadGate.shouldShowSkeleton(isLoading:rowCount:)` + `View.skeletonOnFirstLoad(isLoading:rowCount:skeleton:)` modifier; only paints skeletons on first load, leaves stale rows in place on refresh. feat(§29.4))
+- [ ] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator).
 - [ ] **No `page=N` / `total_pages` references in iOS code.** Any server endpoint still returning page-based shape wrapped by a client adapter that derives a synthetic cursor.
 
 ### 29.5 Glass budget
@@ -4553,15 +4542,15 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 =======
 - [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
-- [x] **Connection reuse** — keep-alive; avoid per-call sessions. (`APIClientImpl.keepAliveConnectionsPerHost = 6` named constant; lazy cached `session` reused across all calls; HTTP/2 multiplexes streams over the pool. `Packages/Networking/Sources/Networking/APIClient.swift`. feat(§29.7))
-- [x] **Request coalescing** — dedupe concurrent same-URL requests. (`RequestCoalescer` actor in `Packages/Networking/Sources/Networking/RequestCoalescer.swift`; key = method + URL + Authorization digest; wired in `APIClientImpl.get(...)`; only GETs collapse, mutating verbs unaffected. feat(§29.7))
-- [x] **Timeout** — 15s default; 30s for large uploads. (JSON session: `timeoutIntervalForRequest = 15`; background upload session: `timeoutIntervalForRequest = 30`, `timeoutIntervalForResource = 1h` for chunked transfers. `Packages/Networking/Sources/Networking/APIClient.swift`. feat(§29.7))
+- [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
+- [ ] **Request coalescing** — dedupe concurrent same-URL requests.
+- [ ] **Timeout** — 15s default; 30s for large uploads.
 - [x] **Compression** — Accept-Encoding: gzip, br. (Added to `httpAdditionalHeaders` in `APIClient.swift`. feat(§29.7): 7ae3cd0c)
 
 ### 29.8 Animations
-- [x] **Springs** — use `.interactiveSpring` for responsiveness. (`BrandMotion.responsive` token in `Packages/DesignSystem/Sources/DesignSystem/Tokens+Motion.swift` — `.interactiveSpring(response: 0.18, dampingFraction: 0.86)`; paired `ReduceMotionFallback.responsive(reduced:)`. feat(§29.8))
+- [ ] **Springs** — use `.interactiveSpring` for responsiveness.
 - [ ] **Avoid layout thrashing** — no animated heights on parent of scrollable.
-- [x] **Opacity + transform** preferred over layout changes. (`BrandTransition.opacityTransform(reduceMotion:)` in `Packages/DesignSystem/Sources/DesignSystem/Motion/BrandTransition.swift` — opacity + scale only, never animates layout-affecting properties; Reduce Motion drops to `.opacity`. feat(§29.8))
+- [ ] **Opacity + transform** preferred over layout changes.
 
 ### 29.9 Instruments profile
 - [x] **Debug perf overlay** — DEBUG-only floating HUD showing live resident memory (MB) + Low Power Mode indicator; sampled every 1s; `View.performanceDebugOverlay()` modifier is a no-op in RELEASE. (`Core/Performance/PerformanceDebugOverlay.swift` — `PerformanceOverlayModel` @Observable + `PerformanceDebugOverlay` View + modifier. feat(§29.9): actionplan/§29-batch2)
@@ -4581,7 +4570,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 ### 29.11 Battery
 - [ ] **Background tasks** respect budget (30s).
 - [ ] **Location** — `whenInUse` only; no always-on GPS.
-- [x] **WS ping** 25s interval (not 5s). (`Core/Performance/WebSocketPingPolicy.swift` — `WebSocketPingPolicy.standard = 25` / `.lowPowerMode = 90`; `currentInterval()` reads `LowPowerModeObserver.shared` so heartbeat backs off in LPM. feat(§29.11))
+- [ ] **WS ping** 25s interval (not 5s).
 - [ ] **Network batching** on cellular.
 
 ### 29.12 Telemetry perf
@@ -4626,15 +4615,6 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [x] **Scroll-perf tracer** — `ScrollPerfTracer.swift` actor: `frameDidRender(elapsedMs:)` feeds bounded 120-frame rolling window; exposes `p95FrameMs`, `meanFrameMs`, `dropRate`; fires `BudgetGuard` on > 2× frame budget to skip single-frame OS blips (feat(§29): perf §29 cold-launch + GRDB pragma + scroll tracer + retry token + decode guard)
 - [x] **Retry backoff token** — `RetryBackoffToken.swift`: NSLock-backed cancellable handle; `RetryExecutor` extension adds `execute(backoffToken:…)` overloads that call `checkCancellation()` between attempts; throws `RetryBackoffTokenError.cancelled` (feat(§29): perf §29 cold-launch + GRDB pragma + scroll tracer + retry token + decode guard)
 - [x] **Image-decode budget guard** — `ImageDecodeBudgetGuard.swift`: `measure(label:budgetMs:block:)` sync + async overloads; default 16.7 ms (one frame); logs every decode; DEBUG `assertionFailure` on violation; full-res callers pass wider budget (feat(§29): perf §29 cold-launch + GRDB pragma + scroll tracer + retry token + decode guard)
-- [x] **WebSocket reconnect backoff with jitter** — `WebSocketClient.scheduleReconnect()` upgraded: exponential backoff 1s→2s→4s … capped at 60s; full-jitter ±25% spreads reconnect storms; logs attempt number + chosen delay; `backoffBase`, `backoffMaxSeconds`, `backoffJitter` constants on the type for easy tuning. (feat(§29): §29-batch3)
-- [x] **GRDB connection-pool tuning** — `GRDBPragmaHelper.recommendedMaxReaderCount = 8` (covers 3 ValueObservation feeds + sync read-back + FTS5 burst); `readerIdleTimeoutSeconds = 300` closes surplus readers after 5 min background idle to reclaim file descriptors on low-end devices. (`Persistence/GRDBPragmaHelper.swift`. feat(§29): §29-batch3)
-- [x] **CADisplayLink scroll guard** — `CADisplayLinkScrollGuard` `@MainActor` class installs a `CADisplayLink` on `.common` run loop; measures real inter-frame intervals; filters gaps > 200 ms (background / pause); feeds `ScrollPerfTracer.shared.frameDidRender(elapsedMs:)` so all budget logic stays in one place; `#if canImport(UIKit)` guard for macOS SwiftPM builds; `start()` / `stop()` lifecycle hooks for `onAppear` / `onDisappear`. (`Core/Performance/CADisplayLinkScrollGuard.swift`. feat(§29): §29-batch3)
-- [x] **JSON decode budget guard** — `JSONDecodeBudgetGuard.decode(_:from:using:label:budgetMs:)` wraps `JSONDecoder.decode`; measures via `ContinuousClock`; logs every call to `AppLog.perf`; fires DEBUG `assertionFailure` on overage; `defaultBudgetMs = 16.7` ms (1 frame) for small payloads; `largeBudgetMs = 200` ms for bulk-sync; `decodeAsync` variant dispatches to `Task.detached(priority: .userInitiated)` so large payloads never block the main actor. (`Core/Performance/JSONDecodeBudgetGuard.swift`. feat(§29): §29-batch3)
-- [x] **Task.detached cancellation propagator** — `DetachedCancellationPropagator.launch(priority:operation:)` wraps `Task.detached`; installs `withTaskCancellationHandler` on the enclosing parent task so cooperative cancellation is forwarded to the detached child; two overloads (throwing + non-throwing); prevents orphaned background work when owning task is torn down on logout or view dismissal. (`Core/Performance/DetachedCancellationPropagator.swift`. feat(§29): §29-batch4)
-- [x] **Combine subscription registry** — `CombineSubscriptionRegistry` thread-safe reference type owns a `Set<AnyCancellable>`; cancels all subscriptions on `deinit` or explicit `cancelAll()` call; `AnyCancellable.store(in:)` convenience extension; `@unchecked Sendable` with `NSLock`; replaces ad-hoc `var bag = Set<AnyCancellable>()` patterns that leak on logout. (`Core/Performance/CombineSubscriptionRegistry.swift`. feat(§29): §29-batch4)
-- [x] **MainActor hop guard** — `MainActorHopGuard.assertOnMain(label:)` / `assertOffMain(label:)` fire DEBUG `assertionFailure` when thread affinity is wrong; `hopToMain(label:work:)` dispatches to `@MainActor` and logs a one-shot warning per unique label if a hop occurred; `ensureOffMain(label:)` async helper suspends into a background task if called on main; all checks no-op in RELEASE. (`Core/Performance/MainActorHopGuard.swift`. feat(§29): §29-batch4)
-- [x] **Throttled debouncer** — `ThrottledDebouncer<Value>` combines leading-edge throttle with trailing-edge debounce; first event fires immediately via `@MainActor` Task; mid-burst events suppressed for `throttleWindow`; last event in burst fires after `debounceWindow` quiet period; `cancel()` tears down pending task on view disappear; `NSLock`-protected state; ideal for live-search keystroke handling and scroll-driven prefetch. (`Core/Performance/ThrottledDebouncer.swift`. feat(§29): §29-batch4)
-- [x] **Sync queue prioritisation** — `SyncQueuePrioritiser` singleton manages 3-tier GCD queues (`.userInitiated` / `.utility` / `.background`) for background sync operations; `freeze(tier:)` / `unfreeze(tier:)` defer lower-priority work during scroll or thermal pressure; `deprioritise()` / `restore()` shift `.utility` → `.background` in Low Power Mode; `enqueue(tier:label:work:)` sync + `enqueueAsync` Task-based overloads; deferred items drained on unfreeze; `deferredCounts` for diagnostics. (`Core/Performance/SyncQueuePrioritiser.swift`. feat(§29): §29-batch4)
 - [ ] Instruments CLI automation: Time Profiler, Allocations, Animation Hitches; archive reports per build.
 - [ ] Benchmarks catalog: cold launch, warm launch, dashboard first paint, tickets list 1000-row scroll, inventory search 500 items, SMS thread 500-message scroll, POS add 20 items + checkout, photo attach 5 photos, sync 100 changes.
 - [ ] Device matrix: iPhone SE 3 (floor), iPhone 16 Pro, iPad 10 (low-end), iPad Pro 13" M4, Mac Mini M4 (Designed for iPad).
@@ -4726,7 +4706,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 
 ### 30.9 Illustrations
 - [x] **Empty states** — branded flat illustrations (tickets / inventory / SMS). (`DesignSystem/Polish/BrandIllustrations.swift` — 14 IllustrationType cases, SF Symbol fallbacks, asset-catalog slot ready. feat(§30.9): 58d6ed1c)
-- [x] **Tinted** via `.foregroundStyle(.brandPrimary)`. (`BrandIllustration.brandIllustrationTinted(_:)` convenience in `DesignSystem/Polish/Section30PolishExtras.swift`; default `.bizarrePrimary`; wired into BrandIllustrations preview gallery. feat(§30))
+- [ ] **Tinted** via `.foregroundStyle(.brandPrimary)`.
 - [ ] **Lottie** animations for loading, errors, success — optional lightweight.
 
 ### 30.10 Component library (reusable)
@@ -4742,10 +4722,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] **`BrandBanner(kind:message:action:)`** — sticky top banner (offline, sync-pending). <!-- shipped bcbccaa8 [actionplan agent-10] -->
 
 ### 30.11 Tone of voice
-- [x] **Friendly + concise** copy. (`DesignSystem/Polish/BrandToneOfVoice.swift` — `BrandTone.friendly(_:)` strips boilerplate prefixes ("please note that…", "an error occurred:") and trims whitespace; authoring guideline ≤120 chars. feat(§30.11))
-- [x] **Error messages** — what went wrong + what to do. (`BrandTone.error(what:do:)` builds 2-clause string; DEBUG assertion fires when remediation copy is missing. feat(§30.11))
-- [x] **Confirmation dialogs** — describe action + consequence. (`BrandTone.confirm(action:consequence:)` builds action+consequence body copy; DEBUG assertion when consequence missing. feat(§30.11))
-- [x] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not). (`JargonGlossary` map + `BrandTone.plain(_:)` rewrites A2P/10DLC/PCI-DSS/TOTP/JWT/webhook/etc. into plain staff-facing copy; `containsJargon(_:)` audit helper. feat(§30.11))
+- [ ] **Friendly + concise** copy.
+- [ ] **Error messages** — what went wrong + what to do.
+- [ ] **Confirmation dialogs** — describe action + consequence.
+- [ ] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not).
 
 ### 30.12 Theme choice — asked in Setup Wizard, not silently forced
 - [x] **First-run theme question** — `AppTheme` enum (`system` / `dark` / `light`) + `ThemeStore` persistence; default = `.system`; `ThemePreference.swift` in DesignSystem. feat(§30.12): b374d418
@@ -4806,18 +4786,18 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Testing: snapshot at each breakpoint in CI (§31.4)
 - [ ] Hierarchy: (1) Surface (`bizarreSurfaceBase` app background); (2) Content (cards, list rows); (3) Glass (nav, toolbars, sheets); (4) Overlay (alerts, toasts)
 - [ ] Rules: glass never on Content layer; Overlay may sit atop glass with additional shadow; shadow on Content to separate from Surface; no shadow on Glass (blur is the separator)
-- [x] Z-index: toasts 1000; sheets 900; nav 500; content 0 (`BrandZLayer` enum + `.brandZ(_:)` modifier in `DesignSystem/Polish/Section30PolishExtras.swift` backed by `DesignTokens.Z`; wired into `View.toastOverlay()` so the toast stack pins to `.toast`. feat(§30))
+- [ ] Z-index: toasts 1000; sheets 900; nav 500; content 0
 - [ ] Transitions: glass appears with `.animation(.springSoft)` + `.opacity`; content slides without opacity to avoid flicker
 - [ ] Background composition: `bizarreSurfaceBase` solid; glass picks up implied color from tint tokens; dark mode base `#0B0D10`, glass tint `#202228`
 - [ ] Problem: bottom sheets (`.presentationDetents`) over keyboard hide content
 - [ ] Sheet root uses `.ignoresSafeArea(.keyboard)` + inner scroll
 - [ ] `defaultScrollAnchor(.bottom)` on active compose
-- [x] `.scrollDismissesKeyboard(.interactively)` so dragging sheet down dismisses keyboard (`.sheetKeyboardSafe()` modifier in `DesignSystem/Polish/Section30PolishExtras.swift` bundles `.scrollDismissesKeyboard(.interactively)` + `.ignoresSafeArea(.keyboard, edges: .bottom)`; wired into `Customers/Contacts/CustomerContactEditSheet.swift`. feat(§30))
+- [ ] `.scrollDismissesKeyboard(.interactively)` so dragging sheet down dismisses keyboard
 - [ ] Start at `.medium` detent; promote to `.large` on keyboard show
 - [x] Smooth detent transition with `.animation` (`BrandMotion.sheetDetentTransition` spring(0.36, 0.82) + `.sheetDetentAnimated(_:)` modifier in `Motion/Section30MotionExtras.swift`. feat(§30))
 - [ ] Date / segmented pickers in sheets need `.submitLabel(.done)` + explicit commit
 - [ ] External keyboard: avoidance no-ops; sheet stays as sized
-- [x] Three levels: Strong (iOS 26 full refraction), Medium (thin material + slight tint), Minimal (opaque tint for Reduce Transparency / Low Power). (`BrandGlassIntensity` enum in `DesignSystem/Polish/Section30PolishExtras.swift` maps `.strong/.medium/.minimal` onto `BrandGlassVariant`; `.recommended(reduceTransparency:lowPower:)` auto-selects per device + a11y; wired into a new `BrandGlassBadge(_:intensity:tint:)` initializer. feat(§30))
+- [ ] Three levels: Strong (iOS 26 full refraction), Medium (thin material + slight tint), Minimal (opaque tint for Reduce Transparency / Low Power).
 - [ ] Auto-select: iOS 26 + A17+ → Strong; iOS 26 + A14-A16 → Medium; pre-iOS 26 → Medium; Low Power / Reduce Transparency → Minimal.
 - [ ] Manual override in Settings → Appearance → Glass intensity (slider or 3 buttons); never fully disables glass.
 - [ ] Perf budget: Strong ~2% extra GPU on scroll (fine on ProMotion); Minimal effectively free.
@@ -4842,10 +4822,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 
 - [x] Tokens: `Surface.skeletonBase`, `Surface.skeletonHighlight` (dark/light variants). (`DesignTokens.Skeleton.base` + `.highlight` in `DesignSystem/Tokens.swift`; asset-catalog backed + dark/light fallbacks. feat(§30.9): 6f177c96)
 - [ ] Reusable components: `SkeletonRow(.ticket)`, `SkeletonRow(.customer)`, centralized.
-- [x] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding). (`BrandDurationScale` enum in `DesignSystem/Motion/BrandDurationScale.swift` — six §30 tokens with `.animation(curve:reduceMotion:)` SwiftUI bridge; `requiresReduceMotionDowngrade` collapses durations >snappy to instant when Reduce Motion is on. feat(§30))
+- [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
 - [x] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5). <!-- BrandCurve enum in Motion/BrandCurve.swift — animation(duration:) factory + natural-response default per case. -->
 
-- [x] Reduce Motion: all > `snappy` downgrade to instant / opacity-only. (`BrandMotion.reducedIfNeeded(_:duration:reduceMotion:)` in `DesignSystem/Polish/Section30PolishExtras.swift` collapses to `.easeInOut(duration: 0)` whenever `reduceMotion` is true and `duration > MotionDurationSpec.short`; wired into `SheetDetentAnimatedModifier` in `Motion/Section30MotionExtras.swift`. feat(§30))
+- [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
 - [x] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers. (`inline_animation_duration` WARNING rule in `ios/.swiftlint.yml` — regex catches `withAnimation(.easeInOut(duration: <digit>`. feat(§67): b12)
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
 - [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion. (`StaggeredAppearModifier` + `.staggeredAppear(index:trigger:)` in `DesignSystem/BrandMotion.swift`; Reduce Motion → opacity fade only. feat(§67): d8b0c172)
@@ -4853,11 +4833,6 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] Search-bar focus glow — brand-primary glow ring animates in when search field gains focus. (`.searchBarFocusGlow(isFocused:cornerRadius:)` in `Motion/Section30MotionExtras.swift`; stroke + shadow; spring(0.28, 0.80); Reduce Motion: easeInOut 0.10s. feat(§30))
 - [x] Badge bounce on new content — scale overshoot + `.selection` haptic when badge count increases. (`.badgeBounceOnNew(count:)` in `Motion/Section30MotionExtras.swift`; spring 1.30 → 1.0 with delay; no-op on decrease; Reduce Motion: instant. feat(§30))
 - [x] Swipe-back gesture indicator — leading-edge chevron tracks drag-right progress, fades/scales with gesture. (`.swipeBackIndicator(dragOffset:)` in `Motion/Section30MotionExtras.swift`; opacity + scale proportional to 0…80pt drag; Reduce Motion: hidden. feat(§30))
-- [x] Shake-to-undo gesture — `ShakeHostingController` bridges `motionEnded(.motionShake)` to `UndoManager.undo()`; honors iOS Accessibility → Touch → Shake to Undo preference; debounce via `isGestureActive` flag; `.shakeToUndo(undoManager:isGestureActive:)` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
-- [x] Long-press preview lift — scale 1.0→1.035 + shadow bloom on long-press ≥ 0.40s; spring(0.25, 0.72); Reduce Motion: no scale/shadow change; `.longPressPreviewLift()` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
-- [x] Navigation-bar transition curve — `BrandMotion.navigationBarTransition` spring(0.32, 0.86) for programmatic title/button changes; `.navigationBarTransitionCurve(value:)` modifier; Reduce Motion: instant; `Motion/Section30MotionExtras2.swift`. feat(§30))
-- [x] List-row press scale — compress 0.965 on tap-down (response 0.14, crisp), spring back 1.0 on release (response 0.30, bouncy); `simultaneousGesture` safe alongside `.onTapGesture`; Reduce Motion: no scale; `.listRowPressScale()` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
-- [x] Pull-to-load-more curve — `BrandMotion.pullToLoadMore` interactiveSpring(0.38, 0.60); opacity + scale(0.80→1.0) on appear; `.pullToLoadMoreCurve(isVisible:)` modifier; Reduce Motion: easeInOut 0.15s; `Motion/Section30MotionExtras2.swift`. feat(§30))
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).
 - [ ] Variant rules: `.fill` on active/selected, outline on inactive; default `.monochrome`, `.multicolor` for status (warning/error), `.hierarchical` for brand surfaces where depth helps.
 - [ ] Custom SF Symbols for brand glyphs (wrench-spark) in `Assets.xcassets/Symbols/`; naming `brand.wrench.spark`.
@@ -4887,7 +4862,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `SyncService` — queue drain, backoff, dead-letter, conflict resolution.
   - [x] `Formatters` — date/currency/phone locale edge cases. (`Core/Tests/CoreTests/CurrencyFormatterTests.swift` — Currency.formatCents USD/EUR/JPY edge cases + ISO8601Factory round-trip. feat(§31.1): actionplan/§31-batch-4f2a9c)
   - `Validators` — email, phone, SKU, IMEI.
-  - [x] `URL construction` — host/path safety, query encoding, no force-unwraps. (`Networking/Tests/NetworkingTests/TypedEndpoints/EndpointURLConstructionSafetyTests.swift` — host/scheme/port preservation across multi-tenant + self-hosted bases, percent-encoding round-trip for reserved + unicode query values, empty/nil query stripping, EndpointError.invalidURL on malformed paths, error context preservation. feat(§31.1): Ios-actionplan)
+  - `URL construction` — host/path safety, query encoding, no force-unwraps.
 - [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
 - [x] **Logger seam** — `LogCaptureSink` / `LogSink` protocol + `NullLogSink` for test-only log capture without OS_log. (`Core/Sources/Core/TestFixtures/LogCaptureSink.swift` + `Core/Tests/CoreTests/TestFixtures/LogCaptureSinkTests.swift`. feat(§31): actionplan/§31-batch-4f2a9c)
 - [x] **PreviewTraitsHelper** — composable SwiftUI preview environment helper; `PreviewTrait` enum covers appearance, size class, Dynamic Type, layout direction, locale; `View.previewTraits(...)` variadic API. (`Core/Sources/Core/TestFixtures/PreviewTraitsHelper.swift`. feat(§31): Ios-actionplan)
@@ -4902,29 +4877,29 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Screen snapshots** — Dashboard, Tickets list, Ticket detail, POS cart, Settings in their golden states.
 
 ### 31.3 Integration tests
-- [x] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule). (`Persistence/Tests/PersistenceTests/GRDBTestSupport.swift` runs the production `DatabaseMigrator` against in-memory + temp-file `DatabaseQueue`; `DatabasePassphraseTests.swift` round-trips the SQLCipher passphrase through real Keychain (`SecItemAdd` / `SecItemCopyMatching` / `SecItemDelete`); `BackupManagerTests`, `CashRegisterStoreTests`, `PosAuditLogStoreTests` all open real, fully migrated DBs per the no-mock rule. feat(§31.3): Ios-actionplan)
+- [ ] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule).
 - [ ] **End-to-end API** — start local server (Docker Compose) against real endpoints; assert envelopes.
-- [x] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency. (`Persistence/Tests/PersistenceTests/SyncQueueIntegrationTests.swift` — full-stack temp-dir DB pool exercises enqueue → due → markSucceeded / failure → backoff → dead-letter promotion; `SyncFlusherTests.swift` covers reconnect-drain ordering with idempotency-key replay protection; `SyncQueueStoreTests.swift` covers the actor-level row-level invariants. feat(§31.3): Ios-actionplan)
+- [ ] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency.
 - [ ] **WebSocket** — mock server with Starscream client; assert reconnect + event handling.
-- [x] **Keychain** — real Keychain access with test service; cleanup after. (`Core/Tests/CoreTests/TenantSession/KeychainIntegrationTests.swift` — exercises real `TenantKeychainStore` (SecItemAdd/Update/CopyMatching/Delete) under per-test UUID-scoped service name; covers write→read round-trip, idempotent overwrite, missing-account → nil, idempotent delete, account isolation, service isolation; aggressive setUp+tearDown cleanup keeps suite hermetic. feat(§31.3): Ios-actionplan)
+- [ ] **Keychain** — real Keychain access with test service; cleanup after.
 
 ### 31.4 UI tests (XCUITest)
 - [x] **Golden paths** — login → dashboard → new ticket → add payment → print receipt. (Scaffold: `BizarreCRMUITestCase` base class + `LoginPage`/`DashboardPage`/`TicketPage`/`POSCartPage` page objects + `GoldenPathTicketFlowTests`, `GoldenPathPOSFlowTests`, `GoldenPathSMSFlowTests`, `OfflineSyncFlowTests`, `AuthFlowTests` placeholder classes + `UITestLaunchArg`/`UITestEnvVar` typed constants. `ios/Tests/UITestScaffold.swift`. feat(§31.4): Ios-actionplan)
 - [ ] **POS** — catalog browse → add 3 items → customer pick → BlockChyp stub → success screen.
 - [ ] **SMS** — open thread → send → receive WS event → bubble appears.
 - [ ] **Offline** — toggle airplane → create customer → toggle online → verify sync.
-- [x] **Auth** — login / logout / 401 auto-logout / biometric re-auth. (`ios/Tests/UITestScaffold.swift::AuthFlowTests` — `test_auth_loginAndLogout` drives `LoginPage` → `DashboardPage` → Settings → `settingsSignOutButton` → confirm dialog → asserts return to login; `test_auth_401AutoLogout` exercises the mock-auth + force-401 path through `AuthSessionRefresher` and asserts post-logout landing on the tenant field. feat(§31.4): Ios-actionplan)
-- [x] **Accessibility audits** — `XCUIApplication.performAccessibilityAudit()` per screen (iOS 17+). (`ios/Tests/UITestScaffold.swift::AccessibilityAuditTests` — five per-screen tests (login, dashboard, tickets list, POS cart, settings) call `app.performAccessibilityAudit(for:)` with the explicit category set `[.contrast, .elementDetection, .hitRegion, .sufficientElementDescription, .dynamicType, .textClipped, .trait, .action]`. Base-class teardown audit is opted out so the per-screen audit owns the gate. iOS 17+ `@available` guard. feat(§31.4): Ios-actionplan)
+- [ ] **Auth** — login / logout / 401 auto-logout / biometric re-auth.
+- [ ] **Accessibility audits** — `XCUIApplication.performAccessibilityAudit()` per screen (iOS 17+).
 
 ### 31.5 Performance tests (XCTMetric)
-- [x] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement. (`ios/Tests/Performance/ColdStartTests.swift` — `testLaunchTimeApplicationMetric` measures process spawn → first-frame across 5 iterations using Apple's purpose-built `XCTApplicationLaunchMetric`; baseline stored in `.xcresult` for PR diff regression detection. Complements existing `testColdStartTime` wall-clock + `testColdStartMeasured` `XCTClockMetric` baselines. feat(§31.5): Ios-actionplan)
-- [x] **Scroll frame drops** — `XCTOSSignpostMetric` for tickets list. (`ios/Tests/Performance/PerformanceTestCase.swift` — `measureScroll(on:)` captures `XCTOSSignpostMetric.scrollDecelerationMetric` + `navigationTransitionMetric` + `XCTClockMetric`; consumed by `TicketListScrollTests`, `CustomerListScrollTests`, `InventoryListScrollTests`, `InvoiceListScrollTests`, `SmsThreadListScrollTests`. Asserts per-frame budget from `PerformanceBudgets`. feat(§31.5): Ios-actionplan)
+- [ ] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement.
+- [ ] **Scroll frame drops** — `XCTOSSignpostMetric` for tickets list.
 - [x] **Memory** — `XCTMemoryMetric` baseline. (`Core/Tests/CoreTests/Performance/PerfBaselineRunnerTests.swift` — `test_baseline_logCaptureSink_memoryFootprint` XCTMemoryMetric measure block; `PerfBudgetEnforcementTests` hard-ceiling guards. feat(§31.5): Ios-actionplan)
 - [x] **Storage writes** — `XCTStorageMetric` on heavy sync. (`PerfBaselineRunnerTests` — `test_baseline_fixtureLoader_200Items` multi-metric clock+CPU+memory baseline; storage-metric UITest scaffolded in `UITestScaffold.swift`. feat(§31.5): Ios-actionplan)
 - [x] **CPU** — per-flow CPU time budget. (`PerfBaselineRunnerTests` — `test_baseline_currencyFormat_cpuTime` XCTCPUMetric + `test_baseline_fixtureLoader_200Items` combined; `PerfBudgetEnforcementTests.test_budget_singleCurrencyFormat_under1ms`. feat(§31.5): Ios-actionplan)
 
 ### 31.6 Accessibility audit
-- [x] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations. (`ios/Tests/AccessibilityAuditCIGateTests.swift` — `AccessibilityAuditCIGateTests` (iOS 17+ guarded) launches app with mock-auth + mock-api flags and runs `XCUIApplication.performAccessibilityAudit(for:)` per primary surface (dashboard, tickets list, settings) with the full audit category set: `.contrast`, `.elementDetection`, `.hitRegion`, `.sufficientElementDescription`, `.dynamicType`, `.textClipped`, `.trait`, `.action`. Any new violation throws → test fails → CI build fails. feat(§31.6): Ios-actionplan)
+- [ ] **`XCTest.performAccessibilityAudit(for:)`** in CI fails build on new violations.
 - [x] **Contrast** asserted on brand palette. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — WCAG AA 4.5:1 / 3:1 pairs for dark + light mode BrandPalette tokens. feat(§31.6): actionplan/§31-batch-4f2a9c)
 - [x] **Tap target sizing** asserted on primary actions. (`DesignSystem/Tests/DesignSystemTests/ContrastRatioTests.swift` — TappableFrameModifier defaults + Icon size floor sweep. feat(§31.6): actionplan/§31-batch-4f2a9c)
 
@@ -4942,7 +4917,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Fastlane test lane** — `bundle exec fastlane test` runs full `AllTests` test plan on configurable device; `only_unit:true` / `only_ui:true` subsets; JUnit XML + HTML to `fastlane/test_output/`; coverage extracted to `fastlane/coverage/`; legacy `:tests` alias preserved. (`ios/fastlane/Fastfile` `:test` lane. feat(§31.9): Ios-actionplan)
 - [ ] **Coverage HTML** posted to PR.
 - [ ] **Snapshot diffs** visible in PR.
-- [x] **Flake detection** — retry failing tests once; flag chronic flakes. (`ios/fastlane/Fastfile` `:test` lane — `flake_retries` option (default 1) wired through `run_tests(number_of_retries:)`, which invokes `xcodebuild -retry-tests-on-failure -test-iterations N`. Tests that pass on retry are tagged `flaky` in the JUnit + xcresult output without failing the build; chronic flakes surface as repeat entries in PR test reports. Override via `bundle exec fastlane test flake_retries:0` for hermetic runs. feat(§31.9): Ios-actionplan)
+- [ ] **Flake detection** — retry failing tests once; flag chronic flakes.
 
 ### 31.10 Device matrix
 - [ ] iPhone SE (2022), iPhone 13, iPhone 15 Pro, iPad mini, iPad Air, iPad Pro 13".
@@ -4963,9 +4938,9 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 > **Data-sovereignty rule (MANDATORY).** All telemetry, metrics, crash reports, logs, events, heartbeats, experiment assignments, and support bundles report **only to the server the user set at login** — be it `bizarrecrm.com` or a self-hosted URL. **No third-party analytics, crash SaaS, or SDK sink** may exfiltrate data off-tenant. Sentry / Firebase / Mixpanel / Amplitude / New Relic / Datadog SDKs are banned. Apple crash logs via App Store Connect are the only exception (already user-opt-in at device level). `APIClient.baseURL` is the single egress.
 
 ### 32.0 Egress allowlist
-- [x] **Single sink** — telemetry collector reads `APIClient.baseURL` at send-time. No hardcoded URLs. (`TenantServerAnalyticsSink.EndpointProvider` closure resolved at every `post(_:)`; `defaultEndpointProvider(userDefaults:baseURLKey:path:)` reads the canonical `com.bizarrecrm.apiBaseURL` UserDefaults key — same key `CrashReporter` uses — and appends `telemetry/events`. Legacy static-URL init preserved for tests. feat(§32): single-sink dynamic endpoint provider)
+- [ ] **Single sink** — telemetry collector reads `APIClient.baseURL` at send-time. No hardcoded URLs.
 - [x] **Multi-tenant switch** — when user switches tenant, all in-flight telemetry flushed to old server; new events route to new server. (`TelemetryTenantRouter` actor in `Core/Telemetry/Sovereignty/TelemetryTenantRouter.swift` — `switchTenant(newSlug:newFlusher:)` drains old buffer with 5s deadline, then replaces flusher. feat(§32.0): b11)
-- [x] **Self-hosted endpoints** — `POST /telemetry/events`, `POST /telemetry/metrics`, `POST /telemetry/crashes`, `POST /telemetry/diagnostics`, `POST /telemetry/heartbeat`. Document in server API spec. (`TelemetryEndpoints` enum in `Core/Telemetry/TelemetryEndpoints.swift` — five canonical relative paths with `httpMethod` / `path` / `url(relativeTo:)` helpers; single source of truth so client + server-route registry stay aligned. feat(§32.0): telemetry endpoint constants)
+- [ ] **Self-hosted endpoints** — `POST /telemetry/events`, `POST /telemetry/metrics`, `POST /telemetry/crashes`, `POST /telemetry/diagnostics`, `POST /telemetry/heartbeat`. Document in server API spec.
 - [x] **Offline buffer** — events batched in GRDB `telemetry_queue`; flushed when online. (Migration `007_telemetry_queue.sql`: id, event_name, payload_json, session_id, tenant_slug, enqueued_at, status, attempt_count; idx on (status, enqueued_at); 10k row cap at app layer. feat(§32.0): 59a160ca)
 - [x] **Backpressure** — server returns 429 → back-off; drop oldest events past 10k cap. (`TelemetryTenantRouter._flush(_:using:)` catches `TelemetryFlushError.rateLimited(retryAfter:)`, sleeps, retries once; also drops oldest past `hardCapEvents=10_000`. feat(§32.0): b11)
 - [x] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails. (`ios/scripts/sdk-ban.sh` + `.github/workflows/ios-lint.yml`; dry-run passes clean on current tree.)
@@ -4974,9 +4949,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 
 ### 32.1 OSLog
 - [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
-- [x] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`. (`LogLevel` enum in `Core/Logging/LogLevel.swift` covers `.debug/.info/.notice/.warning/.error/.critical` (`Comparable`); `OSLogPrivacyGuide.swift` documents the §32.1 mapping (`.critical` ⇄ OSLog `.fault` for unexpected-state crash analytics) with worked examples per level. feat(§32.1): log-level catalog)
-- [x] **NSError → AppLog auto-bridge** — `AppLog.bridge(_ error: Error, logger: Logger, requestId: String?)` in `Core/Logging/AppLog.swift`; logs `[domain:code] redacted-description` at `.error` level; requestId passed as public metadata; `LogRedactor.redact()` applied to `localizedDescription` before emission. (feat(§32): NSError → AppLog auto-bridge)
-- [x] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII. (`Core/Logging/OSLogPrivacyGuide.swift` is the canonical reference: `.private` default for user-derived data, `.public` for IDs/enums/numerics/paths/versions; documents the SwiftLint rule (`osSLogPrivacyRequired`) that enforces an explicit `privacy:` argument on every dynamic interpolation. feat(§32.1): privacy-annotation guide)
+- [ ] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`.
+- [ ] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII.
 - [x] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders. (`AppLog.Signpost` enum in `Core/Logging/AppLog.swift` — `.sync`, `.api`, `.listRender`, `.dbWrite`, `.imageLoad` `OSSignposter` instances for Instruments Time Profiler. feat(§32.1): OSSignposter catalog 173d99c4)
 - [ ] **In-app viewer** — Settings → Diagnostics streams live log (filters by category/level).
 
@@ -4984,7 +4958,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Subscribe** to `MXMetricManager` — hourly payloads. (`MetricKitManager` in `Core/Performance/`; `MXMetricManagerSubscriber` delegate; `MXMetricPayload.jsonRepresentation()` serialised into `MetricPayloadEnvelope`; POSTs to `/telemetry/metrics`. feat(§32.2) ae5febcf)
 - [x] **Collect** — launch time, hangs, hitches, CPU, memory, disk, battery. (Full `MXMetricPayload` JSON payload; MetricKit provides all standard counters.) <!-- shipped ae5febcf -->
 - [x] **Upload** — batched daily to server endpoint. (`TenantServerAnalyticsSink` for analytics; `MetricKitManager` for MetricKit hourly batch → `POST /telemetry/metrics`. feat(§32.2) ae5febcf)
-- [x] **Diagnostic payloads** — hitch + CPU exception diagnostics. (`MetricKitDelegate.didReceive(_ payloads: [MXDiagnosticPayload])` in `Core/Performance/MetricKitManager.swift`; serialises each payload via `MXDiagnosticPayload.jsonRepresentation()` wrapped in `MetricPayloadEnvelope(kind: "diagnostic_payload", ...)`; POSTs to `/diagnostics/report` via injected `uploadDiagnostic` closure; `MetricKitManager.init` extended with `uploadDiagnostic` param. feat(§32.2): MetricKit diagnostic payload subscription)
+- [ ] **Diagnostic payloads** — hitch + CPU exception diagnostics.
 
 ### 32.3 Crash reporting
 - [ ] **Apple crash logs** — TestFlight + App Store Connect default (device-level opt-in only).
@@ -5003,17 +4977,11 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Screen views** — `screen_view { name, duration_ms, duration_bucket }`. (`ScreenViewModifier` + `.trackScreenView(name:)` in `Core/Telemetry/ScreenViewTracking.swift`; records `screen.viewed` on appear+disappear with duration_ms + histogram bucket via `ScreenDurationBucket.classify(_:)` — buckets: flash/glance/engaged/deep/marathon. feat(§32.4 §32): screen-view duration histogram)
 - [x] **Action taps** — `action_tap { screen, action, entity_id? }`. (`Analytics.trackAction(_:screen:entityId:)` — entity IDs hashed via `.hashValue` hex; never raw. feat(§32.4): c342811e)
 - [x] **Mutations** — `mutation_start`, `mutation_complete`, `mutation_failed { reason }`. (`Analytics.trackMutationStart/Complete/Failed` routing through `SinkDispatcher` → `AnalyticsRedactor`. feat(§32.4): c342811e)
-- [x] **Sync** — `sync_start`, `sync_complete { delta_count, duration_ms }`, `sync_failed`. (`Analytics.trackSyncStart(entityType:trigger:)`, `trackSyncComplete(entityType:deltaCount:durationMs:)`, `trackSyncFailed(entityType:reason:)` in `Core/Telemetry/Analytics.swift`; `reason` runs through `AnalyticsRedactor.scrubString` so a stray server message cannot leak PII. Catalog cases `.syncStarted/.syncCompleted/.syncFailed` already declared. feat(§32): sync lifecycle helpers)
-- [x] **POS** — `pos_sale_complete { total, tender }`, `pos_sale_failed { reason }`. (`Analytics.trackPosSaleComplete(totalCents:tender:itemCount:)` and `trackPosSaleFailed(reason:tender:)` in `Core/Telemetry/Analytics.swift`; `reason` redacted; no customer PII fields. Catalog cases `.posSaleComplete/.posSaleFailed` already declared. feat(§32): POS sale lifecycle helpers)
-- [x] **Performance** — `cold_launch_ms`, `first_paint_ms`. (`Analytics.trackColdLaunchMs(_:launchKind:)` and `trackFirstPaintMs(_:screen:)` in `Core/Telemetry/Analytics.swift`; integer milliseconds + optional kind/screen tag; `launch_kind` + `trigger` added to `AnalyticsRedactor.allowedDimensions`. Catalog cases `.coldLaunchMs/.firstPaintMs` already declared. feat(§32): perf launch/paint helpers)
-- [x] **Server response-time histogram** — `perf.server_response_time { endpoint, duration_ms, bucket, status_code }` event added to `AnalyticsEventCatalog`; `Analytics.trackServerResponseTime(endpoint:durationMs:statusCode:)` helper in `Core/Telemetry/Analytics.swift`; `ServerResponseTimeBucket` enum with five buckets (fast <200 ms / ok 200–499 / slow 500–999 / very_slow 1000–2999 / timeout ≥3000) mirrors server dashboard breakpoints. (feat(§32): server response-time histogram)
+- [ ] **Sync** — `sync_start`, `sync_complete { delta_count, duration_ms }`, `sync_failed`.
+- [ ] **POS** — `pos_sale_complete { total, tender }`, `pos_sale_failed { reason }`.
+- [ ] **Performance** — `cold_launch_ms`, `first_paint_ms`.
 - [ ] **Retention** — dau / mau computed server-side.
 - [x] **Server-error event catalog** — three new events in `AnalyticsEventCatalog.swift`: `server.error.received { endpoint, status_code, error_code?, request_id? }`, `server.rate_limited { endpoint, status_code, retry_after_seconds? }`, `server.timeout { endpoint, timeout_seconds }`. Helpers: `Analytics.trackServerError`, `trackRateLimitHit`, `trackServerTimeout` in `Core/Telemetry/Analytics.swift`. (feat(§32): server-error event catalog)
-- [x] **WebSocket connect/disconnect events** — `ws.connected { url_host, latency_ms? }` and `ws.disconnected { code?, reason? }` added to `AnalyticsEventCatalog.swift` (category: `appLifecycle`); helpers `Analytics.trackWebSocketConnected(urlHost:latencyMs:)` and `Analytics.trackWebSocketDisconnected(code:reason:)` in `Core/Telemetry/Analytics.swift`. (feat(§32): WebSocket connect/disconnect telemetry events)
-- [x] **Deep-link source attribution** — `deeplink.attributed { source, screen? }` event in `AnalyticsEventCatalog.swift` (category: `navigation`); `source` is one of `"push_notification"`, `"universal_link"`, `"url_scheme"`, `"spotlight"`, `"widget"`, `"siri_shortcut"`, `"qr_code"`, or `"unknown"`; helper `Analytics.trackDeepLinkAttributed(source:screen:)` in `Core/Telemetry/Analytics.swift`. (feat(§32): deep-link source attribution event)
-- [x] **App-update available event** — `app.update_available { current_version, available_version }` in `AnalyticsEventCatalog.swift` (category: `appLifecycle`); helper `Analytics.trackAppUpdateAvailable(currentVersion:availableVersion:)` in `Core/Telemetry/Analytics.swift`. (feat(§32): app-update available telemetry event)
-- [x] **Low-disk-space event** — `device.low_disk_space { free_bytes, threshold_bytes }` in `AnalyticsEventCatalog.swift` (category: `hardware`); helper `Analytics.trackLowDiskSpace(freeBytes:thresholdBytes:)` in `Core/Telemetry/Analytics.swift`; recommended threshold 500 MB (`524_288_000` bytes). (feat(§32): low-disk-space telemetry event)
-- [x] **NSCache memory-pressure event** — `device.nscache_memory_pressure { cache_name, evicted_count? }` in `AnalyticsEventCatalog.swift` (category: `hardware`); helper `Analytics.trackNSCacheMemoryPressure(cacheName:evictedCount:)` in `Core/Telemetry/Analytics.swift`; wire to `UIApplication.didReceiveMemoryWarningNotification`. (feat(§32): NSCache memory-pressure telemetry event)
 
 ### 32.5 User-level controls
 - [x] **Analytics opt-out** in Settings → Privacy — suspends event sink entirely. (`SinkDispatcher` already gates on `consentManager.shouldSendEvents`; opt-in/out flow now fires `analyticsOptedIn` / `analyticsOptedOut` events from `AnalyticsConsentManager.optIn()/optOut()` in `Core/Telemetry/AnalyticsConsentManager.swift`. feat(§32): opt-in flow telemetry)
@@ -5057,12 +5025,11 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 | Biometric-derived tokens | `*SECRET*` | |
 
 - [ ] **Redactor is the ONLY serializer path.** All `os_log`, `MetricKit`, event queue, crash payload, diagnostic bundle serializers go through it. Direct string interpolation bypassing it is a SwiftLint violation.
-- [x] **Network error redactor** — URL credential stripping (`scheme://user:pass@host` → `scheme://*SECRET*@host`), query-value masking (`?key=VALUE` → `?key=*REDACTED*`), token-fragment stripping (`#<base64>` → `#*SECRET*`) added as three new rules at the top of `LogRedactor.rules` in `Core/Logging/LogRedactor.swift`; run before all existing PII rules so URL-embedded credentials don't survive into downstream pattern matches. (feat(§32): network error URL redaction rules)
-- [x] **Field-shape detection fallback** — for any string not explicitly tagged (legacy call sites) the Redactor regex-detects phone-like / email-like / token-like patterns and substitutes `*LIKELY_PII*`. False positives acceptable; raw leaks are not. (`LogRedactor.redactWithLikelyPIIFallback(_:)` runs the strict rule table first then a looser shape pass for untagged digit runs (≥7 digits), obfuscated `[at]`/`@` emails, and 20+ char alphanumeric token shapes; `AnalyticsRedactor.scrub(_:)` now routes string property values through it so untagged legacy callsites are guarded by default. feat(§32): LIKELY_PII shape fallback)
+- [ ] **Field-shape detection fallback** — for any string not explicitly tagged (legacy call sites) the Redactor regex-detects phone-like / email-like / token-like patterns and substitutes `*LIKELY_PII*`. False positives acceptable; raw leaks are not.
 - [ ] **Structured logging preferred** — `Logger.event("pos_sale_complete", properties: ["total_cents": 1200, "tender": "card", "customer_id_hash": hash(id)])`. Numeric + enum + hashed-ID values pass through unchanged; free-form text is replaced.
 - [x] **Stable hashes, not raw IDs** — when correlation is needed, `SHA-256` truncated to 8 chars, salted per tenant so the hash can't be reversed across tenants. (`TelemetryRedactor.hashTenantId(_:salt:)` in `Core/Telemetry/Sovereignty/TelemetryRedactor.swift` — SHA-256(salt:tenantId) first 4 bytes → 8 hex chars. feat(§32): hash-anonymizer)
-- [x] **Allowlist, not blocklist** — events ship only fields declared in their schema (see §32.4 taxonomy). Unknown fields stripped at serializer rather than redacted-through. (`AnalyticsRedactor.allowedDimensions: Set<String>` — 30-key canonical allowlist in `Core/Telemetry/AnalyticsRedactor.swift`; `scrub(_:allowlist:)` gains optional `allowlist` param defaulting to `allowedDimensions`; unknown keys stripped before PII-blocklist pass; legacy callers pass `allowlist: nil` to opt out. feat(§32.6): custom dimension allowlist)
-- [x] **Unit tests** assert: every sample input in the table above emits the corresponding placeholder; the string `@example.com` and `555-1212` and similar canaries never appear in a serialized payload. (`Telemetry§32.6CanaryTests.swift` in `Packages/Core/Tests/CoreTests/` — canary fixtures (emails, phones, PANs, IMEIs, OTPs, bearer tokens, device serials) asserted against `LogRedactor.redact` + `AnalyticsRedactor.scrub`; explicit `@example.com` regression test plus PII-key-drop and embedded-email-scrub cases. (Note: 7-digit local format `555-1212` requires a follow-up rule extension — explicitly documented in the test as the next gap.) feat(§32.6): canary tests)
+- [ ] **Allowlist, not blocklist** — events ship only fields declared in their schema (see §32.4 taxonomy). Unknown fields stripped at serializer rather than redacted-through.
+- [ ] **Unit tests** assert: every sample input in the table above emits the corresponding placeholder; the string `@example.com` and `555-1212` and similar canaries never appear in a serialized payload.
 - [ ] **CI fixture** — weekly job replays last 7 days of staged telemetry payloads through a PII scanner (string-length entropy + regex) and fails the build if any canary pattern slips through.
 - [ ] **Crash payloads** — stack frames + device model + OS version + app version + thread state. No heap snapshot, no register-pointing-at-string dumps (which could carry tokens), no user-facing strings.
 - [ ] **Incident response** — if raw PII is discovered in telemetry, runbook `docs/runbooks/telemetry-leak.md` triggers: purge the affected period on tenant server; notify tenant admin; audit log the incident; patch the call site; add regression test.
@@ -5075,7 +5042,7 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 ### 32.8 Experimentation / feature flags
 - [x] **Feature-flag toggle event** — `settings.featureflag.toggled { flag_key, enabled, source }` fired via `Analytics.trackFeatureFlagToggled(flagKey:enabled:source:)` in `Core/Telemetry/Analytics.swift`. `source` is `"server"` / `"local_override"` / `"default"`. (feat(§32): feature-flag toggle event + server-error catalog)
 - [ ] **Server-driven flags** — `/feature-flags?user=` response cached; applied per session.
-- [x] **Local override** (dev builds) — toggle any flag. (`FeatureFlagResolver.isEnabled(_:)` in `Core/Environment/FeatureFlagResolver.swift` checks `UserDefaults` keyed `com.bizarrecrm.featureFlag.<rawValue>` first; `BuildFlavor.development/staging` enable the `featureFlagOverrides` flag so the in-app debug drawer (`FeatureFlagsView` in Settings/TenantAdmin) can toggle any flag at runtime. Production never overrides. feat(§32.8): local override priority)
+- [ ] **Local override** (dev builds) — toggle any flag.
 - [ ] **A/B** — experiment bucket assigned at first session.
 
 ### 32.9 Heartbeat (liveness)
@@ -8375,7 +8342,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Period segmented control low-contrast selection.** `30D` selected pill is the same near-grey as unselected `90D` — only a tiny shade difference. Use the cream-orange brand selection treatment.
 - [ ] **Day/Week/Month sub-segment same low-contrast issue.** "Day" selected; visually indistinguishable from peers.
 - [ ] **Revenue card sparkline tiny + no axis labels.** A small inline chart with no scale is decorative-only; either drop or label.
-- [x] **`↗ 0.0%` shown on zero-change.** A 0.0% delta should not render the up-arrow + green colour; show a flat dash or `–`.
+- [ ] **`↗ 0.0%` shown on zero-change.** A 0.0% delta should not render the up-arrow + green colour; show a flat dash or `–`.
 - [ ] **Period Summary card content broken.** Four columns: dollar-icon "$0…" truncated to two characters, page-icon "0", people-icon "0", dollar "$0". Missing labels (Sales / Tickets / Customers / Avg). Tile too narrow; either wider tile or vertical stack.
 - [ ] **Period Summary `$0…` truncated.** First-column value appears clipped (`$0…R`). Either widen the column or use compact currency formatting.
 - [ ] **Revenue card duplicates Trend + By Period charts side-by-side.** Two near-identical bar charts render in one card — confusing for non-analyst cashier. Pick one or make the second a tab.
@@ -8394,7 +8361,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **`Tickets by Status` chart text overlays bars.** Status labels (`Created`, `Repaired & Collected`, `Waiting for Inspection`, `Waiting for Parts`, `Parts arrived, need the device — SMS`, etc.) render directly on top of the colored bars. Move labels to the left axis or above the bar.
 - [ ] **`Tickets by Status` X-axis numbers (`0  10  20`) overlap status names too.** Whole chart renders on top of itself.
 - [ ] **All bars same teal color.** Web client has color-coded statuses; iPad doesn't honour the tenant status color (server returns a hex per status).
-- [x] **`Avg Ticket Value $0.00 ↗ 0.0%` with green pill.** Same zero-vs-trend problem as Sales tab.
+- [ ] **`Avg Ticket Value $0.00 ↗ 0.0%` with green pill.** Same zero-vs-trend problem as Sales tab.
 - [ ] **`Avg Ticket Value` subtitle `vs $0.00 prior period`.** Comparing zero to zero is non-actionable; hide row or replace with `Not enough data`.
 - [ ] **`Tickets by Technician` shows only `Admin · 0`.** With one technician and zero tickets, the entire bar chart should be a "Not enough data" empty state, not a chart with a 0-length bar.
 - [ ] **`Tap a bar to view technician details` hint shows even when there are no bars.** Suppress until there is data.
@@ -8436,7 +8403,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **`Net: +0 customers · 0.0% churn rate` row redundant with the three-column block above.** Same data restated in different units.
 - [ ] **`Revenue & Margin by Category` empty.** Either hide on no-data or render a placeholder bar chart.
 - [ ] **`Conversion Funnel` shows three blank horizontal bars.** Skeleton-loading or empty data — UI doesn't say. If empty, label the funnel stages (Lead → Quoted → Won) so the cashier sees the shape even at zero.
-- [x] **Insights tab is heavy with empty cards.** Aggregate empty-state: when ≥80% of cards have no data, render a single `Insights need more activity to populate · come back after your first 10 sales` card and hide the empties.
+- [ ] **Insights tab is heavy with empty cards.** Aggregate empty-state: when ≥80% of cards have no data, render a single `Insights need more activity to populate · come back after your first 10 sales` card and hide the empties.
 - [ ] **`Repeat Customer Rate` shows `0.0% repeat rate` + `0 D avg return time`.** If zero customers repeated, "0 D avg return time" is undefined — show `—` instead of `0`.
 - [ ] **`Labor Utilization by Tech` empty state has no header indicator.** Add the wrench glyph and a clearer "No labor data" state.
 - [ ] **`Avg Ticket Value Trend` empty state lacks trend chart placeholder.** Skeleton bars or sparkline outline would communicate intent better.
@@ -8457,7 +8424,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **No section grouping in rail.** Operations / Reports / Settings should be visually grouped with subtle dividers.
 - [ ] **All 8 nav icons same visual weight.** Selected has a pill background but icons themselves look identical — bump the selected icon weight or color.
 - [ ] **Profile circle bottom-left detached.** Floating avatar with a thin divider above; integrate into the rail's bottom group.
-- [x] **Rail icons not perfectly center-aligned.** Subtle x-offset between icons; verify HStack alignment.
+- [ ] **Rail icons not perfectly center-aligned.** Subtle x-offset between icons; verify HStack alignment.
 
 ### 91.8 Topbar consistency
 
@@ -8476,13 +8443,13 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 
 - [ ] **Reports body title `Reports` is 28pt with no descriptor / subtitle.** Dashboard uses `Good afternoon` greeting; Reports could use date range or store name as subtitle.
 - [ ] **KPI numbers vary in font weight.** Some bold, some regular within same card row — verify token usage.
-- [x] **Axis labels < 12pt.** Charts use 9–10pt labels; below 11pt fails Dynamic Type test.
+- [ ] **Axis labels < 12pt.** Charts use 9–10pt labels; below 11pt fails Dynamic Type test.
 - [ ] **`Period Summary` inline values colored cream while labels white.** Reverse — labels should be muted.
 
 ### 91.11 Charts
 
-- [x] **Y-axis labels low contrast** (white-30% on dark — barely legible).
-- [x] **Chart legends not surfaced** — bar colors vary but no key.
+- [ ] **Y-axis labels low contrast** (white-30% on dark — barely legible).
+- [ ] **Chart legends not surfaced** — bar colors vary but no key.
 - [ ] **No empty-state visual for charts.** Empty chart vs empty card both render as blank — introduce a "shape outline" empty state.
 - [ ] **No tap interaction on bars / sparklines.** Tap a bar in `Tickets by Status` does nothing; `Tap a bar to view technician details` hint promises an interaction that isn't wired.
 
@@ -8496,9 +8463,9 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 
 ### 91.13 Accessibility
 
-- [x] **Many label texts under 12pt** (period units, axis labels, KPI captions).
+- [ ] **Many label texts under 12pt** (period units, axis labels, KPI captions).
 - [ ] **Chart color-only encoding** — VoiceOver / Switch Control can't read which color is which status.
-- [x] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
+- [ ] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
 - [x] **No accessibility labels on charts.** `ChartScreenshotAltText` modifier + `.chartScreenshotAltText()` wired to `ZoomableRevenueChartCard`; `AXChartDescriptor` already present on `RevenueChartCard`.
 - [ ] **Sync chip `Just now` with no `accessibilityLabel`** — VoiceOver reads only "Just now" without context.
 - [x] **Dynamic type clamp on Reports sub-tab pills.** `.dynamicTypeSize(.xSmall ... .accessibility3)` + `.lineLimit(1)` on tab pill labels in `subTabPicker` (`ReportsView.swift`).
@@ -8526,6 +8493,6 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - [ ] **Define a tenant-zero-state mode.** When tenant has < N transactions in selected period, swap the entire reports surface for a friendly onboarding panel ("Run your first sale to unlock these reports").
 - [ ] **Empty-state hierarchy review.** Audit every empty state: skeleton (loading) vs zero-data vs error vs offline; pick one of four and label it.
 - [ ] **Card-grid alignment.** Use a single shared `ReportsGrid` with consistent row heights and column counts on landscape vs portrait.
-- [x] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
+- [ ] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
 
 

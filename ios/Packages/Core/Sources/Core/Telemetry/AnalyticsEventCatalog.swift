@@ -126,15 +126,6 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case supportEmailSent     = "help.support.email.sent"
     case bugReportSubmitted   = "help.bugreport.submitted"
 
-    // MARK: Connectivity
-
-    /// §32 — WebSocket transport connected to the tenant push channel.
-    /// Properties: `url_host` (string — hostname only, no path/query), `latency_ms`? (int).
-    case webSocketConnected   = "ws.connected"
-    /// §32 — WebSocket transport disconnected. Properties: `reason`? (string, machine-readable
-    /// close-code label e.g. `"going_away"`, `"protocol_error"`), `code`? (int — RFC 6455 code).
-    case webSocketDisconnected = "ws.disconnected"
-
     // MARK: SMS / Communications
 
     /// §91.14 — fired when `GET /sms/conversations` response fails JSON decode.
@@ -181,10 +172,6 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case coldLaunchMs         = "perf.cold_launch_ms"
     /// §32.4 — `first_paint_ms` — milliseconds from scene activation to first meaningful paint.
     case firstPaintMs         = "perf.first_paint_ms"
-    /// §32 — Server response time histogram bucket.
-    /// Properties: `endpoint` (string), `duration_ms` (int), `bucket` (string),
-    /// `status_code` (int).
-    case serverResponseTime   = "perf.server_response_time"
 
     // MARK: Widgets / Live Activities
 
@@ -193,38 +180,15 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case liveActivityEnded    = "live_activity.ended"
     case featureFirstUse      = "feature.first_use"
 
-    // MARK: Deep-link attribution
-
-    /// §32 — App was opened via a deep link. Properties:
-    /// `source` (string — `"push_notification"`, `"universal_link"`, `"url_scheme"`,
-    /// `"spotlight"`, `"widget"`, `"siri_shortcut"`, `"qr_code"`, or `"unknown"`),
-    /// `screen`? (string — destination screen name, PII-free).
-    case deepLinkAttributed   = "deeplink.attributed"
-
-    // MARK: Device health
-
-    /// §32 — App Store / TestFlight signals an app update is available.
-    /// Properties: `current_version` (string), `available_version` (string).
-    case appUpdateAvailable   = "app.update_available"
-
-    /// §32 — Device free-disk-space crossed the low threshold (< 500 MB).
-    /// Properties: `free_bytes` (int), `threshold_bytes` (int).
-    case lowDiskSpace         = "device.low_disk_space"
-
-    /// §32 — `NSCache` received a `UIApplication.didReceiveMemoryWarningNotification` and
-    /// evicted its contents. Properties: `cache_name` (string), `evicted_count`? (int).
-    case nsCacheMemoryPressure = "device.nscache_memory_pressure"
-
     // MARK: — Category mapping
 
     public var category: AnalyticsCategory {
         switch self {
         case .appLaunched, .appBackgrounded, .appForegrounded,
-             .sessionStarted, .sessionEnded,
-             .appUpdateAvailable:
+             .sessionStarted, .sessionEnded:
             return .appLifecycle
 
-        case .screenViewed, .tabSwitched, .deepLinkOpened, .deepLinkAttributed:
+        case .screenViewed, .tabSwitched, .deepLinkOpened:
             return .navigation
 
         case .loginAttempted, .loginSucceeded, .loginFailed,
@@ -244,17 +208,13 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
              .syncQueueDrained, .offlineFallback, .syncConflictResolved,
              .syncStarted, .syncCompleted, .syncFailed,
              .posSaleComplete, .posSaleFailed,
-             .coldLaunchMs, .firstPaintMs, .serverResponseTime,
+             .coldLaunchMs, .firstPaintMs,
              .widgetViewed, .liveActivityStarted, .liveActivityEnded, .featureFirstUse:
             return .domain
 
         case .drawerKicked, .receiptPrinted, .barcodeScanned, .printerError,
-             .printerOnline, .printerOffline,
-             .lowDiskSpace, .nsCacheMemoryPressure:
+             .printerOnline, .printerOffline:
             return .hardware
-
-        case .webSocketConnected, .webSocketDisconnected:
-            return .appLifecycle
 
         case .campaignSent, .emailOpened:
             return .marketing

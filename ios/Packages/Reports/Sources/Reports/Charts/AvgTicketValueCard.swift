@@ -9,17 +9,13 @@ public struct AvgTicketValueCard: View {
     public let periodRevenueDollars: Double
     /// Number of closed tickets used to derive the average (§91.12 item 2).
     public let ticketCount: Int
-    /// §91.16: optional CTA — routes to new-ticket creation when no data exists.
-    public let onCreateTicket: (() -> Void)?
 
     public init(value: AvgTicketValue?,
                 periodRevenueDollars: Double = 0,
-                ticketCount: Int = 0,
-                onCreateTicket: (() -> Void)? = nil) {
+                ticketCount: Int = 0) {
         self.value = value
         self.periodRevenueDollars = periodRevenueDollars
         self.ticketCount = ticketCount
-        self.onCreateTicket = onCreateTicket
     }
 
     /// §91.12 (2): revenue > 0 but ticketCount == 0 means the avgTicket math is wrong.
@@ -36,13 +32,7 @@ public struct AvgTicketValueCard: View {
             } else if let v = value {
                 metricRow(v)
             } else {
-                // §91.16: suggest next step when no ticket data exists.
-                ChartDashedSilhouette(
-                    systemImage: "dollarsign.circle.fill",
-                    label: "No ticket value data for this period.",
-                    ctaLabel: onCreateTicket != nil ? "Create a Ticket" : nil,
-                    ctaAction: onCreateTicket
-                )
+                ChartDashedSilhouette(systemImage: "dollarsign.circle.fill", label: "No ticket value data for this period.")
             }
         }
         .padding(BrandSpacing.base)

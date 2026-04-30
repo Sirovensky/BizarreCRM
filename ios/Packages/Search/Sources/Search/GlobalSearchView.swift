@@ -116,14 +116,10 @@ public final class GlobalSearchViewModel {
         guard let store = ftsStore else { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        // §18.1 phone-number / IMEI match — normalise digits-only identifiers
-        // so the FTS index can match formatted variants stored in the body.
-        let normalised = QueryNormalizer.normalise(trimmed).value
-        let effective = normalised.isEmpty ? trimmed : normalised
         do {
             let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
-            async let hitsResult = store.search(query: effective, entity: filter, limit: 50)
-            async let countsResult = store.scopeCounts(query: effective)
+            async let hitsResult = store.search(query: trimmed, entity: filter, limit: 50)
+            async let countsResult = store.scopeCounts(query: trimmed)
             let (hits, counts) = try await (hitsResult, countsResult)
             localHits = hits
             scopeCounts = counts
@@ -144,12 +140,8 @@ public final class GlobalSearchViewModel {
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
-        // §18.1 phone-number / IMEI match — pass digits-only canonical form
-        // so the server `q=` parameter can hit indexed contact / IMEI columns.
-        let normalised = QueryNormalizer.normalise(trimmed).value
-        let effective = normalised.isEmpty ? trimmed : normalised
         do {
-            let remote = try await api.globalSearch(effective)
+            let remote = try await api.globalSearch(trimmed)
             results = remote
             // Merge scope counts with remote results.
             scopeCounts = scopeCounts.merged(with: remote)
@@ -253,13 +245,6 @@ public struct GlobalSearchView: View {
             }
             .navigationTitle("Search")
             .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
-            // §18.1 Voice input — dictation works inside `.searchable`; turn off
-            // smart-punctuation / autocorrect so dictated names + numbers don't
-            // get mangled (e.g. "555-1212" stays as-is, no curly quotes).
-            .autocorrectionDisabled()
-            #if !os(macOS)
-            .textInputAutocapitalization(.never)
-            #endif
             .onChange(of: queryText) { _, new in vm.onChange(new) }
             .onSubmit(of: .search) {
                 Task {
@@ -348,13 +333,6 @@ public struct GlobalSearchView: View {
             }
             .navigationTitle("Search")
             .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
-            // §18.1 Voice input — dictation works inside `.searchable`; turn off
-            // smart-punctuation / autocorrect so dictated names + numbers don't
-            // get mangled (e.g. "555-1212" stays as-is, no curly quotes).
-            .autocorrectionDisabled()
-            #if !os(macOS)
-            .textInputAutocapitalization(.never)
-            #endif
             .onChange(of: queryText) { _, new in vm.onChange(new) }
             .onSubmit(of: .search) {
                 Task {

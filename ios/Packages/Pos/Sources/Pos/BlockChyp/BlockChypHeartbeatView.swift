@@ -31,18 +31,11 @@ public struct BlockChypHeartbeatView: View {
     @State private var pollingTask: Task<Void, Never>?
 
     private let api: APIClient?
-    private let pollingInterval: TimeInterval
 
     // MARK: - Init
 
-    /// - Parameters:
-    ///   - api: Networking client; pass `nil` in previews / when no terminal is paired.
-    ///   - pollingInterval: Seconds between heartbeat pings while the view is on-screen.
-    ///     §17.11 specifies 30s as the default for the in-POS chip; tests / previews
-    ///     can pass a shorter interval.
-    public init(api: APIClient?, pollingInterval: TimeInterval = 30) {
+    public init(api: APIClient?) {
         self.api = api
-        self.pollingInterval = max(1, pollingInterval)
     }
 
     // MARK: - Body
@@ -115,11 +108,9 @@ public struct BlockChypHeartbeatView: View {
     private func startPolling() async {
         pollingTask?.cancel()
         await ping()
-        let interval = pollingInterval
         pollingTask = Task {
             while !Task.isCancelled {
-                let nanos = UInt64(interval * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard !Task.isCancelled else { return }
                 await ping()
             }

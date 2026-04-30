@@ -22,8 +22,6 @@ public final class AssetManagerViewModel {
     public var showCreate = false
     public var editingAsset: InventoryAsset?
     public var deletingAsset: InventoryAsset?
-    /// §6.8 — Asset selected for the return-from-loan flow.
-    public var returningAsset: InventoryAsset?
 
     @ObservationIgnored private let api: APIClient
 
@@ -95,11 +93,6 @@ public struct AssetManagerView: View {
                 Task { await vm.load() }
             }
         }
-        .sheet(item: $vm.returningAsset) { asset in
-            AssetReturnSheet(asset: asset, api: api) {
-                Task { await vm.load() }
-            }
-        }
         .confirmationDialog(
             "Delete \"\(vm.deletingAsset?.name ?? "")\"?",
             isPresented: .init(get: { vm.deletingAsset != nil }, set: { if !$0 { vm.deletingAsset = nil } }),
@@ -139,24 +132,7 @@ public struct AssetManagerView: View {
                     }
                     .tint(.bizarrePrimary)
                 }
-                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                    if asset.status == .loaned {
-                        Button {
-                            vm.returningAsset = asset
-                        } label: {
-                            Label("Return", systemImage: "arrow.uturn.left.circle")
-                        }
-                        .tint(.bizarreSuccess)
-                    }
-                }
                 .contextMenu {
-                    if asset.status == .loaned {
-                        Button {
-                            vm.returningAsset = asset
-                        } label: {
-                            Label("Return…", systemImage: "arrow.uturn.left.circle")
-                        }
-                    }
                     Button("Edit") { vm.editingAsset = asset }
                     Button("Delete", role: .destructive) { vm.deletingAsset = asset }
                 }
