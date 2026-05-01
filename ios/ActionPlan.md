@@ -3729,8 +3729,8 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.1 Layout
 - [x] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column. (feat(ios §22): ThreeColumnSplitView scaffold — SplitViewDomain protocol, .balanced style, column widths, detailContentCapped())
 - [x] **Dashboard 3-column KPI grid** on wide screens; 2-column on 11"; responsive `GridItem(.adaptive(...))`. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
-- [ ] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded.
-- [ ] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`.
+- [x] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded. (feat(§22): .maxContentWidth() applied to CustomerDetailView + InvoiceDetailView ScrollView contents — caps at 720pt on iPad, no-op on iPhone)
+- [x] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`. (feat(§22): BrandAdaptiveSidebarModifier — width-driven columnVisibility (.all ≥1180pt / .doubleColumn below) + balanced style via `.brandAdaptiveSidebar(visibility:)`)
 - [x] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail. (feat(ios §22): InspectorPaneModifier — .brandInspector(isPresented:content:) with iOS 16 sheet fallback + InspectorToggleButton)
 - [x] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13". (feat(ios §22): TwoUpEditorLayout scaffold — side-by-side on width≥900pt, segmented-tab fallback on compact)
 
@@ -3756,12 +3756,12 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
 
 ### 22.5 Data presentation
-- [ ] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs.
-- [ ] **Column chooser** — reorder / hide columns; persisted.
+- [x] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs. (feat(§22): BrandSortableTable wrapper — internal `[KeyPathComparator]` state + `sortOrder:` binding + post-sort dataset re-derivation in one call site)
+- [x] **Column chooser** — reorder / hide columns; persisted. (feat(§22): ColumnChooserState `@StateObject` (UserDefaults-backed) + ColumnChooserButton popover toolbar UI with toggle + drag-reorder)
 - [x] **Sort indicator** arrows on column headers. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 
 ### 22.6 Magic Keyboard / trackpad
-- [ ] **Swipe gestures** translated to trackpad (2-finger).
+- [x] **Swipe gestures** translated to trackpad (2-finger). (feat(§22): TrackpadSwipeModifier — DragGesture-based 60pt activation + 20pt vertical-drift filter + leading/trailing callbacks via `.brandTrackpadSwipe(leading:trailing:)`)
 - [x] **Right-click** menus everywhere. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
 
 ### 22.7 External display / AirPlay
@@ -3775,8 +3775,8 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] External-display `UIScene` hosts customer-facing display (§16 POS CFD) mirrored from POS scene.
 - [ ] `UICommand` menu per scene (File / Edit / View / Window / Help) with custom items (New Ticket, Quick Find, Switch Tenant).
 - [x] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels (feat(ios §22): ArrowKeyRowSelectionModifier DS widget — ↑/↓ hidden buttons + .arrowKeyRowSelection(items:selectedId:) view extension)
-- [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
-- [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
+- [x] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached (feat(§22): NumericKeyboardAccessory DS modifier — .brandNumericKeyboardAccessory(focus:current:prev:next:); first wired on TaxSettingsPage rate field)
+- [x] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch` (feat(§22): FieldValidationKeyboardModifier — `.brandFieldKeyboard(.phone/.imei/.email/.url/.search/.identifier/.prose)` bundles keyboardType+textContentType+autocap+autocorrect per semantic role)
 - [x] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] External barcode scanner (USB/BT wedge): detect rapid keystrokes ending in Enter; route to scan handler not textfield; configurable via Settings → Hardware
 - [ ] Support Dvorak/custom layouts automatically — never hardcode layouts
