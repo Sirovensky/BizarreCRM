@@ -4083,10 +4083,10 @@ Always-on data (labels, hints, traits) — these cost nothing and only matter wh
 - [x] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`. (Tickets/Customers/Inventory/Invoices rows: `.accessibilityAddTraits(.isButton)` — feat(ios post-phase §26))
 - [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
 - [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
-- [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
-- [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
+- [x] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation. (`DesignSystem/Accessibility/A11yContainerModifier.swift` — `View.a11yContainer(label:)`; optional spoken label, keeps children individually focusable while improving rotor + escape-gesture behavior on long lists. feat(§26.1))
+- [x] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work. (`DesignSystem/Accessibility/VoiceOverGatedAnnouncement.swift` — `VoiceOverAnnouncer.announceIfRunning(_:)` + `announceErrorIfRunning(_:)`; gates on `UIAccessibility.isVoiceOverRunning` so non-VO users pay zero cost. feat(§26.1))
 - [x] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise. (`A11ySheetFocusModifier` + `.a11yFocusOnAppear(_:)` + `.a11yCustomAction(label:handler:)` in `Core/A11y/A11ySheetFocusModifier.swift`; 450ms settle delay. feat(§26.1): 1d61493b)
-- [ ] **Custom actions** — swipe actions exposed as accessibility custom actions.
+- [x] **Custom actions** — swipe actions exposed as accessibility custom actions. (`DesignSystem/Accessibility/SwipeAccessibilityActions.swift` — `A11ySwipeAction` descriptor + `View.a11ySwipeActions(_:edge:allowsFullSwipe:)`; emits both `.swipeActions` and matching `.accessibilityAction(named:)` so call sites can't ship one without the other. feat(§26.1))
 - [ ] **Image descriptions** — customer avatars use initials; ticket photos labeled "Photo N of M on ticket X".
 
 ### 26.2 Dynamic Type
@@ -4112,13 +4112,13 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 
 ### 26.5 Increase Contrast
 - [ ] `@Environment(\.colorSchemeContrast) == .increased` (reflecting iOS "Increase Contrast") → use high-contrast brand palette. Default ships regular palette.
-- [ ] **Borders** around cards become visible (1pt solid stroke) only when the flag is set.
-- [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
+- [x] **Borders** around cards become visible (1pt solid stroke) only when the flag is set. (`SelectedCardBorderModifier` reads `\.colorSchemeContrast` and thickens stroke under `.increased`; wired on `CustomerMergeFieldRowView` side cards via `.selectedCardBorder(...)`. feat(§26))
+- [x] **Button states** clearer (solid vs outlined) only when the flag is set. (`DesignSystem/Accessibility/IncreaseContrastButtonStyle.swift` — `A11yPrimaryButtonStyle` swaps to solid `bizarrePrimary` fill + `bizarreOnPrimary` text under `colorSchemeContrast == .increased`; `A11ySecondaryButtonStyle` swaps to 1.5pt outlined capsule with transparent fill. `.buttonStyle(.a11yPrimary)` / `.a11ySecondary` shorthands. feat(§26.5))
 
 ### 26.6 Bold Text + Differentiate Without Color
 - [x] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80. (`DesignSystem/Tokens+Accessibility.swift` — `boldTextEnabled` EnvironmentKey, `adaptiveFontWeight`, `BoldTextReader` modifier, `DesignTokens.BoldText`. feat(§80): 2e0846c9)
-- [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
-- [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
+- [x] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set. (`StatusPill.swift` — every `Hue` carries an SF Symbol (`tray`/`wrench`/`hourglass`/`checkmark.seal`/`flag.checkered`/`archivebox`); under DifferentiateWithoutColor the glyph weight steps to `.heavy` and a 1pt foreground-tint capsule outline is added. feat(§26))
+- [x] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true. (`DesignSystem/Accessibility/ChartDifferentiateStrokeStyle.swift` — `ChartDifferentiateStrokeStyle.style(forIndex:differentiate:)` returns a `StrokeStyle` cycling through 6 distinguishable dash patterns (solid, long-dash, short-dash, dotted, dash-dot, long-dash-gap) keyed off series index when DWC is on; solid 2pt otherwise. feat(§26.6))
 
 ### 26.7 Tap targets
 - [x] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI. (`Core/A11y/TappableFrame.swift` — `TappableFrameModifier` + `View.tappableFrame(minWidth:minHeight:)`; DEBUG `assertionFailure` via GeometryReader.onAppear; RELEASE no-op; `bare_on_tap_gesture` SwiftLint rule already in `.swiftlint.yml`. feat(§26.6): b12)
