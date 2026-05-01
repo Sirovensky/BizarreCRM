@@ -141,13 +141,6 @@ struct PosCartDiscountSheet: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    /// Clear active preset selection whenever the raw text field is edited directly.
-    private func clearPresetIfCustomInput() {
-        activePresetPercent = nil
-        activePresetCents = nil
     }
 
     private var inputRow: some View {

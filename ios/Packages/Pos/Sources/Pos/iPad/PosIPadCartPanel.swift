@@ -274,6 +274,7 @@ public struct PosIPadCartPanel: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -371,6 +372,14 @@ public struct PosIPadCartPanel: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                BrandHaptics.tap()
+                onEditItem?(item)
+            } label: {
+                Label("Edit line", systemImage: "pencil")
+            }
+        }
         .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
         .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
     }
