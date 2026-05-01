@@ -8,32 +8,34 @@
     --sidebar-collapsed-width: 64px;
     --header-height: 56px;
 
-    /* Surface ramp — light mode = warm stone (matches cream primary). */
-    --surface-50:  250 250 249;
-    --surface-100: 245 245 244;
-    --surface-200: 231 229 228;
-    --surface-300: 214 211 209;
-    --surface-400: 168 162 158;
-    --surface-500: 120 113 108;
-    --surface-600: 87 83 78;
-    --surface-700: 68 64 60;
-    --surface-800: 41 37 36;
-    --surface-900: 28 25 23;
-    --surface-950: 12 10 9;
+    /* Surface ramp — Option F (Web POS Recolor 2026-05-01).
+     * Warm-graphite ramp between stone and neutral. Cream restrained to
+     * small surfaces (CTAs, dots, 2px hero-card left edges). Replaces the
+     * previous warm-stone (light) + iPad Liquid Glass (dark) split — both
+     * modes now share one warm-graphite ramp so cream reads as an applied
+     * accent, not a wash. Mockup: mockups/Web POS — Recolor Options.htm
+     * variant `.v-f`. */
+    --surface-50:  248 247 245;
+    --surface-100: 240 239 236;
+    --surface-200: 224 221 217;
+    --surface-300: 198 194 188;
+    --surface-400: 156 152 146;
+    --surface-500: 110 106 100;
+    --surface-600:  78  74  70;
+    --surface-700:  30  28  26;
+    --surface-800:  22  21  19;
+    --surface-900:  15  14  12;
+    --surface-950:   8   7   6;
   }
 
-  /* Surface ramp — dark mode = iPad Liquid Glass palette
-   * (mockups/ios-ipad-pos.html). Cream primary stays the same; only the
-   * deep-end neutrals shift to the iPad hex so web dark mode and iPad
-   * dark mode read as the same surface family. Light end (50–600) is
-   * unchanged because dark mode rarely uses it for backgrounds; when it
-   * does (e.g. text-surface-300 on dark bg), the warm stone tone still
-   * harmonizes with the iPad-aligned dark surfaces below. */
+  /* Dark mode shares the Option F warm-graphite ramp; the variants below
+   * deepen 700–950 by ~3pts so elevation reads on dark surfaces. Light end
+   * (50–600) is unchanged from :root since dark mode rarely paints with it. */
   .dark {
-    --surface-700: 27 25 23;   /* iPad --surface-elev #1b1917 */
-    --surface-800: 20 18 17;   /* iPad --surface-solid #141211 */
-    --surface-900: 12 11 9;    /* iPad --bg #0c0b09 */
-    --surface-950: 5 4 3;      /* iPad --bg-deep #050403 */
+    --surface-700:  30  28  26;
+    --surface-800:  22  21  19;
+    --surface-900:  15  14  12;
+    --surface-950:   8   7   6;
   }
 
   /* Smooth theme transitions

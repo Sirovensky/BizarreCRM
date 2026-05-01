@@ -798,12 +798,13 @@ function DetailsStep({ drillState, onDone }: {
 
   return (
     <div className="space-y-4">
-      {/* Summary banner */}
-      <div className="rounded-lg bg-primary-50 px-3 py-2 dark:bg-primary-900/20">
-        <p className="text-sm font-medium text-primary-700 dark:text-primary-300">
-          {drillState.deviceName} - {drillState.serviceName}
+      {/* Summary banner — Option F hero card: warm-graphite surface with
+       * 2px cream left edge. Cream restrained to the brand mark, not a wash. */}
+      <div className="rounded-lg border-l-2 border-primary-500 bg-surface-100 px-4 py-3 dark:bg-surface-700/85">
+        <p className="text-base font-semibold text-surface-900 dark:text-surface-50">
+          {drillState.deviceName} — {drillState.serviceName}
         </p>
-        <p className="text-xs text-primary-500">
+        <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
           {formatCurrency(drillState.laborPrice)} labor
           {drillState.gradeParts.length > 0 && (
             <> + {formatCurrency(drillState.gradeParts.reduce((s, p) => s + p.price * p.quantity, 0))} parts</>

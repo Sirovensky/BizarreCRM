@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre CRM — Design System</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Canonical surface ramp — warm-graphite (Option F).
+     * Identical RGB triplets for light + dark; only slot mapping shifts. */
+    --s-50:  248 247 245;
+    --s-100: 240 239 236;
+    --s-200: 224 221 217;
+    --s-300: 198 194 188;
+    --s-400: 156 152 146;
+    --s-500: 110 106 100;
+    --s-600:  78  74  70;
+    --s-700:  30  28  26;
+    --s-800:  22  21  19;
+    --s-900:  15  14  12;
+    --s-950:   8   7   6;
+
+    /* Primary — brand cream ramp. Cream = dark-mode primary. Caramel
+     * (#A66D1F = primary-light) = light-mode primary because cream lacks
+     * AA contrast on white surfaces (1.1:1 fails; caramel passes 5.2:1). */
+    --primary-cream:   253 238 208;  /* #FDEED0 — dark mode primary */
+    --primary-caramel: 166 109  31;  /* #A66D1F — light mode primary */
+    --primary-honey:   245 220 167;  /* #F5DCA7 — hover/warm */
+    --primary-onPrimary: 43 20 0;    /* #2B1400 — text on cream */
+    --primary-onCaramel: 255 254 251;/* #FFFEFB — text on caramel */
+
+    /* Secondary — teal pair */
+    --teal-dark:  77 184 201;        /* #4DB8C9 — dark mode secondary */
+    --teal-light: 14 122 138;        /* #0E7A8A — light mode secondary */
+
+    /* Tertiary — burgundy pair (VIP / loyalty / premium accents only).
+     * Wine-leather; stays in warm-family with cream/caramel. */
+    --burgundy-dark:  197  86 109;   /* #C5566D — dark mode tertiary */
+    --burgundy-light: 142  45  64;   /* #8E2D40 — light mode tertiary */
+
+    /* Status — hue-shifted to harmonize with warm brand */
+    --success-dark:  52 196 126;     /* #34C47E */
+    --success-light: 31 122  74;     /* #1F7A4A */
+    --warning-dark:  232 163  61;    /* #E8A33D */
+    --warning-light: 138  82   0;    /* #8A5200 */
+    --error-dark:    226  82 108;    /* #E2526C */
+    --error-light:   186  26  46;    /* #BA1A2E */
+    --info-dark:      77 184 201;    /* same as teal-dark */
+    --info-light:     14 122 138;    /* same as teal-light */
+  }
+  body { font-family: 'Jost', system-ui, sans-serif; }
+  .display, h1, h2, h3 { font-family: 'Bebas Neue', system-ui, sans-serif; letter-spacing: 0.01em; }
+  code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .swatch { aspect-ratio: 1 / 1; min-height: 64px; }
+  .ramp-row { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } .ramp-row { grid-template-columns: repeat(6, 1fr); } }
+  .panel-dark  { background: rgb(var(--s-900)); color: rgb(var(--s-50)); }
+  .panel-light { background: rgb(var(--s-50));  color: rgb(var(--s-900)); }
+  .surface-pill { border-radius: 9999px; padding: 4px 10px; font-size: 11px; line-height: 1; font-family: 'JetBrains Mono', monospace; }
+  /* Mini-pos preview — tiny replica of the F mockup for component context */
+  .preview { aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px -20px rgba(0,0,0,0.4); }
+</style>
+</head>
+<body class="bg-zinc-100 text-zinc-900 antialiased">
+
+<!-- ============= HERO ============= -->
+<header class="relative overflow-hidden" style="background: rgb(var(--s-900)); color: rgb(var(--s-50));">
+  <div class="max-w-[1320px] mx-auto px-6 py-16">
+    <div class="text-xs uppercase tracking-[0.2em] mb-4" style="color: rgb(var(--primary-cream));">BIZARRE CRM</div>
+    <h1 class="display text-6xl md:text-7xl mb-4" style="color: rgb(var(--s-50));">Design System</h1>
+    <p class="text-lg max-w-2xl" style="color: rgb(var(--s-300));">
+      One unified palette across web, iOS, and Android. Two modes — dark and light — sharing
+      the same warm-graphite surface ramp. Brand cream stays the constant; the accent shifts to
+      caramel in light mode for AA contrast. Same identity, every device.
+    </p>
+    <div class="flex flex-wrap gap-3 mt-6">
+      <span class="surface-pill" style="background: rgb(var(--s-700)); color: rgb(var(--primary-cream)); box-shadow: inset 0 0 0 1px rgb(var(--primary-cream) / 0.3);">★ Option F</span>
+      <span class="surface-pill" style="background: rgb(var(--s-700)); color: rgb(var(--s-300));">11-stop surface ramp</span>
+      <span class="surface-pill" style="background: rgb(var(--s-700)); color: rgb(var(--s-300));">Cream / Caramel pair</span>
+      <span class="surface-pill" style="background: rgb(var(--s-700)); color: rgb(var(--s-300));">WCAG AA</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============= PRINCIPLE ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-6">Principle</h2>
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl p-5 ring-1 ring-zinc-200">
+      <div class="text-2xl mb-2">⚖️</div>
+      <h3 class="display text-xl mb-2">Restraint</h3>
+      <p class="text-sm text-zinc-600">Cream is the brand. So it appears sparingly — small CTAs, 2px hero edges, step dots, single-letter avatars. Never as a wash. Restraint makes the cream pop when it does land.</p>
+    </div>
+    <div class="bg-white rounded-xl p-5 ring-1 ring-zinc-200">
+      <div class="text-2xl mb-2">🌡️</div>
+      <h3 class="display text-xl mb-2">Warm neutrals</h3>
+      <p class="text-sm text-zinc-600">Surfaces are warm-graphite — between stone and neutral. Avoids the cold blue-gray of generic SaaS, avoids the over-warm beige that reads as "accidental." Reads premium, not retail.</p>
+    </div>
+    <div class="bg-white rounded-xl p-5 ring-1 ring-zinc-200">
+      <div class="text-2xl mb-2">♻️</div>
+      <h3 class="display text-xl mb-2">One ramp, two modes</h3>
+      <p class="text-sm text-zinc-600">Same 11-stop surface ramp drives both modes. Slot mapping shifts: in dark, page = surface-900; in light, page = surface-50. Components written once read correctly in either mode.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SURFACE RAMP ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Surface Ramp</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Warm-graphite, 11 stops. Identical RGB triplets used in both modes — what changes is which stop fills which slot. In dark mode, page = 900, elevated panel = 700. In light mode, page = 50, elevated panel = 100.</p>
+
+  <div class="ramp-row mb-6">
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-50));  border: 1px solid rgb(var(--s-200));"></div><div class="text-xs mt-1 mono">50</div><div class="text-[10px] mono text-zinc-500">#F8F7F5</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-100));"></div><div class="text-xs mt-1 mono">100</div><div class="text-[10px] mono text-zinc-500">#F0EFEC</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-200));"></div><div class="text-xs mt-1 mono">200</div><div class="text-[10px] mono text-zinc-500">#E0DDD9</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-300));"></div><div class="text-xs mt-1 mono">300</div><div class="text-[10px] mono text-zinc-500">#C6C2BC</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-400));"></div><div class="text-xs mt-1 mono">400</div><div class="text-[10px] mono text-zinc-500">#9C9892</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-500));"></div><div class="text-xs mt-1 mono">500</div><div class="text-[10px] mono text-zinc-500">#6E6A64</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-600));"></div><div class="text-xs mt-1 mono">600</div><div class="text-[10px] mono text-zinc-500">#4E4A46</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-700));"></div><div class="text-xs mt-1 mono">700</div><div class="text-[10px] mono text-zinc-500">#1E1C1A</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-800));"></div><div class="text-xs mt-1 mono">800</div><div class="text-[10px] mono text-zinc-500">#161513</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-900));"></div><div class="text-xs mt-1 mono">900</div><div class="text-[10px] mono text-zinc-500">#0F0E0C</div></div>
+    <div><div class="swatch rounded-md" style="background: rgb(var(--s-950));"></div><div class="text-xs mt-1 mono">950</div><div class="text-[10px] mono text-zinc-500">#080706</div></div>
+  </div>
+
+  <div class="pair">
+    <div class="rounded-xl p-5" style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT MODE — slot mapping</div>
+      <table class="w-full text-sm">
+        <tbody class="mono">
+          <tr><td class="py-1.5">Page background</td>           <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-100));">surface-50</span></td></tr>
+          <tr><td class="py-1.5">Elevated rail (sidebar, header)</td><td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-200));">surface-100</span></td></tr>
+          <tr><td class="py-1.5">Card / form fill</td>          <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-100));">surface-100</span></td></tr>
+          <tr><td class="py-1.5">Subtle border</td>             <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-200));">surface-200</span></td></tr>
+          <tr><td class="py-1.5">Strong border / divider</td>   <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-300));">surface-300</span></td></tr>
+          <tr><td class="py-1.5">Subtle text</td>               <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-100)); color: rgb(var(--s-500));">surface-500</span></td></tr>
+          <tr><td class="py-1.5">Body text</td>                 <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-100)); color: rgb(var(--s-700));">surface-700</span></td></tr>
+          <tr><td class="py-1.5">Heading text</td>              <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-100)); color: rgb(var(--s-900));">surface-900</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rounded-xl p-5" style="background: rgb(var(--s-900)); color: rgb(var(--s-50));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK MODE — slot mapping</div>
+      <table class="w-full text-sm">
+        <tbody class="mono">
+          <tr><td class="py-1.5">Page background</td>           <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-800));">surface-900</span></td></tr>
+          <tr><td class="py-1.5">Elevated rail (sidebar, header)</td><td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-800));">surface-800</span></td></tr>
+          <tr><td class="py-1.5">Card / form fill</td>          <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-700));">surface-700</span></td></tr>
+          <tr><td class="py-1.5">Subtle border</td>             <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-700));">surface-700</span></td></tr>
+          <tr><td class="py-1.5">Strong border / divider</td>   <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-600));">surface-600</span></td></tr>
+          <tr><td class="py-1.5">Subtle text</td>               <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-800)); color: rgb(var(--s-500));">surface-500</span></td></tr>
+          <tr><td class="py-1.5">Body text</td>                 <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-800)); color: rgb(var(--s-300));">surface-300</span></td></tr>
+          <tr><td class="py-1.5">Heading text</td>              <td class="text-right"><span class="surface-pill" style="background: rgb(var(--s-800)); color: rgb(var(--s-50));">surface-50</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============= PRIMARY ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Primary — Brand</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Cream is the brand identity. It anchors dark mode. Light mode shifts to caramel — same hue family, darker stop — because cream on white fails AA at 1.1:1. Caramel passes at 5.2:1. Same brand, mode-appropriate weight.</p>
+  <div class="pair">
+    <!-- Dark — cream -->
+    <div class="rounded-xl p-6 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK MODE PRIMARY</div>
+      <div class="flex items-center gap-4 mb-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--primary-cream));"></div>
+        <div>
+          <div class="display text-2xl">Cream</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-300));">#FDEED0 — primary-500</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-400));">on surface-900: <span class="mono">10.7:1 AAA</span></div>
+        </div>
+      </div>
+      <div class="space-y-2 text-xs mono" style="color: rgb(var(--s-300));">
+        <div>CTA fill, hero edge, step dots, avatar fill, sidebar active marker, focus ring</div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">Primary CTA</button>
+        <span class="surface-pill" style="background: rgb(var(--s-800)); color: rgb(var(--primary-cream)); box-shadow: inset 0 0 0 1px rgb(var(--primary-cream) / 0.3);">Active pill</span>
+        <span class="inline-flex items-center gap-1.5 text-xs" style="color: rgb(var(--s-300));"><span style="width:8px;height:8px;border-radius:9999px;background:rgb(var(--primary-cream));display:inline-block;"></span>Step</span>
+      </div>
+    </div>
+    <!-- Light — caramel -->
+    <div class="rounded-xl p-6 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT MODE PRIMARY</div>
+      <div class="flex items-center gap-4 mb-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--primary-caramel));"></div>
+        <div>
+          <div class="display text-2xl">Caramel</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-600));">#A66D1F — primary-light</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-500));">on surface-50: <span class="mono">5.2:1 AA</span></div>
+        </div>
+      </div>
+      <div class="space-y-2 text-xs mono" style="color: rgb(var(--s-600));">
+        <div>Same role as cream, mode-appropriate weight. Cream <span class="text-red-700">FAILS</span> on white.</div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">Primary CTA</button>
+        <span class="surface-pill" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">Active pill</span>
+        <span class="inline-flex items-center gap-1.5 text-xs" style="color: rgb(var(--s-700));"><span style="width:8px;height:8px;border-radius:9999px;background:rgb(var(--primary-caramel));display:inline-block;"></span>Step</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SECONDARY (TEAL) ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Secondary — Teal</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Used for navigation accents — active tab underline, links, info icons. Pair shifts darker in light mode for contrast. Never used for primary CTAs.</p>
+  <div class="pair">
+    <div class="rounded-xl p-6 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK</div>
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--teal-dark));"></div>
+        <div>
+          <div class="display text-2xl">Bright Teal</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-300));">#4DB8C9</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-400));">tab underline, active links, info badges</div>
+        </div>
+      </div>
+    </div>
+    <div class="rounded-xl p-6 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT</div>
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--teal-light));"></div>
+        <div>
+          <div class="display text-2xl">Deep Teal</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-600));">#0E7A8A</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-500));">same roles, AA on light surfaces</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= TERTIARY (BURGUNDY) ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Tertiary — Burgundy</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Wine-leather. Reserved for VIP / loyalty / premium tags. Stays in the warm-neutral family with cream + caramel — signals premium without shouting. Use sparingly; over-use breaks the warm-neutral discipline.</p>
+  <div class="pair">
+    <div class="rounded-xl p-6 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK</div>
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--burgundy-dark));"></div>
+        <div>
+          <div class="display text-2xl">Wine</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-300));">#C5566D</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-400));">VIP badges, loyalty pills, marketing surfaces</div>
+        </div>
+      </div>
+    </div>
+    <div class="rounded-xl p-6 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT</div>
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl" style="background: rgb(var(--burgundy-light));"></div>
+        <div>
+          <div class="display text-2xl">Deep Wine</div>
+          <div class="text-sm mono" style="color: rgb(var(--s-600));">#8E2D40</div>
+          <div class="text-xs mt-1" style="color: rgb(var(--s-500));">same role, AA on light surfaces</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= STATUS ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Status</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Hue-shifted away from generic Tailwind defaults to harmonize with the warm brand. Light variants are darker (deeper saturation) for AA contrast on white.</p>
+  <div class="grid md:grid-cols-2 gap-4">
+    <!-- Success -->
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Success</div><span class="surface-pill" style="background: rgb(var(--success-dark)); color: #002b15;">DARK</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--success-dark));"></div><div class="mono text-sm" style="color: rgb(var(--s-300));">#34C47E</div></div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Success</div><span class="surface-pill" style="background: rgb(var(--success-light)); color: #fff;">LIGHT</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--success-light));"></div><div class="mono text-sm" style="color: rgb(var(--s-600));">#1F7A4A</div></div>
+    </div>
+    <!-- Warning -->
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Warning</div><span class="surface-pill" style="background: rgb(var(--warning-dark)); color: #2b1400;">DARK</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--warning-dark));"></div><div class="mono text-sm" style="color: rgb(var(--s-300));">#E8A33D</div></div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Warning</div><span class="surface-pill" style="background: rgb(var(--warning-light)); color: #fff;">LIGHT</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--warning-light));"></div><div class="mono text-sm" style="color: rgb(var(--s-600));">#8A5200</div></div>
+    </div>
+    <!-- Error -->
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Error</div><span class="surface-pill" style="background: rgb(var(--error-dark)); color: #fff;">DARK</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--error-dark));"></div><div class="mono text-sm" style="color: rgb(var(--s-300));">#E2526C</div></div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Error</div><span class="surface-pill" style="background: rgb(var(--error-light)); color: #fff;">LIGHT</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--error-light));"></div><div class="mono text-sm" style="color: rgb(var(--s-600));">#BA1A2E</div></div>
+    </div>
+    <!-- Info -->
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Info</div><span class="surface-pill" style="background: rgb(var(--info-dark)); color: #002b30;">DARK</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--info-dark));"></div><div class="mono text-sm" style="color: rgb(var(--s-300));">#4DB8C9 (= teal)</div></div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="flex items-center justify-between mb-3"><div class="display text-xl">Info</div><span class="surface-pill" style="background: rgb(var(--info-light)); color: #fff;">LIGHT</span></div>
+      <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-lg" style="background: rgb(var(--info-light));"></div><div class="mono text-sm" style="color: rgb(var(--s-600));">#0E7A8A (= teal)</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= COMPONENT EXAMPLES ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Components in context</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Same component pattern, both modes. Notice: cream/caramel only appears on small surfaces — CTA fill, 2px hero edge, step dots. Wide surfaces stay neutral.</p>
+
+  <!-- Hero card row -->
+  <div class="pair mb-8">
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK · Hero card pattern</div>
+      <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-700) / 0.85); border-left: 2px solid rgb(var(--primary-cream));">
+        <div class="text-base font-semibold" style="color: rgb(var(--s-50));">Apple iPhone 16 — Screen Replacement</div>
+        <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">$123.00 labor</div>
+      </div>
+      <p class="text-xs mt-3 mono" style="color: rgb(var(--s-500));">surface-700/85 + 2px primary-cream left edge</p>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT · Hero card pattern</div>
+      <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-100)); border-left: 2px solid rgb(var(--primary-caramel));">
+        <div class="text-base font-semibold" style="color: rgb(var(--s-900));">Apple iPhone 16 — Screen Replacement</div>
+        <div class="text-xs mt-0.5" style="color: rgb(var(--s-500));">$123.00 labor</div>
+      </div>
+      <p class="text-xs mt-3 mono" style="color: rgb(var(--s-500));">surface-100 + 2px primary-caramel left edge</p>
+    </div>
+  </div>
+
+  <!-- Buttons row -->
+  <div class="pair mb-8">
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK · Buttons</div>
+      <div class="flex flex-wrap gap-2">
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">Primary</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="background: rgb(var(--s-800)); color: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">Secondary</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="color: rgb(var(--s-300));">Ghost</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="color: rgb(var(--error-dark)); box-shadow: inset 0 0 0 1px rgb(var(--error-dark) / 0.4);">Danger</button>
+      </div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT · Buttons</div>
+      <div class="flex flex-wrap gap-2">
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">Primary</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="background: rgb(var(--s-100)); color: rgb(var(--s-900)); box-shadow: inset 0 0 0 1px rgb(var(--s-300));">Secondary</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="color: rgb(var(--s-700));">Ghost</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-medium" style="color: rgb(var(--error-light)); box-shadow: inset 0 0 0 1px rgb(var(--error-light) / 0.4);">Danger</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inputs row -->
+  <div class="pair mb-8">
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK · Input</div>
+      <label class="block text-[11px] mono" style="color: rgb(var(--s-400));">IMEI</label>
+      <input class="mt-1 w-full rounded-md px-3 py-2 text-sm" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700)); color: rgb(var(--s-300));" placeholder="IMEI number">
+      <p class="text-[11px] mt-2 mono" style="color: rgb(var(--s-500));">surface-800 fill + surface-700 inset ring</p>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT · Input</div>
+      <label class="block text-[11px] mono" style="color: rgb(var(--s-500));">IMEI</label>
+      <input class="mt-1 w-full rounded-md px-3 py-2 text-sm" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200)); color: rgb(var(--s-700));" placeholder="IMEI number">
+      <p class="text-[11px] mt-2 mono" style="color: rgb(var(--s-500));">surface-100 fill + surface-200 inset ring</p>
+    </div>
+  </div>
+
+  <!-- Pills + Badges -->
+  <div class="pair mb-8">
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK · Pills, Badges, Avatar</div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="surface-pill" style="background: rgb(var(--s-800)); color: rgb(var(--s-300)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">inactive</span>
+        <span class="surface-pill" style="background: rgb(var(--s-700)); color: rgb(var(--primary-cream)); box-shadow: inset 0 0 0 1px rgb(var(--primary-cream) / 0.3);">✓ active</span>
+        <span class="surface-pill" style="background: rgb(var(--success-dark) / 0.15); color: rgb(var(--success-dark));">paid</span>
+        <span class="surface-pill" style="background: rgb(var(--warning-dark) / 0.15); color: rgb(var(--warning-dark));">pending</span>
+        <span class="surface-pill" style="background: rgb(var(--error-dark) / 0.15); color: rgb(var(--error-dark));">overdue</span>
+        <span style="display:inline-flex;width:32px;height:32px;border-radius:9999px;align-items:center;justify-content:center;background:rgb(var(--primary-cream));color:rgb(var(--primary-onPrimary));font-size:13px;font-weight:600;">A</span>
+      </div>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT · Pills, Badges, Avatar</div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="surface-pill" style="background: rgb(var(--s-100)); color: rgb(var(--s-700)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">inactive</span>
+        <span class="surface-pill" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">✓ active</span>
+        <span class="surface-pill" style="background: rgb(var(--success-light) / 0.15); color: rgb(var(--success-light));">paid</span>
+        <span class="surface-pill" style="background: rgb(var(--warning-light) / 0.15); color: rgb(var(--warning-light));">pending</span>
+        <span class="surface-pill" style="background: rgb(var(--error-light) / 0.15); color: rgb(var(--error-light));">overdue</span>
+        <span style="display:inline-flex;width:32px;height:32px;border-radius:9999px;align-items:center;justify-content:center;background:rgb(var(--primary-caramel));color:rgb(var(--primary-onCaramel));font-size:13px;font-weight:600;">A</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar item -->
+  <div class="pair">
+    <div class="rounded-xl p-5 panel-dark">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-400));">DARK · Sidebar item</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2" style="color: rgb(var(--s-300));">▦ Dashboard</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2 font-semibold" style="background: rgb(var(--s-800)); color: rgb(var(--primary-cream)); box-shadow: inset 2px 0 0 rgb(var(--primary-cream));">🛒 POS / Check-In</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2" style="color: rgb(var(--s-300));">🔧 Tickets</div>
+      <p class="text-[11px] mt-2 mono" style="color: rgb(var(--s-500));">active = surface-800 fill + 2px cream inset edge + cream text</p>
+    </div>
+    <div class="rounded-xl p-5 panel-light" style="border: 1px solid rgb(var(--s-200));">
+      <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">LIGHT · Sidebar item</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2" style="color: rgb(var(--s-700));">▦ Dashboard</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2 font-semibold" style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); box-shadow: inset 2px 0 0 rgb(var(--primary-caramel));">🛒 POS / Check-In</div>
+      <div class="rounded-md px-3 py-2 text-sm flex items-center gap-2" style="color: rgb(var(--s-700));">🔧 Tickets</div>
+      <p class="text-[11px] mt-2 mono" style="color: rgb(var(--s-500));">active = surface-50 fill + 2px caramel inset edge + dark text</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============= IN SITU — BUSY SCREENS ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">In situ — busy screens</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Two real layouts where every brand color earns its place. Same screen rendered in both modes so the slot-shift is visible. Surface ramp, cream/caramel, teal, burgundy, all four status colors — present in each.</p>
+
+  <!-- ===== DASHBOARD — DARK ===== -->
+  <div class="text-[10px] uppercase tracking-wider mono mb-2 text-zinc-500">DASHBOARD · DARK MODE</div>
+  <div class="rounded-xl overflow-hidden ring-1 mb-6" style="--tw-ring-color: rgb(var(--s-700));">
+    <div style="background: rgb(var(--s-900)); color: rgb(var(--s-50)); height: 700px;" class="flex flex-col">
+      <!-- header -->
+      <div class="flex items-center gap-4 px-4 h-12 flex-shrink-0" style="background: rgb(var(--s-950)); border-bottom: 1px solid rgb(var(--s-700));">
+        <div class="display text-lg" style="color: rgb(var(--s-50));">Bizarre CRM</div>
+        <div class="flex-1 max-w-md mx-auto">
+          <div class="flex items-center gap-2 rounded-lg px-3 py-1 text-xs" style="background: rgb(var(--s-800)); color: rgb(var(--s-500)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            🔍 Search… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-900)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">⌘K</span>
+          </div>
+        </div>
+        <span class="text-xs" style="color: rgb(var(--s-400));">🔔 <span class="ml-0.5 surface-pill" style="background: rgb(var(--error-dark)); color: #fff; padding: 1px 6px;">3</span></span>
+        <div class="w-7 h-7 rounded-full grid place-items-center text-[11px] font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">A</div>
+      </div>
+      <div class="flex flex-1 overflow-hidden">
+        <!-- sidebar -->
+        <aside class="w-44 flex flex-col py-3 px-2 gap-0.5 text-xs flex-shrink-0" style="background: rgb(var(--s-800)); border-right: 1px solid rgb(var(--s-700)); color: rgb(var(--s-300));">
+          <div class="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Main</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2 font-semibold" style="background: rgb(var(--s-700)); color: rgb(var(--primary-cream)); box-shadow: inset 2px 0 0 rgb(var(--primary-cream));">▦ Dashboard</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">🛒 POS</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">🔧 Tickets</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">👥 Customers</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📦 Inventory</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📄 Invoices</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📊 Reports</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">⚙ Settings</div>
+        </aside>
+        <!-- main -->
+        <main class="flex-1 overflow-auto p-5 space-y-4">
+          <!-- greeting hero -->
+          <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-700) / 0.85); border-left: 2px solid rgb(var(--primary-cream));">
+            <div class="display text-2xl" style="color: rgb(var(--s-50));">Good morning, Alex</div>
+            <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">12 tickets due today · $4,820 in pending invoices · <span style="color: rgb(var(--teal-dark));">2 new customer messages</span></div>
+          </div>
+          <!-- KPI tiles -->
+          <div class="grid grid-cols-4 gap-3">
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Sales today</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-50));">$3,142</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--success-dark));">▲ 18% vs avg</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Open tickets</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-50));">23</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--warning-dark));">● 5 overdue</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Revenue MTD</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-50));">$48.2k</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--teal-dark));">~ on pace</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">VIP customers</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-50));">14</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--burgundy-dark));">★ 2 visiting today</div>
+            </div>
+          </div>
+          <!-- alerts row -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-lg p-3 flex items-start gap-3" style="background: rgb(var(--warning-dark) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--warning-dark) / 0.4);">
+              <div class="text-xl">⚠️</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold" style="color: rgb(var(--warning-dark));">Low stock — 7 SKUs</div>
+                <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">iPhone 15 OEM screen, AirPods battery, USB-C cables (×3), tempered glass…</div>
+                <button class="mt-2 surface-pill" style="background: rgb(var(--warning-dark)); color: #2b1400;">Auto-reorder →</button>
+              </div>
+            </div>
+            <div class="rounded-lg p-3 flex items-start gap-3" style="background: rgb(var(--burgundy-dark) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--burgundy-dark) / 0.4);">
+              <div class="text-xl">★</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold" style="color: rgb(var(--burgundy-dark));">VIP arriving — Sarah Chen</div>
+                <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">Loyalty tier Platinum · 47 tickets lifetime · MacBook Pro screen booked 2:30pm</div>
+                <button class="mt-2 surface-pill" style="background: rgb(var(--burgundy-dark)); color: #fff;">Open profile →</button>
+              </div>
+            </div>
+          </div>
+          <!-- recent activity -->
+          <div class="rounded-lg overflow-hidden" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="px-4 py-2.5 text-[11px] uppercase tracking-wider mono flex items-center justify-between" style="color: rgb(var(--s-500)); border-bottom: 1px solid rgb(var(--s-700));">
+              <span>Recent activity</span>
+              <span style="color: rgb(var(--teal-dark));">View all →</span>
+            </div>
+            <div class="divide-y" style="border-color: rgb(var(--s-700));">
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-700));">
+                <span class="surface-pill" style="background: rgb(var(--success-dark) / 0.15); color: rgb(var(--success-dark));">PAID</span>
+                <span style="color: rgb(var(--s-200));">#T-2841</span> <span style="color: rgb(var(--s-500));">M. Johnson · iPhone 13 screen — $189.00</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">2 min ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-700));">
+                <span class="surface-pill" style="background: rgb(var(--warning-dark) / 0.15); color: rgb(var(--warning-dark));">WAITING PARTS</span>
+                <span style="color: rgb(var(--s-200));">#T-2839</span> <span style="color: rgb(var(--s-500));">A. Patel · iPad Pro battery — ETA Friday</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">14 min ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-700));">
+                <span class="surface-pill" style="background: rgb(var(--error-dark) / 0.15); color: rgb(var(--error-dark));">OVERDUE</span>
+                <span style="color: rgb(var(--s-200));">#T-2812</span> <span style="color: rgb(var(--s-500));">L. Garcia · MacBook keyboard — 3 days overdue</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">1 hr ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs">
+                <span class="surface-pill" style="background: rgb(var(--teal-dark) / 0.15); color: rgb(var(--teal-dark));">ASSIGNED</span>
+                <span style="color: rgb(var(--s-200));">#T-2843</span> <span style="color: rgb(var(--s-500));">Sarah Chen · MacBook Pro screen → Tech Mike</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">just now</span>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD — LIGHT ===== -->
+  <div class="text-[10px] uppercase tracking-wider mono mb-2 text-zinc-500">DASHBOARD · LIGHT MODE</div>
+  <div class="rounded-xl overflow-hidden ring-1 mb-12" style="--tw-ring-color: rgb(var(--s-200));">
+    <div style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); height: 700px;" class="flex flex-col">
+      <!-- header -->
+      <div class="flex items-center gap-4 px-4 h-12 flex-shrink-0" style="background: rgb(var(--s-100)); border-bottom: 1px solid rgb(var(--s-200));">
+        <div class="display text-lg" style="color: rgb(var(--s-900));">Bizarre CRM</div>
+        <div class="flex-1 max-w-md mx-auto">
+          <div class="flex items-center gap-2 rounded-lg px-3 py-1 text-xs" style="background: rgb(var(--s-50)); color: rgb(var(--s-500)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            🔍 Search… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">⌘K</span>
+          </div>
+        </div>
+        <span class="text-xs" style="color: rgb(var(--s-600));">🔔 <span class="ml-0.5 surface-pill" style="background: rgb(var(--error-light)); color: #fff; padding: 1px 6px;">3</span></span>
+        <div class="w-7 h-7 rounded-full grid place-items-center text-[11px] font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">A</div>
+      </div>
+      <div class="flex flex-1 overflow-hidden">
+        <aside class="w-44 flex flex-col py-3 px-2 gap-0.5 text-xs flex-shrink-0" style="background: rgb(var(--s-100)); border-right: 1px solid rgb(var(--s-200)); color: rgb(var(--s-700));">
+          <div class="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Main</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2 font-semibold" style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); box-shadow: inset 2px 0 0 rgb(var(--primary-caramel));">▦ Dashboard</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">🛒 POS</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">🔧 Tickets</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">👥 Customers</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📦 Inventory</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📄 Invoices</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">📊 Reports</div>
+          <div class="px-2 py-1.5 rounded flex items-center gap-2">⚙ Settings</div>
+        </aside>
+        <main class="flex-1 overflow-auto p-5 space-y-4">
+          <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-100)); border-left: 2px solid rgb(var(--primary-caramel));">
+            <div class="display text-2xl" style="color: rgb(var(--s-900));">Good morning, Alex</div>
+            <div class="text-xs mt-0.5" style="color: rgb(var(--s-500));">12 tickets due today · $4,820 in pending invoices · <span style="color: rgb(var(--teal-light));">2 new customer messages</span></div>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Sales today</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-900));">$3,142</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--success-light));">▲ 18% vs avg</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Open tickets</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-900));">23</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--warning-light));">● 5 overdue</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">Revenue MTD</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-900));">$48.2k</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--teal-light));">~ on pace</div>
+            </div>
+            <div class="rounded-lg p-3" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+              <div class="text-[10px] mono uppercase tracking-wider" style="color: rgb(var(--s-500));">VIP customers</div>
+              <div class="display text-2xl mt-1" style="color: rgb(var(--s-900));">14</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--burgundy-light));">★ 2 visiting today</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-lg p-3 flex items-start gap-3" style="background: rgb(var(--warning-light) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--warning-light) / 0.4);">
+              <div class="text-xl">⚠️</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold" style="color: rgb(var(--warning-light));">Low stock — 7 SKUs</div>
+                <div class="text-xs mt-0.5" style="color: rgb(var(--s-600));">iPhone 15 OEM screen, AirPods battery, USB-C cables (×3), tempered glass…</div>
+                <button class="mt-2 surface-pill" style="background: rgb(var(--warning-light)); color: #fff;">Auto-reorder →</button>
+              </div>
+            </div>
+            <div class="rounded-lg p-3 flex items-start gap-3" style="background: rgb(var(--burgundy-light) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--burgundy-light) / 0.4);">
+              <div class="text-xl">★</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold" style="color: rgb(var(--burgundy-light));">VIP arriving — Sarah Chen</div>
+                <div class="text-xs mt-0.5" style="color: rgb(var(--s-600));">Loyalty tier Platinum · 47 tickets lifetime · MacBook Pro screen booked 2:30pm</div>
+                <button class="mt-2 surface-pill" style="background: rgb(var(--burgundy-light)); color: #fff;">Open profile →</button>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg overflow-hidden" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="px-4 py-2.5 text-[11px] uppercase tracking-wider mono flex items-center justify-between" style="color: rgb(var(--s-500)); border-bottom: 1px solid rgb(var(--s-200));">
+              <span>Recent activity</span>
+              <span style="color: rgb(var(--teal-light));">View all →</span>
+            </div>
+            <div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-200));">
+                <span class="surface-pill" style="background: rgb(var(--success-light) / 0.15); color: rgb(var(--success-light));">PAID</span>
+                <span style="color: rgb(var(--s-900));">#T-2841</span> <span style="color: rgb(var(--s-500));">M. Johnson · iPhone 13 screen — $189.00</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">2 min ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-200));">
+                <span class="surface-pill" style="background: rgb(var(--warning-light) / 0.15); color: rgb(var(--warning-light));">WAITING PARTS</span>
+                <span style="color: rgb(var(--s-900));">#T-2839</span> <span style="color: rgb(var(--s-500));">A. Patel · iPad Pro battery — ETA Friday</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">14 min ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-200));">
+                <span class="surface-pill" style="background: rgb(var(--error-light) / 0.15); color: rgb(var(--error-light));">OVERDUE</span>
+                <span style="color: rgb(var(--s-900));">#T-2812</span> <span style="color: rgb(var(--s-500));">L. Garcia · MacBook keyboard — 3 days overdue</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">1 hr ago</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs">
+                <span class="surface-pill" style="background: rgb(var(--teal-light) / 0.15); color: rgb(var(--teal-light));">ASSIGNED</span>
+                <span style="color: rgb(var(--s-900));">#T-2843</span> <span style="color: rgb(var(--s-500));">Sarah Chen · MacBook Pro screen → Tech Mike</span>
+                <span class="ml-auto" style="color: rgb(var(--s-500));">just now</span>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TICKET DETAIL — DARK ===== -->
+  <div class="text-[10px] uppercase tracking-wider mono mb-2 text-zinc-500">TICKET DETAIL · DARK MODE</div>
+  <div class="rounded-xl overflow-hidden ring-1 mb-6" style="--tw-ring-color: rgb(var(--s-700));">
+    <div style="background: rgb(var(--s-900)); color: rgb(var(--s-50)); min-height: 720px;" class="flex flex-col">
+      <!-- breadcrumb -->
+      <div class="flex items-center gap-2 px-5 h-10 text-xs flex-shrink-0" style="background: rgb(var(--s-950)); border-bottom: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500));">
+        <span>Tickets</span><span>›</span><span style="color: rgb(var(--s-300));">#T-2843</span>
+        <span class="ml-auto surface-pill" style="background: rgb(var(--teal-dark) / 0.15); color: rgb(var(--teal-dark));">In progress</span>
+      </div>
+      <div class="flex-1 grid grid-cols-3 gap-4 p-5">
+        <!-- left col: status + customer + device -->
+        <div class="col-span-2 space-y-4">
+          <!-- status timeline -->
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Status</div>
+            <div class="flex items-center gap-2 text-xs">
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--success-dark));display:grid;place-items:center;color:#002b15;font-size:9px;">✓</span>
+                <div><div style="color: rgb(var(--s-200));">Checked in</div><div class="mono" style="color: rgb(var(--s-500));">Mon 9:14am</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--success-dark));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--success-dark));display:grid;place-items:center;color:#002b15;font-size:9px;">✓</span>
+                <div><div style="color: rgb(var(--s-200));">Diagnosed</div><div class="mono" style="color: rgb(var(--s-500));">Mon 11:30am</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--primary-cream));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--primary-cream));"></span>
+                <div><div style="color: rgb(var(--primary-cream));">Repair in progress</div><div class="mono" style="color: rgb(var(--s-500));">~2hr ETA</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--s-700));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--s-700));"></span>
+                <div><div style="color: rgb(var(--s-500));">QC + pickup</div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- device hero -->
+          <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-700) / 0.85); border-left: 2px solid rgb(var(--primary-cream));">
+            <div class="display text-xl" style="color: rgb(var(--s-50));">MacBook Pro 14" — Screen Replacement</div>
+            <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">Space Gray · S/N C02XK1J9MD6T · Liquid Retina XDR · $389.00 labor + parts</div>
+          </div>
+
+          <!-- parts + assignments -->
+          <div class="rounded-lg overflow-hidden" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="px-4 py-2 text-[11px] uppercase tracking-wider mono" style="color: rgb(var(--s-500)); border-bottom: 1px solid rgb(var(--s-700));">Parts &amp; Assignments</div>
+            <div class="divide-y" style="border-color: rgb(var(--s-700));">
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-700));">
+                <span class="surface-pill" style="background: rgb(var(--success-dark) / 0.15); color: rgb(var(--success-dark));">IN STOCK</span>
+                <span style="color: rgb(var(--s-200));">14" Liquid Retina display assembly</span>
+                <span class="ml-auto mono" style="color: rgb(var(--s-300));">$249.00</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-700));">
+                <span class="surface-pill" style="background: rgb(var(--info-dark) / 0.15); color: rgb(var(--info-dark));">ORDERED</span>
+                <span style="color: rgb(var(--s-200));">Pentalobe screw set (×6)</span>
+                <span class="ml-auto mono" style="color: rgb(var(--s-300));">$8.40</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs">
+                <span class="surface-pill" style="background: rgb(var(--teal-dark) / 0.15); color: rgb(var(--teal-dark));">TECH</span>
+                <span style="color: rgb(var(--s-200));">Mike Reyes</span> <span style="color: rgb(var(--s-500));">· assigned 14 min ago</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- payment -->
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Payment</div>
+            <div class="grid grid-cols-3 gap-3 text-xs">
+              <div><div class="mono" style="color: rgb(var(--s-500));">Total</div><div class="display text-xl" style="color: rgb(var(--s-50));">$389.00</div></div>
+              <div><div class="mono" style="color: rgb(var(--s-500));">Deposit paid</div><div class="display text-xl" style="color: rgb(var(--success-dark));">$200.00</div></div>
+              <div><div class="mono" style="color: rgb(var(--s-500));">Balance due</div><div class="display text-xl" style="color: rgb(var(--error-dark));">$189.00</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- right col: customer + messages -->
+        <div class="space-y-4">
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-12 h-12 rounded-full grid place-items-center text-base font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">SC</div>
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold flex items-center gap-1.5" style="color: rgb(var(--s-50));">Sarah Chen
+                  <span class="surface-pill" style="background: rgb(var(--burgundy-dark) / 0.15); color: rgb(var(--burgundy-dark)); padding: 1px 8px;">★ VIP</span>
+                </div>
+                <div class="text-xs mono" style="color: rgb(var(--s-500));">Platinum · 47 tickets · since 2021</div>
+              </div>
+            </div>
+            <div class="text-xs space-y-1.5" style="color: rgb(var(--s-300));">
+              <div>📱 (415) 555-0142</div>
+              <div>✉ sarah.chen@example.com</div>
+              <div style="color: rgb(var(--teal-dark));">View profile →</div>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-800)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Recent messages</div>
+            <div class="space-y-2 text-xs">
+              <div class="rounded-lg px-3 py-2" style="background: rgb(var(--s-700));">
+                <div class="mono mb-0.5" style="color: rgb(var(--teal-dark));">Sarah · 11:42am</div>
+                <div style="color: rgb(var(--s-200));">Any update on timing? Have a meeting at 4pm.</div>
+              </div>
+              <div class="rounded-lg px-3 py-2" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">
+                <div class="mono mb-0.5" style="opacity: 0.7;">You · 11:48am</div>
+                <div>Repair under way, on track for 2pm pickup.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-3 flex items-start gap-2" style="background: rgb(var(--success-dark) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--success-dark) / 0.4);">
+            <span style="color: rgb(var(--success-dark));">●</span>
+            <div class="text-xs">
+              <div class="font-semibold" style="color: rgb(var(--success-dark));">Warranty active</div>
+              <div style="color: rgb(var(--s-400));">90-day repair warranty · expires 2026-08-01</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- bottom action bar -->
+      <div class="flex items-center justify-end gap-2 px-5 py-3 flex-shrink-0" style="background: rgb(var(--s-950)); border-top: 1px solid rgb(var(--s-700));">
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="color: rgb(var(--error-dark)); box-shadow: inset 0 0 0 1px rgb(var(--error-dark) / 0.4);">Cancel ticket</button>
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="color: rgb(var(--s-300)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">Save draft</button>
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="background: rgb(var(--s-800)); color: rgb(var(--s-50)); box-shadow: inset 0 0 0 1px rgb(var(--s-600));">Print receipt</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">Mark complete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TICKET DETAIL — LIGHT ===== -->
+  <div class="text-[10px] uppercase tracking-wider mono mb-2 text-zinc-500">TICKET DETAIL · LIGHT MODE</div>
+  <div class="rounded-xl overflow-hidden ring-1 mb-6" style="--tw-ring-color: rgb(var(--s-200));">
+    <div style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); min-height: 720px;" class="flex flex-col">
+      <div class="flex items-center gap-2 px-5 h-10 text-xs flex-shrink-0" style="background: rgb(var(--s-100)); border-bottom: 1px solid rgb(var(--s-200)); color: rgb(var(--s-500));">
+        <span>Tickets</span><span>›</span><span style="color: rgb(var(--s-700));">#T-2843</span>
+        <span class="ml-auto surface-pill" style="background: rgb(var(--teal-light) / 0.15); color: rgb(var(--teal-light));">In progress</span>
+      </div>
+      <div class="flex-1 grid grid-cols-3 gap-4 p-5">
+        <div class="col-span-2 space-y-4">
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Status</div>
+            <div class="flex items-center gap-2 text-xs">
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--success-light));display:grid;place-items:center;color:#fff;font-size:9px;">✓</span>
+                <div><div style="color: rgb(var(--s-900));">Checked in</div><div class="mono" style="color: rgb(var(--s-500));">Mon 9:14am</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--success-light));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--success-light));display:grid;place-items:center;color:#fff;font-size:9px;">✓</span>
+                <div><div style="color: rgb(var(--s-900));">Diagnosed</div><div class="mono" style="color: rgb(var(--s-500));">Mon 11:30am</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--primary-caramel));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--primary-caramel));"></span>
+                <div><div style="color: rgb(var(--primary-caramel)); font-weight: 600;">Repair in progress</div><div class="mono" style="color: rgb(var(--s-500));">~2hr ETA</div></div>
+              </div>
+              <div class="flex-1 h-px" style="background: rgb(var(--s-300));"></div>
+              <div class="flex-1 flex items-center gap-2">
+                <span style="width:14px;height:14px;border-radius:9999px;background:rgb(var(--s-300));"></span>
+                <div><div style="color: rgb(var(--s-500));">QC + pickup</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg px-4 py-3" style="background: rgb(var(--s-100)); border-left: 2px solid rgb(var(--primary-caramel));">
+            <div class="display text-xl" style="color: rgb(var(--s-900));">MacBook Pro 14" — Screen Replacement</div>
+            <div class="text-xs mt-0.5" style="color: rgb(var(--s-500));">Space Gray · S/N C02XK1J9MD6T · Liquid Retina XDR · $389.00 labor + parts</div>
+          </div>
+
+          <div class="rounded-lg overflow-hidden" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="px-4 py-2 text-[11px] uppercase tracking-wider mono" style="color: rgb(var(--s-500)); border-bottom: 1px solid rgb(var(--s-200));">Parts &amp; Assignments</div>
+            <div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-200));">
+                <span class="surface-pill" style="background: rgb(var(--success-light) / 0.15); color: rgb(var(--success-light));">IN STOCK</span>
+                <span style="color: rgb(var(--s-900));">14" Liquid Retina display assembly</span>
+                <span class="ml-auto mono" style="color: rgb(var(--s-700));">$249.00</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs" style="border-bottom: 1px solid rgb(var(--s-200));">
+                <span class="surface-pill" style="background: rgb(var(--info-light) / 0.15); color: rgb(var(--info-light));">ORDERED</span>
+                <span style="color: rgb(var(--s-900));">Pentalobe screw set (×6)</span>
+                <span class="ml-auto mono" style="color: rgb(var(--s-700));">$8.40</span>
+              </div>
+              <div class="px-4 py-2 flex items-center gap-3 text-xs">
+                <span class="surface-pill" style="background: rgb(var(--teal-light) / 0.15); color: rgb(var(--teal-light));">TECH</span>
+                <span style="color: rgb(var(--s-900));">Mike Reyes</span> <span style="color: rgb(var(--s-500));">· assigned 14 min ago</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Payment</div>
+            <div class="grid grid-cols-3 gap-3 text-xs">
+              <div><div class="mono" style="color: rgb(var(--s-500));">Total</div><div class="display text-xl" style="color: rgb(var(--s-900));">$389.00</div></div>
+              <div><div class="mono" style="color: rgb(var(--s-500));">Deposit paid</div><div class="display text-xl" style="color: rgb(var(--success-light));">$200.00</div></div>
+              <div><div class="mono" style="color: rgb(var(--s-500));">Balance due</div><div class="display text-xl" style="color: rgb(var(--error-light));">$189.00</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-12 h-12 rounded-full grid place-items-center text-base font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">SC</div>
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold flex items-center gap-1.5" style="color: rgb(var(--s-900));">Sarah Chen
+                  <span class="surface-pill" style="background: rgb(var(--burgundy-light) / 0.15); color: rgb(var(--burgundy-light)); padding: 1px 8px;">★ VIP</span>
+                </div>
+                <div class="text-xs mono" style="color: rgb(var(--s-500));">Platinum · 47 tickets · since 2021</div>
+              </div>
+            </div>
+            <div class="text-xs space-y-1.5" style="color: rgb(var(--s-700));">
+              <div>📱 (415) 555-0142</div>
+              <div>✉ sarah.chen@example.com</div>
+              <div style="color: rgb(var(--teal-light));">View profile →</div>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-4" style="background: rgb(var(--s-100)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="text-[10px] uppercase tracking-wider mono mb-3" style="color: rgb(var(--s-500));">Recent messages</div>
+            <div class="space-y-2 text-xs">
+              <div class="rounded-lg px-3 py-2" style="background: rgb(var(--s-50)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+                <div class="mono mb-0.5" style="color: rgb(var(--teal-light));">Sarah · 11:42am</div>
+                <div style="color: rgb(var(--s-900));">Any update on timing? Have a meeting at 4pm.</div>
+              </div>
+              <div class="rounded-lg px-3 py-2" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">
+                <div class="mono mb-0.5" style="opacity: 0.7;">You · 11:48am</div>
+                <div>Repair under way, on track for 2pm pickup.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg p-3 flex items-start gap-2" style="background: rgb(var(--success-light) / 0.10); box-shadow: inset 0 0 0 1px rgb(var(--success-light) / 0.4);">
+            <span style="color: rgb(var(--success-light));">●</span>
+            <div class="text-xs">
+              <div class="font-semibold" style="color: rgb(var(--success-light));">Warranty active</div>
+              <div style="color: rgb(var(--s-600));">90-day repair warranty · expires 2026-08-01</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 px-5 py-3 flex-shrink-0" style="background: rgb(var(--s-100)); border-top: 1px solid rgb(var(--s-200));">
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="color: rgb(var(--error-light)); box-shadow: inset 0 0 0 1px rgb(var(--error-light) / 0.4);">Cancel ticket</button>
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="color: rgb(var(--s-700)); box-shadow: inset 0 0 0 1px rgb(var(--s-300));">Save draft</button>
+        <button class="rounded-lg px-3 py-2 text-sm font-medium" style="background: rgb(var(--s-100)); color: rgb(var(--s-900)); box-shadow: inset 0 0 0 1px rgb(var(--s-300));">Print receipt</button>
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">Mark complete</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= CROSS-PLATFORM TOKEN MAP ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Cross-platform token map</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">One concept, three platform-native names. When implementing a component, look up the platform-specific token here.</p>
+  <div class="overflow-x-auto bg-white rounded-xl ring-1 ring-zinc-200">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-50 text-left text-xs uppercase tracking-wider text-zinc-500">
+        <tr>
+          <th class="px-4 py-3">Concept</th>
+          <th class="px-4 py-3">Web (Tailwind)</th>
+          <th class="px-4 py-3">iOS (Asset / token)</th>
+          <th class="px-4 py-3">Android (Theme)</th>
+          <th class="px-4 py-3">Hex (Dark / Light)</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-100 mono text-xs">
+        <tr><td class="px-4 py-2.5 font-sans">Page background</td><td class="px-4 py-2.5">bg-surface-900 / bg-surface-50</td><td class="px-4 py-2.5">SurfaceBase / Color.bizarreSurfaceBase</td><td class="px-4 py-2.5">background</td><td class="px-4 py-2.5">#0F0E0C / #F8F7F5</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Elevated rail</td><td class="px-4 py-2.5">bg-surface-800 / bg-surface-100</td><td class="px-4 py-2.5">Surface1 / SurfaceElevated</td><td class="px-4 py-2.5">surface</td><td class="px-4 py-2.5">#161513 / #F0EFEC</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Card / form fill</td><td class="px-4 py-2.5">bg-surface-700 / bg-surface-100</td><td class="px-4 py-2.5">SurfaceElev</td><td class="px-4 py-2.5">surfaceVariant</td><td class="px-4 py-2.5">#1E1C1A / #F0EFEC</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Heading text</td><td class="px-4 py-2.5">text-surface-50 / text-surface-900</td><td class="px-4 py-2.5">OnSurface</td><td class="px-4 py-2.5">onSurface / onBackground</td><td class="px-4 py-2.5">#F8F7F5 / #0F0E0C</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Body text</td><td class="px-4 py-2.5">text-surface-300 / text-surface-700</td><td class="px-4 py-2.5">OnSurfaceMuted</td><td class="px-4 py-2.5">onSurfaceVariant</td><td class="px-4 py-2.5">#C6C2BC / #1E1C1A</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Subtle text</td><td class="px-4 py-2.5">text-surface-500</td><td class="px-4 py-2.5">OnSurfaceDim</td><td class="px-4 py-2.5">outline (text)</td><td class="px-4 py-2.5">#6E6A64 (both)</td></tr>
+        <tr class="bg-amber-50/40"><td class="px-4 py-2.5 font-sans font-semibold">Primary brand</td><td class="px-4 py-2.5">bg-primary-500 / bg-primary-light</td><td class="px-4 py-2.5">BrandPrimary</td><td class="px-4 py-2.5">primary</td><td class="px-4 py-2.5">#FDEED0 / #A66D1F</td></tr>
+        <tr class="bg-amber-50/40"><td class="px-4 py-2.5 font-sans font-semibold">On-primary text</td><td class="px-4 py-2.5">text-primary-900 / text-primary-50</td><td class="px-4 py-2.5">OnPrimary</td><td class="px-4 py-2.5">onPrimary</td><td class="px-4 py-2.5">#2B1400 / #FFFEFB</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Secondary (teal)</td><td class="px-4 py-2.5">text-teal-400 / text-teal-700</td><td class="px-4 py-2.5">BrandTeal</td><td class="px-4 py-2.5">secondary</td><td class="px-4 py-2.5">#4DB8C9 / #0E7A8A</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Tertiary (burgundy)</td><td class="px-4 py-2.5">text-burgundy-400 / text-burgundy-700</td><td class="px-4 py-2.5">BrandBurgundy</td><td class="px-4 py-2.5">tertiary</td><td class="px-4 py-2.5">#C5566D / #8E2D40</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Success</td><td class="px-4 py-2.5">text-success-500</td><td class="px-4 py-2.5">SuccessGreen</td><td class="px-4 py-2.5">extended.success</td><td class="px-4 py-2.5">#34C47E / #1F7A4A</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Warning</td><td class="px-4 py-2.5">text-warning-500</td><td class="px-4 py-2.5">WarningAmber</td><td class="px-4 py-2.5">extended.warning</td><td class="px-4 py-2.5">#E8A33D / #8A5200</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Error</td><td class="px-4 py-2.5">text-error-500</td><td class="px-4 py-2.5">ErrorRose</td><td class="px-4 py-2.5">error</td><td class="px-4 py-2.5">#E2526C / #BA1A2E</td></tr>
+        <tr><td class="px-4 py-2.5 font-sans">Info</td><td class="px-4 py-2.5">text-info-500 (= teal)</td><td class="px-4 py-2.5">BrandTeal</td><td class="px-4 py-2.5">extended.info</td><td class="px-4 py-2.5">#4DB8C9 / #0E7A8A</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============= DO / DONT ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-6">Do / Don't</h2>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-xl p-5 bg-white ring-1 ring-emerald-200">
+      <div class="text-xs uppercase tracking-wider text-emerald-700 font-semibold mb-3">✓ DO</div>
+      <ul class="space-y-3 text-sm">
+        <li><strong>Cream as edge, not wash.</strong> 2px left border on dark hero cards; small CTAs; step dots.</li>
+        <li><strong>Caramel in light mode.</strong> Anywhere cream lives in dark, caramel takes its place in light. Same role.</li>
+        <li><strong>Surface ramp = neutral.</strong> Wide canvases (page, sidebar, cards) use surface-* tokens, never primary tints.</li>
+        <li><strong>Status colors = hue-shifted.</strong> Use #E2526C / #34C47E / #E8A33D — not Tailwind defaults — to harmonize with warm brand.</li>
+        <li><strong>Same component, both modes.</strong> Don't fork components per mode. Use mode-aware tokens.</li>
+      </ul>
+    </div>
+    <div class="rounded-xl p-5 bg-white ring-1 ring-rose-200">
+      <div class="text-xs uppercase tracking-wider text-rose-700 font-semibold mb-3">✗ DON'T</div>
+      <ul class="space-y-3 text-sm">
+        <li><strong>Cream on white.</strong> 1.1:1 contrast — fails WCAG, invisible. Use caramel in light mode.</li>
+        <li><strong>Cream wash on dark.</strong> <code>bg-primary-50/30</code> as a wide panel fill drowns the brand mark. Restrict to small accents.</li>
+        <li><strong>Cool grays.</strong> Don't reach for Tailwind <code>zinc-*</code> or <code>slate-*</code> on surfaces — kills the warmth. Use <code>surface-*</code>.</li>
+        <li><strong>Generic Tailwind status colors.</strong> <code>red-500</code>, <code>green-500</code>, <code>amber-500</code> read as flat SaaS. Use the hue-shifted brand status tokens.</li>
+        <li><strong>Burgundy on body content.</strong> Tertiary is for VIP / loyalty / marketing — never on regular text or primary CTAs.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============= MIGRATION ============= -->
+<section class="max-w-[1320px] mx-auto px-6 py-12">
+  <h2 class="display text-3xl mb-2">Migration status — per platform</h2>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Where each platform stands relative to this unified spec.</p>
+  <div class="grid md:grid-cols-3 gap-4">
+    <!-- Web -->
+    <div class="rounded-xl p-5 bg-white ring-1 ring-zinc-200">
+      <div class="flex items-center justify-between mb-3"><h3 class="display text-2xl">Web</h3><span class="surface-pill" style="background:rgb(var(--success-dark) / 0.2); color:rgb(var(--success-light));">~80% aligned</span></div>
+      <ul class="space-y-2 text-sm text-zinc-700">
+        <li>✓ Surface ramp swapped to warm-graphite (Option F) <code class="text-xs">globals.css</code></li>
+        <li>✓ POS hero card uses 2px cream edge pattern <code class="text-xs">RepairsTab.tsx</code></li>
+        <li>✗ Tailwind <code>primary-800 #d6a54b</code> fails AA — retone to <code>#A66D1F</code></li>
+        <li>✗ Tailwind status ramps still default Tailwind — retone to brand variants</li>
+        <li>✗ ~100 cream-wash callsites need restraint pass</li>
+        <li>✗ Add <code>burgundy</code> + <code>teal</code> ramps to <code>tailwind.config.ts</code></li>
+      </ul>
+    </div>
+    <!-- iOS -->
+    <div class="rounded-xl p-5 bg-white ring-1 ring-zinc-200">
+      <div class="flex items-center justify-between mb-3"><h3 class="display text-2xl">iOS</h3><span class="surface-pill" style="background:rgb(var(--warning-dark) / 0.2); color:rgb(var(--warning-light));">~60% aligned</span></div>
+      <ul class="space-y-2 text-sm text-zinc-700">
+        <li>✓ Asset catalog already supports light + dark per colorset</li>
+        <li>✓ Cream <code>#FDEED0</code> dark primary correct</li>
+        <li>✓ Status colors already match canonical (<code>#E2526C / #34C47E / #E8A33D</code>)</li>
+        <li>✗ <code>BrandPrimary</code> light = <code>#C2410C</code> deep orange — change to <code>#A66D1F</code> caramel</li>
+        <li>✗ Surface ramp light tones (<code>#F6F4F1</code> etc.) need re-tone to warm-graphite ramp</li>
+        <li>✗ Light mode never visually verified — run a11y pass</li>
+      </ul>
+    </div>
+    <!-- Android -->
+    <div class="rounded-xl p-5 bg-white ring-1 ring-zinc-200">
+      <div class="flex items-center justify-between mb-3"><h3 class="display text-2xl">Android</h3><span class="surface-pill" style="background:rgb(var(--success-dark) / 0.2); color:rgb(var(--success-light));">~90% aligned</span></div>
+      <ul class="space-y-2 text-sm text-zinc-700">
+        <li>✓ <code>lightColorScheme</code> + <code>darkColorScheme</code> fully populated</li>
+        <li>✓ Cream <code>#FDEED0</code> dark / Caramel <code>#A66D1F</code> light — already canonical</li>
+        <li>✓ Status colors match (<code>#E2526C / #34C47E / #E8A33D</code>)</li>
+        <li>✓ High-contrast + colorblind variants ship</li>
+        <li>✗ Surface ramp uses <code>#1C1611 / #26201A</code> — slightly off canonical; align to <code>surface-900 / surface-800</code></li>
+        <li>✗ Hardcoded color in <code>PosEntryScreen</code> (<code>0xFF002817</code>)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============= FOOTER ============= -->
+<footer class="bg-zinc-900 text-zinc-400 py-12 mt-12">
+  <div class="max-w-[1320px] mx-auto px-6">
+    <div class="display text-2xl text-zinc-100 mb-2">Bizarre CRM</div>
+    <p class="text-sm max-w-2xl">One palette. Three platforms. Two modes. Cream the constant, caramel its light-mode echo, warm-graphite the canvas. <span class="mono text-xs">mockups/design-system.html</span> · 2026-05-01</p>
+  </div>
+</footer>
+
+</body>
+</html>
