@@ -4722,10 +4722,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] **`BrandBanner(kind:message:action:)`** — sticky top banner (offline, sync-pending). <!-- shipped bcbccaa8 [actionplan agent-10] -->
 
 ### 30.11 Tone of voice
-- [ ] **Friendly + concise** copy.
-- [ ] **Error messages** — what went wrong + what to do.
-- [ ] **Confirmation dialogs** — describe action + consequence.
-- [ ] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not).
+- [x] **Friendly + concise** copy. (`DesignSystem/Polish/BrandToneOfVoice.swift` — `BrandTone.friendly(_:)` strips boilerplate prefixes ("please note that…", "an error occurred:") and trims whitespace; authoring guideline ≤120 chars. feat(§30.11))
+- [x] **Error messages** — what went wrong + what to do. (`BrandTone.error(what:do:)` builds 2-clause string; DEBUG assertion fires when remediation copy is missing. feat(§30.11))
+- [x] **Confirmation dialogs** — describe action + consequence. (`BrandTone.confirm(action:consequence:)` builds action+consequence body copy; DEBUG assertion when consequence missing. feat(§30.11))
+- [x] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not). (`JargonGlossary` map + `BrandTone.plain(_:)` rewrites A2P/10DLC/PCI-DSS/TOTP/JWT/webhook/etc. into plain staff-facing copy; `containsJargon(_:)` audit helper. feat(§30.11))
 
 ### 30.12 Theme choice — asked in Setup Wizard, not silently forced
 - [x] **First-run theme question** — `AppTheme` enum (`system` / `dark` / `light`) + `ThemeStore` persistence; default = `.system`; `ThemePreference.swift` in DesignSystem. feat(§30.12): b374d418
@@ -4822,7 +4822,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 
 - [x] Tokens: `Surface.skeletonBase`, `Surface.skeletonHighlight` (dark/light variants). (`DesignTokens.Skeleton.base` + `.highlight` in `DesignSystem/Tokens.swift`; asset-catalog backed + dark/light fallbacks. feat(§30.9): 6f177c96)
 - [ ] Reusable components: `SkeletonRow(.ticket)`, `SkeletonRow(.customer)`, centralized.
-- [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
+- [x] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding). (`BrandDurationScale` enum in `DesignSystem/Motion/BrandDurationScale.swift` — six §30 tokens with `.animation(curve:reduceMotion:)` SwiftUI bridge; `requiresReduceMotionDowngrade` collapses durations >snappy to instant when Reduce Motion is on. feat(§30))
 - [x] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5). <!-- BrandCurve enum in Motion/BrandCurve.swift — animation(duration:) factory + natural-response default per case. -->
 
 - [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
