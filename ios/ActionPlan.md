@@ -3099,11 +3099,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
 - [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
-- [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
+- [x] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers). (`GlobalSearchView` `.autocorrectionDisabled()` + `.textInputAutocapitalization(.never)` after each `.searchable`; iPhone + iPad layouts)
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
 - [x] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom. (`GlobalSearchView` `typeAheadOverlay`; `GlobalSearchViewModel` `fetchTypeAhead` 100ms debounce → `TypeAheadPreviewView`; agent-9 b10)
-- [ ] **Phone-number match** — strip formatting, match on last 10 digits.
-- [ ] **IMEI match** — 15-digit serial lookup; falls through to device-linked ticket.
+- [x] **Phone-number match** — strip formatting, match on last 10 digits. (`Search/Filters/QueryNormalizer.swift`; `GlobalSearchViewModel.fetchLocal/fetchRemote` normalise digits-only queries before FTS + `GET /search?q=`)
+- [x] **IMEI match** — 15-digit serial lookup; falls through to device-linked ticket. (`QueryNormalizer.normalise` returns `.imei` for 15-digit runs; same fetchLocal/fetchRemote path uses canonical digits)
 - [ ] **Barcode/SKU** — scan button in search field → auto-fills + submits.
 
 ### 18.2 Scoped search (per-list)
@@ -3140,10 +3140,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 ### 18.7 Offline search
 - [x] **Local index** — unified `search_index` FTS5 table (porter tokenizer); `FTSIndexStore` actor; `FTSReindexCoordinator` feeds on domain NC events. (feat(ios post-phase §18))
 - [x] **Offline result** stale badge — indicate from-cache date. (`GlobalSearchView` `MergedResultRow` `isOfflineResult` → "cached" capsule badge when `.local` row + offline; agent-9 b10)
-- [ ] **Merge** — online + offline results deduplicated by id.
+- [x] **Merge** — online + offline results deduplicated by id. (`Search/FTS/SearchResultMerger.swift`; local hits first then remote rows whose `(entity, id)` is already in the local key set are dropped; `GlobalSearchViewModel.updateMergedRows` calls it on every fetch)
 
 ### 18.8 Privacy gates
-- [ ] **SSN / tax-ID** — never searchable; hashed server-side.
+- [x] **SSN / tax-ID** — never searchable; hashed server-side. (`Search/FTS/SensitiveDataScrubber.swift` redacts SSN / EIN / tax-id digit runs from `customer.notes` before they're written to the FTS5 body in `FTSIndexStore.indexCustomer`)
 - [ ] **Sensitive notes** — only searchable by authors/admins (server enforces).
 - [ ] FTS5 pipeline: on each GRDB insert/update of indexed models (tickets / customers / inventory / invoices / sms messages), triggers update the matching FTS5 virtual table.
 - [ ] Stop-word list per locale; stemming via Snowball (English) or language-specific.
