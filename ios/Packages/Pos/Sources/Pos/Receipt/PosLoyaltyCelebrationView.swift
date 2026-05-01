@@ -57,7 +57,7 @@ public struct PosLoyaltyCelebrationView: View {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     // Headline: "+55 pts earned · GOLD tier held"  (or "Welcome to PLATINUM!")
                     HStack(spacing: BrandSpacing.xs) {
-                        Text("+\(pointsDelta) pts earned · \(tierLabel(tierAfter ?? tierBefore)) tier \(didTierUp ? "up" : "held")")
+                        Text(headlineText)
                             .font(.brandTitleSmall())
                             .foregroundStyle(.bizarreOrange)
                         if didTierUp {
@@ -67,12 +67,19 @@ public struct PosLoyaltyCelebrationView: View {
                                 .accessibilityHidden(true)
                         }
                     }
-                    if didTierUp, let after = tierAfter {
-                        Text("Welcome to \(tierLabel(after))!")
+                    // Sub-line: total pts + pts to next tier
+                    if let total = pointsTotal, let next = nextTierPoints {
+                        let toNext = max(0, next - total)
+                        let nextTierName = (didTierUp ? tierAfter : tierAfter) ?? "next tier"
+                        Text("\(total) pts total · \(toNext) to \(nextTierName.uppercased())")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    } else if didTierUp, let after = tierAfter {
+                        Text("Welcome to \(after)!")
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreWarning)
                     } else if let tier = tierAfter ?? tierBefore {
-                        Text(tierLabel(tier))
+                        Text(tier.uppercased())
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                     }
@@ -132,26 +139,38 @@ public struct PosLoyaltyCelebrationView: View {
             }
             .frame(height: 6)
 
-            if let before = tierBefore, let after = tierAfter, before == after {
-                HStack {
-                    Text(tierLabel(before))
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Spacer()
-                    Text("Next tier")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
+            // Tier label row — matches mockup "GOLD 285 pts" / "PLATINUM 500 pts"
+            HStack {
+                Text(leftBarLabel)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Spacer()
+                Text(rightBarLabel)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
         .accessibilityHidden(true)
     }
 
-    // MARK: - Helpers
+    // MARK: - Bar endpoint labels
 
-    /// Mockup law: tier labels always UPPERCASE (e.g. "GOLD", "PLATINUM").
-    private func tierLabel(_ tier: String?) -> String {
-        (tier ?? "").uppercased()
+    /// Left label: "GOLD 285 pts" when pointsTotal is known, else "GOLD".
+    private var leftBarLabel: String {
+        let tier = (tierAfter ?? tierBefore)?.uppercased() ?? "—"
+        if let total = pointsTotal {
+            return "\(tier) \(total) pts"
+        }
+        return tier
+    }
+
+    /// Right label: "PLATINUM 500 pts" when nextTierPoints is known, else "NEXT TIER".
+    private var rightBarLabel: String {
+        let nextTier = (didTierUp ? tierAfter : tierAfter)?.uppercased() ?? "NEXT TIER"
+        if let next = nextTierPoints {
+            return "\(nextTier) \(next) pts"
+        }
+        return nextTier
     }
 
     // MARK: - Accessibility

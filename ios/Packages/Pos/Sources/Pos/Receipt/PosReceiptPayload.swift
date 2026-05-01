@@ -49,7 +49,23 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// occurred. `nil` when no account.
     public let loyaltyTierAfter: String?
 
-    // MARK: - Pencil signature
+    // MARK: - Loyalty progress
+
+    /// Total loyalty points after this sale. Drives the left-side tier label
+    /// "GOLD 285 pts" in `PosLoyaltyCelebrationView`.
+    public let loyaltyPointsTotal: Int?
+
+    /// Points threshold for the next tier. Drives the right-side label
+    /// "PLATINUM 500 pts". Nil when the customer is already at the top tier.
+    public let loyaltyNextTierPoints: Int?
+
+    // MARK: - Cash detail
+
+    /// Actual cash tendered (before change). Non-nil for cash transactions.
+    /// Used by the hero subtitle "Cash · $300 received · $25.49 change".
+    public let cashReceivedCents: Int?
+
+    // MARK: - iPad Pencil signature
 
     /// Ticket ID to which an Apple Pencil signature was archived (iPad only).
     /// When non-nil, `PosReceiptView` shows the "Signature captured with Pencil"
@@ -69,6 +85,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyDelta: Int? = nil,
         loyaltyTierBefore: String? = nil,
         loyaltyTierAfter: String? = nil,
+        loyaltyPointsTotal: Int? = nil,
+        loyaltyNextTierPoints: Int? = nil,
         signedTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
@@ -81,6 +99,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyDelta = loyaltyDelta
         self.loyaltyTierBefore = loyaltyTierBefore
         self.loyaltyTierAfter = loyaltyTierAfter
+        self.loyaltyPointsTotal = loyaltyPointsTotal
+        self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
     }
 }
