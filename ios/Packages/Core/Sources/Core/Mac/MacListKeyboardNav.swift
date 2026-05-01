@@ -82,11 +82,6 @@ public struct MacListKeyboardNavModifier: ViewModifier {
             }
 #else
         content
-            .focusable(isEnabled)
-            .onSubmit {
-                guard isEnabled, count > 0 else { return }
-                onOpen(Self.clamp(selection, count: count))
-            }
 #endif
     }
 

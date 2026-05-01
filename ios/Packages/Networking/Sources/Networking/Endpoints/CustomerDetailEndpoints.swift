@@ -86,7 +86,7 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         /// Nil when the tenant has not assigned a color to this tag.
         public let color: String?
 
-        public init(name: String, color: String? = nil) {
+        public init(name: String, color: String?) {
             self.name = name
             self.color = color
         }

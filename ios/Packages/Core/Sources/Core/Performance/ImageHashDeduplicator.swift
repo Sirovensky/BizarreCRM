@@ -36,7 +36,7 @@ import CryptoKit
 ///
 /// Thread-safe via an internal `NSLock`.  All methods may be called from any
 /// thread or actor.
-public final class ImageHashDeduplicator: Sendable {
+public final class ImageHashDeduplicator: @unchecked Sendable {
 
     // MARK: - Shared instance
 

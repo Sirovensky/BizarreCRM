@@ -73,7 +73,7 @@ struct CreateNewTicketIntent: AppIntent {
                 symbol: "plus.circle.fill",
                 tint: .orange,
                 title: "New Ticket",
-                body: customerName.map { "Customer: \($0)" } ?? "Opening new ticket form…"
+                detail: customerName.map { "Customer: \($0)" } ?? "Opening new ticket form…"
             )
         )
     }
@@ -121,7 +121,7 @@ struct TodayRevenueIntent: AppIntent {
                 symbol: "dollarsign.circle.fill",
                 tint: .green,
                 title: "Today's Revenue",
-                body: formatted
+                detail: formatted
             )
         )
     }
@@ -165,7 +165,7 @@ struct OpenPOSIntent: AppIntent {
                 symbol: "cart.fill",
                 tint: .blue,
                 title: "Point of Sale",
-                body: "Opening the register…"
+                detail: "Opening the register…"
             )
         )
     }
@@ -181,8 +181,10 @@ private func donateInteraction(intentTitle: String) {
     // Build a generic INIntent shell for donation purposes.
     // (Full INIntent subclass not required — the interaction metadata is
     //  what Siri uses for proactive suggestions.)
-    let interaction = INInteraction()
-    interaction.intentHandlingStatus = .success
+    let intent = INIntent()
+    intent.suggestedInvocationPhrase = intentTitle
+    let interaction = INInteraction(intent: intent, response: nil)
+    interaction.direction = .outgoing
     interaction.donate(completion: nil)
 }
 
@@ -194,7 +196,7 @@ struct IntentConfirmationCard: View {
     let symbol: String
     let tint: Color
     let title: String
-    let body: String
+    let detail: String
 
     var body: some View {
         HStack(spacing: 12) {
@@ -208,7 +210,7 @@ struct IntentConfirmationCard: View {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text(body)
+                Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -235,7 +237,7 @@ struct BizarreCRMShortcuts64Provider: AppShortcutsProvider {
             phrases: [
                 "Create new ticket in \(.applicationName)",
                 "New repair ticket in \(.applicationName)",
-                "New ticket for \(\.$customerName) in \(.applicationName)"
+                "New ticket in \(.applicationName)"
             ],
             shortTitle: "New Ticket",
             systemImageName: "plus.circle"
@@ -263,6 +265,28 @@ struct BizarreCRMShortcuts64Provider: AppShortcutsProvider {
             ],
             shortTitle: "Open POS",
             systemImageName: "cart"
+        )
+
+        AppShortcut(
+            intent: CreateTicketActionIntent(),
+            phrases: [
+                "Create ticket in \(.applicationName)",
+                "New repair ticket in \(.applicationName)",
+                "Open new ticket in \(.applicationName)"
+            ],
+            shortTitle: "New Ticket",
+            systemImageName: "plus.circle"
+        )
+
+        AppShortcut(
+            intent: ClockInOutActionIntent(),
+            phrases: [
+                "Clock in with \(.applicationName)",
+                "Clock out of \(.applicationName)",
+                "Toggle clock in \(.applicationName)"
+            ],
+            shortTitle: "Clock In/Out",
+            systemImageName: "clock"
         )
     }
 }

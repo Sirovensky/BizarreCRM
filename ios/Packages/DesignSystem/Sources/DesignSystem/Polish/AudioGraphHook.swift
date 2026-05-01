@@ -65,18 +65,18 @@ public struct BrandAudioGraphDescriptor: AXChartDescriptorRepresentable {
         let yAxis = AXNumericDataAxisDescriptor(
             title: "Value",
             range: yMin ... Swift.max(yMax, yMin + 1), // prevent zero-range
-            gridlinePositions: []
-        ) { value in
-            // Spoken value label — round to 2 decimal places.
-            String(format: "%.2f", value)
-        }
+            gridlinePositions: [],
+            valueDescriptionProvider: { value in
+                // Spoken value label — round to 2 decimal places.
+                String(format: "%.2f", value)
+            }
+        )
 
         let axSeries: [AXDataSeriesDescriptor] = series.map { s in
             let dataPoints = s.dataPoints.map { point in
                 AXDataPoint(
                     x: point.x,
                     y: point.y,
-                    additionalValues: [],
                     label: nil
                 )
             }

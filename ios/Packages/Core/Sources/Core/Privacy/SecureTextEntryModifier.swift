@@ -3,32 +3,25 @@ import SwiftUI
 import UIKit
 #endif
 
-// §28.8 Screen protection — iOS 17+ `isSecure` content flag on sensitive fields
+// §28.8 Screen protection — secure text entry plus screen-capture fallback.
 //
-// `UIView.isSecure = true` (available iOS 17+) marks a view's pixels as
-// content-protected. The OS:
-//   - Excludes the view from screen-recording capture (replaced with black rect).
-//   - Excludes the view from screenshots (also replaced with black rect).
-//
-// This complements the §28.8 `screenCaptureProtected()` blur modifier (which
-// operates at a View-overlay level) by working at the pixel compositor level,
-// providing defence-in-depth.
+// The public UIKit SDK available to this build exposes `isSecureTextEntry` on
+// text controls, and scene/screen capture detection for view-level fallbacks.
+// This modifier keeps those protections together for sensitive fields.
 //
 // Apply to: PIN entry, OTP entry, masked-card reveal, any field whose content
 // must never appear in screen recordings or screenshots even for a single frame.
 //
-// NOTE: `isSecure` on a view is NOT the same as `isSecureTextEntry` on a text
-// field. `isSecureTextEntry` hides characters while typing; `isSecure` prevents
-// the rendered pixels from being captured. Both are applied together here.
+// NOTE: `isSecureTextEntry` hides characters while typing. The accompanying
+// `screenCaptureProtected()` modifier handles active screen capture fallback.
 
 // MARK: - SecureTextEntryModifier
 
-/// §28.8 — Marks a SwiftUI view's rendered pixels as screen-capture protected
-/// (iOS 17+) while also ensuring secure text entry for text fields.
+/// §28.8 — Applies the app's sensitive-input protections to a SwiftUI view.
 ///
-/// On iOS < 17 only the `isSecureTextEntry` behaviour applies; the pixel-level
-/// protection is silently skipped (the `screenCaptureProtected()` blur modifier
-/// provides a fallback at the view layer for those OS versions).
+/// Text fields receive `isSecureTextEntry` where UIKit exposes a backing text
+/// control. The `screenCaptureProtected()` blur modifier provides the
+/// view-layer fallback while screen capture is active.
 ///
 /// ## Usage
 /// ```swift
@@ -45,7 +38,7 @@ public struct SecureTextEntryModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            .pixelSecure()
+            .modifier(IntrospectSecureModifier())
             // Blur as a fallback on iOS < 17 when isCaptured is active.
             // The blur is invisible under normal use; it only activates
             // while screen-capture is detected by the environment service.
@@ -55,7 +48,7 @@ public struct SecureTextEntryModifier: ViewModifier {
 
 // MARK: - IntrospectSecureModifier
 
-/// Applies `UIView.isSecure = true` via UIViewRepresentable introspection.
+/// Applies secure text-entry where the nearest UIKit host is a text field.
 ///
 /// This is a separate modifier so it can be used independently where the
 /// `screenCaptureProtected()` blur is intentionally omitted.
@@ -69,7 +62,7 @@ struct IntrospectSecureModifier: ViewModifier {
 // MARK: - SecureViewMarker
 
 /// Zero-size UIViewRepresentable that walks the responder chain to find and
-/// mark the nearest enclosing `UIView` as `isSecure`.
+/// mark the nearest enclosing `UITextField` as secure text entry.
 ///
 /// This technique is commonly used for UIKit interop in SwiftUI and is
 /// approved by Apple's SwiftUI-UIKit bridging guidance.
@@ -97,13 +90,13 @@ private final class _SecureMarkerView: UIView {
     }
 
     private func markParentSecure() {
-        guard let parent = superview else { return }
-        if #available(iOS 17.0, *) {
-            parent.setValue(true, forKey: "isSecure")
-        }
-        // Walk one level up to catch SwiftUI host cell wrappers.
-        if let grandparent = parent.superview, #available(iOS 17.0, *) {
-            grandparent.setValue(true, forKey: "isSecure")
+        var view: UIView? = superview
+        while let current = view {
+            if let textField = current as? UITextField {
+                textField.isSecureTextEntry = true
+                return
+            }
+            view = current.superview
         }
     }
 }
@@ -111,20 +104,16 @@ private final class _SecureMarkerView: UIView {
 // MARK: - View extension
 
 public extension View {
-    /// §28.8 — Marks this view's pixels as screen-capture protected.
+    /// §28.8 — Applies secure-entry behaviour and screen-capture fallback.
     ///
-    /// On iOS 17+ the OS excludes these pixels from screen recordings and
-    /// screenshots entirely. On older OS versions falls back to the
-    /// `screenCaptureProtected()` blur overlay.
-    ///
-    /// Also enables `isSecureTextEntry` behaviour for text fields in the
-    /// hierarchy via the capture modifier.
+    /// Enables `isSecureTextEntry` behaviour for text fields in the hierarchy
+    /// and applies the `screenCaptureProtected()` blur overlay.
     func secureInput() -> some View {
         modifier(SecureTextEntryModifier())
     }
 
-    /// Lower-level modifier — applies only the `UIView.isSecure = true` pixel
-    /// protection without the blur fallback. Use when you need precise control.
+    /// Lower-level modifier — applies secure text-entry introspection without
+    /// the blur fallback. Use when you need precise control.
     func pixelSecure() -> some View {
         modifier(IntrospectSecureModifier())
     }

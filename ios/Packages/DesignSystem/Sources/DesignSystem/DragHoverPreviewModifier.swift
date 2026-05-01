@@ -168,7 +168,9 @@ private struct _HoverOverlayWrapper<Content: View>: View {
             // Capture isTargeted from any dropDestination in parent context
             // via onDrop preference — approximated here with an invisible
             // drop zone that just tracks hover.
-            .onDrop(of: [UTType.data], isTargeted: $isTargeted) { _ in false }
+            .onDrop(of: ["public.data"], isTargeted: $isTargeted) { (_: [NSItemProvider]) in
+                false
+            }
             .animation(
                 .easeInOut(duration: HoverDropHighlightModifier.animationDuration),
                 value: isTargeted

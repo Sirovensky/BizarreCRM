@@ -29,7 +29,7 @@ import Foundation
 /// Thread-safe via an internal `NSLock`; `rowAppeared`/`rowDisappeared` may
 /// be called from any thread.  `prefetch` is always invoked on the `@MainActor`
 /// via `Task { @MainActor in … }`.
-public final class ListPrefetchScheduler: Sendable {
+public final class ListPrefetchScheduler: @unchecked Sendable {
 
     // MARK: - Configuration
 

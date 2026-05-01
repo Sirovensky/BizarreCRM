@@ -384,17 +384,19 @@ public enum ZReportPDFRenderer {
             let renderer = ImageRenderer(content: printable)
             renderer.proposedSize = ProposedViewSize(width: 595, height: nil) // A4 width pts
 
-            let mutableData = NSMutableData()
+            let data = NSMutableData()
             renderer.render { size, ctx in
                 var box = CGRect(origin: .zero, size: CGSize(width: size.width, height: size.height))
-                guard let consumer = CGDataConsumer(data: mutableData),
-                      let pdf = CGContext(consumer: consumer, mediaBox: &box, nil) else { return }
+                guard
+                    let consumer = CGDataConsumer(data: data),
+                    let pdf = CGContext(consumer: consumer, mediaBox: &box, nil)
+                else { return }
                 pdf.beginPDFPage(nil)
                 ctx(pdf)
                 pdf.endPDFPage()
                 pdf.closePDF()
             }
-            return mutableData as Data
+            return data as Data
         }
 
         guard !pdfData.isEmpty else {

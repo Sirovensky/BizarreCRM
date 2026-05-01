@@ -3,6 +3,10 @@ import Foundation
 #if os(iOS)
 @preconcurrency import ActivityKit
 
+public protocol LiveActivityPushTokenRegistering: Sendable {
+    func registerLiveActivityPushToken(_ request: LiveActivityPushTokenRequest) async throws
+}
+
 // MARK: - Shift activity
 
 /// Attributes describing a clock-in / clock-out shift Live Activity.
@@ -376,7 +380,7 @@ public final class LiveActivityPushTokenService {
         orderId: String,
         customerName: String?,
         service: String?,
-        registerPushToken: (LiveActivityPushTokenRequest) async throws -> Void
+        api: LiveActivityPushTokenRegistering
     ) async throws -> String {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             throw LiveActivityPushTokenError.activitiesDisabled
@@ -429,7 +433,7 @@ public final class LiveActivityPushTokenService {
         cashierName: String,
         initialCartTotalCents: Int,
         itemCount: Int,
-        registerPushToken: (LiveActivityPushTokenRequest) async throws -> Void
+        api: LiveActivityPushTokenRegistering
     ) async throws -> String {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             throw LiveActivityPushTokenError.activitiesDisabled

@@ -32,7 +32,7 @@ public struct FormErrorMessage: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .imageScale(.small)
                     Text(message)
-                        .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption))
+                        .font(.brandCaption1())
                 }
                 .foregroundStyle(Color.bizarreDanger)
                 .padding(.top, DesignTokens.Spacing.xs)

@@ -32,7 +32,7 @@ extension String {
 ///
 /// Renders as: **Label**  (optional)
 /// Where **Label** uses the `.headline` weight and `(optional)` uses
-/// `.caption1` at `.bizarreTextSecondary`.
+/// the brand caption style at `.bizarreTextSecondary`.
 public struct FormOptionalFieldLabel: View {
 
     private let label: LocalizedStringKey
@@ -51,8 +51,8 @@ public struct FormOptionalFieldLabel: View {
                 .font(.custom("Roboto-Medium", size: 15, relativeTo: .subheadline))
                 .foregroundStyle(Color.bizarreText)
 
-            Text(verbatim: .optionalFieldSuffix)
-                .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption))
+            Text(verbatim: String.optionalFieldSuffix)
+                .font(.brandCaption1())
                 .foregroundStyle(Color.bizarreTextSecondary)
         }
     }
@@ -92,15 +92,9 @@ public extension View {
 // MARK: - LocalizedStringKey convenience
 
 private extension Text {
-    init(_ key: String.Type) {
-        self.init(verbatim: "")
-    }
-}
-
-private extension Text {
     static var optionalSuffix: Text {
         Text(verbatim: .optionalFieldSuffix)
-            .font(.custom("Roboto-Regular", size: 12, relativeTo: .caption))
+            .font(.brandCaption1())
             .foregroundStyle(Color.bizarreTextSecondary)
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import Core
 
-public protocol APIClient: Sendable {
+public protocol APIClient: Sendable, LiveActivityPushTokenRegistering {
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T
     func post<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T
     func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T

@@ -1,9 +1,7 @@
 // Core/Mac/MacHoverEffects.swift
 //
-// `.brandHover()` SwiftUI ViewModifier overloads with Mac-specific pointer
-// styles.  On iOS/iPadOS the modifier applies the existing `.highlight` hover
-// effect; on Mac Catalyst it additionally customises the pointer shape via
-// `onHover` + `NSCursor` interop (available on macOS 13+ Catalyst).
+// Mac Catalyst hover helpers with Mac-specific pointer styles. iPadOS callers
+// use DesignSystem's `.brandHover(pointer:)` extension.
 //
 // §23 Mac (Designed for iPad) polish — hover effects
 
@@ -104,6 +102,7 @@ private struct MacPointerModifier: ViewModifier {
 
 // MARK: - View extension
 
+#if targetEnvironment(macCatalyst)
 public extension View {
     /// Applies the BizarreCRM branded hover effect.
     ///
@@ -119,3 +118,4 @@ public extension View {
         modifier(BrandHoverModifier(style: .arrow))
     }
 }
+#endif

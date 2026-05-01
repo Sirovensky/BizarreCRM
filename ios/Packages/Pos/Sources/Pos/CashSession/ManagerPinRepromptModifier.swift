@@ -63,7 +63,11 @@ public final class ManagerPinRepromptState {
 // MARK: - EnvironmentKey
 
 private struct ManagerPinRepromptStateKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: ManagerPinRepromptState = ManagerPinRepromptState()
+    @MainActor private static let defaultState = ManagerPinRepromptState()
+
+    static var defaultValue: ManagerPinRepromptState {
+        MainActor.assumeIsolated { defaultState }
+    }
 }
 
 public extension EnvironmentValues {

@@ -36,12 +36,18 @@ import Foundation
 ///
 /// Useful for deduplicating network requests fired by rapid UI updates (e.g.
 /// multiple cells requesting the same avatar URL within the same scroll event).
-public final class SyncCoalescer<Resource: Sendable>: Sendable {
+public final class SyncCoalescer<Resource: Sendable>: @unchecked Sendable {
 
     // MARK: - State
 
     private let lock = NSLock()
-    private nonisolated(unsafe) var _inflight: [String: Task<Resource, Error>] = [:]
+
+    private struct Inflight: Sendable {
+        let id: UUID
+        let task: Task<Resource, Error>
+    }
+
+    private var _inflight: [String: Inflight] = [:]
 
     // MARK: - Init
 
@@ -63,11 +69,14 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     /// - Throws: Any error thrown by `work`, forwarded to all waiters.
     @discardableResult
     public func execute(key: String, work: @escaping @Sendable () async throws -> Resource) async throws -> Resource {
-        let (task, created) = _getOrCreate(key: key, work: work)
-        if created {
-            defer { _evict(key: key, task: task) }
-            return try await task.value
+        let (task, createdId) = taskForKey(key, work: work)
+
+        defer {
+            if let createdId {
+                removeTask(key: key, id: createdId)
+            }
         }
+
         return try await task.value
     }
 
@@ -78,7 +87,7 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     /// - Parameter key: Deduplication key to cancel.
     public func cancel(key: String) {
         lock.lock()
-        let task = _inflight.removeValue(forKey: key)
+        let task = _inflight.removeValue(forKey: key)?.task
         lock.unlock()
         task?.cancel()
     }
@@ -88,7 +97,7 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
     /// Call on session logout or scene termination to prevent orphaned tasks.
     public func cancelAll() {
         lock.lock()
-        let tasks = Array(_inflight.values)
+        let tasks = _inflight.values.map(\.task)
         _inflight.removeAll(keepingCapacity: true)
         lock.unlock()
         tasks.forEach { $0.cancel() }
@@ -103,20 +112,31 @@ public final class SyncCoalescer<Resource: Sendable>: Sendable {
         return _inflight.count
     }
 
-    // MARK: - Synchronous helpers (safe to call from any context)
-
-    private func _getOrCreate(key: String, work: @escaping @Sendable () async throws -> Resource) -> (task: Task<Resource, Error>, created: Bool) {
+    private func taskForKey(
+        _ key: String,
+        work: @escaping @Sendable () async throws -> Resource
+    ) -> (Task<Resource, Error>, UUID?) {
         lock.lock()
         defer { lock.unlock() }
-        if let existing = _inflight[key] { return (existing, false) }
-        let task = Task<Resource, Error> { try await work() }
-        _inflight[key] = task
-        return (task, true)
+
+        if let existing = _inflight[key] {
+            return (existing.task, nil)
+        }
+
+        let id = UUID()
+        let task = Task<Resource, Error> {
+            try await work()
+        }
+        _inflight[key] = Inflight(id: id, task: task)
+        return (task, id)
     }
 
-    private func _evict(key: String, task: Task<Resource, Error>) {
+    private func removeTask(key: String, id: UUID) {
         lock.lock()
         defer { lock.unlock() }
-        if _inflight[key] == task { _inflight.removeValue(forKey: key) }
+
+        if _inflight[key]?.id == id {
+            _inflight.removeValue(forKey: key)
+        }
     }
 }

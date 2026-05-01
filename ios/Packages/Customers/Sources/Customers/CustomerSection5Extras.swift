@@ -647,7 +647,7 @@ public struct CustomerLinkRelationshipSheet: View {
 
     private var noResultsState: some View {
         VStack(spacing: BrandSpacing.sm) {
-            Text(verbatim: "No customers matching \u{201C}\(searchText)\u{201D}")
+            Text("No customers matching \"\(searchText)\"")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
@@ -698,7 +698,7 @@ public struct CustomerRelationshipLinkRequest: Encodable, Sendable {
     }
 }
 
-private struct _CustomerRelationshipEmptyResponse: Decodable {}
+private struct CustomerRelationshipLinkResponse: Decodable, Sendable {}
 
 public extension APIClient {
     /// `POST /api/v1/customers/:id/relationships` — link two customers.
@@ -712,7 +712,7 @@ public extension APIClient {
             relationshipType: relationshipType.rawValue
         )
         _ = try await post("/api/v1/customers/\(customerId)/relationships",
-                           body: body, as: _CustomerRelationshipEmptyResponse.self)
+                           body: body, as: CustomerRelationshipLinkResponse.self)
     }
 }
 
@@ -1010,50 +1010,50 @@ public struct AccessibleTagChips: View {
 // string, e.g. "Member since April 3, 2023".
 
 public enum CustomerSinceDateFormatter {
-    private nonisolated(unsafe) static let isoFull: ISO8601DateFormatter = {
+    private static func makeISOFullFormatter() -> ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
-    }()
+    }
 
-    private nonisolated(unsafe) static let isoBasic: ISO8601DateFormatter = {
+    private static func makeISOBasicFormatter() -> ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f
-    }()
+    }
 
-    private nonisolated(unsafe) static let isoDate: ISO8601DateFormatter = {
+    private static func makeISODateFormatter() -> ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
         return f
-    }()
+    }
 
-    private static let display: DateFormatter = {
+    private static func makeDisplayFormatter() -> DateFormatter {
         let f = DateFormatter()
         f.dateStyle = .long
         f.timeStyle = .none
         return f
-    }()
+    }
 
     /// Parse an ISO-8601 date string (with or without time component) and
     /// return a human-readable "Member since {date}" string.
     /// Returns `nil` if the string cannot be parsed.
     public static func memberSince(_ isoString: String?) -> String? {
         guard let raw = isoString, !raw.isEmpty else { return nil }
-        let date = isoFull.date(from: raw)
-            ?? isoBasic.date(from: raw)
-            ?? isoDate.date(from: raw)
+        let date = makeISOFullFormatter().date(from: raw)
+            ?? makeISOBasicFormatter().date(from: raw)
+            ?? makeISODateFormatter().date(from: raw)
             ?? parsePartialDate(raw)
         guard let date else { return nil }
-        return "Member since \(display.string(from: date))"
+        return "Member since \(makeDisplayFormatter().string(from: date))"
     }
 
     /// Formats just the date portion for compact contexts (e.g. list subtitle).
     public static func shortDate(_ isoString: String?) -> String? {
         guard let raw = isoString, !raw.isEmpty else { return nil }
-        let date = isoFull.date(from: raw)
-            ?? isoBasic.date(from: raw)
-            ?? isoDate.date(from: raw)
+        let date = makeISOFullFormatter().date(from: raw)
+            ?? makeISOBasicFormatter().date(from: raw)
+            ?? makeISODateFormatter().date(from: raw)
             ?? parsePartialDate(raw)
         guard let date else { return nil }
         let f = DateFormatter()
@@ -1065,7 +1065,7 @@ public enum CustomerSinceDateFormatter {
     /// Fallback: try parsing the leading `YYYY-MM-DD` fragment.
     private static func parsePartialDate(_ raw: String) -> Date? {
         let fragment = String(raw.prefix(10))
-        return isoDate.date(from: fragment)
+        return makeISODateFormatter().date(from: fragment)
     }
 }
 

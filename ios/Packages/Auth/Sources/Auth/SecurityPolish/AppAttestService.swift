@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import os
 import Core
 #if canImport(DeviceCheck)
