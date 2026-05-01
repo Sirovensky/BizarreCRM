@@ -92,25 +92,8 @@ final class PrintMediumTests: XCTestCase {
 
     // MARK: - CaseIterable
 
-    func test_allCases_hasSevenCases() {
-        XCTAssertEqual(PrintMedium.allCases.count, 7)
-    }
-
-    func test_legal_isTwoColumn() {
-        XCTAssertTrue(PrintMedium.legal.twoColumnLineItems)
-    }
-
-    func test_legal_displayName_containsLegal() {
-        XCTAssertTrue(PrintMedium.legal.displayName.lowercased().contains("legal"))
-    }
-
-    func test_legal_pageHeight_equals1008() {
-        XCTAssertEqual(PrintMedium.legal.pageHeight, 1008)
-    }
-
-    func test_tenantDefault_isNotNil() {
-        let def = PrintMedium.tenantDefault
-        XCTAssertTrue(PrintMedium.allCases.contains(def))
+    func test_allCases_hasSixCases() {
+        XCTAssertEqual(PrintMedium.allCases.count, 6)
     }
 
     func test_rawValues_areUnique() {

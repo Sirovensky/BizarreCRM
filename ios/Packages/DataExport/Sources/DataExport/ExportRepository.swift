@@ -126,11 +126,7 @@ public final class LiveExportRepository: ExportRepository {
 
     public func pollExport(id: String) async throws -> ExportJob {
         guard let jobId = Int(id) else {
-            throw NSError(
-                domain: "ExportRepository",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "pollExport: invalid id \(id)"]
-            )
+            throw ExportClientError.missingData("pollExport: invalid id \(id)")
         }
         let job = try await api.pollTenantExportJob(jobId: jobId)
         return ExportJob(

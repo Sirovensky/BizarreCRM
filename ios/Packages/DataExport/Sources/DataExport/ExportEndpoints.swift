@@ -25,19 +25,18 @@ extension APIClient {
 
     /// POST /data-export/erase-customer-pii — GDPR right-to-erasure.
     public func eraseCustomerPII(customerId: Int, confirmName: String) async throws {
+        struct Body: Encodable, Sendable {
+            let customer_id: Int
+            let confirm_name: String
+        }
         // Use delete-style: returns success:true with no data payload.
         // We ignore the response body — any HTTP error surfaces via APITransportError.
         let _: PIIEraseResponse = try await post(
             "/data-export/erase-customer-pii",
-            body: PIIEraseBody(customer_id: customerId, confirm_name: confirmName),
+            body: Body(customer_id: customerId, confirm_name: confirmName),
             as: PIIEraseResponse.self
         )
     }
-}
-
-private struct PIIEraseBody: Encodable, Sendable {
-    let customer_id: Int
-    let confirm_name: String
 }
 
 // MARK: - APIClient + Schedule CRUD (/data-export/schedules)
@@ -103,7 +102,10 @@ extension APIClient {
 
     /// POST /settings-ext/import — restore settings from a backup.
     public func importSettings(payload: [String: String]) async throws -> SettingsImportResult {
-        return try await post("/settings-ext/import", body: SettingsImportBody(settings: payload), as: SettingsImportResult.self)
+        struct Body: Encodable, Sendable {
+            let settings: [String: String]
+        }
+        return try await post("/settings-ext/import", body: Body(settings: payload), as: SettingsImportResult.self)
     }
 
     /// GET /settings-ext/templates — list shop templates.
@@ -113,20 +115,13 @@ extension APIClient {
 
     /// POST /settings-ext/templates/apply — apply a template by ID.
     public func applyShopTemplate(id: String) async throws {
+        struct Body: Encodable, Sendable { let template_id: String }
         let _: TemplateApplyResponse = try await post(
             "/settings-ext/templates/apply",
-            body: ShopTemplateApplyBody(template_id: id),
+            body: Body(template_id: id),
             as: TemplateApplyResponse.self
         )
     }
-}
-
-private struct SettingsImportBody: Encodable, Sendable {
-    let settings: [String: String]
-}
-
-private struct ShopTemplateApplyBody: Encodable, Sendable {
-    let template_id: String
 }
 
 // MARK: - Internal helpers (Encodable placeholders for void-response calls)

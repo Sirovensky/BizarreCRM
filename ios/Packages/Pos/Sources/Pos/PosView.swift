@@ -164,6 +164,13 @@ public struct PosView: View {
     /// selected device option via `PosDeviceAttachment`.
     @State private var devicePickerCartLineId: UUID? = nil
 
+    /// §16.6 — Tender-select sheet state.
+    @State private var showingTenderSelect: Bool = false
+    /// §16.6 — Cash tender view model, non-nil while the cash sheet is active.
+    @State private var cashTenderVM: CashTenderViewModel?
+    /// §16.6 — Inline error toast for cart-mapping failures (custom lines etc.).
+    @State private var tenderErrorMessage: String?
+
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
     /// optional so preview / Mac-designed-for-iPad builds without auth
@@ -529,6 +536,61 @@ public struct PosView: View {
         .sheet(isPresented: $showingAuditLog) {
             NavigationStack {
                 PosAuditLogView()
+            }
+        }
+        // §16.6 — Tender error toast (e.g. custom line not supported).
+        .overlay(alignment: .bottom) {
+            if let msg = tenderErrorMessage {
+                Text(msg)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.sm)
+                    .background(Color.bizarreError.opacity(0.9), in: Capsule())
+                    .padding(.bottom, BrandSpacing.xxl)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("pos.tenderError")
+                    .onAppear {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 3_000_000_000)
+                            tenderErrorMessage = nil
+                        }
+                    }
+            }
+        }
+        // §16.6 — Tender-select sheet. Opens when the cashier taps Charge
+        // and the cart is not already fully covered by store-value tenders.
+        .sheet(isPresented: $showingTenderSelect) {
+            PosTenderSelectSheet(
+                totalCents: cart.totalCents,
+                onSelectCash: {
+                    openCashTender()
+                }
+            )
+        }
+        // §16.6 — Cash tender sheet. Non-nil `cashTenderVM` triggers it.
+        .sheet(
+            isPresented: Binding(
+                get: { cashTenderVM != nil },
+                set: { if !$0 { cashTenderVM = nil } }
+            )
+        ) {
+            if let vm = cashTenderVM {
+                PosCashTenderSheet(
+                    vm: vm,
+                    onCompleted: { result in
+                        // Dismiss cash sheet, then show post-sale with Cash label.
+                        cashTenderVM = nil
+                        postSale = buildPostSaleViewModel(methodLabel: "Cash")
+                        BrandHaptics.success()
+                        cart.clear()
+                    },
+                    onBack: {
+                        // Return to tender-select without losing cart state.
+                        cashTenderVM = nil
+                        showingTenderSelect = true
+                    }
+                )
             }
         }
         // §16.3 — Hold sheets
@@ -1661,14 +1723,29 @@ public struct PosView: View {
                 await cartVM.saveSnapshot(cart: cart, cashSessionId: registerSession?.id)
                 return
             }
-            // Online path — if cart is already fully tendered (gift cards /
-            // store credit), skip tender selection and go straight to post-sale.
-            // Otherwise open the tender select sheet.
+            // §16.6 — Online path: open tender-select sheet first.
+            // If cart is already fully covered by store-value tenders, skip
+            // straight to post-sale (no additional payment needed).
             if cart.isFullyTendered {
-                postSale = buildPostSaleViewModel()
+                postSale = buildPostSaleViewModel(methodLabel: "Store credit")
             } else {
                 showingTenderSelect = true
             }
+        }
+    }
+
+    /// §16.6 — Open the cash tender sheet. Called by `PosTenderSelectSheet`
+    /// after the cashier selects "Cash" and taps Continue.
+    private func openCashTender() {
+        do {
+            let request = try PosTransactionMapper.request(from: cart)
+            cashTenderVM = CashTenderViewModel(
+                totalCents: cart.totalCents,
+                transactionRequest: request,
+                api: api
+            )
+        } catch {
+            tenderErrorMessage = error.localizedDescription
         }
     }
 
@@ -1676,24 +1753,10 @@ public struct PosView: View {
     /// the render output so the sheet is immune to subsequent cart edits
     /// (e.g. the Next-sale clear).
     ///
-    /// - Parameters:
-    ///   - methodLabel: Override the tender method label (e.g. "Cash" after a
-    ///     cash transaction). When nil the label is derived from applied tenders.
-    ///   - invoiceId: Server-assigned invoice ID from a completed transaction.
-    private func buildPostSaleViewModel(
-        methodLabel overrideLabel: String? = nil,
-        methodAmountCents: Int? = nil,
-        invoiceId: Int64 = -1,
-        orderNumber: String? = nil
-    ) -> PosPostSaleViewModel {
-        let snapshot = PosReceiptPayloadBuilder.build(
-            cart: cart,
-            methodLabel: overrideLabel,
-            methodAmountCents: methodAmountCents,
-            orderNumber: orderNumber
-        )
-        // §16.7 — persist render model so reprints are byte-identical.
-        Task { await PosReceiptStore.shared.save(snapshot) }
+    /// - Parameter methodLabel: Override the payment-method display label.
+    ///   When `nil`, derived from applied tenders or defaults to "Card".
+    private func buildPostSaleViewModel(methodLabel overrideLabel: String? = nil) -> PosPostSaleViewModel {
+        let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
         let methodLabel: String = overrideLabel ?? {

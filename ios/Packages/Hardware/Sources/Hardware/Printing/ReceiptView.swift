@@ -61,15 +61,6 @@ public struct ReceiptView: View {
 
     private var header: some View {
         VStack(spacing: 2) {
-            // §17.4 — logo bytes embedded in payload so renderer stays offline-capable.
-            if let logoBytes = model.logoData, let uiImage = UIImage(data: logoBytes) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: min(120, medium.contentWidth - 16))
-                    .padding(.bottom, 2)
-                    .accessibilityLabel("Business logo")
-            }
             Text(model.tenantName)
                 .font(medium.headerFont)
                 .multilineTextAlignment(.center)
@@ -155,16 +146,10 @@ public struct ReceiptView: View {
     // MARK: - Tender
 
     private var tenderBlock: some View {
-        VStack(spacing: 1) {
-            lineItemRow(label: "Tender", value: model.paymentTender)
-            // §17.4 — auth last4 is a tokenized reference only; raw PAN never stored.
-            if let last4 = model.paymentAuthLast4, !last4.isEmpty {
-                lineItemRow(label: "Auth", value: "••••\(last4)")
-            }
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 2)
-        .frame(maxWidth: .infinity)
+        lineItemRow(label: "Tender", value: model.paymentTender)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 2)
+            .frame(maxWidth: .infinity)
     }
 
     // MARK: - Footer
@@ -268,7 +253,6 @@ public struct GiftReceiptView: View {
             ReceiptPayload.Line(label: $0.label, value: "—")
         }
         return ReceiptPayload(
-            logoData: model.logoData,
             tenantName: model.tenantName,
             tenantAddress: model.tenantAddress,
             tenantPhone: model.tenantPhone,
@@ -280,7 +264,6 @@ public struct GiftReceiptView: View {
             tipCents: 0,
             totalCents: 0,
             paymentTender: "GIFT",
-            paymentAuthLast4: nil,
             cashierName: model.cashierName,
             footerMessage: model.footerMessage ?? "Thank you for your gift!",
             qrContent: model.qrContent
@@ -447,7 +430,6 @@ public struct WorkOrderTicketView: View {
 
 private extension ReceiptPayload {
     static let preview = ReceiptPayload(
-        logoData: nil,
         tenantName: "Bizarre Fix Co.",
         tenantAddress: "456 Elm Street, Springfield",
         tenantPhone: "(555) 123-4567",
@@ -462,8 +444,7 @@ private extension ReceiptPayload {
         taxCents: 1100,
         tipCents: 0,
         totalCents: 14849,
-        paymentTender: "Visa",
-        paymentAuthLast4: "1234",
+        paymentTender: "Visa ••••1234",
         cashierName: "Alice",
         footerMessage: "Thank you for choosing Bizarre Fix!",
         qrContent: "https://app.bizarrecrm.com/receipts/REC-2026-00099"
