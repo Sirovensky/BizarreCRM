@@ -677,22 +677,16 @@ private struct SLABadge: View {
         Image(systemName: icon)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(badgeColor)
-            // §4.1 a11y: meaningful sentence rather than the raw server value.
             .accessibilityLabel(a11yLabel)
-            .accessibilityAddTraits(isUrgent ? [.updatesFrequently] : [])
+            .accessibilityAddTraits(.isStaticText)
     }
 
     private var a11yLabel: String {
         switch status.lowercased() {
         case "breached": return "SLA breached"
-        case "warning":  return "SLA warning — due soon"
+        case "warning":  return "SLA warning, approaching breach"
         default:         return "SLA on track"
         }
-    }
-
-    private var isUrgent: Bool {
-        let s = status.lowercased()
-        return s == "breached" || s == "warning"
     }
 
     private var icon: String {
@@ -1033,13 +1027,13 @@ private struct ListFooterRow: View {
 // codex merge. Stubs keep the build green; rich versions will land in §4.1 polish.
 
 extension TicketListView {
-    // §4.1 — Filter chip strip: status group chips + urgency chips in two
-    // scrollable horizontal rows.  Replaces the `EmptyView()` stub so the list
-    // header actually renders both rows.
+    /// §4.1 — Filter chip strip + search keyword row.
+    /// Replaces the stub EmptyView with the real scrollable chip bar.
+    /// Sort is already in the toolbar menu; this bar only houses filter + urgency chips.
     @ViewBuilder
     var filterAndSortBar: some View {
         VStack(spacing: 0) {
-            // Row 1 — status group
+            // Status-group chips (All / Open / On hold / Closed / Cancelled / Active)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: BrandSpacing.xs) {
                     ForEach(TicketListFilter.allCases) { option in
@@ -1057,26 +1051,36 @@ extension TicketListView {
             }
             .scrollClipDisabled()
 
-            // Row 2 — urgency (Critical / High / Medium / Normal / Low)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: BrandSpacing.xs) {
-                    ForEach(TicketUrgencyFilter.allCases) { urgency in
-                        UrgencyChip(
-                            urgency: urgency,
-                            selected: vm.urgencyFilter == urgency
-                        ) {
-                            Task { await vm.applyUrgency(urgency) }
+            // Saved views row — pinned filter combos (§4.1)
+            let savedViews = TicketSavedViewsStore.shared.savedViews
+            if !savedViews.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: BrandSpacing.xs) {
+                        ForEach(savedViews) { saved in
+                            FilterChip(
+                                label: saved.name,
+                                selected: vm.filter == saved.filter && vm.searchQuery == saved.keyword
+                            ) {
+                                Task {
+                                    await vm.applyFilter(saved.filter)
+                                    if !saved.keyword.isEmpty {
+                                        vm.onSearchChange(saved.keyword)
+                                    }
+                                }
+                            }
+                            .accessibilityLabel("Saved view: \(saved.name)")
                         }
                     }
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.xs)
                 }
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.bottom, BrandSpacing.sm)
+                .scrollClipDisabled()
             }
-            .scrollClipDisabled()
 
             Divider()
-                .background(Color.bizarreOutline.opacity(0.2))
+                .background(Color.bizarreOutline.opacity(0.15))
         }
+        .background(Color.bizarreSurfaceBase)
     }
 
     @ToolbarContentBuilder

@@ -179,6 +179,40 @@ public struct TicketDetailView: View {
             }
         }
         .animation(.spring(duration: 0.25), value: vm.permissionDeniedToast)
+        // §4.13 — Network error while cached data is visible: glass retry pill
+        .overlay(alignment: .top) {
+            if let errMsg = vm.networkErrorMessage {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .accessibilityHidden(true)
+                    Text("Couldn't refresh")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Button {
+                        Task { await vm.load() }
+                    } label: {
+                        Text("Retry")
+                            .font(.brandLabelLarge().bold())
+                            .foregroundStyle(.white)
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5))
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.top, BrandSpacing.sm)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Couldn't refresh ticket. \(errMsg). Tap Retry.")
+                .accessibilityAddTraits(.isButton)
+                .onTapGesture { Task { await vm.load() } }
+            }
+        }
+        .animation(.spring(duration: 0.3), value: vm.networkErrorMessage != nil)
         // §4.4 — concurrent-edit 409 banner
         .safeAreaInset(edge: .top, spacing: 0) {
             if vm.concurrentEditBanner {
