@@ -10,18 +10,13 @@ import DesignSystem
 /// no button has focus — the system routes them via the responder chain while
 /// the view is on screen.
 ///
-/// | Shortcut | Action                  |
-/// |----------|-------------------------|
-/// | ⌘ N      | New sale / clear cart   |
-/// | ⌘ B      | Open barcode scanner    |
-/// | ⌘ P      | Tender / charge         |
-/// | ⌘ H      | Hold cart               |
-/// | ⌘ ⇧ R    | Recall holds            |
-/// | ⌘ K      | Attach customer         |
-/// | ⌘ ⇧ D    | Cart discount           |
-/// | ⌘ ⇧ T    | Add tip                 |
-/// | ⌘ ⇧ F    | Add fee                 |
-/// | ⌘ ⇧ ⌫   | Clear cart              |
+/// | Shortcut | Action          |
+/// |----------|-----------------|
+/// | ⌘ N      | New sale / clear cart |
+/// | ⌘ B      | Open barcode scanner |
+/// | ⌘ P      | Tender / charge |
+/// | ⌘ H      | Hold cart        |
+/// | ⌘ ⇧ R    | Recall holds     |
 ///
 /// These match the menu items already wired in `PosView.posToolbar` so
 /// the keyboard accelerators work both from the hardware keyboard and the
@@ -261,23 +256,18 @@ public enum PosKeyboardShortcut: CaseIterable, Sendable {
 
     public var key: Character {
         switch self {
-        case .newSale:  return "n"
-        case .barcode:  return "b"
-        case .tender:   return "p"
-        case .hold:     return "h"
-        case .recall:   return "r"
-        case .customer: return "k"
-        case .discount: return "d"
-        case .tip:      return "t"
-        case .fee:      return "f"
-        case .clear:    return "\u{08}" // backspace/delete
+        case .newSale: return "n"
+        case .barcode: return "b"
+        case .tender:  return "p"
+        case .hold:    return "h"
+        case .recall:  return "r"
         }
     }
 
     public var modifiers: EventModifiers {
         switch self {
-        case .newSale, .barcode, .tender, .hold, .customer: return .command
-        case .recall, .discount, .tip, .fee, .clear: return [.command, .shift]
+        case .newSale, .barcode, .tender, .hold: return .command
+        case .recall:                             return [.command, .shift]
         }
     }
 

@@ -129,44 +129,40 @@ public struct PosRepairDevicePickerView: View {
 
     // MARK: - iPad layout
     //
-    // Renders the same card-style rows the iPhone uses, so the device
-    // picker matches the path-choice tile aesthetic the rest of the POS
-    // sticks to. No hard `Divider` lines between rows — whitespace
-    // separates cards, in keeping with the "no dividers inside catalog
-    // content" rule from the iPad layout-consistency plan.
+    // On iPad this view renders INSIDE the `.inspector` pane (PosRegisterLayout
+    // hosts the inspector slot). It should look like a compact panel sheet —
+    // NOT a full-screen NavigationStack step. No NavigationTitle here; the
+    // inspector header (step X / 4 label) is owned by the parent layout.
 
     private var ipadContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if coordinator.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 80)
-                    .accessibilityLabel("Loading devices…")
-            } else if let error = devicePickerVM.errorMessage {
-                errorRow(message: error)
-                    .padding(.top, 12)
-            } else {
-                // Real customer assets only — sentinels (`.addNew`,
-                // `.noSpecificDevice`) are bucketed into their own sections
-                // below so the "On file · N" count reflects the actual
-                // number of devices saved against this customer.
-                let assetOptions = devicePickerVM.options.filter {
-                    if case .asset = $0 { return true }
-                    return false
-                }
-                let hasNoSpecific = devicePickerVM.options.contains {
-                    if case .noSpecificDevice = $0 { return true }
-                    return false
-                }
+        VStack(spacing: 0) {
+            stepProgressBar
+                .padding(.top, BrandSpacing.xs)
 
-                if !assetOptions.isEmpty {
-                    sectionLabel("On file · \(assetOptions.count)")
+            ScrollView {
+                VStack(spacing: BrandSpacing.sm) {
+                    // Section header
+                    Text("SAVED DEVICES")
+                        .font(.brandLabelSmall())
+                        .tracking(1.4)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.top, BrandSpacing.md)
 
-                    VStack(spacing: 10) {
-                        ForEach(assetOptions) { option in
-                            deviceCard(option: option)
-                        }
+                    if coordinator.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 80)
+                            .accessibilityLabel("Loading devices…")
+                    } else if let error = devicePickerVM.errorMessage {
+                        errorRow(message: error)
+                            .padding(.horizontal, BrandSpacing.base)
+                    } else {
+                        deviceListIPad
                     }
                 }
+                .padding(.bottom, BrandSpacing.xl)
+            }
 
                 sectionLabel("Add new")
                 addNewDeviceCard
@@ -177,12 +173,144 @@ public struct PosRepairDevicePickerView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 16)
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
     }
 
-    // MARK: - Shared card-style device rows (iPhone)
+    /// iPad-specific device list: lighter card style with hover effects.
+    @ViewBuilder
+    private var deviceListIPad: some View {
+        VStack(spacing: BrandSpacing.xs) {
+            ForEach(devicePickerVM.options) { option in
+                if case .addNew = option {
+                    addNewDeviceRowIPad
+                } else {
+                    deviceRowIPad(option: option)
+                }
+            }
+        }
+        .padding(.horizontal, BrandSpacing.base)
+    }
+
+    private func deviceRowIPad(option: PosDeviceOption) -> some View {
+        Button {
+            devicePickerVM.select(option)
+            coordinator.setDevice(option)
+            BrandHaptics.tap()
+        } label: {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: option.systemImage)
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(width: 28)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(option.displayLabel)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+
+                    if let subtitle = option.displaySubtitle {
+                        // IMEI/serial subtitles are text-selectable per CLAUDE.md
+                        Text(subtitle)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                if coordinator.draft.selectedDeviceOption == option {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(BrandSpacing.sm)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        coordinator.draft.selectedDeviceOption == option
+                            ? Color.bizarreOrange.opacity(0.6)
+                            : Color.bizarreOutline.opacity(0.35),
+                        lineWidth: coordinator.draft.selectedDeviceOption == option ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(option.displayLabel)
+        .accessibilityHint(option.displaySubtitle ?? "")
+        .accessibilityAddTraits(coordinator.draft.selectedDeviceOption == option ? .isSelected : [])
+        .accessibilityIdentifier("repairFlow.device.\(option.id)")
+    }
+
+    /// Merged "Add new device" row — iPad card style with hover.
+    private var addNewDeviceRowIPad: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Button {
+                devicePickerVM.select(.addNew)
+                coordinator.setDevice(.addNew)
+                BrandHaptics.tap()
+            } label: {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOrange)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                        Text("Add new device")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOrange)
+                        Text("Scan IMEI or pick make / model")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if coordinator.draft.selectedDeviceOption == .addNew {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add new device")
+
+            Button {
+                AppLog.pos.info("RepairFlow: scan button tapped — awaiting camera integration")
+            } label: {
+                Label("Scan", systemImage: "camera.viewfinder")
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(BrandSpacing.xs)
+                    .background(Color.bizarreOrange.opacity(0.12), in: Circle())
+            }
+            .accessibilityLabel("Scan device barcode")
+            .accessibilityIdentifier("repairFlow.devicePicker.scan")
+        }
+        .padding(BrandSpacing.sm)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                )
+                .foregroundStyle(Color.bizarreOrange.opacity(0.35))
+        )
+        .hoverEffect(.highlight)
+        .accessibilityIdentifier("repairFlow.device.add-new")
+    }
+
+    // MARK: - Shared sub-views
 
     /// Full card-style row matching mockup 1b: emoji icon in 40×40 tile,
     /// primary/subtitle text, selected checkmark circle.

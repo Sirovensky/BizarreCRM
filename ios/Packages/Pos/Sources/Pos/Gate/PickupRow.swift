@@ -101,7 +101,7 @@ public struct PickupRow: View {
             )
         }
         .buttonStyle(.plain)
-        // CLAUDE.md iPad-affordance: .hoverEffect(.highlight) on tappable rows (no-op on iPhone)
+        // CLAUDE.md: .hoverEffect(.highlight) on tappable rows (no-op on iPhone)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(

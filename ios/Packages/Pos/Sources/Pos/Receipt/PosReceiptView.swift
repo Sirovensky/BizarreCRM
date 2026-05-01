@@ -84,10 +84,16 @@ public struct PosReceiptView: View {
         self.trackingURL = trackingURL
     }
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
     public var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
-            scrollBody
+            if hSizeClass == .regular {
+                iPadBody
+            } else {
+                scrollBody
+            }
         }
         .sensoryFeedback(.success, trigger: paidAt)
         .accessibilityIdentifier("pos.receipt.root")
@@ -191,26 +197,113 @@ public struct PosReceiptView: View {
         return UIImage(cgImage: cgImage)
     }
 
-    // MARK: - Scroll body
+    // MARK: - iPad 2-column layout (screen 5)
+    //
+    // Left: hero (highest elevation) → share tiles → loyalty → actions → pencil banner
+    // Right: receipt preview (lowest elevation, supporting context)
 
-    private var scrollBody: some View {
-        ScrollView {
-            if sizeClass == .regular {
-                // iPad: 2-column layout — left (hero + share + loyalty + actions) / right (receipt preview)
-                iPadLayout
-                    .padding(.horizontal, BrandSpacing.base)
-                    .padding(.vertical, BrandSpacing.xl)
-            } else {
-                // iPhone: single-column vertical stack
-                iPhoneLayout
-                    .padding(.horizontal, BrandSpacing.base)
-                    .padding(.vertical, BrandSpacing.xl)
+    private var iPadBody: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // Left column
+            ScrollView {
+                VStack(spacing: BrandSpacing.lg) {
+                    Spacer(minLength: BrandSpacing.lg)
+                    heroSection
+                    VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                        Text("Send receipt")
+                            .font(.brandLabelSmall().weight(.semibold))
+                            .tracking(1.4)
+                            .textCase(.uppercase)
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        shareTileGrid
+                    }
+                    loyaltyCelebration
+                    postSaleActionRow
+                    // Pencil signature banner — shown only when a signed ticket
+                    // exists AND we're on iPad regular size class (per spec item 5).
+                    if let ticketId = vm.payload.signedTicketId {
+                        pencilSignatureBanner(ticketId: ticketId)
+                    }
+                    Spacer(minLength: BrandSpacing.xl)
+                }
+                .padding(.horizontal, BrandSpacing.lg)
+            }
+            .frame(maxWidth: .infinity)
+
+            // Vertical divider
+            Rectangle()
+                .fill(Color.bizarreOutline.opacity(0.35))
+                .frame(width: 1)
+
+            // Right column — receipt preview
+            if let text = receiptText {
+                ScrollView {
+                    VStack(spacing: BrandSpacing.md) {
+                        Spacer(minLength: BrandSpacing.lg)
+                        PosReceiptListPreview(receiptText: text)
+                            .padding(.horizontal, BrandSpacing.base)
+                        Spacer(minLength: BrandSpacing.xl)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
         }
         .scrollBounceBehavior(.basedOnSize)
     }
 
-    // MARK: - iPhone layout (single column)
+    // MARK: - Scroll body (iPhone + iPad fallback)
+
+    private var scrollBody: some View {
+        ScrollView {
+            VStack(spacing: BrandSpacing.lg) {
+                Spacer(minLength: BrandSpacing.xl)
+                heroSection
+                shareTileGrid
+                loyaltyCelebration
+                if receiptText != nil {
+                    receiptPreviewToggle
+                }
+                postSaleActionRow
+                // Note: Pencil signature banner is iPad-only (spec item 5).
+                // It appears in the iPadBody left column, not here.
+                Spacer(minLength: BrandSpacing.xl)
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    // MARK: - Pencil signature banner
+
+    /// Rendered only when `payload.signedTicketId != nil` (per spec item 5).
+    /// On iPad this appears in the left column below the action row.
+    private func pencilSignatureBanner(ticketId: Int64) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            Text("✍")
+                .font(.system(size: 20))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("Signature captured with Pencil")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreTeal)
+                Text("Archived to ticket #\(ticketId) · PKCanvasView")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Signature captured with Pencil. Archived to ticket \(ticketId).")
+        .accessibilityIdentifier("pos.receipt.pencilBanner")
+    }
+
+    // MARK: - Hero
 
     private var iPhoneLayout: some View {
         VStack(spacing: BrandSpacing.lg) {

@@ -49,51 +49,13 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// occurred. `nil` when no account.
     public let loyaltyTierAfter: String?
 
-    // MARK: - Loyalty progress
+    // MARK: - Pencil signature
 
-    /// Total loyalty points after this sale. Drives the left-side tier label
-    /// "GOLD 285 pts" in `PosLoyaltyCelebrationView`.
-    public let loyaltyPointsTotal: Int?
-
-    /// Points threshold for the next tier. Drives the right-side label
-    /// "PLATINUM 500 pts". Nil when the customer is already at the top tier.
-    public let loyaltyNextTierPoints: Int?
-
-    // MARK: - Cash detail
-
-    /// Actual cash tendered (before change). Non-nil for cash transactions.
-    /// Used by the hero subtitle "Cash · $300 received · $25.49 change".
-    public let cashReceivedCents: Int?
-
-    // MARK: - iPad Pencil signature
-
-    /// Ticket identifier to which a Pencil-captured signature was archived.
-    /// Non-nil on iPad when the cashier used `PKCanvasView` to collect a
-    /// signature before or after tender. The receipt screen shows a teal
-    /// confirmation banner (iPad only). Nil on iPhone or when unsigned.
+    /// Ticket ID that has an Apple Pencil signature archived via
+    /// `PKCanvasView`. When non-nil, `PosReceiptView` renders the
+    /// "Signature captured with Pencil" banner — iPad regular size class only
+    /// (per mockup screen 5 / spec item 5).
     public let signedTicketId: Int64?
-
-    // MARK: - §16.24 — Repair ticket linkage
-
-    /// Linked repair ticket identifier (from `Cart.linkedTicketId` at sale close).
-    /// When non-nil, the §16.24 receipt screen shows "Parts reserved to Ticket #NNNN"
-    /// in teal and an "Open ticket #NNNN" secondary CTA button.
-    public let linkedRepairTicketId: Int64?
-
-    // MARK: - §16.12 — Offline sale watermark
-
-    /// `true` when this sale was captured while the device was offline.
-    /// The receipt screen shows an amber "OFFLINE" watermark and the message
-    /// "Sent when reconnected" until `syncedAt` is non-nil.
-    ///
-    /// The watermark is cleared (set to `false`) when the sync drain loop
-    /// confirms the server received the sale and sets `syncedAt`.
-    public let capturedOffline: Bool
-
-    /// UTC timestamp set by the sync drain loop when the server confirms the
-    /// sale. When non-nil the "OFFLINE" watermark is replaced with
-    /// "Synced \(syncedAt.formatted())". Nil means the sale has not yet synced.
-    public let syncedAt: Date?
 
     // MARK: - Init
 
@@ -108,12 +70,7 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyDelta: Int? = nil,
         loyaltyTierBefore: String? = nil,
         loyaltyTierAfter: String? = nil,
-        loyaltyPointsTotal: Int? = nil,
-        loyaltyNextTierPoints: Int? = nil,
-        signedTicketId: Int64? = nil,
-        linkedRepairTicketId: Int64? = nil,
-        capturedOffline: Bool = false,
-        syncedAt: Date? = nil
+        signedTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
@@ -125,11 +82,6 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyDelta = loyaltyDelta
         self.loyaltyTierBefore = loyaltyTierBefore
         self.loyaltyTierAfter = loyaltyTierAfter
-        self.loyaltyPointsTotal = loyaltyPointsTotal
-        self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
-        self.linkedRepairTicketId = linkedRepairTicketId
-        self.capturedOffline = capturedOffline
-        self.syncedAt = syncedAt
     }
 }

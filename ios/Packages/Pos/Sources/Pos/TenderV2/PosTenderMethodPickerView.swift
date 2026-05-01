@@ -101,33 +101,89 @@ public struct PosTenderMethodPickerView: View {
 
     // MARK: - Due-amount hero
 
+    /// "Due now" hero block per mockup screen 4a:
+    /// - Label: 11px all-caps uppercase tracking 0.12em → `.brandLabelLarge()` + .textCase(.uppercase)
+    /// - Amount: 57pt Barlow Condensed SemiBold → `.brandDisplayLarge()`, capped at .accessibility2
     private var totalHeader: some View {
-        let isWide = sizeClass == .regular
-        return Group {
-            if isWide {
-                ipadHeroHeader
-            } else {
-                iphoneHeroHeader
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(coordinator.isSplit ? "REMAINING" : "DUE NOW")
+                    .font(.brandLabelLarge())
+                    .tracking(1.4)
+                    .foregroundStyle(theme.muted)
+                    .accessibilityHidden(true)  // amount label reads alongside the amount
+                Text(CartMath.formatCents(coordinator.remaining))
+                    .font(.brandDisplayLarge())
+                    .foregroundStyle(theme.on)
+                    .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .accessibilityLabel(coordinator.isSplit
+                        ? "Remaining: \(CartMath.formatCents(coordinator.remaining))"
+                        : "Due now: \(CartMath.formatCents(coordinator.remaining))")
+                    .accessibilityIdentifier("pos.tenderV2.remaining")
+            }
+
+            Spacer()
+
+            // Split tender add-method affordance (top-right per mockup)
+            if !coordinator.isSplit {
+                VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
+                    Text("Split tender")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(theme.muted)
+                    Text("⊕ Add method")
+                        .font(.brandLabelLarge().weight(.bold))
+                        .foregroundStyle(theme.teal)
+                }
+                .padding(.top, BrandSpacing.xs)
             }
         }
     }
 
-    /// iPhone: centered stack — "Due now" label + giant amount + customer line.
-    private var iphoneHeroHeader: some View {
-        VStack(spacing: BrandSpacing.xxs) {
-            Text(coordinator.isSplit ? "Remaining" : "Due now")
-                .font(.brandLabelSmall())
+    // MARK: - Split hint row
+
+    private var splitHintRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "creditcard.and.123")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.teal)
+                .accessibilityHidden(true)
+            Text("Split tender — add another payment")
+                .font(.brandBodyMedium())
                 .foregroundStyle(theme.muted)
-                .tracking(1.4)
-                .textCase(.uppercase)
-            Text(CartMath.formatCents(coordinator.remaining))
-                .font(.brandDisplayLarge())  // 57pt BarlowCondensed-SemiBold
-                .foregroundStyle(theme.on)
-                .monospacedDigit()
-                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                .accessibilityIdentifier("pos.tenderV2.remaining")
-            if let line = coordinator.customerLine {
-                Text(line)
+            Spacer()
+            // Applied tenders count chip
+            Text("\(coordinator.appliedTenders.count) applied")
+                .font(.brandLabelSmall())
+                .foregroundStyle(theme.onPrimary)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(theme.primary, in: Capsule())
+        }
+        .padding(BrandSpacing.sm)
+        .background(theme.surfaceElev.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(theme.outline, lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Split tender in progress. \(coordinator.appliedTenders.count) leg(s) applied. Remaining: \(CartMath.formatCents(coordinator.remaining)).")
+    }
+
+    // MARK: - Member benefit banner
+
+    private func memberBenefitBanner(tier: String) -> some View {
+        // Stub layout — Agent H replaces this with `MembershipBenefitBanner`.
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "star.circle.fill")
+                .foregroundStyle(theme.warning)
+                .font(.system(size: 18))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(tier)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(theme.on)
+                Text("Member benefits available")
                     .font(.brandLabelSmall())
                     .foregroundStyle(theme.muted)
                     .padding(.top, BrandSpacing.xxs)
