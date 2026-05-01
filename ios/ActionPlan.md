@@ -4503,7 +4503,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
 - [x] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action). (`StorageBreakdown` + `StorageMonitor` + `ImageCachePolicy` in `Core/Performance/StorageBreakdown.swift`; `StorageCategory.isEvictable` gates clear buttons. feat(§29.3): b12)
 - [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
-- [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
+- [x] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`). (`Core/Performance/ImagePrefetchGate.swift` — `@MainActor ImagePrefetchGate.shared`; `effectiveWindow` collapses to 0 on Low Power Mode, constrained path, or expensive path when `cellularAllowed=false`. feat(§29.3))
 - [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
 - [ ] **Progressive JPEG** decode.
 - [ ] **Formats accepted on decode (iOS side)**: JPEG, PNG, **HEIC** (iOS default since iOS 11), **HEIF**, **TIFF** (multi-page supported; show first page as thumbnail, page-picker on detail), **DNG** (raw — use embedded JPEG preview for thumb, full decode on detail). Nuke relies on iOS Image I/O which handles all of the above; no custom decoder code needed for iOS.
@@ -4511,8 +4511,8 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Orientation / ICC profile** preserved through thumbnail resize; wide-gamut P3 images stay P3 on P3-capable displays.
 - [ ] **Upload encoding** — whatever the user picked stays as-is if the tenant server accepts it. Otherwise transcode to JPEG quality 0.8 before upload, keep original locally for this device (user expectation: "the photo I took is safe").
 - [ ] **Server + Android parity** for TIFF / DNG / HEIC end-to-end is tracked as `IMAGE-FORMAT-PARITY-001` in root TODO. If server or Android doesn't handle a format, iOS refuses to upload that format to that tenant and surfaces "Your shop's server doesn't accept X — please convert or attach a different file."
-- [ ] **Placeholder** — SF Symbol + brand tint on load.
-- [ ] **Failure** — branded SF Symbol + retry tap.
+- [x] **Placeholder** — SF Symbol + brand tint on load. (`DesignSystem/BrandImagePlaceholders.swift` — `BrandImagePlaceholder(systemImage:tint:)` SwiftUI view; brand-tinted SF Symbol over `bizarreSurface1`; decorative `.accessibilityHidden(true)` so callers label the slot. feat(§29.3))
+- [x] **Failure** — branded SF Symbol + retry tap. (`DesignSystem/BrandImagePlaceholders.swift` — `BrandImageFailure(systemImage:onRetry:)` SwiftUI view; danger-tinted symbol + "Tap to retry" label, full-frame button hit area, `.accessibilityLabel` calls out failure + retry. feat(§29.3))
 - [x] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override. (`ImageCacheSizeConfig.forTenantSize(_:)` + `TenantSizeHint` Codable enum. feat(§29.3): actionplan/§29-batch2)
 - [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
 - [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
@@ -4521,7 +4521,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Cursor pagination (offline-first)** — server returns `{ data, next_cursor?, stream_end_at? }`. iOS persists cursor in GRDB per `(entity, filter)` along with `oldestCachedAt` and `serverExhaustedAt`. Lists read from GRDB via `ValueObservation` — never from API directly. `loadMoreIfNeeded(rowId)` triggers next-cursor fetch only when online.
 - [x] **Prefetch** at 80% scroll (50-item chunks) — only if online; offline skips prefetch silently. (`LazyListHelpers.swift` — `View.onNearBottom(threshold:perform:)` fires at configurable scroll fraction (default 0.80). feat(§29.4): actionplan/§29-batch2)
 - [x] **Load-more footer** — four states: `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Never ambiguous. (`LazyListHelpers.swift` — `ListPaginationState` enum + `ListLoadMoreFooter` view + `LoadMoreTrigger` invisible trigger. feat(§29.4): actionplan/§29-batch2)
-- [ ] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator).
+- [x] **Skeleton rows** during first load only (cached refresh uses existing rows + subtle top indicator). (`DesignSystem/Skeletons/SkeletonFirstLoadGate.swift` — `SkeletonFirstLoadGate.shouldShowSkeleton(isLoading:rowCount:)` + `View.skeletonOnFirstLoad(isLoading:rowCount:skeleton:)` modifier; only paints skeletons on first load, leaves stale rows in place on refresh. feat(§29.4))
 - [ ] **No `page=N` / `total_pages` references in iOS code.** Any server endpoint still returning page-based shape wrapped by a client adapter that derives a synthetic cursor.
 
 ### 29.5 Glass budget
@@ -4570,7 +4570,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 ### 29.11 Battery
 - [ ] **Background tasks** respect budget (30s).
 - [ ] **Location** — `whenInUse` only; no always-on GPS.
-- [ ] **WS ping** 25s interval (not 5s).
+- [x] **WS ping** 25s interval (not 5s). (`Core/Performance/WebSocketPingPolicy.swift` — `WebSocketPingPolicy.standard = 25` / `.lowPowerMode = 90`; `currentInterval()` reads `LowPowerModeObserver.shared` so heartbeat backs off in LPM. feat(§29.11))
 - [ ] **Network batching** on cellular.
 
 ### 29.12 Telemetry perf
