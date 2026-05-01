@@ -120,6 +120,8 @@ public struct PosView: View {
     @State private var showingHoldSheet: Bool = false
     @State private var showingResumeHoldsSheet: Bool = false
     @State private var holdToastMessage: String? = nil
+    /// Wave-3 — coupon entry sheet.
+    @State private var showingCouponInput: Bool = false
     /// §16.10 / §39 — cash register drawer-lock gate. POS is sell-locked
     /// until an open session exists. `registerLoaded` prevents a flash of
     /// the open-sheet on first-render while the store is being read.
@@ -399,12 +401,18 @@ public struct PosView: View {
             PosEditQuantitySheet(current: item.quantity) { qty in
                 cart.update(id: item.id, quantity: qty)
             }
+            // Mockup screen 4: .presentationDetents([.height(320), .medium])
+            .presentationDetents([.height(320), .medium])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $editPriceFor) { item in
             let cents = CartMath.toCents(item.unitPrice)
             PosEditPriceSheet(currentCents: cents) { newCents in
                 cart.update(id: item.id, unitPriceCents: newCents)
             }
+            // Mockup screen 4: .presentationDetents([.height(320), .medium])
+            .presentationDetents([.height(320), .medium])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingCustomerPicker) {
             if let customerRepo {
@@ -455,8 +463,7 @@ public struct PosView: View {
                     onShowDiscount: { showingDiscountSheet = true },
                     onShowTip: { showingTipSheet = true },
                     onShowFees: { showingFeesSheet = true },
-                    customerContext: posVM.customerContext,
-                    loyaltyEarnedPoints: posVM.loyaltyPointsPreview(cartTotalCents: cart.totalCents)
+                    onShowCoupon: { showingCouponInput = true }
                 )
                 .navigationTitle("Cart")
                 .navigationBarTitleDisplayMode(.inline)
@@ -486,6 +493,19 @@ public struct PosView: View {
         }
         .sheet(isPresented: $showingFeesSheet) {
             PosCartFeesSheet(cart: cart)
+        }
+        // Wave-3 — coupon code entry sheet. PosCartPanel / PosIPadCartPanel
+        // call onShowCoupon which sets showingCouponInput = true; this sheet
+        // owns the CouponInputViewModel + APIClient wiring.
+        .sheet(isPresented: $showingCouponInput) {
+            if let api {
+                CouponInputSheet(
+                    vm: CouponInputViewModel(api: api, cartId: { "" }),
+                    onApplied: { _, _ in showingCouponInput = false }
+                )
+                .presentationDetents([.height(320), .medium])
+                .presentationDragIndicator(.visible)
+            }
         }
         // §16.11 — No-sale manager PIN gate.
         .sheet(isPresented: $showingNoSalePin) {
@@ -946,8 +966,15 @@ public struct PosView: View {
                 PosIPadCartPanel(
                     cart: cart,
                     onCharge: startChargeV5,
-                    onEditItem: { item in editingCartItem = item },
-                    editingItemId: editingCartItem?.id
+                    onOpenDrawer: openDrawer,
+                    onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                    onRemoveCustomer: { cart.detachCustomer() },
+                    editQuantityFor: $editQuantityFor,
+                    editPriceFor: $editPriceFor,
+                    onShowDiscount: { showingDiscountSheet = true },
+                    onShowTip: { showingTipSheet = true },
+                    onShowFees: { showingFeesSheet = true },
+                    onShowCoupon: { showingCouponInput = true }
                 )
             } inspector: {
                 // ── Inspector slot (sliding pane) ─────────────────────

@@ -36,6 +36,12 @@ public struct PosIPadCartPanel: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    /// Called when the cashier enters a coupon code and taps Apply.
+    /// Optional: call site owns the CouponInputViewModel + API.
+    var onShowCoupon: (() -> Void)?
+
+    @State private var couponCode: String = ""
+
     // MARK: - Body
 
     public var body: some View {
@@ -56,8 +62,9 @@ public struct PosIPadCartPanel: View {
                 .padding(.vertical, BrandSpacing.sm)
 
             Divider().background(.bizarreOutline)
-
-            // Charge / Save-edit-first footer
+            // Mockup screen 2: coupon field between totals and charge CTA.
+            couponRow
+            Divider().background(.bizarreOutline)
             chargeFooter
                 .padding(.horizontal, BrandSpacing.md)
                 .padding(.vertical, BrandSpacing.sm)
@@ -65,7 +72,45 @@ public struct PosIPadCartPanel: View {
         .accessibilityIdentifier("pos.ipad.cartPanel")
     }
 
-    // MARK: - Cart line list
+    // MARK: - Coupon row
+
+    /// Glassy coupon input row — per iPad mockup screen 2 cart column.
+    private var couponRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "tag")
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .font(.system(size: 13))
+                .accessibilityHidden(true)
+            TextField("Coupon code", text: $couponCode)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .submitLabel(.done)
+                .onSubmit { applyCoupon() }
+                .accessibilityIdentifier("pos.ipad.cart.couponField")
+            if !couponCode.isEmpty {
+                Button {
+                    applyCoupon()
+                } label: {
+                    Text("APPLY")
+                        .font(.brandLabelLarge().bold())
+                        .foregroundStyle(.bizarreTeal)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Apply coupon code")
+                .accessibilityIdentifier("pos.ipad.cart.couponApply")
+            }
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .frame(minHeight: DesignTokens.Touch.minTargetSide)
+    }
+
+    private func applyCoupon() {
+        guard !couponCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        couponCode = ""
+        onShowCoupon?()
+    }
+
+    // MARK: - Sections
 
     /// Scrollable list of cart lines. Each row has a `.hoverEffect(.highlight)`
     /// for pointer devices and a `.contextMenu` with quick actions per

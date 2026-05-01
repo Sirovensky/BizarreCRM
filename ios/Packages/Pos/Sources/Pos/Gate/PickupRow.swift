@@ -48,7 +48,7 @@ public struct PickupRow: View {
     public var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // Checkmark badge — size/cornerRadius per caller (iPhone 32/9, iPad 36/10)
+                // Checkmark badge — mockup: 32×32, corner radius 9
                 ZStack {
                     RoundedRectangle(cornerRadius: badgeCornerRadius)
                         .fill(Color.bizarreSuccess.opacity(badgeFillOpacity))
@@ -56,9 +56,9 @@ public struct PickupRow: View {
                             RoundedRectangle(cornerRadius: badgeCornerRadius)
                                 .stroke(Color.bizarreSuccess.opacity(badgeBorderOpacity), lineWidth: 1)
                         )
-                        .frame(width: badgeSize, height: badgeSize)
-                    Text("✓")
-                        .font(.system(size: badgeFontSize, weight: .bold))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.bizarreSuccess)
                 }
                 .accessibilityHidden(true)
@@ -82,10 +82,10 @@ public struct PickupRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Amount — Barlow Condensed Bold 17pt, cream/orange per mockup var(--primary)
-                // Mockup specifies font-weight: 700 (Bold), not 600 (SemiBold).
+                // Amount — mockup: BarlowCondensed-SemiBold 17pt, primary color
                 Text(pickup.totalFormatted)
-                    .font(.custom("BarlowCondensed-Bold", size: 17))
+                    .font(.custom("BarlowCondensed-SemiBold", size: 17, relativeTo: .body))
+                    .monospacedDigit()
                     .foregroundStyle(Color.bizarreOrange)
                     .accessibilityLabel("Total: \(pickup.totalFormatted)")
             }

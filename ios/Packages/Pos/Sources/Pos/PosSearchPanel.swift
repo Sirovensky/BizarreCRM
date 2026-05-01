@@ -32,20 +32,10 @@ struct PosSearchPanel: View {
     @State private var pendingScanCode: String?
     @State private var showingScanSheet: Bool = false
 
-    /// §16.2 — Active category filter — nil means "All" / "Matches" pseudo-chip.
-    @State private var activeCategory: String? = nil
+    /// iPad only: active filter chip. `nil` = "All" (no filter).
+    @State private var activeFilter: String? = nil
 
-    /// §16.2 — Preview sheet for long-press quick-preview.
-    @State private var previewItem: InventoryListItem? = nil
-
-    /// §16.2 — Extended filter sheet.
-    @State private var showingFilterSheet: Bool = false
-
-    /// §16.2 — "Favorites" chip selected.
-    @State private var showingFavoritesOnly: Bool = false
-
-    /// §16.2 — "Recently sold" chip selected.
-    @State private var showingRecentlySoldOnly: Bool = false
+    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     var body: some View {
         ZStack {
@@ -55,7 +45,10 @@ struct PosSearchPanel: View {
                     .padding(.horizontal, BrandSpacing.base)
                     .padding(.top, BrandSpacing.sm)
                     .padding(.bottom, BrandSpacing.xs)
-                filterChips
+                // iPad screen 2: filter chip row above catalog when results exist.
+                if hSizeClass == .regular, !search.results.isEmpty {
+                    filterChipRow
+                }
                 resultsContent
             }
         }
@@ -314,91 +307,51 @@ struct PosSearchPanel: View {
         }
     }
 
-    // MARK: - Catalog tile grid
+    // MARK: - iPad filter chip row
 
-    private var catalogGrid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10)
-                ],
-                spacing: 10
-            ) {
-                ForEach(filteredResults) { item in
-                    PosCatalogTile(
-                        item: item,
-                        isInCart: cartItemInventoryIds.contains(item.id),
-                        isFavorite: posVM?.isFavorite(itemId: item.id) ?? false
-                    ) {
-                        BrandHaptics.success()
-                        onPick(item)
-                    } onLongPress: {
-                        // §16.2 Long-press → quick-preview sheet.
+    /// Horizontal scrollable category filter chips above the catalog grid.
+    /// Matches iPad mockup screen 2: "Matches · N / Screens / Batteries / …"
+    /// Categories are derived from distinct `category` values in current results.
+    private var filterChipRow: some View {
+        let categories = distinctCategories
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                // "Matches · N" all-results chip
+                FilterChip(
+                    label: "Matches · \(search.results.count)",
+                    isActive: activeFilter == nil
+                ) {
+                    BrandHaptics.tap()
+                    activeFilter = nil
+                }
+
+                ForEach(categories, id: \.self) { cat in
+                    FilterChip(label: cat, isActive: activeFilter == cat) {
                         BrandHaptics.tap()
-                        previewItem = item
-                    } onToggleFavorite: {
-                        // §16.2 Star tap on tile toggles favorite.
-                        posVM?.toggleFavorite(itemId: item.id)
-                        BrandHaptics.tap()
+                        activeFilter = activeFilter == cat ? nil : cat
                     }
                 }
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.top, 4)
-            .padding(.bottom, BrandSpacing.xl)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+        }
+        .accessibilityIdentifier("pos.catalogFilterChips")
+    }
+
+    /// Unique item-type labels from the current result set, preserving order
+    /// of first appearance. Nil / empty item types are dropped.
+    private var distinctCategories: [String] {
+        var seen = Set<String>()
+        return search.results.compactMap { item -> String? in
+            guard let type_ = item.itemType, !type_.isEmpty else { return nil }
+            let label = type_.capitalized
+            return seen.insert(label).inserted ? label : nil
         }
     }
 
-    // MARK: - Empty / home state
-
-    private var emptyOrHome: some View {
-        ScrollView {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: search.query.isEmpty ? "barcode.viewfinder" : "questionmark.folder")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(search.query.isEmpty ? "Start a sale" : "No matches")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                if search.query.isEmpty {
-                    Text("Type a name, SKU, or barcode to add items. Attach a customer first to track history.")
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, BrandSpacing.lg)
-                }
-
-                if showsCustomerCTAs, search.query.isEmpty {
-                    customerCTAStack
-                        .padding(.top, BrandSpacing.sm)
-                }
-
-                Button {
-                    onAddCustom()
-                } label: {
-                    Label("Add a custom line", systemImage: "plus.circle.fill")
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(.bizarreOrange)
-                        .padding(.horizontal, BrandSpacing.base)
-                        .padding(.vertical, BrandSpacing.sm)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.highlight)
-                .background(Color.bizarreSurface1, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5))
-                .accessibilityIdentifier("pos.addCustomLine")
-                .accessibilityLabel("Add a custom line to cart")
-            }
-            .padding(.top, BrandSpacing.xl)
-            .padding(.horizontal, BrandSpacing.base)
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    // MARK: - Customer CTAs
-
+    /// Three-button customer-attach stack shown on the POS home screen
+    /// when no customer is attached yet. Matches desktop's walk-in /
+    /// find / create workflow so staff have an obvious starting point.
     private var customerCTAStack: some View {
         VStack(spacing: BrandSpacing.sm) {
             if let onWalkIn {
@@ -470,225 +423,43 @@ struct PosSearchPanel: View {
     }
 }
 
-// MARK: - PosFilterChip
+// MARK: - FilterChip
 
-/// Single category filter chip. Active state uses bizarreOrange fill
-/// (cream in dark mode, dark-amber in light mode via the adaptive token).
-struct PosFilterChip: View {
+/// Pill-shaped filter chip for the iPad catalog filter row (mockup screen 2).
+private struct FilterChip: View {
     let label: String
     let isActive: Bool
-    let action: () -> Void
+    let onTap: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: onTap) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.brandLabelLarge())
                 .foregroundStyle(isActive ? Color.bizarreOnOrange : .bizarreOnSurface)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xs)
                 .background(
                     isActive
                         ? Color.bizarreOrange
-                        : Color.bizarreSurface2.opacity(0.6),
+                        : Color.bizarreSurface1.opacity(0.6),
                     in: Capsule()
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isActive ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.9),
-                        lineWidth: 0.5
+                        isActive ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.5),
+                        lineWidth: isActive ? 0 : 0.5
                     )
                 )
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityLabel(label + (isActive ? ", selected" : ""))
-        .accessibilityAddTraits(isActive ? [.isSelected] : [])
-        .accessibilityIdentifier("pos.filter.\(label)")
+        .accessibilityLabel("\(label) filter\(isActive ? ", selected" : "")")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
-// MARK: - PosCatalogTile (iPhone 2-col + iPad grid)
-
-/// Single catalog tile — matches mockup `.tile` class exactly.
-///
-/// - iPhone: 12pt padding, 110pt min-height, 34×34 icon box, 20pt price, badge inset 8/8.
-/// - iPad:   14pt padding, 132pt min-height, bare 22pt icon (no box), 24pt price, badge inset 9/9.
-///
-/// Set `isPad = true` when rendering inside `PosCatalogGrid`.
-struct PosCatalogTile: View {
-    let item: InventoryListItem
-    var isInCart: Bool = false
-    /// Whether this item is in the cashier's favorites list.
-    var isFavorite: Bool = false
-    /// Pass `true` from `PosCatalogGrid` to engage iPad sizing/layout.
-    var isPad: Bool = false
-    /// §16.2 Optional remote thumbnail URL.  When provided a `PosCatalogTileImage`
-    /// loads the photo lazily; otherwise the SF Symbol placeholder is shown.
-    var imageURL: URL? = nil
-    let onTap: () -> Void
-    /// §16.2 Long-press → quick-preview sheet.
-    var onLongPress: (() -> Void)? = nil
-    /// §16.2 Star button tap → toggle favorite.
-    var onToggleFavorite: (() -> Void)? = nil
-    /// §16.15 When true this is a member-only product.
-    var isMemberOnly: Bool = false
-    /// §16.15 Whether a qualifying member is attached to the cart.
-    /// When `isMemberOnly == true` and `hasMemberAttached == false`, the tile
-    /// is dimmed and tapping is blocked with an explanatory label.
-    var hasMemberAttached: Bool = true
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    // MARK: Layout constants (mockup-derived)
-    private var tilePadding:    CGFloat { isPad ? 14 : 12 }
-    private var tileMinHeight:  CGFloat { isPad ? 132 : 110 }
-    private var priceFontSize:  CGFloat { isPad ? 24 : 20 }
-    private var badgeInset:     CGFloat { isPad ? 9 : 8 }
-
-    var body: some View {
-        Button(action: onTap) {
-            ZStack(alignment: .topTrailing) {
-                // Card body
-                VStack(alignment: .leading, spacing: 6) {
-                    // §16.2 Photo thumbnail (or SF Symbol fallback) + favorite star row.
-                    HStack(alignment: .top) {
-                        PosCatalogTileImage(
-                            imageURL: imageURL,
-                            placeholderSymbol: tileSystemImage,
-                            isPad: isPad
-                        )
-                        Spacer(minLength: 0)
-                        // §16.2 Favorite star — top-right of icon row.
-                        if let onToggleFavorite {
-                            Button {
-                                onToggleFavorite()
-                            } label: {
-                                Image(systemName: isFavorite ? "star.fill" : "star")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(isFavorite ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted.opacity(0.6))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(isFavorite ? "Remove from favorites" : "Add to favorites")
-                            .accessibilityIdentifier("pos.tile.favorite.\(item.id)")
-                        }
-                    }
-
-                    Text(item.displayName)
-                        .font(.system(size: isPad ? 13.5 : 13, weight: .semibold))
-                        .foregroundStyle(.bizarreOnSurface)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 0)
-
-                    // Price + stock row (pinned to bottom)
-                    HStack(alignment: .lastTextBaseline) {
-                        if let cents = item.priceCents {
-                            // Primary price — cream in dark mode, dark-amber in light mode.
-                            Text(CartMath.formatCents(cents))
-                                .font(.system(size: priceFontSize, weight: .bold))
-                                .foregroundStyle(.bizarreOrange)
-                                .monospacedDigit()
-                        }
-                        Spacer()
-                        stockBadge
-                    }
-                }
-                .padding(tilePadding)
-                .frame(maxWidth: .infinity, minHeight: tileMinHeight, alignment: .leading)
-                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(
-                            isInCart
-                                ? Color.bizarreOrange.opacity(colorScheme == .dark ? 0.35 : 0.30)
-                                : Color.bizarreOutline.opacity(0.4),
-                            lineWidth: isInCart ? 1 : 0.5
-                        )
-                )
-
-                // "In cart" badge — top-right corner (only when no favorite star above).
-                if isInCart && onToggleFavorite == nil {
-                    Text("In cart")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(Color.bizarreOnOrange)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, isPad ? 3 : 2)
-                        .background(Color.bizarreOrange, in: Capsule())
-                        .padding(.top, badgeInset)
-                        .padding(.trailing, badgeInset)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        // §16.2 Long-press → quick preview.
-        .onLongPressGesture(minimumDuration: 0.4) {
-            onLongPress?()
-        }
-        // §16.15 Member-only overlay: dim tile + lock interaction when no member.
-        .overlay(alignment: .center) {
-            if isMemberOnly && !hasMemberAttached {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.bizarreSurfaceBase.opacity(0.72))
-                    .overlay {
-                        VStack(spacing: 3) {
-                            Image(systemName: "star.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(Color.bizarreOrange.opacity(0.8))
-                            Text("Members only")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-            }
-        }
-        .allowsHitTesting(!(isMemberOnly && !hasMemberAttached))
-        .accessibilityLabel(
-            "\(item.displayName)\(isInCart ? ", in cart" : "")\(isFavorite ? ", favorited" : "")" +
-            (isMemberOnly && !hasMemberAttached ? ", members only" : "") +
-            (item.priceCents.map { ", \(CartMath.formatCents($0))" } ?? "")
-        )
-        .accessibilityAddTraits(isInCart ? [.isSelected] : [])
-        .accessibilityIdentifier("pos.catalogTile.\(item.id)")
-    }
-
-    private var tileSystemImage: String {
-        switch item.itemType?.lowercased() {
-        case "service":     return "wrench.and.screwdriver"
-        case "part":        return "puzzlepiece"
-        case "accessory":   return "cable.connector"
-        default:            return "shippingbox.fill"
-        }
-    }
-
-    @ViewBuilder
-    private var stockBadge: some View {
-        // InventoryListItem.inStock is the quantity on hand; nil = service/unknown
-        if let qty = item.inStock {
-            let isLow = item.isLowStock || qty <= 3
-            if isLow {
-                Text("\(qty) low")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.bizarreWarning)
-            } else {
-                Text("\(qty)")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.bizarreSuccess)
-            }
-        } else {
-            // No stock field = service item
-            Text("Service")
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(.bizarreSuccess)
-        }
-    }
-}
-
-// MARK: - PosSearchRow (list fallback, kept for reference)
-
-/// Result row in the POS picker — list style fallback (not used when grid is active).
+/// Result row in the POS picker — shows name + SKU + price. No stock
+/// colour coding at scaffold level; coming in §16.2.
 struct PosSearchRow: View {
     let item: InventoryListItem
 

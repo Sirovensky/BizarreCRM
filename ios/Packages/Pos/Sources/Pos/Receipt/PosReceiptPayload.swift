@@ -51,10 +51,9 @@ public struct PosReceiptPayload: Equatable, Sendable {
 
     // MARK: - Pencil signature
 
-    /// Ticket ID that has an Apple Pencil signature archived via
-    /// `PKCanvasView`. When non-nil, `PosReceiptView` renders the
-    /// "Signature captured with Pencil" banner — iPad regular size class only
-    /// (per mockup screen 5 / spec item 5).
+    /// Ticket ID to which an Apple Pencil signature was archived (iPad only).
+    /// When non-nil, `PosReceiptView` shows the "Signature captured with Pencil"
+    /// banner (only on iPad regular-width size class, per mockup screen 5).
     public let signedTicketId: Int64?
 
     // MARK: - Init

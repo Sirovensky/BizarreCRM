@@ -37,38 +37,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     // MARK: - §16 Payment method icon SF Symbols
 
     /// SF Symbol name for the tile icon.
-    ///
-    /// Symbol choices (all `.fill` weight for visual consistency):
-    /// - card          → `creditcard.fill`          — industry-standard card icon
-    /// - cash          → `banknote.fill`             — paper-money icon
-    /// - giftCard      → `giftcard.fill`             — SF6+ gift card icon
-    /// - storeCredit   → `dollarsign.circle.fill`    — dollar-in-circle (store value)
-    /// - check         → `checkmark.rectangle.fill`  — rectangle matches check shape
-    /// - accountCredit → `building.columns.fill`     — bank / A/R connotation
-    /// - financing     → `clock.arrow.circlepath`    — deferred / installment connotation
+    /// Mockup screen 5a: 💳 card, 💵 cash, 🎁 gift card, 💸 store credit.
     public var systemImage: String {
         switch self {
-        case .card:          return "creditcard.fill"
-        case .cash:          return "banknote.fill"
-        case .giftCard:      return "giftcard.fill"
-        case .storeCredit:   return "dollarsign.circle.fill"
-        case .check:         return "checkmark.rectangle.fill"
-        case .accountCredit: return "building.columns.fill"
-        case .financing:     return "clock.arrow.circlepath"
-        }
-    }
-
-    /// Accessible label used when the icon is the only visual indicator
-    /// (e.g. applied-tender chips on the receipt summary row).
-    public var iconAccessibilityLabel: String {
-        switch self {
-        case .card:          return "Credit or debit card"
-        case .cash:          return "Cash"
-        case .giftCard:      return "Gift card"
-        case .storeCredit:   return "Store credit"
-        case .check:         return "Check"
-        case .accountCredit: return "Account credit or net 30"
-        case .financing:     return "Financing"
+        case .card:        return "creditcard.fill"
+        case .cash:        return "banknote.fill"
+        case .giftCard:    return "giftcard.fill"
+        case .storeCredit: return "dollarsign.circle.fill"
         }
     }
 
