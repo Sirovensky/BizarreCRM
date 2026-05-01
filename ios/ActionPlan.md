@@ -3241,11 +3241,11 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Auto-send** reminders — 3 days before due / day of / 3 days after / weekly overdue. (`InvoiceSettingsPage.swift` `reminderDays` toggles for [7,3,1,0,-3,-7,-14]; agent-9 b10)
 - [x] **Allowed payment methods** — Card / Cash / Check / ACH / Financing. (`InvoiceSettingsPage.swift` `allowedPaymentMethods` toggle set; agent-9 b10)
 - [x] **Fees** — processing surcharge (% or $); restocking fee default. (`InvoiceSettingsPage.swift` `surchargePct` field; agent-9 b10)
-- [ ] **Accepted payment methods surface** on customer portal.
+- [x] **Accepted payment methods surface** on customer portal. (`InvoiceSettings.portalShowAcceptedMethods` Bool with `portal_show_accepted_methods` JSON key + tolerant decoder default true; "Show on customer portal" toggle in `paymentMethodsSection` so the customer-facing "Pay this invoice" page lists accepted methods; persisted via `PUT /api/v1/settings/invoices`. `InvoiceSettingsPage.swift`; this commit)
 
 ### 19.8 Tax
 - [x] **Tax rates** — list (name, rate, applies-to); add/edit/archive. (`Settings/Pages/TaxSettingsPage.swift`; `TaxSettingsViewModel`; `POST/PATCH /tax-rates`.)
-- [ ] **Nested tax** — state + county + city stacking.
+- [x] **Nested tax** — state + county + city stacking. (`TaxRate.isNested` + `jurisdiction` fields; `TaxJurisdiction` enum (none/state/county/city); `TaxRateDTO`/`TaxRateCreateDTO` extended; "Nested tax" section in form with jurisdiction Picker; row badge shows tier; "Nested tax stack" section sums combined rate when ≥2 nested rates active. `TaxSettingsPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
 - [x] **Tax-exempt categories** — isExempt toggle per rate. (`TaxSettingsPage.swift` draftIsExempt field.)
 - [ ] **Per-customer override** — default handled in customer record.
 - [ ] **Automated rate lookup** (Avalara/TaxJar integration toggle — stretch).
@@ -3266,8 +3266,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Template library** — Ticket-ready / Estimate / Invoice / Payment confirmation / Appointment reminder / Post-service survey.
 - [ ] **Variable tokens** — `{customer.first_name}`, `{ticket.status}`, `{invoice.amount}`, `{eta.date}`, etc.; token picker.
 - [x] **Test send** to current user's phone. (`SmsProviderPage.swift`)
-- [ ] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START).
-- [ ] **Compliance** — opt-out keywords, carrier-required footers.
+- [x] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START). (`SmsSettingsDTO.autoReplyEnabled` + `autoReplyMessage`; `SmsProviderViewModel` loads/persists via `GET/PUT /settings/sms`; "Auto-responses" Section toggle + multi-line TextField; footer explains shop-hours gating. `SmsProviderPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
+- [x] **Compliance** — opt-out keywords, carrier-required footers. (`SmsSettingsDTO.optOutKeywords` `[String]` + `complianceFooter` String; "Compliance" Section with comma-separated keyword TextField (auto-uppercased on save) + footer TextField; persisted via `PUT /settings/sms`. `SmsProviderPage.swift` + `SettingsPagesEndpoints.swift`; this commit)
 - [x] **MMS** toggle if plan supports. (`SmsProviderPage` "Messaging capabilities" section; `mmsEnabled` in `SmsProviderViewModel` + `SmsSettingsDTO`; persisted via `PUT /settings/sms`.)
 
 ### 19.11 Automations
@@ -3341,7 +3341,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 ### 19.23 Data (local)
 - [ ] **Force full sync** — wipes GRDB, re-fetches all domains.
 - [x] **Sync queue inspector** — pending writes + retry age + dead-letter (tap to retry / drop). (`Settings/SyncDiagnosticsView.swift` with per-row Retry / Discard backed by `SyncQueueStore`.)
-- [ ] **Clear cache** — images + catalog (not queued writes).
+- [x] **Clear cache** — images + catalog (not queued writes). (`SyncDiagnosticsViewModel.clearCache()` clears `URLCache.shared` then walks Caches directory removing items; "Clear image & catalogue cache" Button in Data actions Section gated by confirm alert; queued GRDB writes intentionally untouched. `Settings/SyncDiagnosticsView.swift`; this commit)
 - [ ] **Reset GRDB** — nuclear option (sign out + wipe).
 - [x] **Disk usage** — breakdown: images X MB, GRDB Y MB, logs Z MB. (`SyncDiagnosticsView` "Disk usage" section; `SyncDiagnosticsViewModel.refreshDiskUsage()` walks Documents + Caches + Library/Logs with `ByteCountFormatter`.)
 - [ ] **Export DB** (dev build only) — share sheet → `.sqlite` file.

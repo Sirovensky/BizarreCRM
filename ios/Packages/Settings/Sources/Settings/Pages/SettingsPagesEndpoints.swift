@@ -111,14 +111,28 @@ public struct SmsSettingsDTO: Codable, Sendable {
     public var a2pStatus: String?
     // §19.10 — MMS support toggle
     public var mmsEnabled: Bool?
+    // §19.10 — Auto-responses (out-of-hours auto-reply)
+    public var autoReplyEnabled: Bool?
+    public var autoReplyMessage: String?
+    // §19.10 — Compliance (opt-out keywords + carrier-required footer)
+    public var optOutKeywords: [String]?
+    public var complianceFooter: String?
 
     public init(provider: String?, fromNumber: String?, twilioAccountSid: String?,
                 twilioAuthToken: String?, a2pStatus: String?,
-                mmsEnabled: Bool? = nil) {
+                mmsEnabled: Bool? = nil,
+                autoReplyEnabled: Bool? = nil,
+                autoReplyMessage: String? = nil,
+                optOutKeywords: [String]? = nil,
+                complianceFooter: String? = nil) {
         self.provider = provider; self.fromNumber = fromNumber
         self.twilioAccountSid = twilioAccountSid; self.twilioAuthToken = twilioAuthToken
         self.a2pStatus = a2pStatus
         self.mmsEnabled = mmsEnabled
+        self.autoReplyEnabled = autoReplyEnabled
+        self.autoReplyMessage = autoReplyMessage
+        self.optOutKeywords = optOutKeywords
+        self.complianceFooter = complianceFooter
     }
 }
 
@@ -174,6 +188,10 @@ public struct TaxRateDTO: Codable, Sendable {
     public var applyToAll: Bool?
     public var isExempt: Bool?
     public var isArchived: Bool?
+    /// §19.8 — when true, this rate stacks on top of other rates (state + county + city).
+    public var isNested: Bool?
+    /// §19.8 — jurisdiction tier label for nested rates: "state", "county", "city".
+    public var jurisdiction: String?
 }
 
 public struct TaxRateCreateDTO: Encodable, Sendable {
@@ -181,9 +199,15 @@ public struct TaxRateCreateDTO: Encodable, Sendable {
     public var rate: Double
     public var applyToAll: Bool
     public var isExempt: Bool
+    /// §19.8 — nested-stacking flag.
+    public var isNested: Bool
+    /// §19.8 — jurisdiction tier ("state" / "county" / "city" / "").
+    public var jurisdiction: String
 
-    public init(name: String, rate: Double, applyToAll: Bool, isExempt: Bool) {
+    public init(name: String, rate: Double, applyToAll: Bool, isExempt: Bool,
+                isNested: Bool = false, jurisdiction: String = "") {
         self.name = name; self.rate = rate
+        self.isNested = isNested; self.jurisdiction = jurisdiction
         self.applyToAll = applyToAll; self.isExempt = isExempt
     }
 }
