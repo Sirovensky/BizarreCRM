@@ -10,6 +10,34 @@ public protocol SetupRepository: Sendable {
     func submitStep(_ step: Int, payload: [String: String]) async throws -> Int
     func uploadLogo(data: Data) async throws -> String
     func completeSetup() async throws
+    func seedRepairPricingDefaults(_ request: RepairPricingSeedDefaultsRequest) async throws -> RepairPricingSeedDefaultsResponse
+    func saveRepairPricingSpreadsheetPrices(_ prices: [SetupSpreadsheetPriceDraft]) async throws
+    func saveRepairPricingAutoMarginSettings(_ settings: RepairPricingAutoMarginSettings) async throws -> RepairPricingAutoMarginSettings
+    func fetchRepairPricingMatrixPreview(category: String, limit: Int) async throws -> RepairPricingMatrixResponse
+}
+
+private struct SetupRepairPricingRepositoryUnavailable: LocalizedError, Sendable {
+    var errorDescription: String? {
+        "Repair pricing setup is not available in this repository."
+    }
+}
+
+public extension SetupRepository {
+    func seedRepairPricingDefaults(_ request: RepairPricingSeedDefaultsRequest) async throws -> RepairPricingSeedDefaultsResponse {
+        throw SetupRepairPricingRepositoryUnavailable()
+    }
+
+    func saveRepairPricingSpreadsheetPrices(_ prices: [SetupSpreadsheetPriceDraft]) async throws {
+        throw SetupRepairPricingRepositoryUnavailable()
+    }
+
+    func saveRepairPricingAutoMarginSettings(_ settings: RepairPricingAutoMarginSettings) async throws -> RepairPricingAutoMarginSettings {
+        throw SetupRepairPricingRepositoryUnavailable()
+    }
+
+    func fetchRepairPricingMatrixPreview(category: String, limit: Int) async throws -> RepairPricingMatrixResponse {
+        throw SetupRepairPricingRepositoryUnavailable()
+    }
 }
 
 // MARK: - In-memory offline queue entry
@@ -61,6 +89,39 @@ public actor SetupRepositoryLive: SetupRepository {
     public func completeSetup() async throws {
         await drainQueue()
         _ = try await api.completeSetup()
+    }
+
+    public func seedRepairPricingDefaults(_ request: RepairPricingSeedDefaultsRequest) async throws -> RepairPricingSeedDefaultsResponse {
+        try await api.seedRepairPricingDefaults(request)
+    }
+
+    public func saveRepairPricingSpreadsheetPrices(_ prices: [SetupSpreadsheetPriceDraft]) async throws {
+        for price in prices where price.shouldPersist {
+            guard let laborPrice = price.laborPrice else { continue }
+            let request = RepairPricingPriceWriteRequest(
+                deviceModelId: price.deviceModelId,
+                repairServiceId: price.repairServiceId,
+                laborPrice: laborPrice,
+                defaultGrade: "aftermarket",
+                isActive: 1,
+                isCustom: 1,
+                autoMarginEnabled: 0
+            )
+
+            if let priceId = price.priceId {
+                _ = try await api.updateRepairPricingPrice(priceId: priceId, request: request)
+            } else {
+                _ = try await api.createRepairPricingPrice(request)
+            }
+        }
+    }
+
+    public func saveRepairPricingAutoMarginSettings(_ settings: RepairPricingAutoMarginSettings) async throws -> RepairPricingAutoMarginSettings {
+        try await api.updateRepairPricingAutoMarginSettings(settings)
+    }
+
+    public func fetchRepairPricingMatrixPreview(category: String, limit: Int) async throws -> RepairPricingMatrixResponse {
+        try await api.fetchRepairPricingMatrix(category: category, limit: limit)
     }
 
     private func drainQueue() async {

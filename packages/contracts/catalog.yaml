@@ -77,3 +77,90 @@ endpoints:
     query:
       device_model_id: number
       repair_service_id: number
+  - method: GET
+    path: /api/v1/repair-pricing/tiers
+    purpose: Return server-owned dynamic pricing tier thresholds plus device counts.
+    response:
+      data:
+        thresholds:
+          tierAYears: number
+          tierBYears: number
+        tiers: RepairPricingTierDescriptor[]
+  - method: PUT
+    path: /api/v1/repair-pricing/tiers
+    purpose: Update dynamic pricing age-tier thresholds. Manager/admin only.
+    request:
+      tier_a_years: number
+      tier_b_years: number
+  - method: GET
+    path: /api/v1/repair-pricing/matrix
+    purpose: Return the authoritative device/service pricing matrix with tier, custom, supplier-cost, and profit metadata.
+    query:
+      category: string optional
+      manufacturer_id: number optional
+      repair_service_id: number optional
+      q: string optional
+      limit: number optional
+  - method: POST
+    path: /api/v1/repair-pricing/seed-defaults
+    purpose: Seed day-1 tier labor defaults into the server-owned repair_prices matrix. Manager/admin only.
+    request:
+      category: string optional
+      pricing: object optional
+      overwrite_custom: boolean optional
+  - method: POST
+    path: /api/v1/repair-pricing/tier-apply
+    purpose: Apply one tier labor default across matching device models, preserving custom cells unless overwrite_custom is true. Manager/admin only.
+    request:
+      repair_service_id: number
+      tier: tier_a|tier_b|tier_c
+      labor_price: number
+      category: string optional
+      overwrite_custom: boolean optional
+  - method: GET
+    path: /api/v1/repair-pricing/audit
+    purpose: List server audit history for pricing changes.
+    query:
+      repair_price_id: number optional
+      device_model_id: number optional
+      repair_service_id: number optional
+      from: ISO-8601 string optional
+      to: ISO-8601 string optional
+      limit: number optional
+  - method: POST
+    path: /api/v1/repair-pricing/revert/{priceId}
+    purpose: Revert a custom price to its stored tier default, peer tier average, or current value if no default exists. Manager/admin only.
+  - method: GET
+    path: /api/v1/repair-pricing/auto-margin-settings
+    purpose: Return the server-owned auto-margin calculator policy.
+  - method: PUT
+    path: /api/v1/repair-pricing/auto-margin-settings
+    purpose: Update traffic preset, percent or fixed-dollar targets, rounding mode, per-run safety cap, and optional service/tier/device rules. Manager/admin only.
+    request:
+      preset: high_traffic|mid_traffic|low_traffic|custom optional
+      target_type: percent|fixed_amount optional
+      target_margin_pct: number optional
+      target_profit_amount: number optional
+      calculation_basis: gross_margin|markup optional
+      rounding_mode: none|ending_99|whole_dollar|ending_98 optional
+      cap_pct: number optional
+      rules: auto-margin rule[] optional
+  - method: POST
+    path: /api/v1/repair-pricing/auto-margin-preview
+    purpose: Preview the server calculator without writing repair_prices.
+    request:
+      supplier_cost: number
+      current_labor_price: number optional
+      target_type: percent|fixed_amount optional
+      target_margin_pct: number optional
+      target_profit_amount: number optional
+      calculation_basis: gross_margin|markup optional
+      rounding_mode: none|ending_99|whole_dollar|ending_98 optional
+      cap_pct: number optional
+      rule: auto-margin rule optional
+  - method: POST
+    path: /api/v1/repair-pricing/recompute-profits
+    purpose: Refresh supplier-cost/profit metadata from the server supplier catalog and optionally run auto-margin adjustments. Manager/admin only.
+    request:
+      price_ids: number[] optional
+      auto_margin: boolean optional

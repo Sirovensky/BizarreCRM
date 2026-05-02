@@ -802,6 +802,11 @@ export async function scrapeCatalog(
       try {
         const { syncCostPricesFromCatalog } = await import('../routes/catalog.routes.js');
         syncCostPricesFromCatalog(db);
+        // Dynamic repair pricing is server-owned.  After supplier catalog data
+        // changes, refresh per-price supplier cost/profit metadata so web and
+        // mobile devices receive the same authoritative matrix values.
+        const { recomputeRepairPriceProfits } = await import('./repairPricing/profitRecompute.js');
+        recomputeRepairPriceProfits(db);
       } catch (err: unknown) {
         logger.error('post-scrape cost sync failed', {
           error: err instanceof Error ? err.message : String(err),

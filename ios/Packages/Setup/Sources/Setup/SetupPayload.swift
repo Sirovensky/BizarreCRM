@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 
 // MARK: - SetupPayload
 // Accumulated wizard state across all steps. Each step view writes its fields
@@ -37,6 +38,17 @@ public struct SetupPayload: Sendable {
 
     // MARK: Step 11 — Device Templates
     public var enabledDeviceFamilies: Set<String> = []
+    public var repairPricingMode: SetupRepairPricingMode = .tiered
+    public var repairPricingTierDefaults: RepairPricingSeedPricing = SetupRepairPricingSelection.defaultTierDefaults
+    public var repairPricingSpreadsheetPrices: [SetupSpreadsheetPriceDraft] = []
+    public var repairPricingAutoMarginPreset: RepairPricingAutoMarginPreset = .midTraffic
+    public var repairPricingAutoMarginTargetType: RepairPricingAutoMarginTargetType = .percent
+    public var repairPricingTargetMarginPct: Double = 100
+    public var repairPricingTargetProfitAmount: Double = 80
+    public var repairPricingCalculationBasis: RepairPricingAutoMarginBasis = .markup
+    public var repairPricingRoundingMode: RepairPricingRoundingMode = .ending99
+    public var repairPricingCapPct: Double = 25
+    public var repairPricingAutoMarginRules: [RepairPricingAutoMarginRule] = SetupRepairPricingSelection.defaultAutoMarginRules(for: .midTraffic, targetType: .percent)
 
     // MARK: Step 12 — Import Data
     public var importSource: String? = nil
@@ -244,7 +256,28 @@ public extension SetupPayload {
     }
 
     func deviceFamiliesPayload() -> [String: String] {
-        ["device_families": enabledDeviceFamilies.sorted().joined(separator: ",")]
+        var d: [String: String] = [
+            "device_families": enabledDeviceFamilies.sorted().joined(separator: ","),
+            "repair_pricing_mode": repairPricingMode.rawValue,
+            "repair_pricing_auto_margin_preset": repairPricingAutoMarginPreset.rawValue,
+            "repair_pricing_auto_margin_target_type": repairPricingAutoMarginTargetType.rawValue,
+            "repair_pricing_target_margin_pct": String(format: "%.2f", repairPricingTargetMarginPct),
+            "repair_pricing_target_profit_amount": String(format: "%.2f", repairPricingTargetProfitAmount),
+            "repair_pricing_calculation_basis": repairPricingCalculationBasis.rawValue,
+            "repair_pricing_rounding_mode": repairPricingRoundingMode.rawValue,
+            "repair_pricing_cap_pct": String(format: "%.2f", repairPricingCapPct)
+        ]
+        if let defaults = SetupRepairPricingSelection.encodeTierDefaults(repairPricingTierDefaults) {
+            d["repair_pricing_tier_defaults"] = defaults
+        }
+        if let prices = SetupRepairPricingSelection.encodeSpreadsheetPrices(repairPricingSpreadsheetPrices) {
+            d["repair_pricing_spreadsheet_prices"] = prices
+        }
+        if let data = try? JSONEncoder().encode(repairPricingAutoMarginRules),
+           let rules = String(data: data, encoding: .utf8) {
+            d["repair_pricing_auto_margin_rules"] = rules
+        }
+        return d
     }
 
     func importPayload() -> [String: String] {

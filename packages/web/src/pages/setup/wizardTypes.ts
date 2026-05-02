@@ -140,14 +140,15 @@ export type ExtraCardId =
   | 'notifications';
 
 /**
- * Values collected across the wizard that will be bulk-written to `store_config`
- * via `settingsApi.updateConfig` on commit. All fields are optional — only the
- * steps the user actually completes populate them. Mandatory steps (welcome,
- * store) always populate their fields before advancing.
+ * Values collected across the wizard. Most fields are bulk-written to
+ * `store_config` via `settingsApi.updateConfig` on commit; a few steps use
+ * this bag only as session state before publishing to a domain-specific
+ * server route. All fields are optional — only completed steps populate them.
  *
  * Keys must match the ALLOWED_CONFIG_KEYS set in settings.routes.ts (H2).
  * Special keys NOT persisted to store_config (used only for in-flow state):
  *   signup_email — captured in Step 1 SaaS, pre-fills Step 6 store_email.
+ *   pricing_tier_* — StepRepairPricing publishes directly to repair_prices.
  */
 export interface PendingWrites {
   // ─── In-flow only (NOT persisted) ────────────────────────────────
@@ -167,7 +168,7 @@ export interface PendingWrites {
   store_timezone?: string;
   store_currency?: string;
 
-  // ─── Repair pricing step (NEW — tier-based labor) ────────────────
+  // ─── Repair pricing step (in-flow only; server seed route owns DB) ─
   pricing_tier_a_screen?: string;
   pricing_tier_a_battery?: string;
   pricing_tier_a_charge_port?: string;

@@ -363,10 +363,10 @@ public struct SetupWizardView: View {
         case .deviceTemplates:
             DeviceTemplatesStepView(
                 onValidityChanged: { valid in stepValid = valid },
-                onNext: { families in
-                    vm.wizardPayload.enabledDeviceFamilies = Set(families.map(\.rawValue))
-                    Task { await vm.goNext() }
-                }
+                onSelectionChanged: { selection in
+                    vm.updateDeviceTemplateSelection(selection)
+                },
+                repository: vm.repository
             )
 
         case .dataImport:
@@ -445,7 +445,12 @@ public struct SetupWizardView: View {
             .accessibilityLabel(vm.currentStep == .welcome ? "Dismiss setup and do later" : "Skip this step")
 
             Button {
-                Task { await vm.goNext() }
+                Task {
+                    if vm.currentStep == .deviceTemplates {
+                        guard await vm.submitRepairPricingConfiguration() else { return }
+                    }
+                    await vm.goNext()
+                }
             } label: {
                 Text(vm.isOnLastStep ? "Finish" : "Next")
                     .font(.brandTitleSmall())

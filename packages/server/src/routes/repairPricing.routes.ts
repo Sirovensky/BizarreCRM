@@ -4,6 +4,25 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import {
+  bulkApplyTier,
+  getTierThresholds,
+  parsePricingTier,
+  pricingTierDescriptors,
+  revertPriceToTier,
+  setTierThresholds,
+  tierForReleaseYear,
+  tierLabel,
+  type PricingTier,
+} from '../services/repairPricing/tierResolver.js';
+import { recomputeRepairPriceProfits } from '../services/repairPricing/profitRecompute.js';
+import {
+  getAutoMarginSettings,
+  previewAutoMargin,
+  runAutoMargin,
+  setAutoMarginSettings,
+} from '../services/repairPricing/autoMargin.js';
+import { seedRepairPricingDefaults } from '../services/repairPricing/seedDefaults.js';
 
 const router = Router();
 
@@ -35,6 +54,32 @@ function validatePriceField(field: string, value: unknown): number | null {
   return n;
 }
 
+function parseBoolish(value: unknown, fallback = false): boolean {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+  return fallback;
+}
+
+function parsePositiveInt(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new AppError(`${field} must be a positive integer`, 400);
+  return n;
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+function clampLimit(value: unknown, fallback = 250, max = 1000): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new AppError('limit must be a positive integer', 400);
+  return Math.min(n, max);
+}
+
 // ==================== Helper: apply global adjustments ====================
 
 async function getAdjustments(adb: AsyncDb): Promise<{ flat: number; pct: number }> {
@@ -64,6 +109,321 @@ function applyAdjustment(basePrice: number, adj: { flat: number; pct: number }):
   if (adj.flat !== 0) price = price + adj.flat;
   return Math.round(price * 100) / 100;
 }
+
+// ==================== Dynamic Repair-Pricing Matrix ====================
+
+router.get('/tiers', asyncHandler(async (req, res) => {
+  const thresholds = getTierThresholds(req.db);
+  const devices = await req.asyncDb.all<{ release_year: number | null }>('SELECT release_year FROM device_models');
+  const counts: Record<PricingTier, number> = { tier_a: 0, tier_b: 0, tier_c: 0, unknown: 0 };
+  for (const device of devices) {
+    counts[tierForReleaseYear(device.release_year, thresholds)] += 1;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      thresholds,
+      tiers: pricingTierDescriptors(thresholds).map((tier) => ({
+        ...tier,
+        device_count: counts[tier.key],
+      })),
+    },
+  });
+}));
+
+router.put('/tiers', adminOrManager, asyncHandler(async (req, res) => {
+  const tierAYears = Number(req.body?.tier_a_years ?? req.body?.tierAYears);
+  const tierBYears = Number(req.body?.tier_b_years ?? req.body?.tierBYears);
+  if (!Number.isFinite(tierAYears) || !Number.isFinite(tierBYears)) {
+    throw new AppError('tier_a_years and tier_b_years are required numbers', 400);
+  }
+  if (tierAYears < 0 || tierBYears < 0 || tierAYears > 50 || tierBYears > 50 || tierBYears < tierAYears) {
+    throw new AppError('Tier windows must be 0-50 years and tier_b_years must be >= tier_a_years', 400);
+  }
+
+  const thresholds = setTierThresholds(req.db, {
+    tierAYears: Math.trunc(tierAYears),
+    tierBYears: Math.trunc(tierBYears),
+  });
+  audit(req.db, 'repair_pricing_tiers_updated', req.user!.id, req.ip || 'unknown', { ...thresholds });
+  res.json({ success: true, data: { thresholds, tiers: pricingTierDescriptors(thresholds) } });
+}));
+
+router.get('/matrix', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const thresholds = getTierThresholds(req.db);
+  const { category, q } = req.query as { category?: string; q?: string };
+  const manufacturerId = parsePositiveInt(req.query.manufacturer_id, 'manufacturer_id');
+  const repairServiceId = parsePositiveInt(req.query.repair_service_id, 'repair_service_id');
+  const limit = clampLimit(req.query.limit);
+
+  const serviceParams: unknown[] = [];
+  let serviceSql = 'SELECT * FROM repair_services WHERE is_active = 1';
+  if (category) {
+    serviceSql += ' AND category = ?';
+    serviceParams.push(category);
+  }
+  if (repairServiceId) {
+    serviceSql += ' AND id = ?';
+    serviceParams.push(repairServiceId);
+  }
+  serviceSql += ' ORDER BY category ASC, sort_order ASC, name ASC';
+
+  const deviceWhere: string[] = [];
+  const deviceParams: unknown[] = [];
+  if (category) {
+    deviceWhere.push('dm.category = ?');
+    deviceParams.push(category);
+  }
+  if (manufacturerId) {
+    deviceWhere.push('dm.manufacturer_id = ?');
+    deviceParams.push(manufacturerId);
+  }
+  if (q && q.trim().length > 0) {
+    deviceWhere.push("(LOWER(dm.name) LIKE ? ESCAPE '\\' OR LOWER(m.name) LIKE ? ESCAPE '\\')");
+    const like = `%${escapeLike(q.trim().toLowerCase())}%`;
+    deviceParams.push(like, like);
+  }
+
+  const [services, devices] = await Promise.all([
+    adb.all<any>(serviceSql, ...serviceParams),
+    adb.all<any>(`
+      SELECT dm.id, dm.name, dm.slug, dm.category, dm.release_year, dm.is_popular,
+             m.id AS manufacturer_id, m.name AS manufacturer_name
+      FROM device_models dm
+      JOIN manufacturers m ON m.id = dm.manufacturer_id
+      ${deviceWhere.length ? `WHERE ${deviceWhere.join(' AND ')}` : ''}
+      ORDER BY m.name ASC, dm.release_year DESC, dm.name ASC
+      LIMIT ?
+    `, ...deviceParams, limit),
+  ]);
+
+  if (devices.length === 0 || services.length === 0) {
+    res.json({ success: true, data: { thresholds, services, devices: [] } });
+    return;
+  }
+
+  const deviceIds = devices.map((device: any) => device.id);
+  const serviceIds = services.map((service: any) => service.id);
+  const priceRows = await adb.all<any>(`
+    SELECT rp.*
+    FROM repair_prices rp
+    WHERE rp.device_model_id IN (${deviceIds.map(() => '?').join(',')})
+      AND rp.repair_service_id IN (${serviceIds.map(() => '?').join(',')})
+  `, ...deviceIds, ...serviceIds);
+
+  const priceByPair = new Map<string, any>();
+  for (const price of priceRows) {
+    priceByPair.set(`${price.device_model_id}:${price.repair_service_id}`, price);
+  }
+
+  const matrixDevices = devices.map((device: any) => {
+    const tier = tierForReleaseYear(device.release_year, thresholds);
+    return {
+      device_model_id: device.id,
+      device_model_name: device.name,
+      device_model_slug: device.slug,
+      manufacturer_id: device.manufacturer_id,
+      manufacturer_name: device.manufacturer_name,
+      category: device.category,
+      release_year: device.release_year,
+      tier,
+      tier_label: tierLabel(tier),
+      is_popular: device.is_popular,
+      prices: services.map((service: any) => {
+        const price = priceByPair.get(`${device.id}:${service.id}`);
+        return {
+          repair_service_id: service.id,
+          repair_service_name: service.name,
+          repair_service_slug: service.slug,
+          service_category: service.category,
+          price_id: price?.id ?? null,
+          labor_price: price?.labor_price ?? null,
+          default_grade: price?.default_grade ?? null,
+          is_active: price?.is_active ?? null,
+          is_custom: price?.is_custom ?? 0,
+          tier_label: price?.tier_label ?? tier,
+          profit_estimate: price?.profit_estimate ?? null,
+          profit_stale_at: price?.profit_stale_at ?? null,
+          auto_margin_enabled: price?.auto_margin_enabled ?? 0,
+          last_supplier_cost: price?.last_supplier_cost ?? null,
+          last_supplier_seen_at: price?.last_supplier_seen_at ?? null,
+          suggested_labor_price: price?.suggested_labor_price ?? null,
+          updated_at: price?.updated_at ?? null,
+        };
+      }),
+    };
+  });
+
+  res.json({
+    success: true,
+    data: {
+      thresholds,
+      services,
+      devices: matrixDevices,
+    },
+  });
+}));
+
+router.post('/seed-defaults', adminOrManager, asyncHandler(async (req, res) => {
+  const category = typeof req.body?.category === 'string' && req.body.category.trim()
+    ? req.body.category.trim()
+    : 'phone';
+
+  try {
+    const result = seedRepairPricingDefaults(req.db, {
+      category,
+      pricing: req.body?.pricing,
+      overwriteCustom: parseBoolish(req.body?.overwrite_custom),
+      changedByUserId: req.user!.id,
+    });
+    audit(req.db, 'repair_pricing_seed_defaults', req.user!.id, req.ip || 'unknown', {
+      category: result.category,
+      ...result.summary,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err instanceof Error && /labor price|Invalid/i.test(err.message)) {
+      throw new AppError(err.message, 400);
+    }
+    throw err;
+  }
+}));
+
+router.post('/tier-apply', adminOrManager, asyncHandler(async (req, res) => {
+  const repairServiceId = parsePositiveInt(req.body?.repair_service_id, 'repair_service_id');
+  const tier = parsePricingTier(req.body?.tier);
+  const laborPrice = validatePriceField('labor_price', req.body?.labor_price);
+  if (!repairServiceId || !tier || laborPrice == null) {
+    throw new AppError('repair_service_id, tier, and labor_price are required', 400);
+  }
+  if (tier === 'unknown') throw new AppError('Cannot bulk-apply an unknown tier', 400);
+
+  const service = req.db.prepare('SELECT id FROM repair_services WHERE id = ?').get(repairServiceId);
+  if (!service) throw new AppError('Repair service not found', 404);
+
+  const result = bulkApplyTier(req.db, {
+    repairServiceId,
+    tier,
+    laborPrice,
+    category: typeof req.body?.category === 'string' && req.body.category.trim() ? req.body.category.trim() : undefined,
+    overwriteCustom: parseBoolish(req.body?.overwrite_custom),
+    changedByUserId: req.user!.id,
+  });
+  audit(req.db, 'repair_pricing_tier_applied', req.user!.id, req.ip || 'unknown', { ...result });
+  res.json({ success: true, data: result });
+}));
+
+router.get('/audit', asyncHandler(async (req, res) => {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  const priceId = parsePositiveInt(req.query.repair_price_id, 'repair_price_id');
+  const deviceModelId = parsePositiveInt(req.query.device_model_id, 'device_model_id');
+  const repairServiceId = parsePositiveInt(req.query.repair_service_id, 'repair_service_id');
+  const limit = clampLimit(req.query.limit, 100, 500);
+
+  if (priceId) { where.push('rpa.repair_price_id = ?'); params.push(priceId); }
+  if (deviceModelId) { where.push('rpa.device_model_id = ?'); params.push(deviceModelId); }
+  if (repairServiceId) { where.push('rpa.repair_service_id = ?'); params.push(repairServiceId); }
+  if (typeof req.query.from === 'string' && req.query.from.trim()) { where.push('rpa.created_at >= ?'); params.push(req.query.from.trim()); }
+  if (typeof req.query.to === 'string' && req.query.to.trim()) { where.push('rpa.created_at <= ?'); params.push(req.query.to.trim()); }
+
+  const rows = await req.asyncDb.all<any>(`
+    SELECT rpa.*,
+           dm.name AS device_model_name,
+           rs.name AS repair_service_name,
+           u.username AS changed_by_username
+    FROM repair_prices_audit rpa
+    LEFT JOIN device_models dm ON dm.id = rpa.device_model_id
+    LEFT JOIN repair_services rs ON rs.id = rpa.repair_service_id
+    LEFT JOIN users u ON u.id = rpa.changed_by_user_id
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY rpa.created_at DESC, rpa.id DESC
+    LIMIT ?
+  `, ...params, limit);
+  res.json({ success: true, data: rows });
+}));
+
+router.post('/revert/:id', adminOrManager, asyncHandler(async (req, res) => {
+  const priceId = parsePositiveInt(req.params.id, 'id');
+  try {
+    const result = revertPriceToTier(req.db, priceId!, req.user!.id);
+    audit(req.db, 'repair_pricing_price_reverted', req.user!.id, req.ip || 'unknown', {
+      price_id: priceId,
+      tier: result.tier,
+      default_source: result.default_source,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Price not found') {
+      throw new AppError('Price not found', 404);
+    }
+    throw err;
+  }
+}));
+
+router.get('/auto-margin-settings', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: getAutoMarginSettings(req.db) });
+}));
+
+router.put('/auto-margin-settings', adminOrManager, asyncHandler(async (req, res) => {
+  const settings = setAutoMarginSettings(req.db, {
+    preset: req.body?.preset,
+    target_type: req.body?.target_type,
+    target_margin_pct: req.body?.target_margin_pct,
+    target_profit_amount: req.body?.target_profit_amount,
+    calculation_basis: req.body?.calculation_basis,
+    rounding_mode: req.body?.rounding_mode,
+    cap_pct: req.body?.cap_pct,
+    rules: req.body?.rules,
+  });
+  audit(req.db, 'repair_pricing_auto_margin_settings_updated', req.user!.id, req.ip || 'unknown', { ...settings });
+  res.json({ success: true, data: settings });
+}));
+
+router.post('/auto-margin-preview', adminOrManager, asyncHandler(async (req, res) => {
+  const supplierCost = Number(req.body?.supplier_cost);
+  if (!Number.isFinite(supplierCost) || supplierCost < 0) {
+    throw new AppError('supplier_cost must be a non-negative number', 400);
+  }
+  const currentLaborPrice = req.body?.current_labor_price === undefined || req.body?.current_labor_price === null
+    ? undefined
+    : Number(req.body.current_labor_price);
+  if (currentLaborPrice !== undefined && (!Number.isFinite(currentLaborPrice) || currentLaborPrice < 0)) {
+    throw new AppError('current_labor_price must be a non-negative number', 400);
+  }
+
+  const preview = previewAutoMargin({
+    supplier_cost: supplierCost,
+    current_labor_price: currentLaborPrice,
+    target_margin_pct: req.body?.target_margin_pct,
+    target_type: req.body?.target_type,
+    target_profit_amount: req.body?.target_profit_amount,
+    calculation_basis: req.body?.calculation_basis,
+    rounding_mode: req.body?.rounding_mode,
+    cap_pct: req.body?.cap_pct,
+    rule: req.body?.rule,
+  }, getAutoMarginSettings(req.db));
+  res.json({ success: true, data: preview });
+}));
+
+router.post('/recompute-profits', adminOrManager, asyncHandler(async (req, res) => {
+  const rawIds = Array.isArray(req.body?.price_ids) ? req.body.price_ids : undefined;
+  const priceIds = rawIds
+    ?.map((id: unknown) => Number(id))
+    .filter((id: number) => Number.isInteger(id) && id > 0)
+    .slice(0, 1000);
+  const recompute = recomputeRepairPriceProfits(req.db, { priceIds });
+  const autoMargin = parseBoolish(req.body?.auto_margin) ? runAutoMargin(req.db) : null;
+  audit(req.db, 'repair_pricing_profit_recomputed', req.user!.id, req.ip || 'unknown', {
+    processed: recompute.processed,
+    updated: recompute.updated,
+    stale: recompute.stale,
+    auto_margin_adjusted: autoMargin?.adjusted ?? 0,
+  });
+  res.json({ success: true, data: { recompute, auto_margin: autoMargin } });
+}));
 
 // ==================== Repair Services CRUD ====================
 
@@ -187,19 +547,36 @@ router.get('/prices', asyncHandler(async (req, res) => {
 router.post('/prices', adminOrManager, asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-  const { device_model_id, repair_service_id, labor_price = 0, default_grade = 'aftermarket', is_active = 1, grades } = req.body;
+  const {
+    device_model_id,
+    repair_service_id,
+    labor_price = req.body?.base_price ?? 0,
+    default_grade = 'aftermarket',
+    is_active = 1,
+    is_custom = 1,
+    auto_margin_enabled = 0,
+    grades,
+  } = req.body;
   if (!device_model_id || !repair_service_id) throw new AppError('device_model_id and repair_service_id are required', 400);
 
   const validatedLabor = validatePriceField('labor_price', labor_price) ?? 0;
+  const device = await adb.get<{ release_year: number | null }>('SELECT release_year FROM device_models WHERE id = ?', device_model_id);
+  if (!device) throw new AppError('Device model not found', 404);
+  const service = await adb.get('SELECT id FROM repair_services WHERE id = ?', repair_service_id);
+  if (!service) throw new AppError('Repair service not found', 404);
+  const tier = tierForReleaseYear(device.release_year, getTierThresholds(db));
 
   const existing = await adb.get('SELECT id FROM repair_prices WHERE device_model_id = ? AND repair_service_id = ?',
     device_model_id, repair_service_id);
   if (existing) throw new AppError('A price already exists for this device model and service', 400);
 
   const priceResult = await adb.run(`
-    INSERT INTO repair_prices (device_model_id, repair_service_id, labor_price, default_grade, is_active)
-    VALUES (?, ?, ?, ?, ?)
-  `, device_model_id, repair_service_id, validatedLabor, default_grade, is_active);
+    INSERT INTO repair_prices (
+      device_model_id, repair_service_id, labor_price, default_grade,
+      is_active, is_custom, tier_label, auto_margin_enabled
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, device_model_id, repair_service_id, validatedLabor, default_grade, is_active, is_custom ? 1 : 0, tier, auto_margin_enabled ? 1 : 0);
 
   const priceId = priceResult.lastInsertRowid;
 
@@ -233,26 +610,61 @@ router.post('/prices', adminOrManager, asyncHandler(async (req, res) => {
   ]);
 
   audit(db, 'repair_price_created', req.user!.id, req.ip || 'unknown', { price_id: Number(priceId), device_model_id, repair_service_id });
+  await adb.run(`
+    INSERT INTO repair_prices_audit (
+      repair_price_id, device_model_id, repair_service_id,
+      old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+      old_tier_label, new_tier_label, source, changed_by_user_id, note
+    )
+    VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL, ?, 'manual', ?, ?)
+  `, priceId, device_model_id, repair_service_id, validatedLabor, is_custom ? 1 : 0, tier, req.user!.id, 'Manual repair price created');
   res.status(201).json({ success: true, data: { ...price as any, grades: priceGrades } });
 }));
 
 // @audit-fixed: §37 — adminOrManager + asyncHandler + price validation + audit
 router.put('/prices/:id', adminOrManager, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const existing = await adb.get('SELECT id FROM repair_prices WHERE id = ?', req.params.id);
+  const existing = await adb.get<any>('SELECT * FROM repair_prices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Price not found', 404);
 
-  const { labor_price, default_grade, is_active } = req.body;
+  const {
+    labor_price = req.body?.base_price,
+    default_grade,
+    is_active,
+    is_custom,
+    auto_margin_enabled,
+  } = req.body;
   const validatedLabor = validatePriceField('labor_price', labor_price);
+  const nextIsCustom = is_custom !== undefined
+    ? (is_custom ? 1 : 0)
+    : (validatedLabor !== null ? 1 : existing.is_custom ?? 0);
+  const nextAutoMargin = auto_margin_enabled !== undefined
+    ? (auto_margin_enabled ? 1 : 0)
+    : null;
   await adb.run(`
     UPDATE repair_prices SET
       labor_price = COALESCE(?, labor_price), default_grade = COALESCE(?, default_grade),
-      is_active = COALESCE(?, is_active), updated_at = datetime('now')
+      is_active = COALESCE(?, is_active), is_custom = COALESCE(?, is_custom),
+      auto_margin_enabled = COALESCE(?, auto_margin_enabled), updated_at = datetime('now')
     WHERE id = ?
-  `, validatedLabor, default_grade ?? null, is_active ?? null, req.params.id);
+  `, validatedLabor, default_grade ?? null, is_active ?? null, nextIsCustom, nextAutoMargin, req.params.id);
 
   const price = await adb.get('SELECT * FROM repair_prices WHERE id = ?', req.params.id);
   audit(req.db, 'repair_price_updated', req.user!.id, req.ip || 'unknown', { price_id: Number(req.params.id) });
+  if (validatedLabor !== null || nextIsCustom !== existing.is_custom) {
+    await adb.run(`
+      INSERT INTO repair_prices_audit (
+        repair_price_id, device_model_id, repair_service_id,
+        old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+        old_tier_label, new_tier_label, source, changed_by_user_id, note
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)
+    `, req.params.id, existing.device_model_id, existing.repair_service_id,
+      existing.labor_price, validatedLabor ?? existing.labor_price,
+      existing.is_custom ?? 0, nextIsCustom,
+      existing.tier_label ?? null, existing.tier_label ?? null,
+      req.user!.id, 'Manual repair price updated');
+  }
   res.json({ success: true, data: price });
 }));
 

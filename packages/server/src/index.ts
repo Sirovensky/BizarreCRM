@@ -2981,7 +2981,14 @@ server.listen(config.port, config.host, async () => {
           if (autoSync?.value === '1') {
             const result = copyTemplateCatalogToTenant(tenantDb);
             if (result.copied > 0) {
+              const { recomputeRepairPriceProfits } = await import('./services/repairPricing/profitRecompute.js');
+              const { runAutoMargin } = await import('./services/repairPricing/autoMargin.js');
+              const recompute = recomputeRepairPriceProfits(tenantDb);
+              const autoMargin = runAutoMargin(tenantDb);
               console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
+              if (recompute.updated > 0 || autoMargin.adjusted > 0) {
+                console.log(`[CatalogSync] Refreshed repair pricing for ${_slug || 'default'}: profit=${recompute.updated}, autoMargin=${autoMargin.adjusted}`);
+              }
             }
           }
         } catch (err) {

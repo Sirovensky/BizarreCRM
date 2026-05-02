@@ -96,6 +96,62 @@ public final class SetupWizardViewModel {
     /// Prefer writing to `wizardPayload` for typed steps 4-8.
     public var pendingPayload: [String: String] = [:]
 
+    /// Publish the Device Templates step's live selection into the accumulated
+    /// payload. The shared navigation bar owns Next/Skip, so this keeps the
+    /// latest family and pricing choice ready for submission.
+    public func updateDeviceTemplateSelection(_ selection: DeviceTemplatesSetupSelection) {
+        wizardPayload.enabledDeviceFamilies = Set(selection.families.map(\.rawValue))
+        wizardPayload.repairPricingMode = selection.repairPricing.mode
+        wizardPayload.repairPricingTierDefaults = selection.repairPricing.tierDefaults
+        wizardPayload.repairPricingSpreadsheetPrices = selection.repairPricing.spreadsheetPrices
+        wizardPayload.repairPricingAutoMarginPreset = selection.repairPricing.autoMarginPreset
+        wizardPayload.repairPricingAutoMarginTargetType = selection.repairPricing.autoMarginTargetType
+        wizardPayload.repairPricingTargetMarginPct = selection.repairPricing.targetMarginPct
+        wizardPayload.repairPricingTargetProfitAmount = selection.repairPricing.targetProfitAmount
+        wizardPayload.repairPricingCalculationBasis = selection.repairPricing.calculationBasis
+        wizardPayload.repairPricingRoundingMode = selection.repairPricing.roundingMode
+        wizardPayload.repairPricingCapPct = selection.repairPricing.capPct
+        wizardPayload.repairPricingAutoMarginRules = selection.repairPricing.autoMarginRules
+    }
+
+    /// Commit the selected setup pricing path to the server-owned pricing
+    /// subsystem before the setup step itself is marked complete.
+    public func submitRepairPricingConfiguration() async -> Bool {
+        let selection = SetupRepairPricingSelection(
+            mode: wizardPayload.repairPricingMode,
+            tierDefaults: wizardPayload.repairPricingTierDefaults,
+            spreadsheetPrices: wizardPayload.repairPricingSpreadsheetPrices,
+            autoMarginPreset: wizardPayload.repairPricingAutoMarginPreset,
+            autoMarginTargetType: wizardPayload.repairPricingAutoMarginTargetType,
+            targetMarginPct: wizardPayload.repairPricingTargetMarginPct,
+            targetProfitAmount: wizardPayload.repairPricingTargetProfitAmount,
+            calculationBasis: wizardPayload.repairPricingCalculationBasis,
+            roundingMode: wizardPayload.repairPricingRoundingMode,
+            capPct: wizardPayload.repairPricingCapPct,
+            autoMarginRules: wizardPayload.repairPricingAutoMarginRules
+        )
+
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            switch selection.mode {
+            case .tiered:
+                _ = try await repository.seedRepairPricingDefaults(selection.seedDefaultsRequest)
+            case .spreadsheet:
+                try await repository.saveRepairPricingSpreadsheetPrices(selection.spreadsheetPrices)
+            case .autoMargin:
+                _ = try await repository.saveRepairPricingAutoMarginSettings(selection.autoMarginSettings)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            AppLog.ui.error("Repair pricing setup submit error: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
     private func submitCurrentStep() async {
         isSaving = true
         errorMessage = nil

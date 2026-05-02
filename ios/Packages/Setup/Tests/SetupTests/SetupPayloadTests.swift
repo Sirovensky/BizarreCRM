@@ -1,4 +1,5 @@
 import XCTest
+import Networking
 @testable import Setup
 
 final class SetupPayloadTests: XCTestCase {
@@ -212,6 +213,18 @@ final class SetupPayloadTests: XCTestCase {
         XCTAssertTrue(SetupPayload().enabledDeviceFamilies.isEmpty)
     }
 
+    func testDefaultPayload_repairPricing_defaultsToTieredAutoMarginPolicy() {
+        let payload = SetupPayload()
+        XCTAssertEqual(payload.repairPricingMode, .tiered)
+        XCTAssertEqual(payload.repairPricingAutoMarginPreset, .midTraffic)
+        XCTAssertEqual(payload.repairPricingAutoMarginTargetType, .percent)
+        XCTAssertEqual(payload.repairPricingTargetMarginPct, 100)
+        XCTAssertEqual(payload.repairPricingTargetProfitAmount, 80)
+        XCTAssertEqual(payload.repairPricingCalculationBasis, .markup)
+        XCTAssertEqual(payload.repairPricingRoundingMode, .ending99)
+        XCTAssertEqual(payload.repairPricingCapPct, 25)
+    }
+
     func testDefaultPayload_importSource_nil() {
         XCTAssertNil(SetupPayload().importSource)
     }
@@ -279,6 +292,31 @@ final class SetupPayloadTests: XCTestCase {
         payload.enabledDeviceFamilies = ["iphone", "ipad"]
         let encoded = payload.deviceFamiliesPayload()
         XCTAssertEqual(encoded["device_families"], "ipad,iphone")
+    }
+
+    func testDeviceFamiliesPayload_includesRepairPricingSelection() {
+        var payload = SetupPayload()
+        payload.enabledDeviceFamilies = ["iphone"]
+        payload.repairPricingMode = .autoMargin
+        payload.repairPricingAutoMarginPreset = .lowTraffic
+        payload.repairPricingAutoMarginTargetType = .fixedAmount
+        payload.repairPricingTargetMarginPct = 62
+        payload.repairPricingTargetProfitAmount = 90
+        payload.repairPricingCalculationBasis = .markup
+        payload.repairPricingRoundingMode = .ending98
+        payload.repairPricingCapPct = 30
+
+        let encoded = payload.deviceFamiliesPayload()
+
+        XCTAssertEqual(encoded["repair_pricing_mode"], "auto_margin")
+        XCTAssertEqual(encoded["repair_pricing_auto_margin_preset"], "low_traffic")
+        XCTAssertEqual(encoded["repair_pricing_auto_margin_target_type"], "fixed_amount")
+        XCTAssertEqual(encoded["repair_pricing_target_margin_pct"], "62.00")
+        XCTAssertEqual(encoded["repair_pricing_target_profit_amount"], "90.00")
+        XCTAssertEqual(encoded["repair_pricing_calculation_basis"], "markup")
+        XCTAssertEqual(encoded["repair_pricing_rounding_mode"], "ending_98")
+        XCTAssertEqual(encoded["repair_pricing_cap_pct"], "30.00")
+        XCTAssertTrue(encoded["repair_pricing_tier_defaults"]?.contains("\"screen\"") == true)
     }
 
     // MARK: - importPayload serialisation

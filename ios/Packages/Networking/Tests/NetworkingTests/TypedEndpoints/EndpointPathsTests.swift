@@ -711,6 +711,63 @@ final class EndpointPathsTests: XCTestCase {
         XCTAssertEqual(Endpoints.RepairPricing.lookup().path, "/api/v1/repair-pricing/lookup")
     }
 
+    func test_path_RepairPricing_tiers() {
+        XCTAssertEqual(Endpoints.RepairPricing.tiers().path, "/api/v1/repair-pricing/tiers")
+    }
+
+    func test_path_RepairPricing_updateTiers() {
+        XCTAssertEqual(Endpoints.RepairPricing.updateTiers().path, "/api/v1/repair-pricing/tiers")
+    }
+
+    func test_path_RepairPricing_matrixWithFilters() {
+        let ep = Endpoints.RepairPricing.matrix(category: "phone", manufacturerId: 1, repairServiceId: 2, query: "iphone", limit: 25)
+        XCTAssertEqual(ep.path, "/api/v1/repair-pricing/matrix")
+        let items = ep.queryItems ?? []
+        let dict = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(dict["category"], "phone")
+        XCTAssertEqual(dict["manufacturer_id"], "1")
+        XCTAssertEqual(dict["repair_service_id"], "2")
+        XCTAssertEqual(dict["q"], "iphone")
+        XCTAssertEqual(dict["limit"], "25")
+    }
+
+    func test_path_RepairPricing_seedDefaults() {
+        XCTAssertEqual(Endpoints.RepairPricing.seedDefaults().path, "/api/v1/repair-pricing/seed-defaults")
+    }
+
+    func test_path_RepairPricing_tierApply() {
+        XCTAssertEqual(Endpoints.RepairPricing.tierApply().path, "/api/v1/repair-pricing/tier-apply")
+    }
+
+    func test_path_RepairPricing_auditWithFilters() {
+        let ep = Endpoints.RepairPricing.audit(repairPriceId: 8, limit: 50)
+        XCTAssertEqual(ep.path, "/api/v1/repair-pricing/audit")
+        let items = ep.queryItems ?? []
+        let dict = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(dict["repair_price_id"], "8")
+        XCTAssertEqual(dict["limit"], "50")
+    }
+
+    func test_path_RepairPricing_revert() {
+        XCTAssertEqual(Endpoints.RepairPricing.revert(priceId: 8).path, "/api/v1/repair-pricing/revert/8")
+    }
+
+    func test_path_RepairPricing_autoMarginSettings() {
+        XCTAssertEqual(Endpoints.RepairPricing.autoMarginSettings().path, "/api/v1/repair-pricing/auto-margin-settings")
+    }
+
+    func test_path_RepairPricing_updateAutoMarginSettings() {
+        XCTAssertEqual(Endpoints.RepairPricing.updateAutoMarginSettings().path, "/api/v1/repair-pricing/auto-margin-settings")
+    }
+
+    func test_path_RepairPricing_autoMarginPreview() {
+        XCTAssertEqual(Endpoints.RepairPricing.autoMarginPreview().path, "/api/v1/repair-pricing/auto-margin-preview")
+    }
+
+    func test_path_RepairPricing_recomputeProfits() {
+        XCTAssertEqual(Endpoints.RepairPricing.recomputeProfits().path, "/api/v1/repair-pricing/recompute-profits")
+    }
+
     // MARK: - PurchaseOrders
     // Mount: sub-routes of /api/v1/inventory — inventory.routes.ts
 

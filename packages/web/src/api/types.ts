@@ -502,15 +502,220 @@ export interface UpdateServiceInput {
 export interface CreateRepairPriceInput {
   device_model_id: number;
   repair_service_id: number;
-  base_price: number;
+  labor_price?: number;
+  base_price?: number;
   category?: string;
+  is_custom?: boolean | number;
+  auto_margin_enabled?: boolean | number;
 }
 
 export interface UpdateRepairPriceInput {
   device_model_id?: number;
   repair_service_id?: number;
+  labor_price?: number;
   base_price?: number;
   category?: string;
+  is_custom?: boolean | number;
+  auto_margin_enabled?: boolean | number;
+}
+
+export type RepairPricingTier = 'tier_a' | 'tier_b' | 'tier_c' | 'unknown';
+
+export interface RepairPricingTierThresholds {
+  tierAYears: number;
+  tierBYears: number;
+}
+
+export interface RepairPricingTierDescriptor {
+  key: RepairPricingTier;
+  label: string;
+  maxAgeYears: number | null;
+  device_count?: number;
+}
+
+export interface RepairPricingMatrixQuery {
+  category?: string;
+  manufacturer_id?: number;
+  repair_service_id?: number;
+  q?: string;
+  limit?: number;
+}
+
+export interface RepairPricingMatrixPrice {
+  repair_service_id: number;
+  repair_service_name: string;
+  repair_service_slug: string;
+  service_category: string | null;
+  price_id: number | null;
+  labor_price: number | null;
+  default_grade: string | null;
+  is_active: number | null;
+  is_custom: number;
+  tier_label: RepairPricingTier;
+  profit_estimate: number | null;
+  profit_stale_at: string | null;
+  auto_margin_enabled: number;
+  last_supplier_cost: number | null;
+  last_supplier_seen_at: string | null;
+  suggested_labor_price: number | null;
+  updated_at: string | null;
+}
+
+export interface RepairPricingMatrixDevice {
+  device_model_id: number;
+  device_model_name: string;
+  device_model_slug: string;
+  manufacturer_id: number;
+  manufacturer_name: string;
+  category: string;
+  release_year: number | null;
+  tier: RepairPricingTier;
+  tier_label: string;
+  is_popular: number;
+  prices: RepairPricingMatrixPrice[];
+}
+
+export interface RepairPricingMatrixResponse {
+  thresholds: RepairPricingTierThresholds;
+  services: unknown[];
+  devices: RepairPricingMatrixDevice[];
+}
+
+export interface RepairPricingTierApplyInput {
+  repair_service_id: number;
+  tier: Exclude<RepairPricingTier, 'unknown'>;
+  labor_price: number;
+  category?: string;
+  overwrite_custom?: boolean;
+}
+
+export interface RepairPricingTierApplyResult {
+  tier: RepairPricingTier;
+  tier_label: string;
+  repair_service_id: number;
+  labor_price: number;
+  matched_devices: number;
+  inserted: number;
+  updated: number;
+  skipped_custom: number;
+}
+
+export type RepairPricingSeedServiceKey = 'screen' | 'battery' | 'charge_port' | 'back_glass' | 'camera';
+
+export type RepairPricingSeedPricing = Partial<
+  Record<RepairPricingSeedServiceKey, Partial<Record<Exclude<RepairPricingTier, 'unknown'>, number>>>
+>;
+
+export interface RepairPricingSeedDefaultsInput {
+  category?: string;
+  pricing?: RepairPricingSeedPricing;
+  overwrite_custom?: boolean;
+}
+
+export interface RepairPricingSeedServiceResult {
+  service_key: RepairPricingSeedServiceKey;
+  repair_service_id: number | null;
+  repair_service_slug: string | null;
+  missing: boolean;
+  tiers: RepairPricingTierApplyResult[];
+}
+
+export interface RepairPricingSeedDefaultsResponse {
+  category: string;
+  defaults: Record<RepairPricingSeedServiceKey, Record<Exclude<RepairPricingTier, 'unknown'>, number>>;
+  services: RepairPricingSeedServiceResult[];
+  summary: {
+    services_matched: number;
+    services_missing: number;
+    matched_devices: number;
+    inserted: number;
+    updated: number;
+    skipped_custom: number;
+  };
+}
+
+export interface RepairPricingAuditRow {
+  id: number;
+  repair_price_id: number | null;
+  device_model_id: number | null;
+  repair_service_id: number | null;
+  old_labor_price: number | null;
+  new_labor_price: number | null;
+  old_is_custom: number | null;
+  new_is_custom: number | null;
+  old_tier_label: RepairPricingTier | null;
+  new_tier_label: RepairPricingTier | null;
+  supplier_cost: number | null;
+  profit_estimate: number | null;
+  source: string;
+  changed_by_user_id: number | null;
+  imported_filename: string | null;
+  note: string | null;
+  created_at: string;
+  device_model_name?: string | null;
+  repair_service_name?: string | null;
+  changed_by_username?: string | null;
+}
+
+export interface RepairPricingProfitRecomputeInput {
+  price_ids?: number[];
+  auto_margin?: boolean;
+}
+
+export type RepairPricingRoundingMode = 'none' | 'ending_99' | 'whole_dollar' | 'ending_98';
+export type RepairPricingAutoMarginPreset = 'high_traffic' | 'mid_traffic' | 'low_traffic' | 'custom' | 'value' | 'balanced' | 'premium';
+export type RepairPricingAutoMarginTargetType = 'percent' | 'fixed_amount';
+export type RepairPricingAutoMarginBasis = 'gross_margin' | 'markup';
+export type RepairPricingAutoMarginRuleScope = 'global' | 'repair_service' | 'tier' | 'device';
+
+export interface RepairPricingAutoMarginRule {
+  id?: string;
+  scope: RepairPricingAutoMarginRuleScope;
+  label?: string;
+  repair_service_id?: number | null;
+  repair_service_slug?: string | null;
+  tier?: RepairPricingTier | null;
+  device_model_id?: number | null;
+  target_type?: RepairPricingAutoMarginTargetType;
+  target_margin_pct: number;
+  target_profit_amount?: number;
+  calculation_basis?: RepairPricingAutoMarginBasis;
+  rounding_mode?: RepairPricingRoundingMode;
+  cap_pct?: number;
+  enabled?: boolean;
+}
+
+export interface RepairPricingAutoMarginSettings {
+  preset: RepairPricingAutoMarginPreset;
+  target_type: RepairPricingAutoMarginTargetType;
+  target_margin_pct: number;
+  target_profit_amount: number;
+  calculation_basis: RepairPricingAutoMarginBasis;
+  rounding_mode: RepairPricingRoundingMode;
+  cap_pct: number;
+  rules: RepairPricingAutoMarginRule[];
+}
+
+export interface RepairPricingAutoMarginPreviewInput extends Partial<RepairPricingAutoMarginSettings> {
+  supplier_cost: number;
+  current_labor_price?: number;
+  rule?: Partial<RepairPricingAutoMarginRule>;
+}
+
+export interface RepairPricingAutoMarginPreview {
+  supplier_cost: number;
+  current_labor_price: number | null;
+  target_type: RepairPricingAutoMarginTargetType;
+  target_margin_pct: number;
+  target_profit_amount: number;
+  calculation_basis: RepairPricingAutoMarginBasis;
+  rounding_mode: RepairPricingRoundingMode;
+  cap_pct: number;
+  uncapped_labor_price: number;
+  rounded_labor_price: number;
+  capped_labor_price: number | null;
+  profit_estimate: number;
+  margin_pct: number;
 }
 
 export interface AddGradeInput {

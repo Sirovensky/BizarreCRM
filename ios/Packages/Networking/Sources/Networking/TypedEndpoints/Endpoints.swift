@@ -895,6 +895,84 @@ public enum Endpoints {
         public static func lookup() -> some Endpoint {
             TypedEndpoint(path: "/api/v1/repair-pricing/lookup", method: .get)
         }
+
+        /// `GET /api/v1/repair-pricing/tiers` — age-tier thresholds.
+        public static func tiers() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/tiers", method: .get)
+        }
+
+        /// `PUT /api/v1/repair-pricing/tiers` — update age-tier thresholds.
+        public static func updateTiers() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/tiers", method: .put)
+        }
+
+        /// `GET /api/v1/repair-pricing/matrix` — authoritative device/service matrix.
+        public static func matrix(
+            category: String? = nil,
+            manufacturerId: Int64? = nil,
+            repairServiceId: Int64? = nil,
+            query: String? = nil,
+            limit: Int? = nil
+        ) -> some Endpoint {
+            TypedEndpoint(
+                path: "/api/v1/repair-pricing/matrix",
+                method: .get,
+                queryItems: compactItems([
+                    ("category", category),
+                    ("manufacturer_id", manufacturerId.map(String.init)),
+                    ("repair_service_id", repairServiceId.map(String.init)),
+                    ("q", query),
+                    ("limit", limit.map(String.init))
+                ])
+            )
+        }
+
+        /// `POST /api/v1/repair-pricing/seed-defaults` — seed tier defaults.
+        public static func seedDefaults() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/seed-defaults", method: .post)
+        }
+
+        /// `POST /api/v1/repair-pricing/tier-apply` — bulk apply one tier price.
+        public static func tierApply() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/tier-apply", method: .post)
+        }
+
+        /// `GET /api/v1/repair-pricing/audit` — repair-pricing audit trail.
+        public static func audit(repairPriceId: Int64? = nil, limit: Int? = nil) -> some Endpoint {
+            TypedEndpoint(
+                path: "/api/v1/repair-pricing/audit",
+                method: .get,
+                queryItems: compactItems([
+                    ("repair_price_id", repairPriceId.map(String.init)),
+                    ("limit", limit.map(String.init))
+                ])
+            )
+        }
+
+        /// `POST /api/v1/repair-pricing/revert/:id` — revert a row to tier default.
+        public static func revert(priceId: Int64) -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/revert/\(priceId)", method: .post)
+        }
+
+        /// `GET /api/v1/repair-pricing/auto-margin-settings` — calculator policy.
+        public static func autoMarginSettings() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/auto-margin-settings", method: .get)
+        }
+
+        /// `PUT /api/v1/repair-pricing/auto-margin-settings` — update calculator policy.
+        public static func updateAutoMarginSettings() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/auto-margin-settings", method: .put)
+        }
+
+        /// `POST /api/v1/repair-pricing/auto-margin-preview` — preview calculator output.
+        public static func autoMarginPreview() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/auto-margin-preview", method: .post)
+        }
+
+        /// `POST /api/v1/repair-pricing/recompute-profits` — refresh cost/profit data.
+        public static func recomputeProfits() -> some Endpoint {
+            TypedEndpoint(path: "/api/v1/repair-pricing/recompute-profits", method: .post)
+        }
     }
 
     // MARK: - PurchaseOrders (alias via Inventory sub-routes)

@@ -10,6 +10,19 @@ import { seedDeviceModels } from './device-models-seed-runner.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const CORE_TEMPLATE_TABLES = ['_migrations', 'store_config', 'users', 'sessions', 'setup_tokens'];
+
+function missingCoreTemplateTables(db: Database.Database): string[] {
+  const rows = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name IN (${CORE_TEMPLATE_TABLES.map(() => '?').join(', ')})
+  `).all(...CORE_TEMPLATE_TABLES) as Array<{ name: string }>;
+  const found = new Set(rows.map(row => row.name));
+  return CORE_TEMPLATE_TABLES.filter(table => !found.has(table));
+}
+
 /**
  * Build or refresh the template database.
  * This is a pre-migrated, pre-seeded DB that gets copied when provisioning new tenants.
@@ -28,16 +41,28 @@ export function buildTemplateDb(): void {
     ? fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).length
     : 0;
 
+  let rebuildReason = 'template database is missing';
   let needsRebuild = !fs.existsSync(config.templateDbPath);
 
   if (!needsRebuild) {
+    let tempDb: Database.Database | null = null;
     try {
-      const tempDb = new Database(config.templateDbPath);
+      tempDb = new Database(config.templateDbPath);
+      const missingTables = missingCoreTemplateTables(tempDb);
+      if (missingTables.length > 0) {
+        needsRebuild = true;
+        rebuildReason = `template missing core tables: ${missingTables.join(', ')}`;
+      }
       const applied = (tempDb.prepare("SELECT COUNT(*) as c FROM _migrations").get() as any)?.c || 0;
-      tempDb.close();
-      needsRebuild = applied < migrationFiles;
+      if (!needsRebuild && applied < migrationFiles) {
+        needsRebuild = true;
+        rebuildReason = `template migrations behind (${applied}/${migrationFiles})`;
+      }
     } catch {
       needsRebuild = true;
+      rebuildReason = 'template schema could not be inspected';
+    } finally {
+      try { tempDb?.close(); } catch {}
     }
   }
 
@@ -54,7 +79,7 @@ export function buildTemplateDb(): void {
     }
   }
 
-  console.log('[Multi-tenant] Building template database...');
+  console.log(`[Multi-tenant] Building template database (${rebuildReason})...`);
 
   const templateDb = new Database(config.templateDbPath);
   templateDb.pragma('journal_mode = WAL');
@@ -68,6 +93,12 @@ export function buildTemplateDb(): void {
   // Run seed data (statuses, tax classes, payment methods, device models)
   seedDatabase(templateDb);
   seedDeviceModels(templateDb);
+
+  const missingTables = missingCoreTemplateTables(templateDb);
+  if (missingTables.length > 0) {
+    templateDb.close();
+    throw new Error(`Template database build failed; missing core tables: ${missingTables.join(', ')}`);
+  }
 
   templateDb.close();
   console.log('[Multi-tenant] Template database built successfully');

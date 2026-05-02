@@ -183,7 +183,9 @@ export function SetupPage() {
       const writes: Record<string, string> = {};
       for (const [key, value] of Object.entries(pending)) {
         // signup_email is in-flow only; never persisted to store_config.
-        if (key === 'signup_email') continue;
+        // repair-pricing tier fields are also in-flow only now: StepRepairPricing
+        // publishes them directly to the server-owned repair_prices matrix.
+        if (key === 'signup_email' || key.startsWith('pricing_tier_')) continue;
         if (value !== undefined && value !== null && value !== '') {
           writes[key] = String(value);
         }

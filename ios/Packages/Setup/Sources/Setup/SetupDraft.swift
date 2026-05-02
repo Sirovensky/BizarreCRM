@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import Networking
 
 // MARK: - SetupDraft
 //
@@ -44,6 +45,21 @@ public struct SetupDraft: Codable, Sendable {
     public var locationAddress: String?
     public var locationPhone: String?
 
+    // MARK: Device templates + repair pricing (step 11)
+
+    public var enabledDeviceFamilies: [String]?
+    public var repairPricingMode: String?
+    public var repairPricingTierDefaults: RepairPricingSeedPricing?
+    public var repairPricingSpreadsheetPrices: [SetupSpreadsheetPriceDraft]?
+    public var repairPricingAutoMarginPreset: String?
+    public var repairPricingAutoMarginTargetType: String?
+    public var repairPricingTargetMarginPct: Double?
+    public var repairPricingTargetProfitAmount: Double?
+    public var repairPricingCalculationBasis: String?
+    public var repairPricingRoundingMode: String?
+    public var repairPricingCapPct: Double?
+    public var repairPricingAutoMarginRules: [RepairPricingAutoMarginRule]?
+
     // MARK: First employee (step 9+ / new step)
 
     public var firstEmployeeFirstName: String?
@@ -77,6 +93,18 @@ public struct SetupDraft: Codable, Sendable {
         locationName: String? = nil,
         locationAddress: String? = nil,
         locationPhone: String? = nil,
+        enabledDeviceFamilies: [String]? = nil,
+        repairPricingMode: String? = nil,
+        repairPricingTierDefaults: RepairPricingSeedPricing? = nil,
+        repairPricingSpreadsheetPrices: [SetupSpreadsheetPriceDraft]? = nil,
+        repairPricingAutoMarginPreset: String? = nil,
+        repairPricingAutoMarginTargetType: String? = nil,
+        repairPricingTargetMarginPct: Double? = nil,
+        repairPricingTargetProfitAmount: Double? = nil,
+        repairPricingCalculationBasis: String? = nil,
+        repairPricingRoundingMode: String? = nil,
+        repairPricingCapPct: Double? = nil,
+        repairPricingAutoMarginRules: [RepairPricingAutoMarginRule]? = nil,
         firstEmployeeFirstName: String? = nil,
         firstEmployeeLastName: String? = nil,
         firstEmployeeEmail: String? = nil,
@@ -99,6 +127,18 @@ public struct SetupDraft: Codable, Sendable {
         self.locationName = locationName
         self.locationAddress = locationAddress
         self.locationPhone = locationPhone
+        self.enabledDeviceFamilies = enabledDeviceFamilies
+        self.repairPricingMode = repairPricingMode
+        self.repairPricingTierDefaults = repairPricingTierDefaults
+        self.repairPricingSpreadsheetPrices = repairPricingSpreadsheetPrices
+        self.repairPricingAutoMarginPreset = repairPricingAutoMarginPreset
+        self.repairPricingAutoMarginTargetType = repairPricingAutoMarginTargetType
+        self.repairPricingTargetMarginPct = repairPricingTargetMarginPct
+        self.repairPricingTargetProfitAmount = repairPricingTargetProfitAmount
+        self.repairPricingCalculationBasis = repairPricingCalculationBasis
+        self.repairPricingRoundingMode = repairPricingRoundingMode
+        self.repairPricingCapPct = repairPricingCapPct
+        self.repairPricingAutoMarginRules = repairPricingAutoMarginRules
         self.firstEmployeeFirstName = firstEmployeeFirstName
         self.firstEmployeeLastName = firstEmployeeLastName
         self.firstEmployeeEmail = firstEmployeeEmail
@@ -158,6 +198,18 @@ public extension SetupWizardViewModel {
             locationName:    wizardPayload.firstLocation?.name,
             locationAddress: wizardPayload.firstLocation?.address,
             locationPhone:   wizardPayload.firstLocation?.phone,
+            enabledDeviceFamilies: Array(wizardPayload.enabledDeviceFamilies).sorted(),
+            repairPricingMode: wizardPayload.repairPricingMode.rawValue,
+            repairPricingTierDefaults: wizardPayload.repairPricingTierDefaults,
+            repairPricingSpreadsheetPrices: wizardPayload.repairPricingSpreadsheetPrices,
+            repairPricingAutoMarginPreset: wizardPayload.repairPricingAutoMarginPreset.rawValue,
+            repairPricingAutoMarginTargetType: wizardPayload.repairPricingAutoMarginTargetType.rawValue,
+            repairPricingTargetMarginPct: wizardPayload.repairPricingTargetMarginPct,
+            repairPricingTargetProfitAmount: wizardPayload.repairPricingTargetProfitAmount,
+            repairPricingCalculationBasis: wizardPayload.repairPricingCalculationBasis.rawValue,
+            repairPricingRoundingMode: wizardPayload.repairPricingRoundingMode.rawValue,
+            repairPricingCapPct: wizardPayload.repairPricingCapPct,
+            repairPricingAutoMarginRules: wizardPayload.repairPricingAutoMarginRules,
             firstEmployeeFirstName: wizardPayload.firstEmployeeFirstName,
             firstEmployeeLastName:  wizardPayload.firstEmployeeLastName,
             firstEmployeeEmail:     wizardPayload.firstEmployeeEmail,
@@ -195,6 +247,48 @@ public extension SetupWizardViewModel {
             wizardPayload.firstLocation = SetupLocation(
                 name: name, address: addr, phone: draft.locationPhone ?? ""
             )
+        }
+
+        if let families = draft.enabledDeviceFamilies {
+            wizardPayload.enabledDeviceFamilies = Set(families)
+        }
+        if let modeRaw = draft.repairPricingMode,
+           let mode = SetupRepairPricingMode(rawValue: modeRaw) {
+            wizardPayload.repairPricingMode = mode
+        }
+        if let defaults = draft.repairPricingTierDefaults {
+            wizardPayload.repairPricingTierDefaults = defaults
+        }
+        if let prices = draft.repairPricingSpreadsheetPrices {
+            wizardPayload.repairPricingSpreadsheetPrices = prices
+        }
+        if let presetRaw = draft.repairPricingAutoMarginPreset,
+           let preset = RepairPricingAutoMarginPreset(rawValue: presetRaw) {
+            wizardPayload.repairPricingAutoMarginPreset = preset
+        }
+        if let targetTypeRaw = draft.repairPricingAutoMarginTargetType,
+           let targetType = RepairPricingAutoMarginTargetType(rawValue: targetTypeRaw) {
+            wizardPayload.repairPricingAutoMarginTargetType = targetType
+        }
+        if let targetMarginPct = draft.repairPricingTargetMarginPct {
+            wizardPayload.repairPricingTargetMarginPct = targetMarginPct
+        }
+        if let targetProfitAmount = draft.repairPricingTargetProfitAmount {
+            wizardPayload.repairPricingTargetProfitAmount = targetProfitAmount
+        }
+        if let basisRaw = draft.repairPricingCalculationBasis,
+           let basis = RepairPricingAutoMarginBasis(rawValue: basisRaw) {
+            wizardPayload.repairPricingCalculationBasis = basis
+        }
+        if let roundingRaw = draft.repairPricingRoundingMode,
+           let roundingMode = RepairPricingRoundingMode(rawValue: roundingRaw) {
+            wizardPayload.repairPricingRoundingMode = roundingMode
+        }
+        if let capPct = draft.repairPricingCapPct {
+            wizardPayload.repairPricingCapPct = capPct
+        }
+        if let rules = draft.repairPricingAutoMarginRules {
+            wizardPayload.repairPricingAutoMarginRules = rules
         }
 
         wizardPayload.firstEmployeeFirstName = draft.firstEmployeeFirstName

@@ -1,6 +1,13 @@
 import { useState, type JSX } from 'react';
-import { Smartphone, Wrench, Sparkles, Info, Calculator } from 'lucide-react';
+import { Smartphone, Wrench, Sparkles, Info, Calculator, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import { repairPricingApi } from '@/api/endpoints';
+import type {
+  RepairPricingSeedDefaultsResponse,
+  RepairPricingSeedPricing,
+} from '@/api/types';
+import { formatApiError } from '@/utils/apiError';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 type PricingMode = 'tier' | 'matrix' | 'auto_margin';
@@ -10,22 +17,23 @@ type PricingMode = 'tier' | 'matrix' | 'auto_margin';
  *
  * Three side-by-side tier cards (Flagship / Mainstream / Legacy) with five
  * labor inputs each (Screen / Battery / Charge port / Back glass / Camera).
- * Each value is persisted as a string into store_config under
- * `pricing_tier_<a|b|c>_<service>` — matches `PendingWrites` and the
- * server's ALLOWED_CONFIG_KEYS contract.
+ * Each value is kept in wizard session state under
+ * `pricing_tier_<a|b|c>_<service>` so Back/refresh do not lose edits. On
+ * Continue, the step calls `POST /repair-pricing/seed-defaults`, which fans
+ * these values into the server-owned `repair_prices` matrix.
  *
  * Tier rationale (per `mockups/web-setup-wizard.html#screen-8`):
  *   Tier A (0-2 yr) — flagship profit drivers, premium labor.
  *   Tier B (3-5 yr) — bread-and-butter mainstream volume.
  *   Tier C (6+ yr) — get-in-door pricing, thin labor margin.
  *
- * Per-device override and the per-device matrix view live later in
- * Settings → Repair pricing once DPI-13 lands. Apply industry medians
- * is a stub — future hook into the catalog scraper for live medians.
+ * Per-device override and the full virtualized matrix still live in Settings
+ * → Repair pricing. This setup step only seeds day-1 tier defaults.
  */
 
 type ServiceKey = 'screen' | 'battery' | 'charge_port' | 'back_glass' | 'camera';
 type TierLetter = 'a' | 'b' | 'c';
+type ApiTier = 'tier_a' | 'tier_b' | 'tier_c';
 
 type PricingKey =
   | 'pricing_tier_a_screen' | 'pricing_tier_a_battery' | 'pricing_tier_a_charge_port'
@@ -86,6 +94,14 @@ const TIERS: TierDef[] = [
   },
 ];
 
+const API_TIER_BY_LETTER: Record<TierLetter, ApiTier> = {
+  a: 'tier_a',
+  b: 'tier_b',
+  c: 'tier_c',
+};
+
+const SETUP_PRICING_CATEGORY = 'phone';
+
 /** Build the PendingWrites key for `(tier, service)`. Typed as PricingKey so
  *  the patch object below stays narrowly typed without `as any`. */
 function pricingKey(tier: TierLetter, service: ServiceKey): PricingKey {
@@ -102,6 +118,58 @@ function clampDollars(raw: string): string {
   return String(n);
 }
 
+function pricingValuesFromPending(pending: PendingWrites): Record<PricingKey, string> {
+  const seed = {} as Record<PricingKey, string>;
+  for (const tier of TIERS) {
+    for (const svc of SERVICES) {
+      const k = pricingKey(tier.letter, svc.key);
+      seed[k] = pending[k] ?? String(svc.defaults[tier.letter]);
+    }
+  }
+  return seed;
+}
+
+function pricingPatch(values: Record<PricingKey, string>): Partial<PendingWrites> {
+  const patch: Partial<PendingWrites> = {};
+  for (const tier of TIERS) {
+    for (const svc of SERVICES) {
+      const k = pricingKey(tier.letter, svc.key);
+      patch[k] = values[k];
+    }
+  }
+  return patch;
+}
+
+function medianValues(): Record<PricingKey, string> {
+  const values = {} as Record<PricingKey, string>;
+  for (const tier of TIERS) {
+    for (const svc of SERVICES) {
+      values[pricingKey(tier.letter, svc.key)] = String(svc.defaults[tier.letter]);
+    }
+  }
+  return values;
+}
+
+function seedPricingPayload(values: Record<PricingKey, string>): RepairPricingSeedPricing {
+  const pricing: RepairPricingSeedPricing = {};
+  for (const svc of SERVICES) {
+    pricing[svc.key] = {};
+    for (const tier of TIERS) {
+      const parsed = Number.parseInt(values[pricingKey(tier.letter, svc.key)] ?? '0', 10);
+      pricing[svc.key]![API_TIER_BY_LETTER[tier.letter]] = Number.isFinite(parsed) ? parsed : 0;
+    }
+  }
+  return pricing;
+}
+
+function seedSummaryMessage(result: RepairPricingSeedDefaultsResponse): string {
+  const changed = result.summary.inserted + result.summary.updated;
+  if (result.summary.services_missing > 0) {
+    return `Seeded ${changed} repair price rows; ${result.summary.services_missing} service defaults were missing.`;
+  }
+  return `Seeded ${changed} repair price rows.`;
+}
+
 export function StepRepairPricing({
   pending,
   onUpdate,
@@ -109,17 +177,10 @@ export function StepRepairPricing({
   onBack,
   onSkip,
 }: StepProps): JSX.Element {
+  const queryClient = useQueryClient();
   // Initialise the 15-cell grid from `pending` → fall back to per-tier defaults.
-  const [values, setValues] = useState<Record<PricingKey, string>>(() => {
-    const seed = {} as Record<PricingKey, string>;
-    for (const tier of TIERS) {
-      for (const svc of SERVICES) {
-        const k = pricingKey(tier.letter, svc.key);
-        seed[k] = pending[k] ?? String(svc.defaults[tier.letter]);
-      }
-    }
-    return seed;
-  });
+  const [values, setValues] = useState<Record<PricingKey, string>>(() => pricingValuesFromPending(pending));
+  const [saving, setSaving] = useState(false);
 
   // Active pricing mode (segmented control at top of card). Only 'tier' is
   // wired; the other two render PLACEHOLDER content explaining the future
@@ -145,24 +206,31 @@ export function StepRepairPricing({
   };
 
   const handleApplyMedians = () => {
-    // eslint-disable-next-line no-console
-    console.log('[StepRepairPricing] Apply industry medians clicked — DPI-13 not yet wired.');
-    toast('Industry medians will load from the catalog scraper once DPI-13 lands.', {
-      icon: 'ℹ️',
-    });
+    const next = medianValues();
+    setValues(next);
+    onUpdate(pricingPatch(next));
+    toast.success('Industry medians loaded. Continue to seed them on the server.');
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     // Final flush — guarantees pending matches the visible form before advancing.
-    const patch: Partial<PendingWrites> = {};
-    for (const tier of TIERS) {
-      for (const svc of SERVICES) {
-        const k = pricingKey(tier.letter, svc.key);
-        patch[k] = values[k];
-      }
+    onUpdate(pricingPatch(values));
+    setSaving(true);
+    try {
+      const res = await repairPricingApi.seedDefaults({
+        category: SETUP_PRICING_CATEGORY,
+        pricing: seedPricingPayload(values),
+        overwrite_custom: false,
+      });
+      const seeded = res.data.data as RepairPricingSeedDefaultsResponse;
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing'] });
+      toast.success(seedSummaryMessage(seeded));
+      onNext();
+    } catch (err: unknown) {
+      toast.error(`Couldn't seed repair pricing: ${formatApiError(err)}`);
+    } finally {
+      setSaving(false);
     }
-    onUpdate(patch);
-    onNext();
   };
 
   const MODES: Array<{ id: PricingMode; label: string; placeholder: boolean; ticket?: string }> = [
@@ -181,8 +249,8 @@ export function StepRepairPricing({
           Repair pricing
         </h1>
         <p className="mx-auto mt-2 max-w-2xl text-sm text-surface-500 dark:text-surface-400">
-          Pick how you want to price labor. Tier-by-age is the fast default; Per-device matrix
-          and Auto-margin rules are previews of what's coming in Settings → Repair pricing.
+          Pick how you want to price labor. Tier-by-age seeds the server pricing matrix now;
+          the per-device matrix and auto-margin controls are preview surfaces for Settings.
         </p>
       </div>
 
@@ -290,8 +358,8 @@ export function StepRepairPricing({
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
             <span className="font-semibold">These are starting defaults.</span>{' '}
-            Switch to "Per-device matrix" or "Auto-margin rules" tabs above to preview the more
-            powerful surfaces that ship later — both are placeholders today.
+            Continue writes them to the server-owned repair pricing matrix for phone devices.
+            Existing custom cells stay untouched.
           </p>
         </div>
       )}
@@ -375,15 +443,15 @@ export function StepRepairPricing({
           Auto-margin rules
         </h3>
         <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
-          Set a target (margin % or $-over-parts-cost) and the system recalculates labor every time the catalog scraper updates parts pricing.
+          Set a target margin %, choose rounding to .99, whole dollar, or .98, and the server recalculates pricing whenever supplier costs change.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 opacity-70 sm:grid-cols-2">
           <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Mode</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Rounding</p>
             <select disabled aria-disabled="true" className="mt-1.5 w-full cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900">
-              <option>Margin %</option>
-              <option>$ over parts cost</option>
-              <option>Off (manual labor)</option>
+              <option>Round up to .99</option>
+              <option>Round up to $1</option>
+              <option>Round up to .98</option>
             </select>
           </div>
           <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
@@ -412,13 +480,14 @@ export function StepRepairPricing({
       </div>
       )}
 
-      {/* Tier-mode bonus action: Apply industry medians (stub) */}
+      {/* Tier-mode bonus action: reset the editable grid to server day-1 medians. */}
       {mode === 'tier' && (
         <div className="mt-4 flex justify-center">
           <button
             type="button"
             onClick={handleApplyMedians}
-            className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             Apply industry medians
@@ -427,14 +496,15 @@ export function StepRepairPricing({
       )}
 
       <p className="mt-3 text-center text-xs text-surface-400 dark:text-surface-500">
-        Per-device matrix + Auto-margin tracked as <code>DPI-1</code>…<code>DPI-15</code> in TODO.md.
+        Per-device matrix + Auto-margin are backed by server routes; the full wizard editor remains tracked in TODO.md.
       </p>
 
       <div className="mt-8 flex flex-col items-start justify-between gap-3 border-t border-surface-200 pt-5 sm:flex-row sm:items-center dark:border-surface-700">
         <button
           type="button"
           onClick={onBack}
-          className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+          disabled={saving}
+          className="text-sm font-medium text-surface-600 hover:text-surface-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
         >
           ← Back
         </button>
@@ -443,7 +513,8 @@ export function StepRepairPricing({
             <button
               type="button"
               onClick={onSkip}
-              className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+              disabled={saving}
+              className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-200"
             >
               Skip
             </button>
@@ -451,10 +522,11 @@ export function StepRepairPricing({
           <button
             type="button"
             onClick={handleContinue}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Continue
-            <Wrench className="h-4 w-4" />
+            {saving ? 'Seeding pricing' : 'Continue'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
           </button>
         </div>
       </div>

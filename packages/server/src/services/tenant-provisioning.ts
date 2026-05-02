@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
+import { buildTemplateDb } from '../db/template.js';
 import { getTenantDb, releaseTenantDb, closeTenantDb } from '../db/tenant-pool.js';
 import { createTenantDnsRecord, deleteTenantDnsRecord } from './cloudflareDns.js';
 import { createLogger } from '../utils/logger.js';
@@ -190,6 +191,16 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   // Password is optional — shop admin sets their own on first login
 
   const templatePath = config.templateDbPath;
+  try {
+    // The template DB is the source for every new tenant. Validate it just
+    // before signup provisioning so a stale/corrupt template self-heals here
+    // instead of producing a half-created tenant DB with missing core tables.
+    buildTemplateDb();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to prepare template DB', { slug: opts.slug, requestId: provRequestId, error: message });
+    return { success: false, error: genericProvisioningError(provRequestId) };
+  }
   if (!fs.existsSync(templatePath)) {
     return { success: false, error: 'Template database not found. Server may need restart.' };
   }

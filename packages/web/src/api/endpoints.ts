@@ -23,7 +23,9 @@ import type {
   CreateLeadInput, UpdateLeadInput, CreateAppointmentInput, UpdateAppointmentInput,
   CreateEstimateInput, UpdateEstimateInput, PreferenceValue,
   CreateServiceInput, UpdateServiceInput, CreateRepairPriceInput, UpdateRepairPriceInput,
-  AddGradeInput, UpdateGradeInput,
+  AddGradeInput, UpdateGradeInput, RepairPricingMatrixQuery, RepairPricingTierApplyInput,
+  RepairPricingProfitRecomputeInput, RepairPricingSeedDefaultsInput, RepairPricingSeedDefaultsResponse,
+  RepairPricingAutoMarginPreviewInput, RepairPricingAutoMarginPreview, RepairPricingAutoMarginSettings,
 } from './types';
 
 // ==================== Server Info ====================
@@ -1000,6 +1002,33 @@ export const missingPartsApi = {
 
 // ==================== Repair Pricing ====================
 export const repairPricingApi = {
+  // Dynamic pricing matrix (server-owned pricing model)
+  getTiers: () => api.get('/repair-pricing/tiers'),
+  setTiers: (data: { tier_a_years: number; tier_b_years: number }) =>
+    api.put('/repair-pricing/tiers', data),
+  getMatrix: (params?: RepairPricingMatrixQuery) =>
+    api.get('/repair-pricing/matrix', { params }),
+  seedDefaults: (data: RepairPricingSeedDefaultsInput = {}) =>
+    api.post<{ success: boolean; data: RepairPricingSeedDefaultsResponse }>('/repair-pricing/seed-defaults', data),
+  applyTier: (data: RepairPricingTierApplyInput) =>
+    api.post('/repair-pricing/tier-apply', data),
+  getAudit: (params?: {
+    repair_price_id?: number;
+    device_model_id?: number;
+    repair_service_id?: number;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }) => api.get('/repair-pricing/audit', { params }),
+  revertToTier: (priceId: number) => api.post(`/repair-pricing/revert/${priceId}`, {}),
+  getAutoMarginSettings: () =>
+    api.get<{ success: boolean; data: RepairPricingAutoMarginSettings }>('/repair-pricing/auto-margin-settings'),
+  setAutoMarginSettings: (data: Partial<RepairPricingAutoMarginSettings>) =>
+    api.put<{ success: boolean; data: RepairPricingAutoMarginSettings }>('/repair-pricing/auto-margin-settings', data),
+  previewAutoMargin: (data: RepairPricingAutoMarginPreviewInput) =>
+    api.post<{ success: boolean; data: RepairPricingAutoMarginPreview }>('/repair-pricing/auto-margin-preview', data),
+  recomputeProfits: (data: RepairPricingProfitRecomputeInput = {}) =>
+    api.post('/repair-pricing/recompute-profits', data),
   // Services
   getServices: (params?: { category?: string }) => api.get('/repair-pricing/services', { params }),
   createService: (data: CreateServiceInput) => api.post('/repair-pricing/services', data),

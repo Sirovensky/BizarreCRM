@@ -1,5 +1,6 @@
 import XCTest
 import Core
+import Networking
 @testable import Setup
 
 // MARK: - SetupDraft Encode/Decode
@@ -23,6 +24,17 @@ final class SetupDraftCodableTests: XCTestCase {
             locationName: "HQ",
             locationAddress: "42 Oak Ave",
             locationPhone: "(555) 123-4567",
+            enabledDeviceFamilies: ["iphone"],
+            repairPricingMode: "auto_margin",
+            repairPricingTierDefaults: ["screen": ["tier_a": 200]],
+            repairPricingAutoMarginPreset: "mid_traffic",
+            repairPricingAutoMarginTargetType: "percent",
+            repairPricingTargetMarginPct: 100,
+            repairPricingTargetProfitAmount: 80,
+            repairPricingCalculationBasis: "markup",
+            repairPricingRoundingMode: "ending_99",
+            repairPricingCapPct: 25,
+            repairPricingAutoMarginRules: SetupRepairPricingSelection.defaultAutoMarginRules(for: .midTraffic, targetType: .percent),
             firstEmployeeFirstName: "Jane",
             firstEmployeeLastName: "Smith",
             firstEmployeeEmail: "jane@example.com",
@@ -42,6 +54,11 @@ final class SetupDraftCodableTests: XCTestCase {
         XCTAssertEqual(decoded.timezone, "America/Chicago")
         XCTAssertEqual(decoded.taxRatePct, 7.5)
         XCTAssertEqual(decoded.paymentMethods, ["cash", "card"])
+        XCTAssertEqual(decoded.enabledDeviceFamilies, ["iphone"])
+        XCTAssertEqual(decoded.repairPricingMode, "auto_margin")
+        XCTAssertEqual(decoded.repairPricingTierDefaults?["screen"]?["tier_a"], 200)
+        XCTAssertEqual(decoded.repairPricingAutoMarginPreset, "mid_traffic")
+        XCTAssertEqual(decoded.repairPricingAutoMarginTargetType, "percent")
         XCTAssertEqual(decoded.firstEmployeeEmail, "jane@example.com")
         XCTAssertEqual(decoded.sampleDataOptIn, true)
         XCTAssertEqual(decoded.theme, "dark")
@@ -189,6 +206,30 @@ final class SetupWizardViewModelDraftTests: XCTestCase {
         XCTAssertEqual(draft.sampleDataOptIn, true)
     }
 
+    func testMakeDraft_capturesRepairPricingSelection() {
+        vm.wizardPayload.enabledDeviceFamilies = ["iphone"]
+        vm.wizardPayload.repairPricingMode = .autoMargin
+        vm.wizardPayload.repairPricingAutoMarginPreset = .lowTraffic
+        vm.wizardPayload.repairPricingAutoMarginTargetType = .fixedAmount
+        vm.wizardPayload.repairPricingTargetMarginPct = 65
+        vm.wizardPayload.repairPricingTargetProfitAmount = 95
+        vm.wizardPayload.repairPricingCalculationBasis = .markup
+        vm.wizardPayload.repairPricingRoundingMode = .ending98
+        vm.wizardPayload.repairPricingCapPct = 30
+
+        let draft = vm.makeDraft()
+
+        XCTAssertEqual(draft.enabledDeviceFamilies, ["iphone"])
+        XCTAssertEqual(draft.repairPricingMode, "auto_margin")
+        XCTAssertEqual(draft.repairPricingAutoMarginPreset, "low_traffic")
+        XCTAssertEqual(draft.repairPricingAutoMarginTargetType, "fixed_amount")
+        XCTAssertEqual(draft.repairPricingTargetMarginPct, 65)
+        XCTAssertEqual(draft.repairPricingTargetProfitAmount, 95)
+        XCTAssertEqual(draft.repairPricingCalculationBasis, "markup")
+        XCTAssertEqual(draft.repairPricingRoundingMode, "ending_98")
+        XCTAssertEqual(draft.repairPricingCapPct, 30)
+    }
+
     func testApplyDraft_restoresStep() {
         let draft = SetupDraft(currentStepRaw: 5, completedSteps: [1, 2, 3, 4])
         vm.applyDraft(draft)
@@ -246,6 +287,35 @@ final class SetupWizardViewModelDraftTests: XCTestCase {
         XCTAssertEqual(vm.wizardPayload.firstEmployeeFirstName, "Alice")
         XCTAssertEqual(vm.wizardPayload.firstEmployeeEmail, "alice@shop.com")
         XCTAssertEqual(vm.wizardPayload.firstEmployeeRole, "manager")
+    }
+
+    func testApplyDraft_restoresRepairPricingSelection() {
+        let draft = SetupDraft(
+            enabledDeviceFamilies: ["ipad", "iphone"],
+            repairPricingMode: "spreadsheet",
+            repairPricingTierDefaults: ["screen": ["tier_a": 210]],
+            repairPricingAutoMarginPreset: "high_traffic",
+            repairPricingAutoMarginTargetType: "fixed_amount",
+            repairPricingTargetMarginPct: 64,
+            repairPricingTargetProfitAmount: 70,
+            repairPricingCalculationBasis: "markup",
+            repairPricingRoundingMode: "whole_dollar",
+            repairPricingCapPct: 35,
+            repairPricingAutoMarginRules: SetupRepairPricingSelection.defaultAutoMarginRules(for: .highTraffic, targetType: .fixedAmount)
+        )
+
+        vm.applyDraft(draft)
+
+        XCTAssertEqual(vm.wizardPayload.enabledDeviceFamilies, ["ipad", "iphone"])
+        XCTAssertEqual(vm.wizardPayload.repairPricingMode, .spreadsheet)
+        XCTAssertEqual(vm.wizardPayload.repairPricingTierDefaults["screen"]?["tier_a"], 210)
+        XCTAssertEqual(vm.wizardPayload.repairPricingAutoMarginPreset, .highTraffic)
+        XCTAssertEqual(vm.wizardPayload.repairPricingAutoMarginTargetType, .fixedAmount)
+        XCTAssertEqual(vm.wizardPayload.repairPricingTargetMarginPct, 64)
+        XCTAssertEqual(vm.wizardPayload.repairPricingTargetProfitAmount, 70)
+        XCTAssertEqual(vm.wizardPayload.repairPricingCalculationBasis, .markup)
+        XCTAssertEqual(vm.wizardPayload.repairPricingRoundingMode, .wholeDollar)
+        XCTAssertEqual(vm.wizardPayload.repairPricingCapPct, 35)
     }
 
     func testResumeFromDraft_loadsAndApplies() async throws {
