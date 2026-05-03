@@ -28,8 +28,8 @@ public struct PosRegisterLayout<Catalog: View, Cart: View, Inspector: View>: Vie
     /// Fraction of the non-rail, non-cart width used for the catalog.
     private let catalogFraction: Double
 
-    /// Fixed width of the cart column in points.
-    private let cartWidth: CGFloat
+    /// Minimum width of the cart column in points.
+    private let cartMinWidth: CGFloat
 
     /// When `true` the inspector pane slides in from the trailing edge.
     @Binding var isInspectorPresented: Bool
@@ -76,6 +76,7 @@ public struct PosRegisterLayout<Catalog: View, Cart: View, Inspector: View>: Vie
             let cartWidth = rawCartWidth
             let catalogWidth = totalWidth - cartWidth
 
+            HStack(spacing: 0) {
                 catalog()
                     .frame(width: catalogWidth)
                     .clipped()
@@ -89,6 +90,7 @@ public struct PosRegisterLayout<Catalog: View, Cart: View, Inspector: View>: Vie
                 // Glass divider (hidden when cart is collapsed)
                 if !isCartCollapsed {
                     divider
+                        .frame(width: 1)
                 }
 
                 // Cart — right panel (glass-backed chrome)
@@ -132,30 +134,6 @@ public struct PosRegisterLayout<Catalog: View, Cart: View, Inspector: View>: Vie
         }
         .brandGlass(.identity, in: Rectangle())
         .accessibilityIdentifier("pos.ipad.inspectorPane")
-    }
-}
-
-// MARK: - Convenience init (no inspector)
-
-extension PosRegisterLayout where Inspector == EmptyView {
-    /// Two-column init (catalog + cart). No inspector.
-    public init(
-        catalogFraction: Double = 0.70,
-        cartWidth: CGFloat = 420,
-        @ViewBuilder topbar: @escaping () -> Topbar,
-        @ViewBuilder catalog: @escaping () -> Catalog,
-        @ViewBuilder cart: @escaping () -> Cart
-    ) {
-        self.init(
-            catalogFraction: catalogFraction,
-            cartWidth: cartWidth,
-            inspectorWidth: 360,
-            inspectorActive: false,
-            topbar: topbar,
-            catalog: catalog,
-            cart: cart,
-            inspector: { EmptyView() }
-        )
     }
 }
 
@@ -473,9 +451,14 @@ public struct PosIPadInspectorPane: View {
 // MARK: - Convenience init (no inspector)
 
 public extension PosRegisterLayout where Inspector == EmptyView {
+    /// Two-column init (catalog + cart). No inspector.
+    ///
+    /// The right cart rail defaults to the 420pt width used by the POS iPad
+    /// mockups; callers can still opt into a narrower rail for specialist
+    /// flows such as receipt mode.
     init(
         catalogFraction: Double = 0.70,
-        cartMinWidth: CGFloat = 380,
+        cartMinWidth: CGFloat = 420,
         isCartCollapsed: Binding<Bool> = .constant(false),
         @ViewBuilder catalog: @escaping () -> Catalog,
         @ViewBuilder cart: @escaping () -> Cart

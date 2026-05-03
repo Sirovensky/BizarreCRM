@@ -28,12 +28,18 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     case thermal58mm
     /// US Letter page (8.5 × 11 in).
     case letter
+    /// US Legal page (8.5 × 14 in).
+    case legal
     /// A4 page (210 × 297 mm).
     case a4
     /// 4" × 6" shipping / receipt label.
     case label4x6
     /// 2" × 4" small label.
     case label2x4
+
+    /// Tenant-configurable paper default placeholder. Until tenant settings
+    /// provide an override, full-page documents default to US Letter.
+    public static let tenantDefault: PrintMedium = .letter
 
     // MARK: - Physical dimensions (points at 72 dpi)
 
@@ -43,6 +49,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .thermal80mm: return 204  // ~72 mm at 72 dpi
         case .thermal58mm: return 136  // ~48 mm at 72 dpi
         case .letter:      return 468  // 6.5 in at 72 dpi
+        case .legal:       return 468  // 6.5 in at 72 dpi
         case .a4:          return 481  // 168 mm at 72 dpi
         case .label4x6:    return 288  // 4 in at 72 dpi
         case .label2x4:    return 144  // 2 in at 72 dpi
@@ -55,9 +62,31 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .thermal80mm: return 226  // 80mm at 72 dpi
         case .thermal58mm: return 165  // 58mm at 72 dpi
         case .letter:      return 612  // 8.5 in
+        case .legal:       return 612  // 8.5 in
         case .a4:          return 595  // 210 mm
         case .label4x6:    return 288
         case .label2x4:    return 144
+        }
+    }
+
+    /// Total page height in points for paginated PDF output.
+    public var pageHeight: CGFloat {
+        switch self {
+        case .thermal80mm, .thermal58mm: return 1_000 // roll fallback page slice
+        case .letter:                    return 792   // 11 in
+        case .legal:                     return 1_008 // 14 in
+        case .a4:                        return 842   // 297 mm
+        case .label4x6:                  return 432   // 6 in
+        case .label2x4:                  return 288   // 4 in
+        }
+    }
+
+    /// Standard page margin for PDF/archive renderers.
+    public var margin: CGFloat {
+        switch self {
+        case .thermal80mm, .thermal58mm: return 4
+        case .letter, .legal, .a4:       return 36
+        case .label4x6, .label2x4:       return 0
         }
     }
 
@@ -70,7 +99,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var headerFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 12, weight: .bold, design: .monospaced)
-        case .letter, .a4:               return .system(size: 16, weight: .bold)
+        case .letter, .legal, .a4:       return .system(size: 16, weight: .bold)
         case .label4x6, .label2x4:      return .system(size: 10, weight: .bold)
         }
     }
@@ -79,7 +108,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var bodyFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 9, design: .monospaced)
-        case .letter, .a4:               return .system(size: 11)
+        case .letter, .legal, .a4:       return .system(size: 11)
         case .label4x6, .label2x4:      return .system(size: 8)
         }
     }
@@ -88,7 +117,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     public var captionFont: Font {
         switch self {
         case .thermal80mm, .thermal58mm: return .system(size: 7, design: .monospaced)
-        case .letter, .a4:               return .system(size: 9)
+        case .letter, .legal, .a4:       return .system(size: 9)
         case .label4x6, .label2x4:      return .system(size: 7)
         }
     }
@@ -96,7 +125,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     /// Whether the medium fits two columns for line items.
     public var twoColumnLineItems: Bool {
         switch self {
-        case .letter, .a4: return true
+        case .letter, .legal, .a4: return true
         default: return false
         }
     }
@@ -107,6 +136,7 @@ public enum PrintMedium: String, CaseIterable, Sendable {
         case .thermal80mm: return "80 mm Thermal"
         case .thermal58mm: return "58 mm Thermal"
         case .letter:      return "Letter (8.5 × 11)"
+        case .legal:       return "Legal (8.5 × 14)"
         case .a4:          return "A4"
         case .label4x6:    return "4\" × 6\" Label"
         case .label2x4:    return "2\" × 4\" Label"

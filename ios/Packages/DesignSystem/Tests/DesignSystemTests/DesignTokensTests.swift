@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import DesignSystem
 
 /// §80 master-tokens smoke checks. Tokens are constants; tests guard against
@@ -63,6 +64,38 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertLessThan(DesignTokens.Z.content, DesignTokens.Z.nav)
         XCTAssertLessThan(DesignTokens.Z.nav, DesignTokens.Z.sheet)
         XCTAssertLessThan(DesignTokens.Z.sheet, DesignTokens.Z.toast)
+    }
+
+    func testSectionDividerWeightOpacityRhythm() {
+        // SectionDivider depends on this token being present and ordered.
+        XCTAssertLessThan(DesignTokens.SectionDividerWeight.hairline.opacity,
+                          DesignTokens.SectionDividerWeight.subtle.opacity)
+        XCTAssertLessThan(DesignTokens.SectionDividerWeight.subtle.opacity,
+                          DesignTokens.SectionDividerWeight.strong.opacity)
+    }
+
+    func testSemanticColorAliasesCompile() {
+        // §80.9 promised this namespace; downstream packages use these aliases.
+        let aliases: [Color] = [
+            DesignTokens.SemanticColor.accent,
+            DesignTokens.SemanticColor.danger,
+            DesignTokens.SemanticColor.warning,
+            DesignTokens.SemanticColor.success,
+            DesignTokens.SemanticColor.info,
+            DesignTokens.SemanticColor.surfaceBase,
+            DesignTokens.SemanticColor.cardSurface,
+            DesignTokens.SemanticColor.surfaceInset,
+            DesignTokens.SemanticColor.surfaceRaised,
+            DesignTokens.SemanticColor.surfaceGlass,
+            DesignTokens.SemanticColor.textPrimary,
+            DesignTokens.SemanticColor.textSecondary,
+            DesignTokens.SemanticColor.textMuted,
+            DesignTokens.SemanticColor.textInverse,
+            DesignTokens.SemanticColor.borderSubtle,
+            DesignTokens.SemanticColor.borderStrong,
+            DesignTokens.SemanticColor.borderAccent
+        ]
+        XCTAssertEqual(aliases.count, 17)
     }
 
     // MARK: - §16.27 Cream primary token

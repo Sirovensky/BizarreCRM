@@ -43,12 +43,6 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <key>MinimumOSVersion</key>
     <string>17.0</string>
 
-    <key>UIDeviceFamily</key>
-    <array>
-        <integer>1</integer>
-        <integer>2</integer>
-    </array>
-
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

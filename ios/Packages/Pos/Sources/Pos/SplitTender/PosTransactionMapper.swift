@@ -44,7 +44,7 @@ public enum PosTransactionMapper {
                 ? Double(item.discountCents) / 100.0
                 : nil
             return PosTransactionLineItem(
-                inventoryItemId: invId,
+                inventoryItemId: Int(invId),
                 quantity: item.quantity,
                 lineDiscount: lineDiscountDollars
             )
@@ -62,7 +62,7 @@ public enum PosTransactionMapper {
 
         return PosTransactionRequest(
             items: lines,
-            customerId: cart.customer?.id,
+            customerId: cart.customer?.id.map(Int.init),
             discount: discountDollars,
             tip: tipDollars,
             paymentMethod: paymentMethod,

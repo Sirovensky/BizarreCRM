@@ -1,22 +1,5 @@
 import UIKit
 
-// MARK: - SceneStateRestorer (§22.4)
-
-public enum SceneStateRestorer {
-    public static let activityType = "com.bizarrecrm.sceneState"
-    private enum Key { static let deepLinkURL = "deepLinkURL" }
-    public static func save(routeURL: String, session: UISceneSession) -> NSUserActivity {
-        let a = NSUserActivity(activityType: activityType)
-        a.isEligibleForHandoff = false; a.isEligibleForSearch = false
-        a.userInfo = [Key.deepLinkURL: routeURL]
-        return a
-    }
-    public static func restore(from activity: NSUserActivity) -> String? {
-        guard activity.activityType == activityType else { return nil }
-        return activity.userInfo?[Key.deepLinkURL] as? String
-    }
-}
-
 // MARK: - SceneDelegate
 
 /// UIKit scene delegate wiring.

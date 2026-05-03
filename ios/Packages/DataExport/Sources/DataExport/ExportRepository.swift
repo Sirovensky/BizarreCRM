@@ -1,6 +1,19 @@
 import Foundation
 import Networking
 
+// MARK: - ExportClientError
+
+public enum ExportClientError: LocalizedError, Sendable {
+    case missingData(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingData(let detail):
+            return detail
+        }
+    }
+}
+
 // MARK: - ExportRepository protocol
 
 /// All network calls for §49 Data Export go through this protocol.

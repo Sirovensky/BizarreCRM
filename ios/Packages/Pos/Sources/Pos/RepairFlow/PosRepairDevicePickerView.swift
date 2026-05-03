@@ -136,9 +136,6 @@ public struct PosRepairDevicePickerView: View {
 
     private var ipadContent: some View {
         VStack(spacing: 0) {
-            stepProgressBar
-                .padding(.top, BrandSpacing.xs)
-
             ScrollView {
                 VStack(spacing: BrandSpacing.sm) {
                     // Section header
@@ -162,15 +159,6 @@ public struct PosRepairDevicePickerView: View {
                     }
                 }
                 .padding(.bottom, BrandSpacing.xl)
-            }
-
-                sectionLabel("Add new")
-                addNewDeviceCard
-
-                if hasNoSpecific {
-                    sectionLabel("Or skip device")
-                    deviceCard(option: .noSpecificDevice)
-                }
             }
         }
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }

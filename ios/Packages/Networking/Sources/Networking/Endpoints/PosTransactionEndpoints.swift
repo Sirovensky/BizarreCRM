@@ -122,12 +122,31 @@ public struct PosTransactionRequest: Encodable, Sendable {
 public struct PosTransactionInvoice: Decodable, Sendable {
     public let id: Int64
     public let orderId: String?
+    /// Optional cents total for test fixtures or future cents-based endpoints.
+    /// `/pos/transaction` currently returns `total` in dollars, so callers
+    /// should fall back to `total` when this is nil.
+    public let totalCents: Int?
     public let total: Double?
     public let status: String?
+
+    public init(
+        id: Int64,
+        orderId: String? = nil,
+        totalCents: Int? = nil,
+        total: Double? = nil,
+        status: String? = nil
+    ) {
+        self.id = id
+        self.orderId = orderId
+        self.totalCents = totalCents
+        self.total = total
+        self.status = status
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, total, status
         case orderId = "order_id"
+        case totalCents = "total_cents"
     }
 }
 

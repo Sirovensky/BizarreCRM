@@ -40,10 +40,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// Mockup screen 5a: 💳 card, 💵 cash, 🎁 gift card, 💸 store credit.
     public var systemImage: String {
         switch self {
-        case .card:        return "creditcard.fill"
-        case .cash:        return "banknote.fill"
-        case .giftCard:    return "giftcard.fill"
-        case .storeCredit: return "dollarsign.circle.fill"
+        case .card:          return "creditcard.fill"
+        case .cash:          return "banknote.fill"
+        case .giftCard:      return "giftcard.fill"
+        case .storeCredit:   return "dollarsign.circle.fill"
+        case .check:         return "checkmark.rectangle.fill"
+        case .accountCredit: return "doc.text.fill"
+        case .financing:     return "link.circle.fill"
         }
     }
 

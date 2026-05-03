@@ -414,8 +414,8 @@ public final class LiveActivityPushTokenService {
             throw LiveActivityPushTokenError.noTokenReceived
         }
 
-        // Upload token to server so it can push ActivityKit content updates.
-        try await registerPushToken(LiveActivityPushTokenRequest(
+        // Upload token through the provided client so the server can push ActivityKit updates.
+        try await api.registerLiveActivityPushToken(LiveActivityPushTokenRequest(
             activityId: activity.id,
             pushToken: hex,
             activityType: "ticket",
@@ -462,7 +462,7 @@ public final class LiveActivityPushTokenService {
             throw LiveActivityPushTokenError.noTokenReceived
         }
 
-        try await registerPushToken(LiveActivityPushTokenRequest(
+        try await api.registerLiveActivityPushToken(LiveActivityPushTokenRequest(
             activityId: activity.id,
             pushToken: hex,
             activityType: "sale",

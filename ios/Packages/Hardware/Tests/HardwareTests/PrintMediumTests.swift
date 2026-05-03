@@ -19,6 +19,10 @@ final class PrintMediumTests: XCTestCase {
         XCTAssertGreaterThan(PrintMedium.letter.contentWidth, PrintMedium.thermal80mm.contentWidth)
     }
 
+    func test_legal_contentWidth_matchesLetter() {
+        XCTAssertEqual(PrintMedium.legal.contentWidth, PrintMedium.letter.contentWidth)
+    }
+
     func test_a4_contentWidth_isWiderThan80mm() {
         XCTAssertGreaterThan(PrintMedium.a4.contentWidth, PrintMedium.thermal80mm.contentWidth)
     }
@@ -78,6 +82,10 @@ final class PrintMediumTests: XCTestCase {
         XCTAssertTrue(PrintMedium.letter.twoColumnLineItems)
     }
 
+    func test_legal_isTwoColumn() {
+        XCTAssertTrue(PrintMedium.legal.twoColumnLineItems)
+    }
+
     func test_a4_isTwoColumn() {
         XCTAssertTrue(PrintMedium.a4.twoColumnLineItems)
     }
@@ -92,8 +100,12 @@ final class PrintMediumTests: XCTestCase {
 
     // MARK: - CaseIterable
 
-    func test_allCases_hasSixCases() {
-        XCTAssertEqual(PrintMedium.allCases.count, 6)
+    func test_allCases_hasSevenCases() {
+        XCTAssertEqual(PrintMedium.allCases.count, 7)
+    }
+
+    func test_tenantDefault_isLetter() {
+        XCTAssertEqual(PrintMedium.tenantDefault, .letter)
     }
 
     func test_rawValues_areUnique() {

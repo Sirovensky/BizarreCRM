@@ -141,10 +141,6 @@ public struct PosView: View {
     @State private var showingAuditLog: Bool = false
     /// Active-cart toolbar — `Scan` primary action sheet.
     @State private var showingScanner: Bool = false
-    /// §16.5 — v1 tender select + cash tender flow (retained, not deleted).
-    @State private var showingTenderSelect: Bool = false
-    @State private var cashTenderVM: CashTenderViewModel?
-    @State private var tenderErrorMessage: String?
     /// §16.6 — Store-credit balance for the attached customer.
     /// Loaded lazily when the tender phase begins. Nil = not yet fetched or
     /// no customer attached. `PosTenderMethodPickerView` / `PosTenderAmountEntryView`
@@ -387,20 +383,6 @@ public struct PosView: View {
                 }
             )
         }
-        .overlay(alignment: .bottom) {
-            if let err = tenderErrorMessage {
-                Text(err)
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, BrandSpacing.md)
-                    .padding(.vertical, BrandSpacing.sm)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .padding(.bottom, BrandSpacing.xxl)
-                    .transition(.opacity)
-                    .onTapGesture { tenderErrorMessage = nil }
-                    .accessibilityIdentifier("pos.tenderErrorToast")
-            }
-        }
         .sheet(isPresented: $showingReturns) {
             PosReturnsView(api: api)
         }
@@ -558,41 +540,6 @@ public struct PosView: View {
                     }
             }
         }
-        // §16.6 — Tender-select sheet. Opens when the cashier taps Charge
-        // and the cart is not already fully covered by store-value tenders.
-        .sheet(isPresented: $showingTenderSelect) {
-            PosTenderSelectSheet(
-                totalCents: cart.totalCents,
-                onSelectCash: {
-                    openCashTender()
-                }
-            )
-        }
-        // §16.6 — Cash tender sheet. Non-nil `cashTenderVM` triggers it.
-        .sheet(
-            isPresented: Binding(
-                get: { cashTenderVM != nil },
-                set: { if !$0 { cashTenderVM = nil } }
-            )
-        ) {
-            if let vm = cashTenderVM {
-                PosCashTenderSheet(
-                    vm: vm,
-                    onCompleted: { result in
-                        // Dismiss cash sheet, then show post-sale with Cash label.
-                        cashTenderVM = nil
-                        postSale = buildPostSaleViewModel(methodLabel: "Cash")
-                        BrandHaptics.success()
-                        cart.clear()
-                    },
-                    onBack: {
-                        // Return to tender-select without losing cart state.
-                        cashTenderVM = nil
-                        showingTenderSelect = true
-                    }
-                )
-            }
-        }
         // §16.3 — Hold sheets
         .sheet(isPresented: $showingHoldSheet) {
             PosHoldCartSheet(cart: cart, api: api) { holdId in
@@ -703,10 +650,9 @@ public struct PosView: View {
             // column; the cart stays pinned on the right so the cashier
             // never loses sight of the totals/customer-attached state.
             PosRegisterLayout(
-                catalogFraction: 0.65
+                catalogFraction: 0.65,
+                cartMinWidth: 420
             ) {
-                Color.clear.frame(height: 0)
-            } catalog: {
                 inner
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } cart: {
@@ -1047,6 +993,212 @@ public struct PosView: View {
         }
     }
 
+    /// iPad repair intake keeps the catalog/cart shell visible while the
+    /// current repair step lives in the trailing inspector pane.
+    @ViewBuilder
+    private func iPadRepairLayout(coordinator: PosRepairFlowCoordinator, api: APIClient) -> some View {
+        PosRegisterLayout(
+            catalogFraction: 0.65,
+            cartMinWidth: 420,
+            isInspectorPresented: .constant(true)
+        ) {
+            PosSearchPanel(
+                search: search,
+                onPick: pick,
+                onAddCustom: { showingCustomLine = true },
+                showsCustomerCTAs: !cart.hasCustomer,
+                onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
+                onCreateCustomer: { showingCreateCustomer = true },
+                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+            )
+            .disabled(true)
+            .blur(radius: 1.5)
+            .overlay {
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+            }
+        } cart: {
+            PosIPadCartPanel(
+                cart: cart,
+                onCharge: startChargeV5
+            )
+        } inspector: {
+            iPadRepairInspectorPane(coordinator: coordinator, api: api)
+        }
+        .navigationTitle("Repair intake")
+    }
+
+    private func iPadRepairInspectorPane(coordinator: PosRepairFlowCoordinator, api: APIClient) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: BrandSpacing.sm) {
+                HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                    VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                        Text(coordinator.currentStep.navigationTitle)
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                        if let name = coordinator.customerDisplayName {
+                            Text(name)
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: BrandSpacing.sm)
+
+                    Button {
+                        coordinator.cancel()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel repair intake")
+                }
+
+                RepairStepIndicator(current: coordinator.currentStep) { step in
+                    coordinator.jump(to: step)
+                }
+                .padding(.top, BrandSpacing.xs)
+                .padding(.bottom, BrandSpacing.md)
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1.opacity(0.88))
+
+            Divider().background(.bizarreOutline)
+
+            repairStepContent(coordinator: coordinator, api: api)
+                .padding(BrandSpacing.md)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if let message = coordinator.errorMessage {
+                errorToast(message)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.bottom, BrandSpacing.sm)
+            }
+
+            Divider().background(.bizarreOutline)
+
+            repairInspectorFooter(coordinator: coordinator)
+                .padding(BrandSpacing.md)
+                .background(Color.bizarreSurface1.opacity(0.88))
+        }
+        .background(Color.bizarreSurface1.ignoresSafeArea())
+        .accessibilityIdentifier("pos.repair.inspector")
+    }
+
+    @ViewBuilder
+    private func repairStepContent(coordinator: PosRepairFlowCoordinator, api: APIClient) -> some View {
+        switch coordinator.currentStep {
+        case .pickDevice:
+            PosRepairDevicePickerView(
+                coordinator: coordinator,
+                devicePickerVM: PosDevicePickerViewModel(
+                    repository: PosDevicePickerRepositoryImpl(api: api)
+                )
+            )
+        case .describeIssue:
+            PosRepairSymptomView(coordinator: coordinator)
+        case .diagnosticQuote:
+            PosRepairQuoteView(coordinator: coordinator)
+        case .deposit:
+            PosRepairDepositView(coordinator: coordinator)
+        }
+    }
+
+    private func repairInspectorFooter(coordinator: PosRepairFlowCoordinator) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            if coordinator.currentStep.previous != nil {
+                Button {
+                    coordinator.goBack()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.bordered)
+                .disabled(coordinator.isLoading)
+            }
+
+            if repairStepCanSkip(coordinator.currentStep) {
+                Button("Skip") {
+                    coordinator.skipCurrent()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .disabled(coordinator.isLoading)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                coordinator.advance()
+            } label: {
+                HStack(spacing: BrandSpacing.xs) {
+                    if coordinator.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Color.bizarreOnPrimary)
+                    }
+                    Text(repairContinueLabel(for: coordinator.currentStep))
+                }
+                .font(.brandTitleSmall())
+                .foregroundStyle(Color.bizarreOnPrimary)
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+                .background(Color.bizarreOrange, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .disabled(repairContinueDisabled(coordinator))
+            .opacity(repairContinueDisabled(coordinator) ? 0.55 : 1)
+            .accessibilityIdentifier("pos.repair.continue")
+        }
+    }
+
+    private func repairStepCanSkip(_ step: RepairStep) -> Bool {
+        step == .describeIssue || step == .diagnosticQuote
+    }
+
+    private func repairContinueDisabled(_ coordinator: PosRepairFlowCoordinator) -> Bool {
+        if coordinator.isLoading { return true }
+        switch coordinator.currentStep {
+        case .pickDevice:
+            return !coordinator.draft.isDeviceStepValid
+        case .describeIssue:
+            return !coordinator.draft.isSymptomStepValid
+        case .diagnosticQuote:
+            return false
+        case .deposit:
+            return !coordinator.draft.isDepositStepValid
+        }
+    }
+
+    private func repairContinueLabel(for step: RepairStep) -> String {
+        switch step {
+        case .pickDevice: return "Continue"
+        case .describeIssue: return "Continue"
+        case .diagnosticQuote: return "Review deposit"
+        case .deposit: return "Complete"
+        }
+    }
+
+    private func errorToast(_ message: String) -> some View {
+        HStack(spacing: BrandSpacing.xs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreError)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreError.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Repair error: \(message)")
+    }
+
     /// The inspector pane rendered inline (not as a sheet) when a cart line
     /// is tapped on iPad. Matches mockup screen 3: qty stepper / unit price
     /// display / line discount / note field / Remove + Save actions.
@@ -1260,6 +1412,22 @@ public struct PosView: View {
             .padding(.horizontal, BrandSpacing.md)
             .padding(.vertical, BrandSpacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var activeCartTitle: String {
+        if let customer = cart.customer, !customer.displayName.isEmpty {
+            return "New sale · \(customer.displayName)"
+        }
+        return "New sale"
+    }
+
+    private var activeCartSubtitle: String {
+        if cart.isEmpty {
+            return registerSession == nil ? "Register closed" : "Cart empty"
+        }
+
+        let itemLabel = cart.itemQuantity == 1 ? "1 item" : "\(cart.itemQuantity) items"
+        return "\(itemLabel) · \(CartMath.formatCents(cart.totalCents))"
     }
 
     private var posToolbar: some ToolbarContent {
@@ -1494,29 +1662,22 @@ public struct PosView: View {
         }
     }
 
-    /// §16.6 — Open the cash tender sheet. Called by `PosTenderSelectSheet`
-    /// after the cashier selects "Cash" and taps Continue.
-    private func openCashTender() {
-        do {
-            let request = try PosTransactionMapper.request(from: cart)
-            cashTenderVM = CashTenderViewModel(
-                totalCents: cart.totalCents,
-                transactionRequest: request,
-                api: api
-            )
-        } catch {
-            tenderErrorMessage = error.localizedDescription
-        }
-    }
-
     /// Assemble the post-sale view model from the current cart. Snapshots
     /// the render output so the sheet is immune to subsequent cart edits
     /// (e.g. the Next-sale clear).
     ///
     /// - Parameter methodLabel: Override the payment-method display label.
     ///   When `nil`, derived from applied tenders or defaults to "Card".
-    private func buildPostSaleViewModel(methodLabel overrideLabel: String? = nil) -> PosPostSaleViewModel {
-        let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
+    private func buildPostSaleViewModel(
+        methodLabel overrideLabel: String? = nil,
+        methodAmountCents: Int? = nil,
+        invoiceId: Int64 = -1
+    ) -> PosPostSaleViewModel {
+        let snapshot = PosReceiptPayloadBuilder.build(
+            cart: cart,
+            methodLabel: overrideLabel,
+            methodAmountCents: methodAmountCents
+        )
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
         let methodLabel: String = overrideLabel ?? {

@@ -64,6 +64,12 @@ public struct PosReceiptView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
+    @State private var showingPdfExporter: Bool = false
+    @State private var pdfExportURL: URL?
+    @State private var heroScale: CGFloat = 0.82
+    @State private var heroOpacity: Double = 0
+    @State private var showingReceiptPreview: Bool = false
+
     public init(
         vm: PosReceiptViewModel,
         receiptText: String? = nil,
@@ -75,8 +81,6 @@ public struct PosReceiptView: View {
         self.paidAt = paidAt
         self.trackingURL = trackingURL
     }
-
-    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     public var body: some View {
         ZStack {
@@ -587,7 +591,7 @@ public struct PosReceiptView: View {
     /// Apple Pencil (PKCanvasView). Matches mockup iPad screen 5.
     @ViewBuilder
     private var pencilSignatureBanner: some View {
-        if sizeClass == .regular, let ticketId = vm.payload.signedTicketId {
+        if hSizeClass == .regular, let ticketId = vm.payload.signedTicketId {
             HStack(spacing: BrandSpacing.sm) {
                 Text("✍")
                     .font(.system(size: 20))
@@ -612,6 +616,22 @@ public struct PosReceiptView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Signature captured with Pencil and archived to ticket \(ticketId)")
             .accessibilityIdentifier("pos.receipt.pencilBanner")
+        }
+    }
+
+    // MARK: - Offline watermark
+
+    @ViewBuilder
+    private var offlineWatermark: some View {
+        if vm.payload.isOfflinePending {
+            Text("Offline sale queued")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreWarning)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 1))
+                .accessibilityIdentifier("pos.receipt.offlineWatermark")
         }
     }
 
@@ -871,6 +891,27 @@ public struct PosReceiptView: View {
 
     // MARK: - Inline receipt preview
 
+    @ViewBuilder
+    private var receiptPreviewToggle: some View {
+        if let text = receiptText {
+            DisclosureGroup(isExpanded: $showingReceiptPreview) {
+                inlineReceiptPreview(text: text)
+                    .padding(.top, BrandSpacing.sm)
+            } label: {
+                Label("Receipt preview", systemImage: "doc.text.magnifyingglass")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
+            .accessibilityIdentifier("pos.receipt.previewToggle")
+        }
+    }
+
     /// Inline JetBrains Mono receipt block — matches mockup "receipt-list" section.
     /// Lower visual elevation than the hero per mockup spec.
     ///
@@ -884,13 +925,6 @@ public struct PosReceiptView: View {
             footerText: "Thank you · 30-day returns with receipt"
         )
         .accessibilityIdentifier("pos.receipt.inlinePreview")
-    }
-
-    /// Returns a chip label when the most recent send has settled to `.sent`.
-    /// Nil otherwise (no chip shown while idle or mid-flight).
-    private var sentChipLabel: String? {
-        if case .sent = vm.sendStatus { return "Sent ✓" }
-        return nil
     }
 
     /// Returns a chip label when the most recent send has settled to `.sent`.

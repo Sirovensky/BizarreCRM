@@ -133,23 +133,34 @@ public struct PosGateView: View {
     // lower than the post-gate "Walk-in" header. That broke the
     // smooth-river feel; using the same template fixes the y-origin.
     private var iPadLayout: some View {
-        PosRegisterLayout(
-            catalogFraction: 0.65
-        ) {
+        VStack(spacing: 0) {
             iPadGateTopbar
-        } catalog: {
-            ZStack(alignment: .top) {
-                itemsColumn
-                if vm.isSearching || !vm.results.isEmpty {
-                    searchResultsOverlay
-                        .frame(maxWidth: 680)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 64) // sits below the inline search field
+                .frame(height: 60)
+                .background(Color.bizarreSurfaceBase.opacity(0.96))
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(Color.bizarreOutline.opacity(0.35))
+                        .frame(height: 1)
                 }
+
+            PosRegisterLayout(
+                catalogFraction: 0.65,
+                cartMinWidth: 420
+            ) {
+                ZStack(alignment: .top) {
+                    itemsColumn
+                    if vm.isSearching || !vm.results.isEmpty {
+                        searchResultsOverlay
+                            .frame(maxWidth: 680)
+                            .padding(.horizontal, 32)
+                            .padding(.top, 64) // sits below the inline search field
+                    }
+                }
+            } cart: {
+                cartPlaceholderColumn
             }
-        } cart: {
-            cartPlaceholderColumn
         }
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         .sheet(isPresented: $vm.isShowingPickupSheet) {
             PickupListSheet(
                 isPresented: $vm.isShowingPickupSheet,

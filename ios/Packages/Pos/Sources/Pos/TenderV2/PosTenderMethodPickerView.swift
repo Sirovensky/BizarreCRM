@@ -140,58 +140,6 @@ public struct PosTenderMethodPickerView: View {
         }
     }
 
-    // MARK: - Split hint row
-
-    private var splitHintRow: some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "creditcard.and.123")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(theme.teal)
-                .accessibilityHidden(true)
-            Text("Split tender — add another payment")
-                .font(.brandBodyMedium())
-                .foregroundStyle(theme.muted)
-            Spacer()
-            // Applied tenders count chip
-            Text("\(coordinator.appliedTenders.count) applied")
-                .font(.brandLabelSmall())
-                .foregroundStyle(theme.onPrimary)
-                .padding(.horizontal, BrandSpacing.sm)
-                .padding(.vertical, BrandSpacing.xxs)
-                .background(theme.primary, in: Capsule())
-        }
-        .padding(BrandSpacing.sm)
-        .background(theme.surfaceElev.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(theme.outline, lineWidth: 0.5)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Split tender in progress. \(coordinator.appliedTenders.count) leg(s) applied. Remaining: \(CartMath.formatCents(coordinator.remaining)).")
-    }
-
-    // MARK: - Member benefit banner
-
-    private func memberBenefitBanner(tier: String) -> some View {
-        // Stub layout — Agent H replaces this with `MembershipBenefitBanner`.
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "star.circle.fill")
-                .foregroundStyle(theme.warning)
-                .font(.system(size: 18))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(tier)
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(theme.on)
-                Text("Member benefits available")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(theme.muted)
-                    .padding(.top, BrandSpacing.xxs)
-            }
-        }
-        .multilineTextAlignment(.center)
-    }
-
     /// iPad: flush-left amount + flush-right "Split tender / ⊕ Add method".
     private var ipadHeroHeader: some View {
         HStack(alignment: .top) {

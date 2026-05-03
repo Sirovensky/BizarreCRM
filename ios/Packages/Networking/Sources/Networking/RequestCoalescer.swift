@@ -35,11 +35,9 @@ public actor RequestCoalescer {
     public static let shared = RequestCoalescer()
 
     // Type-erased in-flight tasks keyed by request fingerprint.
-    // Value is `Task<any Sendable, Error>` because the caller decodes a generic T;
-    // we store as a Sendable existential and cast on retrieval to avoid generic-Task
-    // existential gymnastics. Cast is type-safe because the key encodes
-    // the response shape implicitly via the URL path.
-    private var inFlight: [String: Task<any Sendable, Error>] = [:]
+    // Value is boxed because the caller decodes a generic T; the actor stores
+    // one erased task per key and casts back to T for each waiter.
+    private var inFlight: [String: Task<AnySendable, Error>] = [:]
 
     public init() {}
 
@@ -57,8 +55,8 @@ public actor RequestCoalescer {
             }
             return typed
         }
-        let task = Task<any Sendable, Error> {
-            try await work()
+        let task = Task<AnySendable, Error> {
+            AnySendable(try await work())
         }
         inFlight[key] = task
         defer { inFlight.removeValue(forKey: key) }

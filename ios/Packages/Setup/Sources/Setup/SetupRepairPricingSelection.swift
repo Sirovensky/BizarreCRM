@@ -177,7 +177,7 @@ public struct SetupRepairPricingSelection: Codable, Sendable, Equatable {
         return autoMarginServiceSlugs.map { slug in
             let percent = percentValues[slug] ?? 100
             let fixed = fixedValues[slug] ?? 80
-            RepairPricingAutoMarginRule(
+            return RepairPricingAutoMarginRule(
                 id: "setup.\(slug)",
                 scope: .repairService,
                 label: serviceTitle(slug),

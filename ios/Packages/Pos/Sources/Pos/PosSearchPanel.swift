@@ -31,6 +31,11 @@ struct PosSearchPanel: View {
     /// barcode so it can auto-pick the first hit.
     @State private var pendingScanCode: String?
     @State private var showingScanSheet: Bool = false
+    @State private var previewItem: InventoryListItem?
+    @State private var showingFilterSheet: Bool = false
+    @State private var activeCategory: String?
+    @State private var showingFavoritesOnly: Bool = false
+    @State private var showingRecentlySoldOnly: Bool = false
 
     /// iPad only: active filter chip. `nil` = "All" (no filter).
     @State private var activeFilter: String? = nil
@@ -46,8 +51,10 @@ struct PosSearchPanel: View {
                     .padding(.top, BrandSpacing.sm)
                     .padding(.bottom, BrandSpacing.xs)
                 // iPad screen 2: filter chip row above catalog when results exist.
+                // This is the richer chip set: categories plus favorites,
+                // recently-sold, and the extended filter sheet.
                 if hSizeClass == .regular, !search.results.isEmpty {
-                    filterChipRow
+                    filterChips
                 }
                 resultsContent
             }
@@ -161,7 +168,7 @@ struct PosSearchPanel: View {
                 let matchLabel = search.results.isEmpty
                     ? "All"
                     : (search.query.isEmpty ? "All" : "Matches · \(filteredResults.count)")
-                PosFilterChip(
+                FilterChip(
                     label: matchLabel,
                     isActive: activeCategory == nil && !showingFavoritesOnly && !showingRecentlySoldOnly
                 ) {
@@ -172,7 +179,7 @@ struct PosSearchPanel: View {
 
                 // §16.2 Favorites chip — shown when posVM is available.
                 if let posVM, !posVM.favoriteItemIds.isEmpty {
-                    PosFilterChip(
+                    FilterChip(
                         label: "★ Favorites",
                         isActive: showingFavoritesOnly
                     ) {
@@ -184,7 +191,7 @@ struct PosSearchPanel: View {
 
                 // §16.2 Recently sold chip — top 10 sold on this register.
                 if let posVM, !posVM.recentlySoldIds.isEmpty {
-                    PosFilterChip(
+                    FilterChip(
                         label: "Recent",
                         isActive: showingRecentlySoldOnly
                     ) {
@@ -196,8 +203,8 @@ struct PosSearchPanel: View {
 
                 // Category chips derived from search results.
                 ForEach(categories, id: \.self) { cat in
-                    PosFilterChip(
-                        label: cat,
+                    FilterChip(
+                        label: categoryLabel(cat),
                         isActive: activeCategory == cat && !showingFavoritesOnly && !showingRecentlySoldOnly
                     ) {
                         activeCategory = cat
@@ -240,6 +247,12 @@ struct PosSearchPanel: View {
             }
         }
         return result
+    }
+
+    private func categoryLabel(_ category: String) -> String {
+        category
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
     }
 
     /// Apply all active chip filters + posVM client-side filters.
@@ -305,6 +318,61 @@ struct PosSearchPanel: View {
             // 2-column tile grid (mockup: grid-template-columns: 1fr 1fr)
             catalogGrid
         }
+    }
+
+    @ViewBuilder
+    private var emptyOrHome: some View {
+        ScrollView {
+            VStack(spacing: BrandSpacing.lg) {
+                if showsCustomerCTAs {
+                    customerCTAStack
+                }
+
+                VStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: search.query.isEmpty ? "shippingbox" : "magnifyingglass")
+                        .font(.system(size: 38, weight: .semibold))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(search.query.isEmpty ? "Start a sale" : "No matching items")
+                        .font(.brandTitleMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text(search.query.isEmpty ? "Search, scan, or add a custom line." : "Try another search term or add a custom line.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: 420)
+
+                Button {
+                    BrandHaptics.tap()
+                    onAddCustom()
+                } label: {
+                    Label("Add custom line", systemImage: "plus.circle")
+                        .font(.brandBodyLarge())
+                        .frame(maxWidth: 320)
+                        .frame(minHeight: 48)
+                }
+                .buttonStyle(.bordered)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.addCustomLine.empty")
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, BrandSpacing.lg)
+            .padding(.top, BrandSpacing.xl)
+            .padding(.bottom, BrandSpacing.xxl)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var catalogGrid: some View {
+        PosCatalogGrid(
+            items: filteredResults,
+            cartItemInventoryIds: cartItemInventoryIds,
+            onPreview: { item in
+                previewItem = item
+            },
+            onPick: onPick
+        )
     }
 
     // MARK: - iPad filter chip row

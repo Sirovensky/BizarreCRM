@@ -184,6 +184,10 @@ public struct PosLoyaltyCelebrationView: View {
         }
         return parts.joined(separator: ". ")
     }
+
+    private func tierLabel(_ tier: String) -> String {
+        tier.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+    }
 }
 
 #Preview {

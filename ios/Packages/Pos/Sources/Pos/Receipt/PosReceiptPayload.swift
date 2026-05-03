@@ -65,6 +65,15 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// Used by the hero subtitle "Cash · $300 received · $25.49 change".
     public let cashReceivedCents: Int?
 
+    // MARK: - Repair / offline context
+
+    /// Repair ticket linked to this payment, used for the teal post-sale row
+    /// and "Open ticket" shortcut.
+    public let linkedRepairTicketId: Int64?
+
+    /// True when the receipt represents an offline sale queued for later sync.
+    public let isOfflinePending: Bool
+
     // MARK: - iPad Pencil signature
 
     /// Ticket ID to which an Apple Pencil signature was archived (iPad only).
@@ -87,6 +96,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyTierAfter: String? = nil,
         loyaltyPointsTotal: Int? = nil,
         loyaltyNextTierPoints: Int? = nil,
+        linkedRepairTicketId: Int64? = nil,
+        isOfflinePending: Bool = false,
         signedTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
@@ -101,6 +112,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyTierAfter = loyaltyTierAfter
         self.loyaltyPointsTotal = loyaltyPointsTotal
         self.loyaltyNextTierPoints = loyaltyNextTierPoints
+        self.linkedRepairTicketId = linkedRepairTicketId
+        self.isOfflinePending = isOfflinePending
         self.signedTicketId = signedTicketId
     }
 }

@@ -206,6 +206,32 @@ struct PosCartDiscountSheet: View {
         }
     }
 
+    /// Keep preset chips highlighted only while the input still matches the
+    /// preset value. Once the cashier types a custom value, the chip selection
+    /// clears so the preview reflects exactly what will be applied.
+    private func clearPresetIfCustomInput() {
+        guard let value = parsedValue else {
+            activePresetPercent = nil
+            activePresetCents = nil
+            return
+        }
+
+        switch mode {
+        case .percent:
+            if let preset = activePresetPercent,
+               abs(value - preset * 100) > 0.0001 {
+                activePresetPercent = nil
+            }
+            activePresetCents = nil
+        case .amount:
+            let cents = Int((value * 100).rounded())
+            if let preset = activePresetCents, cents != preset {
+                activePresetCents = nil
+            }
+            activePresetPercent = nil
+        }
+    }
+
     private func applyAndDismiss() {
         guard let v = parsedValue, v > 0 else { return }
         let limits = PosTenantLimits.current()

@@ -30,6 +30,7 @@ public struct PosCatalogGrid: View {
 
     let items: [InventoryListItem]
     let onPick: (InventoryListItem) -> Void
+    let onPreview: ((InventoryListItem) -> Void)?
 
     /// Optional filter chips shown in a horizontal scroll row above the grid.
     /// Each chip is a `(label: String, isActive: Bool)` pair. The parent owns
@@ -43,6 +44,10 @@ public struct PosCatalogGrid: View {
     /// Maximum tile width — prevents tiles from being too wide on large pads.
     private let tileMaxWidth: CGFloat
 
+    /// Inventory ids already present in the active cart. The grid owns the
+    /// badge so every catalog surface gets the same “In cart” affordance.
+    private let cartItemInventoryIds: Set<Int64>
+
     // MARK: - Init
 
     public init(
@@ -52,6 +57,7 @@ public struct PosCatalogGrid: View {
         tileMinWidth: CGFloat = 140,
         tileMaxWidth: CGFloat = 220,
         cartItemInventoryIds: Set<Int64> = [],
+        onPreview: ((InventoryListItem) -> Void)? = nil,
         onPick: @escaping (InventoryListItem) -> Void
     ) {
         self.items = items
@@ -60,6 +66,7 @@ public struct PosCatalogGrid: View {
         self.tileMinWidth = tileMinWidth
         self.tileMaxWidth = tileMaxWidth
         self.cartItemInventoryIds = cartItemInventoryIds
+        self.onPreview = onPreview
         self.onPick = onPick
     }
 
@@ -77,9 +84,22 @@ public struct PosCatalogGrid: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: BrandSpacing.sm) {
                         ForEach(items) { item in
-                            PosCatalogTile(item: item) {
+                            PosCatalogTile(
+                                item: item,
+                                isInCart: cartItemInventoryIds.contains(item.id)
+                            ) {
                                 BrandHaptics.success()
                                 onPick(item)
+                            }
+                            .contextMenu {
+                                Button {
+                                    onPreview?(item)
+                                } label: {
+                                    Label("Preview", systemImage: "doc.text.magnifyingglass")
+                                }
+                            }
+                            .onLongPressGesture {
+                                onPreview?(item)
                             }
                         }
                     }
@@ -171,6 +191,7 @@ public struct CatalogFilterChip: Identifiable, Equatable, Hashable {
 /// Hover-highlighted for pointer devices per CLAUDE.md requirement.
 struct PosCatalogTile: View {
     let item: InventoryListItem
+    var isInCart: Bool = false
     let onTap: () -> Void
 
     var body: some View {
@@ -185,6 +206,16 @@ struct PosCatalogTile: View {
                         .font(.system(size: 24))
                         .foregroundStyle(.bizarreOrange)
                         .accessibilityHidden(true)
+                    if isInCart {
+                        Text("In cart")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnOrange)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.bizarreOrange, in: Capsule())
+                            .padding(6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
                 }
                 .frame(height: 64)
 

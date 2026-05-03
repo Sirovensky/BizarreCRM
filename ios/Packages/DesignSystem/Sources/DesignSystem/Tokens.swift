@@ -184,6 +184,59 @@ public enum DesignTokens {
         public static let minRowSpacing: CGFloat = 8
     }
 
+    // MARK: - Semantic colors (§80.9)
+    //
+    // Higher-level aliases over BrandColors. These let feature packages express
+    // intent (`borderSubtle`, `surfaceRaised`) without reaching for asset names.
+    public enum SemanticColor {
+        // MARK: Status / intent
+
+        public static let accent:  Color = .bizarrePrimary
+        public static let danger:  Color = .bizarreDanger
+        public static let warning: Color = .bizarreWarning
+        public static let success: Color = .bizarreSuccess
+        public static let info:    Color = .bizarreInfo
+
+        // MARK: Surfaces
+
+        public static let surfaceBase:   Color = .bizarreSurfaceBase
+        public static let cardSurface:   Color = .bizarreSurface1
+        public static let surfaceInset:  Color = .bizarreSurfaceBase
+        public static let surfaceRaised: Color = .bizarreSurface2
+        public static let surfaceGlass:  Color = .bizarreSurfaceElevated
+
+        // MARK: Text
+
+        public static let textPrimary:   Color = .bizarreOnSurface
+        public static let textSecondary: Color = .bizarreOnSurfaceMuted
+        public static let textMuted:     Color = .bizarreOnSurfaceMuted
+        public static let textInverse:   Color = .bizarreOnPrimary
+
+        // MARK: Borders
+
+        public static let borderSubtle: Color = .bizarreOutline
+        public static let borderStrong: Color = .bizarreOnSurfaceMuted
+        public static let borderAccent: Color = .bizarrePrimary
+    }
+
+    // MARK: - Section dividers (§91.16)
+    public enum SectionDividerWeight: Sendable {
+        /// Faint row grouping separator for dense lists.
+        case hairline
+        /// Default section boundary.
+        case subtle
+        /// More visible break between major settings groups.
+        case strong
+
+        public var opacity: Double {
+            switch self {
+            case .hairline: return 0.35
+            case .subtle:   return 0.55
+            case .strong:   return 0.85
+            }
+        }
+    }
+
     // MARK: - Brand palette (cream wave — §16.27, 2026-04-24)
     // Source of truth: ios/pos-iphone-mockups.html <style> :root block.
     // Android parity: ui/theme/Theme.kt lines 100–154.

@@ -92,7 +92,20 @@ struct PlatformSection1Tests {
         #expect(true, "LaunchSceneView() smoke init passed")
     }
 
-    // MARK: - §1.6 Info.plist script — no empty UISceneDelegateClassName
+    // MARK: - Info.plist script generation
+
+    private func generatedInfoPlistScriptURL() -> URL? {
+        let fm = FileManager.default
+        let iosDir = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()  // DesignSystemTests/
+            .deletingLastPathComponent()  // Tests/
+            .deletingLastPathComponent()  // DesignSystem/
+            .deletingLastPathComponent()  // Packages/
+            .deletingLastPathComponent()  // ios/
+
+        let scriptURL = iosDir.appendingPathComponent("scripts/write-info-plist.sh")
+        return fm.fileExists(atPath: scriptURL.path) ? scriptURL : nil
+    }
 
     /// `write-info-plist.sh` must NOT contain `<key>UISceneDelegateClassName</key>`
     /// followed by an empty `<string></string>`. The fix (§1.6) removed the
@@ -100,20 +113,7 @@ struct PlatformSection1Tests {
     /// delegate automatically and the empty value caused console noise.
     @Test("write-info-plist.sh does not emit empty UISceneDelegateClassName")
     func infoPlistScriptHasNoEmptySceneDelegate() throws {
-        // Locate the script relative to the package root.
-        // SPM places sources under the repo root; we walk up from the test bundle.
-        let fm = FileManager.default
-        // Start from the package directory and walk up to find ios/scripts.
-        var searchDir = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()  // DesignSystemTests/
-            .deletingLastPathComponent()  // Tests/
-            .deletingLastPathComponent()  // DesignSystem/
-            .deletingLastPathComponent()  // Packages/
-            .deletingLastPathComponent()  // ios/
-
-        let scriptURL = searchDir.appendingPathComponent("scripts/write-info-plist.sh")
-
-        guard fm.fileExists(atPath: scriptURL.path) else {
+        guard let scriptURL = generatedInfoPlistScriptURL() else {
             // If the script can't be located (e.g., unusual CI layout), skip
             // rather than fail — the path logic is best-effort.
             return
@@ -144,6 +144,20 @@ struct PlatformSection1Tests {
         }
         // Neither pattern appears in tandem — fix is in place.
         #expect(true, "write-info-plist.sh has no empty UISceneDelegateClassName entry")
+    }
+
+    /// Device-family support is owned by the Xcode build setting
+    /// `TARGETED_DEVICE_FAMILY`. Keeping `UIDeviceFamily` in the generated plist
+    /// makes Xcode warn every build and can drift from project.yml.
+    @Test("write-info-plist.sh does not emit UIDeviceFamily")
+    func infoPlistScriptDoesNotEmitUIDeviceFamily() throws {
+        guard let scriptURL = generatedInfoPlistScriptURL() else {
+            return
+        }
+
+        let content = try String(contentsOf: scriptURL, encoding: .utf8)
+        #expect(!content.contains("<key>UIDeviceFamily</key>"),
+                "TARGETED_DEVICE_FAMILY owns device support; generated Info.plist must not emit UIDeviceFamily")
     }
 
     // MARK: - §1.4 reduceTransparencyFallback() default color

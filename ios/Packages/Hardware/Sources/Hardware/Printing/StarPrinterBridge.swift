@@ -98,7 +98,7 @@ public actor StarPrinterBridge: NSObject, StarPrinterBridgeProtocol {
         self.peripheral = peripheral
         super.init()
         let p = UncheckedSendableCBPeripheral(peripheral)
-        Task { await p.value.setDelegate(bridge: self) }
+        p.setDelegate(bridge: self)
     }
 
     // MARK: - StarPrinterBridgeProtocol

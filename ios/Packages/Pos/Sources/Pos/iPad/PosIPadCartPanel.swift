@@ -25,14 +25,14 @@ public struct PosIPadCartPanel: View {
     /// Called when the cashier taps Charge / Complete.
     let onCharge: () -> Void
 
+    /// Optional split-tender entry point, surfaced above totals on iPad.
+    var onSelectTender: (() -> Void)?
+
     /// Called when a cart row is tapped (opens inspector).
     var onEditItem: ((CartItem) -> Void)?
 
     /// The item currently being inspected — highlights that row.
     var editingItemId: UUID?
-
-    /// Called when the cashier wants to open the coupon sheet.
-    var onShowCoupon: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -50,9 +50,6 @@ public struct PosIPadCartPanel: View {
             Divider().background(.bizarreOutline)
             // Cart line list — scrollable, fills available space
             cartLineList
-            // Coupon row pinned at bottom of the list area (per mockup screen 2)
-            couponRow
-            Divider().background(.bizarreOutline)
             tenderPickerRow
             Divider().background(.bizarreOutline)
 
@@ -72,40 +69,9 @@ public struct PosIPadCartPanel: View {
         .accessibilityIdentifier("pos.ipad.cartPanel")
     }
 
-    // MARK: - Coupon row
-
-    /// Glassy coupon input row — per iPad mockup screen 2 cart column.
-    private var couponRow: some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "tag")
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .font(.system(size: 13))
-                .accessibilityHidden(true)
-            TextField("Coupon code", text: $couponCode)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .submitLabel(.done)
-                .onSubmit { applyCoupon() }
-                .accessibilityIdentifier("pos.ipad.cart.couponField")
-            if !couponCode.isEmpty {
-                Button {
-                    applyCoupon()
-                } label: {
-                    Text("APPLY")
-                        .font(.brandLabelLarge().bold())
-                        .foregroundStyle(.bizarreTeal)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Apply coupon code")
-                .accessibilityIdentifier("pos.ipad.cart.couponApply")
-            }
-        }
-        .padding(.horizontal, BrandSpacing.md)
-        .frame(minHeight: DesignTokens.Touch.minTargetSide)
-    }
-
     private func applyCoupon() {
         guard !couponCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        BrandHaptics.tapMedium()
         couponCode = ""
         onShowCoupon?()
     }
@@ -118,11 +84,15 @@ public struct PosIPadCartPanel: View {
     private var cartLineList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(cart.items) { item in
-                    cartLineRow(item)
-                    Divider()
-                        .padding(.leading, BrandSpacing.md + 28 + BrandSpacing.sm)
-                        .background(Color.bizarreOutline.opacity(0.3))
+                if cart.items.isEmpty {
+                    emptyCartMessage
+                } else {
+                    ForEach(cart.items) { item in
+                        iPadCartRow(item: item)
+                        Divider()
+                            .padding(.leading, BrandSpacing.md + 38 + BrandSpacing.sm)
+                            .background(Color.bizarreOutline.opacity(0.3))
+                    }
                 }
             }
         }
@@ -172,7 +142,7 @@ public struct PosIPadCartPanel: View {
         .contextMenu {
             Button {
                 BrandHaptics.tap()
-                onShowCartList?()
+                onEditItem?(item)
             } label: {
                 Label("Edit line", systemImage: "pencil")
             }
@@ -205,12 +175,13 @@ public struct PosIPadCartPanel: View {
                 .textFieldStyle(.plain)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit { applyCoupon() }
                 .accessibilityIdentifier("pos.ipad.couponField")
 
             if !couponCode.isEmpty {
                 Button {
-                    BrandHaptics.tapMedium()
-                    // TODO: wire to coupon validation endpoint
+                    applyCoupon()
                 } label: {
                     Text("APPLY")
                         .font(.brandLabelLarge().weight(.bold))
@@ -237,12 +208,11 @@ public struct PosIPadCartPanel: View {
         .accessibilityIdentifier("pos.ipad.couponRow")
     }
 
-    // MARK: - Coupon entry state
-
-    /// Local coupon code state — owned by the cart panel on iPad.
-    @State private var couponCode: String = ""
-
     // MARK: - Sections
+
+    private var cartSummaryHeader: some View {
+        cartCustomerHeader(customer: cart.customer ?? .walkIn)
+    }
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
         HStack(spacing: BrandSpacing.md) {
@@ -382,6 +352,41 @@ public struct PosIPadCartPanel: View {
         }
         .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
         .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
+    }
+
+    // MARK: - Tender picker
+
+    @ViewBuilder
+    private var tenderPickerRow: some View {
+        if let onSelectTender, !cart.isEmpty, !cart.isFullyTendered {
+            Button {
+                BrandHaptics.tap()
+                onSelectTender()
+            } label: {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "creditcard")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+
+                    Text("Tender")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+
+                    Spacer(minLength: BrandSpacing.sm)
+
+                    Text("Add")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add tender")
+            .accessibilityIdentifier("pos.ipad.addTender")
+        }
     }
 
     // MARK: - Coupon field

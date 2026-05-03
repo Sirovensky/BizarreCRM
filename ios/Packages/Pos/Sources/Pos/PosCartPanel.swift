@@ -48,10 +48,6 @@ struct PosCartPanel: View {
     /// Task that auto-dismisses the toast after 5 s.
     @State private var undoTask: Task<Void, Never>?
 
-    /// Coupon code entry — mockup screen 3: "Coupon" section below cart rows.
-    /// Optional: when nil the field is still rendered but tapping Apply is a no-op.
-    var onShowCoupon: (() -> Void)?
-
     @State private var couponCode: String = ""
 
     var body: some View {
@@ -230,6 +226,9 @@ struct PosCartPanel: View {
                     ForEach(cart.items) { item in
                         PosCartRow(
                             item: item,
+                            onTap: {
+                                editQuantityFor = item
+                            },
                             onIncrement: {
                                 BrandHaptics.tap()
                                 cart.update(id: item.id, quantity: item.quantity + 1)
