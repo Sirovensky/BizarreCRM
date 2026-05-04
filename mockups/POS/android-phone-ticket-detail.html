@@ -3,14 +3,14 @@
 <title>Android Phone Ticket Detail — M3 Expressive</title>
 <style>
   :root{
-    /* Surface ramp ported from iOS dark assets — near-black warm tint, 8-unit steps. */
-    --bg:#0C0B09;
-    --surface:#141211;
-    --surface2:#1B1917;
+    /* Surface ramp from design-system.html (Option F warm-graphite). */
+    --bg:#0F0E0C;
+    --surface:#161513;
+    --surface2:#1E1C1A;
     --surface3:#221F1B;
     --on:#f4ece1; --on2:#a89b8a; --on3:#6f6557;
-    --cream:#fdeed0; --cream-on:#1a0b00;
-    --good:#7ad19a; --warn:#e8a33d; --err:#e2526c; --teal:#4db8c9;
+    --cream:#fdeed0; --cream-on:#2B1400;
+    --good:#34c47e; --warn:#e8a33d; --err:#e2526c; --teal:#4db8c9;
     --r:18px; --r-s:12px; --r-l:24px;
     font-family:-apple-system,Roboto,Segoe UI,sans-serif;
   }
@@ -768,7 +768,7 @@
       <li><b>Activity feed</b> — continuous rail, day dividers, oldest top → newest bottom, breathing pulse on Today. ✓</li>
       <li><b>Compose bar</b> — pinned bottom (vs tablet inline-with-timeline). Same Note / Diag / SMS segmented. Body padding 84 dp so last activity row stays visible above the bar. ✓</li>
       <li><b>Print / Pin / Edit / Merge / Split / Sign-off / Delete</b> — all under <code>⋮</code> overflow on phone (vs tablet's icon row + ⋮). ✓</li>
-      <li><b>Surface ramp</b> — same iOS-ported tokens (#0C0B09 → #141211 → #1B1917 → #221F1B). ✓</li>
+      <li><b>Surface ramp</b> — design-system Option F tokens (s-900 #0F0E0C → s-800 #161513 → s-700 #1E1C1A → #221F1B). ✓</li>
       <li><b>Removed from tablet, also removed here</b>: QR card (lives only on print label).</li>
       <li><b>Differences from tablet by design</b>: single column instead of 38/62 split; pill-row of inline icons (Print/Pin) collapses to <code>⋮</code> overflow; compose bar pinned to screen bottom rather than docked at the timeline pane bottom.</li>
     </ul>

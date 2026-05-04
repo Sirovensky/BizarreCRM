@@ -3,17 +3,15 @@
 <title>Tablet Ticket Detail — Mockup v2</title>
 <style>
   :root{
-    /* Surfaces ported from iOS dark-mode color assets:
-         SurfaceBase #0C0B09 → Surface1 #141211 → Surface2 #1B1917
-       Almost-black warm tint, 8-unit steps. Surface lift barely
-       perceptible — exactly the iOS feel. */
-    --bg:#0C0B09;
-    --surface:#141211;
-    --surface2:#1B1917;
+    /* Surfaces from design-system.html (Option F warm-graphite):
+         s-900 #0F0E0C → s-800 #161513 → s-700 #1E1C1A. */
+    --bg:#0F0E0C;
+    --surface:#161513;
+    --surface2:#1E1C1A;
     --surface3:#221F1B;
     --on:#f4ece1; --on2:#a89b8a; --on3:#6f6557;
-    --cream:#fdeed0; --cream-on:#1a0b00;
-    --good:#7ad19a; --warn:#e8a33d; --err:#e2526c; --teal:#4db8c9;
+    --cream:#fdeed0; --cream-on:#2B1400;
+    --good:#34c47e; --warn:#e8a33d; --err:#e2526c; --teal:#4db8c9;
     --r:18px; --r-s:12px; --r-l:24px;
     font-family:-apple-system,Roboto,Segoe UI,sans-serif;
   }
@@ -452,7 +450,7 @@
      customer / notes fields stacked on the right. Light paper background,
      dark ink, monospace ticket number. Sized roughly to a 4" × 2" label. */
   .label-paper{
-    width:560px;height:280px;background:#f6f1e7;color:#1a0b00;
+    width:560px;height:280px;background:#f6f1e7;color:#2B1400;
     border-radius:6px;padding:18px 22px;display:flex;align-items:center;gap:22px;
     font-family:ui-monospace,Consolas,Menlo,monospace;
     box-shadow:0 4px 18px rgba(0,0,0,.4);
@@ -470,7 +468,7 @@
   }
   .label-paper .fld:last-child{border-bottom:none}
   .label-paper .fld .k{color:#665344;text-transform:uppercase;font-size:10px;letter-spacing:.06em;align-self:center}
-  .label-paper .fld .v{color:#1a0b00;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .label-paper .fld .v{color:#2B1400;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .label-paper .fld.notes .v{white-space:normal;font-size:11px;line-height:1.35;color:#3a2a08}
   .label-paper .ticket-num{
     position:absolute;font-size:11px;color:#665344;letter-spacing:.1em;

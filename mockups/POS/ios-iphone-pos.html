@@ -17,10 +17,10 @@
        • Barlow Condensed hero numerics.
      ═════════════════════════════════════════════════════════════════════ */
   :root {
-    --bg-deep: #050403;
-    --bg: #0c0b09;
-    --surface-solid: #141211;
-    --surface-elev: #1b1917;
+    --bg-deep: #080706;
+    --bg: #0F0E0C;
+    --surface-solid: #161513;
+    --surface-elev: #1E1C1A;
     --surface-glass: rgba(28, 25, 22, 0.48);
     --outline: rgba(255, 250, 240, 0.08);
     --outline-bright: rgba(255, 250, 240, 0.14);
@@ -35,8 +35,8 @@
     --warning: #e8a33d;
     --error: #e2526c;
     --teal: #4db8c9;
-    --on-success-chip: #145c37;
-    --on-warning-chip: #7a5200;
+    --on-success-chip: #1F7A4A;
+    --on-warning-chip: #8A5200;
     --radius-lg: 22px;
     --radius: 16px;
     --radius-sm: 10px;
@@ -1066,12 +1066,12 @@
     -webkit-backdrop-filter: blur(14px) saturate(120%);
   }
   .light-mode .tile { background: var(--surface-solid); border-color: rgba(30,24,16,0.08); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
-  .light-mode .tile .t-price { color: #7a5200; }
+  .light-mode .tile .t-price { color: #A66D1F; }
   .light-mode .tile .t-stock { color: var(--success); }
   .light-mode .tile .t-stock.low { color: var(--warning); }
   .light-mode .cart-row { border-bottom-color: rgba(30,24,16,0.07); }
   .light-mode .cart-row .cr-icon { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.09); }
-  .light-mode .cart-row .cr-price { color: #7a5200; }
+  .light-mode .cart-row .cr-price { color: #A66D1F; }
   .light-mode .tender-safearea {
     background: linear-gradient(180deg, rgba(245,242,237,0.0), rgba(245,242,237,0.95) 35%);
     border-top-color: rgba(30,24,16,0.08);
@@ -1104,7 +1104,7 @@
   .light-mode .quick-amount.selected {
     background: radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.50), transparent 65%), rgba(253,238,208,0.25);
     border-color: rgba(253,238,208,0.70);
-    color: #7a5200;
+    color: #A66D1F;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 4px 12px rgba(253,238,208,0.25);
   }
   .light-mode .numkey {
@@ -1152,9 +1152,9 @@
   .light-mode .section-label { color: var(--muted-2); }
   .light-mode .frame-caption { color: #5a5550 !important; }
   .light-mode .sect-label { color: #5a5550 !important; }
-  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #7a5200; }
+  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #A66D1F; }
   .light-mode .meta { color: var(--muted); }
-  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #7a5200; }
+  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #A66D1F; }
 
   /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
   .light-mode h1 {
@@ -1169,9 +1169,9 @@
   .light-mode .cart-head .ch-name { color: #1a1816 !important; }
   .light-mode .cart-row .cn { color: #1a1816 !important; }
   .light-mode .cart-row .cr-name { color: #1a1816 !important; }
-  .light-mode .cart-row .cr-price { color: #7a5200 !important; }
+  .light-mode .cart-row .cr-price { color: #A66D1F !important; }
   .light-mode .tile .t-name { color: #1a1816 !important; }
-  .light-mode .tile .t-price { color: #7a5200 !important; }
+  .light-mode .tile .t-price { color: #A66D1F !important; }
   .light-mode .total-line .tl-amount { color: #1a1816 !important; }
   .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
   .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
@@ -2365,7 +2365,7 @@
 <div style="background: #f5f2ed; padding: 40px 24px 56px; margin-top: 80px; border-top: 1px solid rgba(0,0,0,0.08);">
   <h1 style="color: #1a1816; background: linear-gradient(180deg, #1a1816, #5a5550); -webkit-background-clip: text; background-clip: text; color: transparent; padding-top: 8px;">Light mode · same flow</h1>
   <p class="intro" style="color: #5a5550;">
-    Exact same 11 frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #7a5200;">#fdeed0</code> stays constant.
+    Exact same 11 frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #A66D1F;">#fdeed0</code> stays constant.
     Surface tokens flip to near-white; semantic colours (success / warning / error / teal) are darkened for
     WCAG AA contrast on white-ish backgrounds.
   </p>

@@ -1272,7 +1272,7 @@
     <h2 class="display">Android phone · Material 3 Expressive</h2>
     <div><span class="badge">412 × 915 · Compose Material3</span></div>
   </div>
-  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Material 3 Expressive: 24px+ corner radii, asymmetric tile sizes (Sales is 2× wide), bold typography, primary-tone hero block (no glass — solid brand fills). Bottom navigation bar with 5 destinations. Floating Action Button (FAB) for "+ ticket". More color saturation than iOS — primary cream/caramel fills are intentional.</p>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Material 3 Expressive: 24px+ corner radii, asymmetric tile sizes (Sales is 2× wide), bold typography, primary-tone hero block (no glass — solid brand fills). Bottom navigation bar with 5 destinations. <strong style="color:rgb(var(--primary-cream));">Extended FAB</strong> — default <span style="white-space:nowrap;">📷 Snap to ticket</span> (camera → attach photo to in-progress ticket). User-configurable in Settings → Dashboard quick action; alt options include 🎤 Voice note · 🔍 Scan IMEI · 📞 Call top customer · 📤 Send quote · 📦 Receive part · ⏱️ Start labor timer · 🏁 Advance ticket stage · 💰 Open drawer. POS still owns ticket creation; FAB is for capture-during-walkaround. More color saturation than iOS — primary cream/caramel fills are intentional.</p>
   <div class="platform-grid phone-grid">
     <!-- ANDROID PHONE DARK -->
     <div>
@@ -1377,8 +1377,6 @@
               </div>
             </div>
           </div>
-          <!-- FAB -->
-          <button class="absolute right-4 bottom-24 m3-fab-dark px-5 py-4 flex items-center gap-2 text-sm font-semibold">+ Ticket</button>
           <!-- Bottom nav (M3 expressive — pill highlight on active) -->
           <div class="absolute bottom-0 left-0 right-0 pt-2 pb-3" style="background:rgb(var(--s-800));">
             <div class="flex justify-around items-center text-[10px] mono">
@@ -1389,6 +1387,8 @@
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">⋯</div><span style="color:rgb(var(--s-400));">More</span></div>
             </div>
           </div>
+          <!-- Extended FAB · default action: Snap to ticket (configurable in Settings) -->
+          <button class="absolute flex items-center gap-2 m3-fab-dark px-5" style="right:16px; bottom:96px; height:56px; border-radius:18px; font-size:14px; font-weight:600;"><span style="font-size:20px;">📷</span> Snap to ticket</button>
         </div>
       </div>
     </div>
@@ -1490,7 +1490,6 @@
               </div>
             </div>
           </div>
-          <button class="absolute right-4 bottom-24 m3-fab-light px-5 py-4 flex items-center gap-2 text-sm font-semibold">+ Ticket</button>
           <div class="absolute bottom-0 left-0 right-0 pt-2 pb-3" style="background:rgb(var(--s-100));">
             <div class="flex justify-around items-center text-[10px] mono">
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 rounded-full" style="background:rgb(var(--primary-caramel));color:rgb(var(--primary-onCaramel));">▦</div><span style="color:rgb(var(--primary-caramel));font-weight:600;">Home</span></div>
@@ -1500,6 +1499,8 @@
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">⋯</div><span style="color:rgb(var(--s-600));">More</span></div>
             </div>
           </div>
+          <!-- Extended FAB · default action: Snap to ticket (configurable in Settings) -->
+          <button class="absolute flex items-center gap-2 m3-fab-light px-5" style="right:16px; bottom:96px; height:56px; border-radius:18px; font-size:14px; font-weight:600;"><span style="font-size:20px;">📷</span> Snap to ticket</button>
         </div>
       </div>
     </div>

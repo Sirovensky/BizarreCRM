@@ -24,10 +24,10 @@
        • Post-sale: cart column collapses 420→0px, receipt expands to fill
      ═════════════════════════════════════════════════════════════════════ */
   :root {
-    --bg-deep: #050403;
-    --bg: #0c0b09;
-    --surface-solid: #141211;
-    --surface-elev: #1b1917;
+    --bg-deep: #080706;
+    --bg: #0F0E0C;
+    --surface-solid: #161513;
+    --surface-elev: #1E1C1A;
     --surface-glass: rgba(28, 25, 22, 0.48);
     --outline: rgba(255, 250, 240, 0.08);
     --outline-bright: rgba(255, 250, 240, 0.14);
@@ -1239,7 +1239,7 @@
   }
   .light-mode .rail hr { border-top-color: rgba(30,24,16,0.08); }
   .light-mode .rail-item { color: var(--muted); }
-  .light-mode .rail-item.active { background: rgba(253,238,208,0.30); color: #7a5200; }
+  .light-mode .rail-item.active { background: rgba(253,238,208,0.30); color: #A66D1F; }
   .light-mode .rail-item .dot { box-shadow: 0 0 0 2px #f5f2ed; }
   .light-mode .topbar {
     background: rgba(245,242,237,0.88);
@@ -1264,7 +1264,7 @@
     background: linear-gradient(180deg, rgba(240,237,232,0.4), rgba(240,237,232,0.6));
   }
   .light-mode .tile { background: var(--surface-solid); border-color: rgba(30,24,16,0.08); box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-  .light-mode .tile .t-price { color: #7a5200; }
+  .light-mode .tile .t-price { color: #A66D1F; }
   .light-mode .tile .t-stock { color: var(--success); }
   .light-mode .tile .t-stock.low { color: var(--warning); }
   .light-mode .cart {
@@ -1275,7 +1275,7 @@
   .light-mode .cart-row { border-bottom-color: rgba(30,24,16,0.07); }
   .light-mode .cart-row.editing { background: rgba(253,238,208,0.15); }
   .light-mode .cart-row .ci { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.09); }
-  .light-mode .cart-row .cp { color: #7a5200; }
+  .light-mode .cart-row .cp { color: #A66D1F; }
   .light-mode .totals { border-top-color: rgba(30,24,16,0.08); }
   .light-mode .trow { color: var(--muted); }
   .light-mode .tender-btn {
@@ -1330,7 +1330,7 @@
   .light-mode .quick-amount.selected {
     background: radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.50), transparent 65%), rgba(253,238,208,0.25);
     border-color: rgba(253,238,208,0.70);
-    color: #7a5200;
+    color: #A66D1F;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 4px 14px rgba(253,238,208,0.25);
   }
   .light-mode .numkey {
@@ -1389,10 +1389,10 @@
   .light-mode .section-label { color: var(--muted-2); }
   .light-mode .frame-caption { color: #5a5550 !important; }
   .light-mode .sect-label { color: #5a5550 !important; }
-  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #7a5200; }
-  .light-mode .frame-caption code { background: rgba(30,24,16,0.05); color: #7a5200; }
+  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #A66D1F; }
+  .light-mode .frame-caption code { background: rgba(30,24,16,0.05); color: #A66D1F; }
   .light-mode .meta { color: var(--muted); }
-  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #7a5200; }
+  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #A66D1F; }
 
   /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
   .light-mode h1 {
@@ -1407,9 +1407,9 @@
   .light-mode .topbar .t-title { color: #1a1816 !important; }
   .light-mode .cart-head .ch-name { color: #1a1816 !important; }
   .light-mode .cart-row .cn { color: #1a1816 !important; }
-  .light-mode .cart-row .cp { color: #7a5200 !important; }
+  .light-mode .cart-row .cp { color: #A66D1F !important; }
   .light-mode .tile .t-name { color: #1a1816 !important; }
-  .light-mode .tile .t-price { color: #7a5200 !important; }
+  .light-mode .tile .t-price { color: #A66D1F !important; }
   .light-mode .ttotal .ta { color: #1a1816 !important; }
   .light-mode .tender-hero .th-amount { color: #1a1816 !important; }
   .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
@@ -2899,7 +2899,7 @@
 <div style="background: #f5f2ed; padding: 40px 24px 56px; margin-top: 80px; border-top: 1px solid rgba(0,0,0,0.08);">
   <h1 style="background: linear-gradient(180deg, #1a1816, #5a5550); -webkit-background-clip: text; background-clip: text; color: transparent; padding-top: 8px;">Light mode · same flow</h1>
   <p class="intro" style="color: #5a5550;">
-    Exact same 10 iPad frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #7a5200;">#fdeed0</code> stays constant.
+    Exact same 10 iPad frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #A66D1F;">#fdeed0</code> stays constant.
     Rail, topbar, cart, and inspector backgrounds flip to near-white; semantic colours are darkened for
     WCAG AA contrast on white-ish surfaces.
   </p>
