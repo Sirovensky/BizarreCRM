@@ -1161,6 +1161,95 @@ export function registerManagementIpc(): void {
     return bodyOf(res);
   }));
 
+  // ── Per-Tenant Backup (super-admin only) ───────────────────────
+  // Tenant-scoped /api/v1/admin/* backup routes are blocked in
+  // multi-tenant mode by admin.routes.ts kill-switch (correctly — those
+  // expose drive listings + .env paths to tenant admins). Super-admin
+  // operates per-tenant via these endpoints; the renderer Backup page
+  // adds a tenant picker when multiTenant=true and routes here.
+  //
+  // Reuses the same 5-minute BACKUP_TIMEOUT_MS as the single-tenant
+  // admin:run-backup path.
+
+  ipcMain.handle('super-admin:tenant-backup-list', wrapHandler(async (event, slug: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const res = await apiRequest('GET', `/super-admin/api/tenants/${encodeURIComponent(s)}/backups`);
+    return bodyOf(res);
+  }));
+
+  ipcMain.handle('super-admin:tenant-backup-run', wrapHandler(async (event, slug: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const res = await apiRequest(
+      'POST',
+      `/super-admin/api/tenants/${encodeURIComponent(s)}/backups`,
+      null,
+      'authenticated',
+      5 * 60 * 1000,
+    );
+    return bodyOf(res);
+  }));
+
+  ipcMain.handle('super-admin:tenant-backup-delete', wrapHandler(async (event, slug: unknown, filename: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const { filename: f } = SchemaFilename.parse({ filename });
+    const res = await apiRequest(
+      'DELETE',
+      `/super-admin/api/tenants/${encodeURIComponent(s)}/backups/${encodeURIComponent(f)}`,
+    );
+    return bodyOf(res);
+  }));
+
+  ipcMain.handle('super-admin:tenant-backup-restore', wrapHandler(async (event, slug: unknown, filename: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const { filename: f } = SchemaFilename.parse({ filename });
+    const res = await apiRequest(
+      'POST',
+      `/super-admin/api/tenants/${encodeURIComponent(s)}/backups/${encodeURIComponent(f)}/restore`,
+      null,
+      'authenticated',
+      5 * 60 * 1000,
+    );
+    return bodyOf(res);
+  }));
+
+  ipcMain.handle('super-admin:tenant-backup-settings-get', wrapHandler(async (event, slug: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const res = await apiRequest(
+      'GET',
+      `/super-admin/api/tenants/${encodeURIComponent(s)}/backup-settings`,
+    );
+    return bodyOf(res);
+  }));
+
+  ipcMain.handle('super-admin:tenant-backup-settings-update', wrapHandler(async (event, slug: unknown, settings: unknown) => {
+    assertRendererOrigin(event);
+    const { slug: s } = SchemaSlug.parse({ slug });
+    const parsed = SchemaBackupSettings.safeParse(settings);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid backup settings' };
+    }
+    const res = await apiRequest(
+      'PUT',
+      `/super-admin/api/tenants/${encodeURIComponent(s)}/backup-settings`,
+      parsed.data,
+    );
+    return bodyOf(res);
+  }));
+
+  // Host-level drive listing — used by the path picker on either single
+  // or multi-tenant Backup page. Multi-tenant mode hits this via
+  // super-admin route since admin:* is blocked.
+  ipcMain.handle('super-admin:backup-drives', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const res = await apiRequest('GET', '/super-admin/api/backup-drives');
+    return bodyOf(res);
+  }));
+
   // ── Platform Config ────────────────────────────────────────────
 
   ipcMain.handle('super-admin:get-config', wrapHandler(async (event) => {

@@ -76,6 +76,13 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:list-tenant-webhook-failures',
   'super-admin:retry-tenant-webhook-failure',
   'super-admin:list-tenant-automation-runs',
+  'super-admin:tenant-backup-list',
+  'super-admin:tenant-backup-run',
+  'super-admin:tenant-backup-delete',
+  'super-admin:tenant-backup-restore',
+  'super-admin:tenant-backup-settings-get',
+  'super-admin:tenant-backup-settings-update',
+  'super-admin:backup-drives',
   // admin:* (backup)
   'admin:get-status',
   'admin:list-drives',
@@ -221,6 +228,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       safeInvoke('super-admin:retry-tenant-webhook-failure', params),
     listTenantAutomationRuns: (params: { slug: string; status?: string; automationId?: number; limit?: number }) =>
       safeInvoke('super-admin:list-tenant-automation-runs', params),
+    // Per-tenant backup management. Mirrors `admin.*` backup methods but
+    // takes a `slug` first argument so super-admins can manage every
+    // tenant's backups in multi-tenant mode (the tenant-scoped admin
+    // routes are blocked there).
+    tenantBackupList: (slug: string) => safeInvoke('super-admin:tenant-backup-list', slug),
+    tenantBackupRun: (slug: string) => safeInvoke('super-admin:tenant-backup-run', slug),
+    tenantBackupDelete: (slug: string, filename: string) =>
+      safeInvoke('super-admin:tenant-backup-delete', slug, filename),
+    tenantBackupRestore: (slug: string, filename: string) =>
+      safeInvoke('super-admin:tenant-backup-restore', slug, filename),
+    tenantBackupSettingsGet: (slug: string) =>
+      safeInvoke('super-admin:tenant-backup-settings-get', slug),
+    tenantBackupSettingsUpdate: (slug: string, settings: unknown) =>
+      safeInvoke('super-admin:tenant-backup-settings-update', slug, settings),
+    backupDrives: () => safeInvoke('super-admin:backup-drives'),
   },
 
   // ── Admin (Backup + Signup-Captcha Toggle) ─────────────────────

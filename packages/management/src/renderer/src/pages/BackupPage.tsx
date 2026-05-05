@@ -14,11 +14,35 @@ interface Backup {
   created: string;
 }
 
+/**
+ * Server-side `listBackups()` returns rows shaped `{ name, size, date }`
+ * (see packages/server/src/services/backup.ts:721). The renderer's
+ * `Backup` interface uses `filename` / `created` instead. Previously the
+ * page cast directly with `as Backup[]` — at runtime the rendered cells
+ * read `b.filename` / `b.created` which were `undefined`, so the file
+ * column showed empty text. This normalizer is the single source of the
+ * shape conversion and applies to both single-tenant (`admin.*`) and
+ * multi-tenant (`superAdmin.tenantBackup*`) responses.
+ */
+function normalizeBackupRow(row: { name?: string; filename?: string; size: number; date?: string; created?: string }): Backup {
+  return {
+    filename: row.filename ?? row.name ?? '',
+    size: row.size,
+    created: row.created ?? row.date ?? '',
+  };
+}
+
 interface BackupSettings {
   path: string;
   schedule: string;
   retention: number;
   lastRun: string | null;
+}
+
+interface TenantOption {
+  slug: string;
+  name: string;
+  status: string;
 }
 
 export function BackupPage() {
@@ -30,6 +54,16 @@ export function BackupPage() {
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
 
+  // Multi-tenant mode: super-admins manage backups per-tenant via the
+  // /super-admin/api/tenants/:slug/backups routes (the tenant-scoped
+  // /api/v1/admin/* path is intentionally hard-blocked in multi-tenant
+  // mode so a tenant admin cannot enumerate filesystem drives or sibling
+  // tenants). Tenant data export remains available to tenants via
+  // /api/v1/data-export — backup files (encrypted, restorable) are not.
+  const [isMultiTenant, setIsMultiTenant] = useState<boolean | null>(null);
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+
   // DASH-ELEC-256: guard setState calls after component unmounts (e.g. logout
   // while a 5-minute backup or restore is in-flight).
   const isMountedRef = useRef(true);
@@ -38,50 +72,106 @@ export function BackupPage() {
     return () => { isMountedRef.current = false; };
   }, []);
 
+  // Determine runtime mode + (in multi-tenant) load the tenant picker. Runs
+  // once. The picker stays visible whenever isMultiTenant=true so operators
+  // can switch between tenants without leaving the page.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const setup = await getAPI().management.setupStatus();
+        if (cancelled) return;
+        const multi = Boolean(setup.success && setup.data?.multiTenant);
+        setIsMultiTenant(multi);
+        if (multi) {
+          const tres = await getAPI().superAdmin.listTenants();
+          if (cancelled) return;
+          if (tres.success && Array.isArray(tres.data)) {
+            const opts = (tres.data as TenantOption[])
+              .filter((t) => t.status === 'active' || t.status === 'suspended');
+            setTenants(opts);
+            if (opts.length > 0) setSelectedSlug(opts[0].slug);
+          }
+        }
+      } catch (err) {
+        console.warn('[BackupPage] mode detection failed', err);
+        // Fall through — single-tenant assumption + admin.* routes will
+        // surface their own error if the server is unreachable.
+        setIsMultiTenant(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const api = getAPI();
-      const [backupsRes, statusRes] = await Promise.all([
-        api.admin.listBackups(),
-        api.admin.getStatus(),
-      ]);
-      if (!isMountedRef.current) return;
-      // AUDIT-MGT-010: detect 401 on either response and trigger global auto-logout.
-      if (handleApiResponse(backupsRes) || handleApiResponse(statusRes)) return;
-      if (backupsRes.success && backupsRes.data) {
-        setBackups(Array.isArray(backupsRes.data) ? backupsRes.data as Backup[] : []);
-      }
-      if (statusRes.success && statusRes.data) {
-        const d = statusRes.data as { backup?: BackupSettings };
-        if (d.backup) setSettings(d.backup);
+      // Branch by mode. Multi-tenant routes through super-admin.* + slug;
+      // single-tenant uses the original admin.* path. In multi-tenant
+      // before a slug is picked (very brief), fall through to a no-op so
+      // we don't spuriously toast.
+      if (isMultiTenant === true) {
+        if (!selectedSlug) {
+          if (isMountedRef.current) setLoading(false);
+          return;
+        }
+        const [backupsRes, settingsRes] = await Promise.all([
+          api.superAdmin.tenantBackupList(selectedSlug),
+          api.superAdmin.tenantBackupSettingsGet(selectedSlug),
+        ]);
+        if (!isMountedRef.current) return;
+        if (handleApiResponse(backupsRes) || handleApiResponse(settingsRes)) return;
+        if (backupsRes.success && backupsRes.data) {
+          setBackups(Array.isArray(backupsRes.data)
+            ? (backupsRes.data as Array<Record<string, unknown>>).map((r) => normalizeBackupRow(r as never))
+            : []);
+        }
+        if (settingsRes.success && settingsRes.data) {
+          // Server-side getBackupSettings returns { path, schedule, retention, lastRun }
+          setSettings(settingsRes.data as unknown as BackupSettings);
+        }
+      } else {
+        const [backupsRes, statusRes] = await Promise.all([
+          api.admin.listBackups(),
+          api.admin.getStatus(),
+        ]);
+        if (!isMountedRef.current) return;
+        if (handleApiResponse(backupsRes) || handleApiResponse(statusRes)) return;
+        if (backupsRes.success && backupsRes.data) {
+          setBackups(Array.isArray(backupsRes.data)
+            ? (backupsRes.data as Array<Record<string, unknown>>).map((r) => normalizeBackupRow(r as never))
+            : []);
+        }
+        if (statusRes.success && statusRes.data) {
+          const d = statusRes.data as { backup?: BackupSettings };
+          if (d.backup) setSettings(d.backup);
+        }
       }
     } catch (err) {
-      // AUDIT-MGT-013: Differentiate expected 403 (multi-tenant mode disables
-      // admin backup routes) from genuine failures (server down, disk error,
-      // IPC bridge wedged). Expected 403 is suppressed silently; anything else
-      // surfaces as a user-visible toast so operators know something is wrong.
-      const isExpected =
-        (err as { response?: { status?: number } }).response?.status === 403 ||
-        (err instanceof Error &&
-          (err.message.includes('FORBIDDEN') || err.message.includes('multi-tenant')));
-
+      // AUDIT-MGT-013: a 403 from the tenant-scoped admin route used to be
+      // expected here in multi-tenant mode; with the super-admin routing
+      // above that error is no longer expected, so a 403 reaching here is
+      // a real problem (super-admin session expired, etc.) and should toast.
       console.warn('[BackupPage] refresh failed', err);
-
-      if (!isExpected) {
-        const msg = err instanceof Error ? err.message : 'Failed to load backup data';
-        toast.error(`Backup: ${msg}`);
-      }
+      const msg = err instanceof Error ? err.message : 'Failed to load backup data';
+      toast.error(`Backup: ${msg}`);
     } finally {
       if (isMountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [isMultiTenant, selectedSlug]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Re-run refresh whenever mode is determined or slug changes.
+  useEffect(() => {
+    if (isMultiTenant === null) return;
+    refresh();
+  }, [isMultiTenant, selectedSlug, refresh]);
 
   const handleBackupNow = async () => {
     setBacking(true);
     try {
-      const res = await getAPI().admin.runBackup();
+      const res = isMultiTenant && selectedSlug
+        ? await getAPI().superAdmin.tenantBackupRun(selectedSlug)
+        : await getAPI().admin.runBackup();
       if (!isMountedRef.current) return;
       if (res.success) {
         toast.success('Backup completed');
@@ -98,7 +188,9 @@ export function BackupPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await getAPI().admin.deleteBackup(deleteTarget);
+    const res = isMultiTenant && selectedSlug
+      ? await getAPI().superAdmin.tenantBackupDelete(selectedSlug, deleteTarget)
+      : await getAPI().admin.deleteBackup(deleteTarget);
     if (res.success) {
       toast.success('Backup deleted');
       setDeleteTarget(null);
@@ -112,7 +204,9 @@ export function BackupPage() {
     if (!restoreTarget) return;
     setRestoring(true);
     try {
-      const res = await getAPI().admin.restoreBackup(restoreTarget);
+      const res = isMultiTenant && selectedSlug
+        ? await getAPI().superAdmin.tenantBackupRestore(selectedSlug, restoreTarget)
+        : await getAPI().admin.restoreBackup(restoreTarget);
       if (!isMountedRef.current) return;
       if (res.success) {
         toast.success(
@@ -180,18 +274,39 @@ export function BackupPage() {
 
   return (
     <div className="space-y-3 lg:space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-lg font-bold text-surface-100 flex items-center gap-2">
           <Database className="w-5 h-5 text-accent-400" />
           Backups
         </h1>
         <div className="flex items-center gap-2">
+          {/*
+            Multi-tenant tenant picker. Visible only when the runtime is
+            multi-tenant; super-admin has elevated access to manage every
+            tenant's backups. Tenants themselves never reach this page in
+            multi-tenant mode (they get the documented data-export flow
+            via /api/v1/data-export instead).
+          */}
+          {isMultiTenant && tenants.length > 0 && (
+            <select
+              value={selectedSlug ?? ''}
+              onChange={(e) => setSelectedSlug(e.target.value || null)}
+              className="px-2 py-1.5 text-xs bg-surface-900 border border-surface-700 rounded-lg text-surface-200 focus:outline-none focus:border-accent-500"
+              aria-label="Tenant"
+            >
+              {tenants.map((t) => (
+                <option key={t.slug} value={t.slug}>
+                  {t.name} ({t.slug}){t.status !== 'active' ? ` — ${t.status}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={handleBackupNow}
-            disabled={backing}
+            disabled={backing || (isMultiTenant === true && !selectedSlug)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
@@ -199,6 +314,19 @@ export function BackupPage() {
           </button>
         </div>
       </div>
+      {/*
+        Show an explicit notice in multi-tenant mode so the operator
+        knows the listed backups belong to the selected tenant only.
+        Removes the surprise of "I clicked the menu item but where are
+        the backups for the OTHER tenant?".
+      */}
+      {isMultiTenant && (
+        <div className="text-xs text-surface-500">
+          Managing backups for tenant <span className="font-mono text-surface-300">{selectedSlug ?? '—'}</span>.
+          Switch tenants with the picker above. Tenant admins cannot access these files;
+          tenants export their own data via the in-app data-export flow.
+        </div>
+      )}
 
       {/* Health banner */}
       <div className={`flex items-start gap-3 p-4 rounded-lg border ${healthMeta[health].color}`}>

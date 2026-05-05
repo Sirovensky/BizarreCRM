@@ -53,6 +53,17 @@ import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
+import {
+  getBackupSettings as backupGetSettings,
+  updateBackupSettings as backupUpdateSettings,
+  runBackup as backupRun,
+  listBackups as backupList,
+  deleteBackup as backupDelete,
+  listDrives as backupListDrives,
+  resolveBackupPath as backupResolvePath,
+  restoreBackup as backupRestore,
+  isTenantBackupRunning,
+} from '../services/backup.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -1290,6 +1301,361 @@ router.get('/backups', (_req, res) => {
   try { masterSizeMb = Math.round(fs.statSync(config.masterDbPath).size / (1024 * 1024) * 100) / 100; } catch {}
 
   res.json({ success: true, data: { tenants: backups, master_db_size_mb: masterSizeMb } });
+});
+
+// ─── Per-Tenant Backup Control (super-admin only) ───────────────────
+//
+// In multi-tenant mode, /api/v1/admin/* backup routes are hard-blocked for
+// tenant admins (admin.routes.ts kill-switch). Super-admins manage every
+// tenant's backups through the per-tenant endpoints below. Tenants
+// themselves still have full data export via /api/v1/data-export — what
+// they DO NOT have is access to encrypted backup files, restore, drive
+// browsing, or backup settings.
+//
+// All routes resolve the target tenant DB via getTenantDb(slug) and pass
+// it through the same backup helpers admin.routes uses, so single-tenant
+// behavior and multi-tenant per-tenant behavior share one codepath.
+//
+// Filename safety: the same path-traversal guard the admin route uses
+// applies here. resolveBackupPath() additionally enforces containment
+// inside the tenant's configured backup_path.
+
+const TENANT_BACKUP_ROUTE_BASE = '/tenants/:slug/backups';
+
+/** Reject filenames that look like path traversal before they reach disk. */
+function rejectUnsafeFilename(filename: string): string | null {
+  if (!filename) return 'Filename required';
+  if (filename.includes('..')) return 'Invalid filename';
+  if (filename.includes('/') || filename.includes('\\')) return 'Invalid filename';
+  return null;
+}
+
+/**
+ * Audit helper for the per-tenant super-admin backup routes. Centralizes
+ * the `getMasterDb()!` non-null assertion (master DB is always loaded by
+ * the time these routes are reachable; super-admin auth itself runs
+ * against it).
+ */
+function auditBackup(action: string, ip: string, details: Record<string, unknown>): void {
+  const master = getMasterDb()!;
+  audit(master, action, null, ip, details);
+}
+
+/**
+ * Lookup a tenant by slug for the backup routes. Returns the master-DB
+ * tenant row or sends a 404 and returns null. Avoids duplicating the
+ * not-found-vs-bad-status branching in every route below.
+ */
+function lookupTenantOr404(slug: string, res: Response): { id: number; slug: string; name: string; status: string; db_path: string } | null {
+  const tenants = listTenants({}) as AnyRow[];
+  const tenant = tenants.find((t) => t.slug === slug) as
+    | { id: number; slug: string; name: string; status: string; db_path: string }
+    | undefined;
+  if (!tenant) {
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+    return null;
+  }
+  return tenant;
+}
+
+router.get(`${TENANT_BACKUP_ROUTE_BASE}`, async (req: Request<{ slug: string }>, res: Response) => {
+  const slug = req.params.slug;
+  const tenant = lookupTenantOr404(slug, res);
+  if (!tenant) return;
+  let tdb: import('better-sqlite3').Database | undefined;
+  try {
+    tdb = await getTenantDb(slug);
+    const backups = backupList(tdb);
+    res.json({ success: true, data: backups });
+  } catch (err) {
+    logger.error('super-admin tenant backup list failed', {
+      slug, error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Failed to list backups' });
+  } finally {
+    if (tdb !== undefined) releaseTenantDb(slug);
+  }
+});
+
+router.post(
+  `${TENANT_BACKUP_ROUTE_BASE}`,
+  requireStepUpTotpSuperAdmin('super_admin_tenant_backup_run'),
+  async (req: Request<{ slug: string }>, res: Response) => {
+    const slug = req.params.slug;
+    const tenant = lookupTenantOr404(slug, res);
+    if (!tenant) return;
+    if (isTenantBackupRunning(slug)) {
+      res.status(429).json({ success: false, message: 'Backup already in progress for this tenant' });
+      return;
+    }
+    let tdb: import('better-sqlite3').Database | undefined;
+    try {
+      tdb = await getTenantDb(slug);
+      const result = await backupRun(tdb, { tenantSlug: slug, tenantId: tenant.id });
+      auditBackup('super_admin_tenant_backup_run', req.ip || 'unknown', {
+        tenant_slug: slug,
+        tenant_id: tenant.id,
+        success: result.success,
+        file: result.file,
+      });
+      res.json({ success: result.success, data: result });
+    } catch (err) {
+      logger.error('super-admin tenant backup run failed', {
+        slug, error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ success: false, message: 'Backup failed' });
+    } finally {
+      if (tdb !== undefined) releaseTenantDb(slug);
+    }
+  },
+);
+
+router.get(
+  `${TENANT_BACKUP_ROUTE_BASE}/:filename/download`,
+  async (req: Request<{ slug: string; filename: string }>, res: Response) => {
+    const slug = req.params.slug;
+    const filename = req.params.filename;
+    const tenant = lookupTenantOr404(slug, res);
+    if (!tenant) return;
+    const filenameError = rejectUnsafeFilename(filename);
+    if (filenameError) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: filenameError });
+      return;
+    }
+    let tdb: import('better-sqlite3').Database | undefined;
+    try {
+      tdb = await getTenantDb(slug);
+      const fullPath = backupResolvePath(tdb, filename);
+      if (!fullPath) {
+        res.status(404).json({ success: false, message: 'Backup not found' });
+        return;
+      }
+      auditBackup('super_admin_tenant_backup_download', req.ip || 'unknown', {
+        tenant_slug: slug, tenant_id: tenant.id, filename,
+      });
+      const stat = fs.statSync(fullPath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      const stream = fs.createReadStream(fullPath);
+      stream.on('error', (err) => {
+        logger.error('super-admin tenant backup download stream error', {
+          slug, filename, error: err.message,
+        });
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: 'Stream error' });
+        }
+      });
+      stream.pipe(res);
+    } catch (err) {
+      logger.error('super-admin tenant backup download failed', {
+        slug, filename, error: err instanceof Error ? err.message : String(err),
+      });
+      if (!res.headersSent) res.status(500).json({ success: false, message: 'Download failed' });
+    } finally {
+      if (tdb !== undefined) releaseTenantDb(slug);
+    }
+  },
+);
+
+// One restore at a time across the whole process — same global mutex
+// admin.routes uses, intentionally not per-tenant: restoring is heavy and
+// the I/O contention would crater performance for any tenant whose backup
+// is mid-restore in another tab.
+let superAdminRestoreInProgress = false;
+router.post(
+  `${TENANT_BACKUP_ROUTE_BASE}/:filename/restore`,
+  requireStepUpTotpSuperAdmin('super_admin_tenant_backup_restore'),
+  async (req: Request<{ slug: string; filename: string }>, res: Response) => {
+    const slug = req.params.slug;
+    const filename = req.params.filename;
+    const tenant = lookupTenantOr404(slug, res);
+    if (!tenant) return;
+    const filenameError = rejectUnsafeFilename(filename);
+    if (filenameError) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: filenameError });
+      return;
+    }
+    if (superAdminRestoreInProgress) {
+      res.status(429).json({ success: false, message: 'Another restore is already in progress' });
+      return;
+    }
+    if (isTenantBackupRunning(slug)) {
+      res.status(409).json({ success: false, message: 'Cannot restore while a backup is running' });
+      return;
+    }
+    const allowUnsigned = req.body?.allow_unsigned === true;
+    superAdminRestoreInProgress = true;
+    auditBackup('super_admin_tenant_backup_restore_start', req.ip || 'unknown', {
+      tenant_slug: slug, tenant_id: tenant.id, filename, allowUnsigned,
+    });
+    let tdb: import('better-sqlite3').Database | undefined;
+    try {
+      tdb = await getTenantDb(slug);
+      const tenantDbPath = path.join(config.tenantDataDir, tenant.db_path);
+      const result = await backupRestore(tdb, filename, {
+        targetDbPath: tenantDbPath,
+        expectedSlug: slug,
+        expectedTenantId: tenant.id,
+        allowUnsigned,
+        onBeforeReplace: () => {
+          // Release pool handle so the file swap can rename over it.
+          // The pool's lazy-reopen path will pick up the new file on the
+          // next request that resolves this tenant.
+          try {
+            if (tdb && typeof (tdb as any).close === 'function') (tdb as any).close();
+          } catch (err) {
+            logger.warn('super-admin: could not close tenant DB before restore swap', {
+              slug, error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        },
+      });
+      if (!result.success) {
+        auditBackup('super_admin_tenant_backup_restore_failed', req.ip || 'unknown', {
+          tenant_slug: slug, tenant_id: tenant.id, filename,
+          error: result.message, unsigned: Boolean(result.unsigned),
+        });
+        const status = result.unsigned || /sidecar|tenant|slug/i.test(result.message) ? 400 : 500;
+        res.status(status).json({ success: false, message: result.message, unsigned: result.unsigned });
+        return;
+      }
+      auditBackup('super_admin_tenant_backup_restore_success', req.ip || 'unknown', {
+        tenant_slug: slug, tenant_id: tenant.id, filename,
+        hash: result.hash,
+        safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+        unsigned: Boolean(result.unsigned), allowUnsigned,
+      });
+      res.json({
+        success: true,
+        data: {
+          message: 'Restore completed. Tenant DB will reopen on next request.',
+          hash: result.hash,
+          safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
+          unsigned: Boolean(result.unsigned),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      auditBackup('super_admin_tenant_backup_restore_failed', req.ip || 'unknown', {
+        tenant_slug: slug, tenant_id: tenant.id, filename, error: msg,
+      });
+      logger.error('super-admin tenant backup restore crashed', { slug, filename, error: msg });
+      res.status(500).json({ success: false, message: msg });
+    } finally {
+      // releaseTenantDb is intentionally not called when the handle was
+      // closed in onBeforeReplace — the pool entry was removed by close().
+      superAdminRestoreInProgress = false;
+    }
+  },
+);
+
+router.delete(
+  `${TENANT_BACKUP_ROUTE_BASE}/:filename`,
+  requireStepUpTotpSuperAdmin('super_admin_tenant_backup_delete'),
+  async (req: Request<{ slug: string; filename: string }>, res: Response) => {
+    const slug = req.params.slug;
+    const filename = req.params.filename;
+    const tenant = lookupTenantOr404(slug, res);
+    if (!tenant) return;
+    const filenameError = rejectUnsafeFilename(filename);
+    if (filenameError) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: filenameError });
+      return;
+    }
+    let tdb: import('better-sqlite3').Database | undefined;
+    try {
+      tdb = await getTenantDb(slug);
+      const ok = backupDelete(tdb, filename);
+      auditBackup('super_admin_tenant_backup_delete', req.ip || 'unknown', {
+        tenant_slug: slug, tenant_id: tenant.id, filename, ok,
+      });
+      res.json({ success: ok });
+    } catch (err) {
+      logger.error('super-admin tenant backup delete failed', {
+        slug, filename, error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ success: false, message: 'Delete failed' });
+    } finally {
+      if (tdb !== undefined) releaseTenantDb(slug);
+    }
+  },
+);
+
+router.get('/tenants/:slug/backup-settings', async (req: Request<{ slug: string }>, res: Response) => {
+  const slug = req.params.slug;
+  const tenant = lookupTenantOr404(slug, res);
+  if (!tenant) return;
+  let tdb: import('better-sqlite3').Database | undefined;
+  try {
+    tdb = await getTenantDb(slug);
+    res.json({ success: true, data: backupGetSettings(tdb) });
+  } catch (err) {
+    logger.error('super-admin tenant backup settings read failed', {
+      slug, error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Failed to read backup settings' });
+  } finally {
+    if (tdb !== undefined) releaseTenantDb(slug);
+  }
+});
+
+router.put(
+  '/tenants/:slug/backup-settings',
+  requireStepUpTotpSuperAdmin('super_admin_tenant_backup_settings_update'),
+  async (req: Request<{ slug: string }>, res: Response) => {
+    const slug = req.params.slug;
+    const tenant = lookupTenantOr404(slug, res);
+    if (!tenant) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { path: bpath, schedule, retention, encrypt } = body;
+    if (bpath !== undefined && (typeof bpath !== 'string' || bpath.includes('..') || bpath.length > 500)) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid path' });
+      return;
+    }
+    if (schedule !== undefined && (typeof schedule !== 'string' || schedule.length > 100)) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid schedule' });
+      return;
+    }
+    if (retention !== undefined && (!Number.isInteger(retention) || (retention as number) < 1 || (retention as number) > 3650)) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'retention must be 1-3650' });
+      return;
+    }
+    if (encrypt !== undefined && typeof encrypt !== 'boolean') {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'encrypt must be boolean' });
+      return;
+    }
+    let tdb: import('better-sqlite3').Database | undefined;
+    try {
+      tdb = await getTenantDb(slug);
+      const safe: Parameters<typeof backupUpdateSettings>[1] = {
+        ...(bpath !== undefined && { path: bpath as string }),
+        ...(schedule !== undefined && { schedule: schedule as string }),
+        ...(retention !== undefined && { retention: retention as number }),
+        ...(encrypt !== undefined && { encrypt: encrypt as boolean }),
+      };
+      backupUpdateSettings(tdb, safe);
+      auditBackup('super_admin_tenant_backup_settings_update', req.ip || 'unknown', {
+        tenant_slug: slug, tenant_id: tenant.id, fields: Object.keys(safe),
+      });
+      res.json({ success: true, data: backupGetSettings(tdb) });
+    } catch (err) {
+      logger.error('super-admin tenant backup settings update failed', {
+        slug, error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ success: false, message: 'Failed to update backup settings' });
+    } finally {
+      if (tdb !== undefined) releaseTenantDb(slug);
+    }
+  },
+);
+
+// Drive listing is host-level; not per-tenant. Provided here so the
+// dashboard's super-admin Backup view can populate a path picker without
+// having to know about the tenant-scoped admin route (which is blocked
+// in multi-tenant mode anyway).
+router.get('/backup-drives', (_req, res) => {
+  res.json({ success: true, data: backupListDrives() });
 });
 
 // ─── System Health ──────────────────────────────────────────────────

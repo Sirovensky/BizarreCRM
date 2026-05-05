@@ -422,6 +422,33 @@ interface ElectronAPI {
       }>;
       summary: { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
     }>>;
+    /**
+     * Per-tenant backup management — used in multi-tenant mode where the
+     * tenant-scoped admin.* backup routes are blocked. Mirrors the
+     * `admin.*` backup methods but takes a tenant slug first.
+     */
+    tenantBackupList(slug: string): Promise<ApiResponse<Array<{ name: string; size: number; date: string }>>>;
+    tenantBackupRun(slug: string): Promise<ApiResponse<{ success: boolean; message: string; file?: string }>>;
+    tenantBackupDelete(slug: string, filename: string): Promise<ApiResponse>;
+    tenantBackupRestore(slug: string, filename: string): Promise<ApiResponse<{
+      message: string;
+      hash?: string;
+      safetyBackup?: string;
+      unsigned?: boolean;
+    }>>;
+    tenantBackupSettingsGet(slug: string): Promise<ApiResponse<{
+      backup_path: string;
+      schedule: string;
+      retention_days: number;
+      encryption_enabled: boolean;
+    }>>;
+    tenantBackupSettingsUpdate(slug: string, settings: {
+      backup_path: string;
+      schedule: string;
+      retention_days: number;
+      encryption_enabled: boolean;
+    }): Promise<ApiResponse>;
+    backupDrives(): Promise<ApiResponse<DiskDrive[]>>;
   };
   admin: {
     getStatus(): Promise<ApiResponse>;
