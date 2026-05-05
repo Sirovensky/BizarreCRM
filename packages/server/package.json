@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && node -e \"const fs=require('fs'); fs.copyFileSync('src/db/db-worker.mjs','dist/db/db-worker.mjs'); fs.cpSync('src/db/migrations','dist/db/migrations',{recursive:true});\"",
+    "build": "tsc && node -e \"const fs=require('fs'); fs.copyFileSync('src/db/db-worker.mjs','dist/db/db-worker.mjs'); fs.cpSync('src/db/migrations','dist/db/migrations',{recursive:true}); fs.cpSync('src/admin','dist/admin',{recursive:true});\"",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
