@@ -1793,6 +1793,98 @@ export function registerManagementIpc(): void {
     return bodyOf(res);
   }));
 
+  // ── Watchdog events ────────────────────────────────────────────
+  //
+  // The cross-platform PM2 watchdog (`packages/server/scripts/watchdog.cjs`)
+  // appends structured events to `<repoRoot>/logs/watchdog-events.jsonl`
+  // whenever it triggers a restart, escalates to fatal, hits the cascade
+  // cap, or detects an expired cert. The dashboard polls this handler to
+  // surface watchdog state on ServerControlPage. We deliberately read the
+  // tail of a JSONL file rather than wiring a WebSocket: a wedged server
+  // cannot deliver WS messages, but the watchdog's file write still works.
+  //
+  // Bounded read: at most the last 64 KB or 200 events, whichever comes
+  // first. The watchdog does not write more than a handful of events per
+  // hour in steady state, so this is generous.
+  ipcMain.handle('management:get-watchdog-events', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    let root: string | null;
+    try {
+      root = resolveTrustedProjectRoot();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, code: 'INSTALLATION_INTEGRITY_FAILED', message, events: [] };
+    }
+    if (!root) {
+      return { ok: false, code: 'PROJECT_ROOT_UNRESOLVED', events: [] };
+    }
+    const file = path.join(root, 'logs', 'watchdog-events.jsonl');
+    // EL3 containment: ensure resolved path stays under trusted root.
+    if (!isPathUnder(file, root)) {
+      return { ok: false, code: 'PATH_ESCAPE', events: [] };
+    }
+    let raw: string;
+    try {
+      const stat = fs.statSync(file);
+      const size = stat.size;
+      const start = size > 65_536 ? size - 65_536 : 0;
+      const fd = fs.openSync(file, 'r');
+      try {
+        const buf = Buffer.alloc(size - start);
+        fs.readSync(fd, buf, 0, buf.length, start);
+        raw = buf.toString('utf8');
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      if (code === 'ENOENT') {
+        // No events yet. Healthy state.
+        return { ok: true, events: [] };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, code: 'READ_ERROR', message, events: [] };
+    }
+    // Parse JSONL with a hard cap; ignore malformed lines.
+    const lines = raw.split('\n').filter((l) => l.trim().length > 0);
+    const tail = lines.slice(-200);
+    const events: unknown[] = [];
+    for (const line of tail) {
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        /* skip malformed line */
+      }
+    }
+    return { ok: true, events };
+  }));
+
+  // Operator action: clear acknowledged watchdog state. The dashboard surfaces
+  // a sticky "I've investigated" button for fatal / cert-expired alarms; it
+  // calls this handler to truncate the events file so the alarm clears.
+  ipcMain.handle('management:clear-watchdog-events', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    let root: string | null;
+    try {
+      root = resolveTrustedProjectRoot();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, code: 'INSTALLATION_INTEGRITY_FAILED', message };
+    }
+    if (!root) return { ok: false, code: 'PROJECT_ROOT_UNRESOLVED' };
+    const file = path.join(root, 'logs', 'watchdog-events.jsonl');
+    if (!isPathUnder(file, root)) return { ok: false, code: 'PATH_ESCAPE' };
+    try {
+      fs.writeFileSync(file, '', { encoding: 'utf8' });
+      return { ok: true };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      if (code === 'ENOENT') return { ok: true };
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, code: 'WRITE_ERROR', message };
+    }
+  }));
+
   // ── Backup ─────────────────────────────────────────────────────
 
   ipcMain.handle('admin:get-status', wrapHandler(async (event) => {

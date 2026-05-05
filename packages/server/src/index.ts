@@ -59,6 +59,7 @@ import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
 import { redactPhone } from './utils/phone.js';
 import { trackInterval, backgroundIntervals } from './utils/trackInterval.js';
+import * as longTaskRegistry from './utils/longTaskRegistry.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -372,6 +373,19 @@ const readyPromise: Promise<void> = (async () => {
     // Single-tenant: runMigrations(db) already ran synchronously above. Mark ready.
     return;
   }
+  // Register the boot-time migration + recovery sweep with the long-task
+  // registry so the cross-platform watchdog extends its grace threshold for
+  // the duration of this work. Without this, a fleet with many tenants can
+  // appear "wedged" to the watchdog when migrations legitimately take 5-10
+  // minutes, and the watchdog will restart the server mid-migration.
+  // Conservative budget: 30 minutes upper bound covers extreme tenant counts;
+  // most fleets finish in <2 minutes. The watchdog further multiplies this
+  // by `WATCHDOG_LONG_TASK_MULTIPLIER` (default 1.5x), so the real cap is
+  // 45 minutes before the watchdog will second-guess.
+  longTaskRegistry.start({
+    kind: 'boot-tenant-migrations',
+    expectedDurationMs: 30 * 60 * 1000,
+  });
   try {
     // migrateAllTenants() refreshes the template DB first AND walks every active
     // tenant to apply any new migrations. Errors are logged loudly but do not block
@@ -507,6 +521,10 @@ const readyPromise: Promise<void> = (async () => {
     });
     readyError = wrapped;
     // Do NOT rethrow — we want the server to come up so operators can triage.
+  } finally {
+    // Always clear the registration so the watchdog reverts to default
+    // wedge threshold once boot work is done — even if migrations threw.
+    longTaskRegistry.end();
   }
 })();
 
@@ -1783,10 +1801,14 @@ app.use('/customer-portal', (req, res, next) => {
 // WITHOUT any auth, exposing internal state to anyone probing the server. Split into:
 //   - /health                       : plain liveness probe, 200 once the process is up.
 //   - /api/v1/health                : liveness probe in the API envelope, { status:'ok' }.
+//   - /api/v1/health/live           : event-loop liveness for the watchdog; no DB probe.
 //   - /api/v1/health/ready          : readiness probe; 503 until migrations finish.
 //   - /api/v1/health/internal       : full internal state, admin-only (authMiddleware + role).
 // Load balancers and uptime monitors should use /health or /api/v1/health (liveness) and
 // /api/v1/health/ready (readiness). Operators wanting heap/db stats hit /internal.
+// The cross-platform watchdog uses /api/v1/health/live exclusively; it must not be
+// auth-gated and must not return non-2xx for routine "busy" states (use longTask
+// in the payload instead).
 
 // SEC-M29: Liveness now round-trips the master DB with `SELECT 1` so that
 // an LB can actually tell the difference between "process alive" and
@@ -1816,6 +1838,33 @@ app.get('/api/v1/health', (_req, res) => {
     return;
   }
   res.json({ success: true, data: { status: 'ok' } });
+});
+
+// Liveness probe consumed by the cross-platform watchdog
+// (`packages/server/scripts/watchdog.cjs`).
+//
+// Intentionally minimal — no DB probe, no auth, no FS calls. The point of a
+// liveness endpoint is to differentiate "event loop wedged" from "still
+// running but degraded": this handler must succeed whenever the event loop
+// can run an async handler at all, even if the DB is dead, so the watchdog
+// only restarts on genuine wedges, not on DB outages (DB outages surface via
+// /api/v1/health/ready returning 503, which the watchdog ignores for restart
+// decisions).
+//
+// The `longTask` field exposes whichever long-running operation the server
+// has registered with `longTaskRegistry.start(...)`. The watchdog reads this
+// to dynamically extend its wedge-failure threshold during legitimate long
+// operations (tenant migrations, bulk imports, AV scans) so they are not
+// killed at the default 90-second mark.
+app.get('/api/v1/health/live', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      alive: true,
+      longTask: longTaskRegistry.snapshot(),
+      ts: Date.now(),
+    },
+  });
 });
 
 // @audit-fixed: #7 (boot race) — readiness probe. Returns 503 until migrateAllTenants()

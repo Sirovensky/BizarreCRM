@@ -1029,6 +1029,18 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
   const tenantSlug = request.tenantSlug || 'default';
   cancelFlagsRS.set(tenantSlug, false);
 
+  // Long-task registry: declare to the cross-platform watchdog that this is a
+  // legitimate long operation, so the watchdog extends its wedge-failure
+  // grace period instead of restarting the server mid-import. RepairShopr
+  // imports for shops with 10k+ tickets routinely take 20-40 minutes; we
+  // declare a 60-minute upper bound (watchdog multiplies by 1.5x → 90 min cap).
+  const longTaskRegistry = await import('../utils/longTaskRegistry.js');
+  longTaskRegistry.start({
+    kind: 'repairshopr-import',
+    expectedDurationMs: 60 * 60 * 1000,
+    details: { tenantSlug, entities: request.entities },
+  });
+
   const client = new RsApiClient(request.apiKey, request.subdomain, tenantSlug);
   const stmts = getStatements(db);
 
@@ -1038,6 +1050,7 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
 
   console.log(`[RS Import] Starting RepairShopr import for: ${toProcess.join(', ')}`);
 
+  try {
   for (const entity of toProcess) {
     if (cancelFlagsRS.get(tenantSlug)) {
       // Mark remaining runs as cancelled
@@ -1083,6 +1096,11 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
   }
 
   console.log('[RS Import] RepairShopr import finished.');
+  } finally {
+    // Always clear the long-task registration so the watchdog reverts to
+    // the default wedge threshold once the import is done — even on throw.
+    longTaskRegistry.end();
+  }
 }
 
 /**

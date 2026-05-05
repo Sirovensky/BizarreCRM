@@ -102,5 +102,49 @@ module.exports = {
         PORT: envFromFile.PORT || 443,
       },
     },
+    {
+      // Cross-platform health watchdog. PM2's autorestart only catches process
+      // exit; this app polls /api/v1/health/live to catch event-loop wedges
+      // (deadlock, infinite sync work, blocked GC) where the process is alive
+      // but the server is dead to clients. See packages/server/scripts/
+      // watchdog.cjs for the state machine and threshold tunables.
+      //
+      // The watchdog respects longTaskRegistry-declared operations on the
+      // server (tenant migrations, bulk imports, catalog scrapes) so it does
+      // NOT restart the server during legitimate long work.
+      //
+      // PM2 supervises the watchdog itself. min_uptime + max_restarts cap a
+      // crash-looping watchdog so a buggy watchdog cannot mask real wedges.
+      name: 'bizarre-crm-watchdog',
+      script: 'packages/server/scripts/watchdog.cjs',
+      interpreter: 'node',
+      cwd: root,
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '128M',
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: '30s',
+      out_file: path.join(root, 'logs/bizarre-crm-watchdog.out.log'),
+      error_file: path.join(root, 'logs/bizarre-crm-watchdog.err.log'),
+      merge_logs: true,
+      time: true,
+      env: {
+        ...envFromFile,
+        PORT: envFromFile.PORT || 443,
+        // Tunables — uncomment + edit to override defaults:
+        // WATCHDOG_POLL_INTERVAL_MS: 30000,
+        // WATCHDOG_FAILURE_THRESHOLD: 3,
+        // WATCHDOG_LONG_TASK_MULTIPLIER: 1.5,
+        // WATCHDOG_LONG_TASK_MAX_MS: 1800000,
+        // WATCHDOG_LOG_CORROBORATION_WINDOW_MS: 60000,
+        // WATCHDOG_CASCADE_WINDOW_MS: 3600000,
+        // WATCHDOG_CASCADE_MAX_RESTARTS: 3,
+        // WATCHDOG_CERT_ERROR_THRESHOLD: 5,
+        // WATCHDOG_REQUEST_TIMEOUT_MS: 5000,
+      },
+    },
   ],
 };

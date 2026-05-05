@@ -113,6 +113,53 @@ Guidelines:
 - Use transactions for multi-step money, inventory, and invoice changes.
 - Avoid hard deletes for business records that may be needed for history.
 
+## Long-Task Registry Contract
+
+The server includes a small in-memory registry — `packages/server/src/utils/
+longTaskRegistry.ts` — that the cross-platform PM2 watchdog reads via
+`/api/v1/health/live`. Wrap any operation expected to take more than 10
+seconds so the watchdog does NOT misclassify a busy server as a wedged
+server.
+
+Contract:
+
+```ts
+import * as longTaskRegistry from './utils/longTaskRegistry.js';
+
+try {
+  longTaskRegistry.start({
+    kind: 'tenant-migration',          // short kebab-case identifier
+    expectedDurationMs: 600_000,       // best-guess upper bound
+    details: { tenantSlug },           // optional, dashboard-visible
+  });
+  await doTheLongThing();
+} finally {
+  longTaskRegistry.end();              // always — even on throw
+}
+```
+
+Rules:
+
+- One task at a time. Calling `start()` while another task is active logs a
+  warning and overwrites — fix the caller's missing `end()`.
+- `end()` without a prior `start()` is a no-op (safe to call defensively).
+- The watchdog extends its wedge threshold to `expectedDurationMs * 1.5`
+  while a task is registered, capped at 30 minutes.
+- Pick `kind` from a short, stable vocabulary so dashboard surfaces are
+  readable. Existing values: `boot-tenant-migrations`,
+  `repairshopr-import`, `repairdesk-import`, `myrepairapp-import`,
+  `catalog-scrape`. Add new kinds in PR description so other devs see them.
+
+When you add a new long-running code path, the registration is mandatory —
+without it, the watchdog will restart the server mid-operation at the
+default 90-second mark.
+
+The registry has unit tests at
+`packages/server/src/utils/__tests__/longTaskRegistry.test.ts`. The watchdog
+itself has pure-function tests at
+`packages/server/scripts/watchdog.test.cjs` (run via
+`node packages/server/scripts/watchdog.test.cjs`).
+
 ## Documentation Expectations
 
 Keep the README human-readable. Put long technical notes in `docs/`.

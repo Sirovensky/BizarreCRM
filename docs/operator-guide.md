@@ -203,6 +203,93 @@ For Linux:
 6. Start with `npm run start` or a process manager such as PM2.
 7. Put a reverse proxy with HTTPS in front of the app.
 
+## Health Watchdog
+
+BizarreCRM ships a cross-platform PM2 watchdog (`bizarre-crm-watchdog`) that
+runs alongside the main server. PM2 itself only catches process exits; the
+watchdog catches a different failure mode — process alive but event loop
+wedged (deadlock, infinite sync work, blocked GC). Without it, a wedged
+server stays "online" in PM2's eyes while customers see timeouts.
+
+### How it works
+
+The watchdog polls `/api/v1/health/live` every 30 seconds. If liveness fails
+3 times in a row (90 seconds), the watchdog calls `pm2 restart bizarre-crm`.
+If liveness keeps failing after the restart, the watchdog escalates to
+`pm2 stop bizarre-crm` and surfaces a fatal alarm in the dashboard. A
+cascade-failure cap (default: 3 watchdog-triggered restarts in 1 hour)
+prevents the watchdog from becoming a restart-loop accelerator.
+
+The server can declare known long-running operations (tenant migrations,
+RepairShopr/RepairDesk/MyRepairApp imports, catalog scrapes) to the
+watchdog via the in-memory `longTaskRegistry`. While a long task is
+registered, the watchdog extends its wedge-failure threshold to
+`expectedDurationMs * 1.5` (capped at 30 minutes). Operators do not need
+to configure anything for this — long tasks self-register.
+
+### Dashboard surface
+
+ServerControlPage shows a Watchdog Status card with four states:
+
+- **Healthy** (green) — recent polls all returned 200.
+- **Extended grace** (blue) — server appears active in a long task or has
+  recent log activity; no destructive action.
+- **Recent restart** (amber) — the watchdog restarted the server in the
+  last 10 minutes. The server is presumably back online; this is
+  informational.
+- **FATAL / cascade-abort / cert-expired** (red) — server stopped.
+  Operator must investigate and click "I've investigated" to clear the
+  alarm before the card returns to healthy.
+
+### Tunables
+
+All tunables are environment variables read by the watchdog at startup.
+Defaults are conservative; only override if the defaults misbehave for
+your shop's workload.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WATCHDOG_POLL_INTERVAL_MS` | 30000 | Time between liveness probes. |
+| `WATCHDOG_FAILURE_THRESHOLD` | 3 | Consecutive failures before action. |
+| `WATCHDOG_LONG_TASK_MULTIPLIER` | 1.5 | Threshold extension during long tasks. |
+| `WATCHDOG_LONG_TASK_MAX_MS` | 1800000 | Cap on extended threshold (30 min). |
+| `WATCHDOG_LOG_CORROBORATION_WINDOW_MS` | 60000 | Window to check log activity before destructive action. |
+| `WATCHDOG_CASCADE_WINDOW_MS` | 3600000 | Rolling window for cascade cap (1 hour). |
+| `WATCHDOG_CASCADE_MAX_RESTARTS` | 3 | Max watchdog-triggered restarts in window. |
+| `WATCHDOG_CERT_ERROR_THRESHOLD` | 5 | Consecutive TLS handshake failures before cert-expired alarm. |
+| `WATCHDOG_REQUEST_TIMEOUT_MS` | 5000 | Per-probe HTTPS timeout. |
+| `WATCHDOG_TARGET_APP` | bizarre-crm | PM2 app name to supervise. |
+
+### Logs
+
+- `logs/bizarre-crm-watchdog.out.log` — watchdog stdout (state transitions, decisions).
+- `logs/bizarre-crm-watchdog.err.log` — watchdog stderr (PM2 spawn errors, crashes).
+- `logs/watchdog-events.jsonl` — structured event log read by the dashboard.
+
+### Operator commands
+
+```bash
+# Start both apps (server + watchdog) from ecosystem.config.js
+pm2 start ecosystem.config.js
+
+# Tail watchdog decisions
+pm2 logs bizarre-crm-watchdog
+
+# Stop only the watchdog (server keeps running)
+pm2 stop bizarre-crm-watchdog
+
+# Verify watchdog is running
+pm2 list
+```
+
+### Boot autostart
+
+PM2 boot autostart on Windows is currently a manual step — see the
+"Deferred operational items" section in `TODO.md` for the planned
+cross-platform `setup.mjs` migration. On Linux/macOS, run `pm2 startup`
+followed by `pm2 save` to install the platform-native init unit; both the
+server and the watchdog will resurrect on boot.
+
 ## Operational Checklist
 
 Before using BizarreCRM for a live shop day, verify:

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Play,
   Square,
@@ -9,9 +9,12 @@ import {
   ToggleLeft,
   ToggleRight,
   Shield,
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
-import type { ServiceStatus } from '@/api/bridge';
+import type { ServiceStatus, WatchdogEvent } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -35,6 +38,10 @@ export function ServerControlPage() {
   // before the second dialog could open.
   const [killAllStep, setKillAllStep] = useState<1 | 2 | null>(null);
 
+  // Watchdog events emitted by packages/server/scripts/watchdog.cjs.
+  const [watchdogEvents, setWatchdogEvents] = useState<WatchdogEvent[]>([]);
+  const [watchdogClearing, setWatchdogClearing] = useState(false);
+
   const serverUptime = useServerStore((s) => s.stats?.uptime);
 
   const refreshStatus = useCallback(async () => {
@@ -49,6 +56,38 @@ export function ServerControlPage() {
       setServiceStatus(null);
     }
   }, [autoStart]);
+
+  // Watchdog events poll. Cheap (small JSONL read), runs every 5s while the
+  // tab is visible. We do NOT toast on new events here — the dedicated
+  // Watchdog Status card in the JSX surfaces state. Toasting on every poll
+  // would spam the operator.
+  const refreshWatchdogEvents = useCallback(async () => {
+    try {
+      const res = await getAPI().management.getWatchdogEvents();
+      if (res.ok) {
+        setWatchdogEvents(res.events);
+      }
+    } catch (err) {
+      console.warn('[ServerControlPage] getWatchdogEvents failed', err);
+    }
+  }, []);
+
+  const acknowledgeWatchdog = useCallback(async () => {
+    setWatchdogClearing(true);
+    try {
+      const res = await getAPI().management.clearWatchdogEvents();
+      if (res.ok) {
+        setWatchdogEvents([]);
+        toast.success('Watchdog state cleared');
+      } else {
+        toast.error(`Clear failed: ${res.message ?? res.code ?? 'unknown'}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Clear failed');
+    } finally {
+      setWatchdogClearing(false);
+    }
+  }, []);
 
   useEffect(() => {
     // MGT-026: Use 10 s base interval (was 3 s) to reduce background noise.
@@ -78,8 +117,15 @@ export function ServerControlPage() {
     };
 
     refreshStatus();
+    refreshWatchdogEvents();
     if (!document.hidden) startPolling();
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Watchdog events poll independently on a 5s interval. Same visibility
+    // pause behavior as the service-status poll but smaller cadence because
+    // the file read is cheap and operators expect quicker feedback when the
+    // watchdog reacts.
+    const watchdogIntervalId = setInterval(refreshWatchdogEvents, 5_000);
 
     // Load platform config
     getAPI().superAdmin.getConfig().then((res) => {
@@ -98,9 +144,72 @@ export function ServerControlPage() {
 
     return () => {
       stopPolling();
+      clearInterval(watchdogIntervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [refreshStatus]);
+  }, [refreshStatus, refreshWatchdogEvents]);
+
+  // Derive the headline watchdog state from the events tail. A fatal /
+  // cascade-abort / cert-expired event is sticky until acknowledged. A
+  // recent restart (<10 min) shows as a warning. Otherwise → healthy.
+  const watchdogState = useMemo<{
+    severity: 'healthy' | 'info' | 'warn' | 'fatal';
+    headline: string;
+    detail?: string;
+    actionable: boolean;
+  }>(() => {
+    if (watchdogEvents.length === 0) {
+      return { severity: 'healthy', headline: 'Watchdog: healthy', actionable: false };
+    }
+    // Look at most-recent events first for fatal/cert-expired stickiness.
+    const fatal = [...watchdogEvents].reverse().find((e) => e.kind === 'fatal' || e.kind === 'cascade-abort');
+    if (fatal) {
+      return {
+        severity: 'fatal',
+        headline: fatal.kind === 'cascade-abort'
+          ? 'Watchdog: cascade-abort — manual intervention required'
+          : 'Watchdog: FATAL — server stopped, manual intervention required',
+        detail: fatal.reason,
+        actionable: true,
+      };
+    }
+    const cert = [...watchdogEvents].reverse().find((e) => e.kind === 'cert-expired');
+    if (cert) {
+      return {
+        severity: 'fatal',
+        headline: 'Watchdog: certificate appears expired',
+        detail: cert.reason,
+        actionable: true,
+      };
+    }
+    const recentRestarts = watchdogEvents.filter((e) => {
+      if (e.kind !== 'restart') return false;
+      const ageMs = Date.now() - new Date(e.timestamp).getTime();
+      return ageMs < 10 * 60 * 1000; // 10 min window
+    });
+    if (recentRestarts.length > 0) {
+      return {
+        severity: 'warn',
+        headline: `Watchdog: triggered ${recentRestarts.length} restart${recentRestarts.length === 1 ? '' : 's'} in last 10 min`,
+        detail: recentRestarts[recentRestarts.length - 1].reason,
+        actionable: false,
+      };
+    }
+    const recentGrace = watchdogEvents.filter((e) => {
+      if (e.kind !== 'extended-grace') return false;
+      const ageMs = Date.now() - new Date(e.timestamp).getTime();
+      return ageMs < 5 * 60 * 1000; // 5 min window
+    });
+    if (recentGrace.length > 0) {
+      return {
+        severity: 'info',
+        headline: 'Watchdog: extended grace — server appears active in long task or logs',
+        detail: recentGrace[recentGrace.length - 1].reason,
+        actionable: false,
+      };
+    }
+    return { severity: 'healthy', headline: 'Watchdog: healthy', actionable: false };
+  }, [watchdogEvents]);
 
   const doAction = async (name: string, action: () => Promise<unknown>) => {
     setLoading(name);
@@ -283,6 +392,54 @@ export function ServerControlPage() {
               <ToggleLeft className="w-6 h-6 text-surface-500" />
             )}
           </button>
+        </div>
+      </div>
+
+      {/* Watchdog Status Card.
+          Surfaces state from packages/server/scripts/watchdog.cjs. The
+          watchdog appends events to logs/watchdog-events.jsonl which the
+          dashboard polls every 5s via management:get-watchdog-events.
+          Color/icon mapping mirrors the four severity bands defined in
+          watchdogState above. Fatal + cert-expired states require an
+          explicit operator acknowledge (Clear button) before the card
+          can return to healthy. */}
+      <div className={
+        'stat-card !p-4 lg:!p-5 border-l-4 ' +
+        (watchdogState.severity === 'fatal'
+          ? 'border-red-500'
+          : watchdogState.severity === 'warn'
+          ? 'border-amber-500'
+          : watchdogState.severity === 'info'
+          ? 'border-blue-500'
+          : 'border-green-500')
+      }>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            {watchdogState.severity === 'healthy' && <CheckCircle2 className="w-5 h-5 text-green-400 flex-none mt-0.5" />}
+            {watchdogState.severity === 'info' && <Activity className="w-5 h-5 text-blue-400 flex-none mt-0.5" />}
+            {watchdogState.severity === 'warn' && <Activity className="w-5 h-5 text-amber-400 flex-none mt-0.5" />}
+            {watchdogState.severity === 'fatal' && <AlertTriangle className="w-5 h-5 text-red-400 flex-none mt-0.5" />}
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-surface-100 truncate">{watchdogState.headline}</div>
+              {watchdogState.detail && (
+                <div className="text-xs text-surface-400 mt-1 break-words">{watchdogState.detail}</div>
+              )}
+              {watchdogEvents.length > 0 && (
+                <div className="text-[11px] text-surface-500 mt-1">
+                  {watchdogEvents.length} event{watchdogEvents.length === 1 ? '' : 's'} in log
+                </div>
+              )}
+            </div>
+          </div>
+          {watchdogState.actionable && (
+            <button
+              onClick={acknowledgeWatchdog}
+              disabled={watchdogClearing}
+              className="flex-none px-3 py-1.5 text-xs font-medium text-surface-200 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors disabled:opacity-50"
+            >
+              {watchdogClearing ? 'Clearing…' : 'I’ve investigated'}
+            </button>
+          )}
         </div>
       </div>
 

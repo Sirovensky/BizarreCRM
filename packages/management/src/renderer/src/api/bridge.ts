@@ -241,6 +241,26 @@ export interface SetupStatus {
   multiTenant: boolean;
 }
 
+/**
+ * Event emitted by the cross-platform PM2 watchdog
+ * (`packages/server/scripts/watchdog.cjs`). Persisted to
+ * `<repoRoot>/logs/watchdog-events.jsonl` and surfaced on ServerControlPage.
+ *
+ * `kind`:
+ *   - `restart`         — watchdog detected wedge and triggered `pm2 restart`
+ *   - `fatal`           — watchdog escalated to `pm2 stop` after persistent wedge
+ *   - `cascade-abort`   — watchdog stopped restarting due to cascade-failure cap
+ *   - `extended-grace`  — watchdog extended grace because logs showed activity
+ *   - `cert-expired`    — watchdog detected TLS handshake failures, did NOT restart
+ */
+export interface WatchdogEvent {
+  kind: 'restart' | 'fatal' | 'cascade-abort' | 'extended-grace' | 'cert-expired';
+  timestamp: string;
+  reason: string;
+  longTask?: { kind: string; startedAt: number; expectedDurationMs: number; details?: Record<string, unknown> } | null;
+  cascadeAbort?: boolean;
+}
+
 interface ElectronAPI {
   management: {
     setupStatus(): Promise<ApiResponse<SetupStatus>>;
@@ -263,6 +283,15 @@ interface ElectronAPI {
     auditUpdateResult(payload: { success: boolean; afterSha?: string; errorMessage?: string }): Promise<ApiResponse>;
     restartServer(): Promise<ApiResponse>;
     stopServer(): Promise<ApiResponse>;
+    /** Watchdog: poll for events emitted by packages/server/scripts/watchdog.cjs. */
+    getWatchdogEvents(): Promise<{
+      ok: boolean;
+      code?: string;
+      message?: string;
+      events: WatchdogEvent[];
+    }>;
+    /** Watchdog: clear acknowledged events (truncates the JSONL file). */
+    clearWatchdogEvents(): Promise<{ ok: boolean; code?: string; message?: string }>;
   };
   superAdmin: {
     /** DASH-ELEC-267 (Fixer-C24 2026-04-25): parameterise the success shapes

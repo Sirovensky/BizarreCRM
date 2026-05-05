@@ -43,6 +43,8 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'management:audit-update-result',
   'management:restart-server',
   'management:stop-server',
+  'management:get-watchdog-events',
+  'management:clear-watchdog-events',
   // super-admin:*
   'super-admin:login',
   'super-admin:2fa-verify',
@@ -167,6 +169,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     auditUpdateResult: (payload: unknown) => safeInvoke('management:audit-update-result', payload),
     restartServer: () => safeInvoke('management:restart-server'),
     stopServer: () => safeInvoke('management:stop-server'),
+    // Watchdog: poll for recent events emitted by packages/server/scripts/watchdog.cjs.
+    // Returns at most the last 200 events. ServerControlPage polls this every 5s.
+    getWatchdogEvents: () => safeInvoke('management:get-watchdog-events'),
+    clearWatchdogEvents: () => safeInvoke('management:clear-watchdog-events'),
   },
 
   // ── Super-Admin Auth (2FA) ─────────────────────────────────────
