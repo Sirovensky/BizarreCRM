@@ -1936,6 +1936,17 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
 
   const { event, user_id, from_date, to_date } = req.query as Record<string, string>;
 
+  // PERF: list view never displays more than ~300 chars of `details` (the row
+  // truncates with CSS), but rows can carry KB-to-MB payloads. Cap server-side
+  // so each paginated response is bounded regardless of detail size.
+  const DETAILS_PREVIEW_LEN = 500;
+
+  // PERF: COUNT(*) and DISTINCT event scan the table; on a 250 MB+ audit log
+  // they dominate response time. Skip them when the client already has them
+  // cached and only wants the next page (?meta=skip). Default keeps the old
+  // behaviour for callers that depend on it.
+  const skipMeta = req.query.meta === 'skip';
+
   let where = 'WHERE 1=1';
   const params: any[] = [];
 
@@ -1956,33 +1967,42 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
     params.push(to_date + ' 23:59:59');
   }
 
-  const [totalRow, logs, eventTypes] = await Promise.all([
-    adb.get<any>(`SELECT COUNT(*) as c FROM audit_logs a ${where}`, ...params),
-    adb.all<any>(`
-      SELECT a.*, u.first_name || ' ' || u.last_name as user_name, u.username
-      FROM audit_logs a
-      LEFT JOIN users u ON u.id = a.user_id
-      ${where}
-      ORDER BY a.created_at DESC
-      LIMIT ? OFFSET ?
-    `, ...params, pageSize, offset),
-    adb.all<{ event: string }>('SELECT DISTINCT event FROM audit_logs ORDER BY event LIMIT 500'),
+  const logsPromise = adb.all<any>(`
+    SELECT a.id, a.event, a.user_id, a.ip_address, a.created_at,
+           substr(a.details, 1, ?) AS details,
+           length(a.details) AS details_full_len,
+           u.first_name || ' ' || u.last_name as user_name, u.username
+    FROM audit_logs a
+    LEFT JOIN users u ON u.id = a.user_id
+    ${where}
+    ORDER BY a.created_at DESC
+    LIMIT ? OFFSET ?
+  `, DETAILS_PREVIEW_LEN, ...params, pageSize, offset);
+
+  const [logs, totalRow, eventTypes] = await Promise.all([
+    logsPromise,
+    skipMeta
+      ? Promise.resolve(null)
+      : adb.get<any>(`SELECT COUNT(*) as c FROM audit_logs a ${where}`, ...params),
+    skipMeta
+      ? Promise.resolve(null)
+      : adb.all<{ event: string }>('SELECT DISTINCT event FROM audit_logs ORDER BY event LIMIT 500'),
   ]);
 
-  const total = totalRow.c;
+  const total = totalRow ? totalRow.c : null;
 
   res.json({
     success: true,
     data: {
       logs,
-      event_types: eventTypes.map(e => e.event),
+      event_types: eventTypes ? eventTypes.map(e => e.event) : null,
       pagination: {
         page,
         per_page: pageSize,
         limit: pageSize,
         offset,
         total,
-        total_pages: Math.ceil(total / pageSize),
+        total_pages: total !== null ? Math.ceil(total / pageSize) : null,
         max_limit: MAX_PAGE_SIZE,
       },
     },

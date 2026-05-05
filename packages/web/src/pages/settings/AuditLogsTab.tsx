@@ -91,18 +91,39 @@ export function AuditLogsTab() {
     if (liveTail && page !== 1) setPage(1);
   }, [liveTail, page]);
 
+  // Cache event_types + total across paginations. The server skips the COUNT
+  // and DISTINCT-event scans when ?meta=skip, which is the dominant cost on a
+  // large audit_logs table. We only refetch meta when filters change.
+  const [cachedEventTypes, setCachedEventTypes] = useState<string[]>([]);
+  const [cachedTotal, setCachedTotal] = useState<number | null>(null);
+  const [cachedTotalPages, setCachedTotalPages] = useState<number | null>(null);
+  // Reset cached meta whenever the filter window changes — totals depend on it.
+  const filterKey = `${eventFilter}|${debouncedFrom}|${debouncedTo}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  useEffect(() => {
+    if (filterKey !== lastFilterKey) {
+      setCachedTotal(null);
+      setCachedTotalPages(null);
+      setLastFilterKey(filterKey);
+    }
+  }, [filterKey, lastFilterKey]);
+  // Decide if this request should ask the server for meta. First load, filter
+  // change, or live-tail polling skip meta to keep the response cheap.
+  const wantsMeta = cachedTotal === null || cachedEventTypes.length === 0;
+
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo],
+    queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo, wantsMeta],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, pagesize: 50 };
       if (eventFilter) params.event = eventFilter;
       if (debouncedFrom) params.from_date = debouncedFrom;
       if (debouncedTo) params.to_date = debouncedTo;
+      if (!wantsMeta) params.meta = 'skip';
       const res = await settingsApi.getAuditLogs(params as any);
       return res.data.data as {
         logs: AuditLog[];
-        event_types: string[];
-        pagination: { page: number; per_page: number; total: number; total_pages: number };
+        event_types: string[] | null;
+        pagination: { page: number; per_page: number; total: number | null; total_pages: number | null };
       };
     },
     refetchOnWindowFocus: false,
@@ -110,9 +131,27 @@ export function AuditLogsTab() {
     refetchInterval: liveTail ? 5000 : false,
   });
 
+  // Merge fresh meta into cache.
+  useEffect(() => {
+    if (data?.event_types && data.event_types.length > 0) {
+      setCachedEventTypes(data.event_types);
+    }
+    if (data?.pagination?.total != null) {
+      setCachedTotal(data.pagination.total);
+      setCachedTotalPages(data.pagination.total_pages);
+    }
+  }, [data]);
+
   const logs = data?.logs ?? [];
-  const eventTypes = data?.event_types ?? [];
-  const pagination = data?.pagination;
+  const eventTypes = cachedEventTypes;
+  const pagination = data?.pagination
+    ? {
+        page: data.pagination.page,
+        per_page: data.pagination.per_page,
+        total: data.pagination.total ?? cachedTotal ?? 0,
+        total_pages: data.pagination.total_pages ?? cachedTotalPages ?? 1,
+      }
+    : undefined;
 
   return (
     <div className="space-y-4">
