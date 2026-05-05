@@ -565,6 +565,29 @@ async function registerAutostart() {
     return;
   }
 
+  // Skip the consent prompt if autostart is already registered with
+  // the OS. Re-running setup.mjs (e.g. for a code update) shouldn't
+  // pester operators who already opted in. The OS is the source of
+  // truth: if the operator manually disabled the unit in System
+  // Settings → Login Items / Background, status() reports disabled
+  // and we re-prompt — which is the correct UX (operator removed it
+  // for a reason; ask again).
+  try {
+    const { status: getStatus } = await import('./scripts/autostart/index.mjs');
+    const existing = await getStatus('BizarreCRM-PM2');
+    if (existing.enabled) {
+      ok(`Autostart already registered (${existing.mechanism}) — refreshing pm2 save.`);
+      // Refresh the dump file so the boot resurrect picks up any
+      // app-list changes since last setup (e.g. operator added /
+      // removed apps, ecosystem.config.js changed instances).
+      const save = run('pm2', ['save']);
+      if (!save.ok) warn(`pm2 save failed (exit ${save.code}). Existing autostart may resurrect a stale app list.`);
+      return;
+    }
+  } catch {
+    /* status() failure is non-fatal — fall through to consent + register */
+  }
+
   // Operator consent — autostart adapters need sudo on Linux/macOS or
   // Administrator on Windows. Don't escalate without an explicit yes.
   // Both stdin AND stdout must be TTY: a piped stdout means the prompt
