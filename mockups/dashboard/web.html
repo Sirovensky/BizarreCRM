@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre CRM — Dashboard · Web</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --s-50:248 247 245; --s-100:240 239 236; --s-200:224 221 217; --s-300:198 194 188;
+    --s-400:156 152 146; --s-500:110 106 100; --s-600:78 74 70; --s-700:30 28 26;
+    --s-800:22 21 19; --s-900:15 14 12; --s-950:8 7 6;
+    --primary-cream:253 238 208; --primary-caramel:166 109 31;
+    --primary-onPrimary:43 20 0; --primary-onCaramel:255 254 251;
+    --teal-dark:77 184 201; --teal-light:14 122 138;
+    --burgundy-dark:197 86 109; --burgundy-light:142 45 64;
+    --success-dark:52 196 126; --success-light:31 122 74;
+    --warning-dark:232 163 61; --warning-light:138 82 0;
+    --error-dark:226 82 108; --error-light:186 26 46;
+  }
+  body { font-family:'Jost',system-ui,sans-serif; background:#e9e8e6; }
+  .display,h1,h2,h3 { font-family:'Bebas Neue',system-ui,sans-serif; letter-spacing:0.01em; }
+  .mono,code { font-family:'JetBrains Mono',monospace; }
+  .pill { border-radius: 9999px; padding: 3px 10px; font-size: 11px; line-height: 1; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+  .platform-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .platform-header h2 { font-size: 32px; }
+  .platform-header .badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px 10px; border-radius: 9999px; background: white; box-shadow: inset 0 0 0 1px #d4d4d8; color: #52525b; }
+  .platform-grid { display: grid; gap: 24px; align-items: start; }
+  .phone-grid { grid-template-columns: repeat(2, max-content); justify-content: center; }
+  .wide-grid { grid-template-columns: 1fr; }
+  .mode-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #71717a; margin-bottom: 8px; }
+
+  /* ===== Web =====
+   * Browser chrome + URL bar, persistent left sidebar, dense KPI grid,
+   * hover states, ⌘K search. Designed for keyboard + mouse. */
+  .web-frame { border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px -20px rgba(0,0,0,0.3); }
+  .web-chrome-dark { background: #1a1a1a; }
+  .web-chrome-light { background: #e8e8e8; }
+  .web-tile-dark { background: rgb(var(--s-800)); border-radius: 12px; box-shadow: inset 0 0 0 1px rgb(var(--s-700)); }
+  .web-tile-light { background: rgb(var(--s-100)); border-radius: 12px; box-shadow: inset 0 0 0 1px rgb(var(--s-200)); }
+</style>
+</head>
+<body class="text-zinc-900 antialiased">
+
+<header class="bg-zinc-900 text-zinc-100">
+  <div class="max-w-[1400px] mx-auto px-6 py-8">
+    <div class="text-xs uppercase tracking-[0.2em] mb-2" style="color: rgb(var(--primary-cream));">BIZARRE CRM · DASHBOARD</div>
+    <h1 class="display text-4xl">Web</h1>
+    <p class="text-sm text-zinc-400 mt-2"><a href="web.html" class="underline">Web</a> · <a href="ios-iphone.html" class="underline">iPhone</a> · <a href="ios-ipad.html" class="underline">iPad</a> · <a href="android-phone.html" class="underline">Android phone</a> · <a href="android-tablet.html" class="underline">Android tablet</a></p>
+  </div>
+</header>
+
+<!-- ============== WEB ============== -->
+<section class="max-w-[1400px] mx-auto px-6 py-12">
+  <div class="platform-header">
+    <h2 class="display">Web</h2>
+    <div><span class="badge">1320 × 800 · React + Tailwind</span></div>
+  </div>
+  <p class="text-sm text-zinc-600 max-w-3xl mb-6">Standard browser layout. Persistent left sidebar (always visible), top header with global search, dense content area. Designed for keyboard + mouse: hover states, multi-column dense data, expansive widgets. Light mode favored when used in office; dark mode for after-hours.</p>
+
+  <!-- DARK -->
+  <div class="mode-label">Dark</div>
+  <div class="web-frame mb-6">
+    <div class="web-chrome-dark px-3 py-2 flex items-center gap-2">
+      <span class="w-3 h-3 rounded-full bg-rose-400"></span>
+      <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+      <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+      <div class="flex-1 mx-3 px-3 py-1 rounded-md text-xs mono text-zinc-500" style="background:#0e0e0e;">app.bizarrecrm.com/dashboard</div>
+    </div>
+    <div style="background: rgb(var(--s-900)); color: rgb(var(--s-50)); height: 720px;" class="flex flex-col">
+      <!-- header -->
+      <div class="flex items-center gap-4 px-4 h-14 flex-shrink-0" style="background: rgb(var(--s-950)); border-bottom: 1px solid rgb(var(--s-700));">
+        <div class="display text-xl">Bizarre CRM</div>
+        <div class="flex-1 max-w-xl mx-auto">
+          <div class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style="background: rgb(var(--s-800)); color: rgb(var(--s-500)); box-shadow: inset 0 0 0 1px rgb(var(--s-700));">
+            🔍 Search customers, tickets, products… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-900));">⌘K</span>
+          </div>
+        </div>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-400));">💬 <span class="pill" style="background:rgb(var(--teal-dark) / 0.15);color:rgb(var(--teal-dark));padding:1px 7px;">2</span></span>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-400));">🔔 <span class="pill" style="background:rgb(var(--error-dark));color:#fff;padding:1px 7px;">3</span></span>
+        <div class="w-8 h-8 rounded-full grid place-items-center text-xs font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">A</div>
+      </div>
+      <div class="flex flex-1 overflow-hidden">
+        <aside class="w-48 flex flex-col py-3 px-2 gap-0.5 text-xs flex-shrink-0" style="background: rgb(var(--s-800)); border-right: 1px solid rgb(var(--s-700)); color: rgb(var(--s-300));">
+          <div class="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Main</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2 font-semibold" style="background: rgb(var(--s-700)); color: rgb(var(--primary-cream)); box-shadow: inset 2px 0 0 rgb(var(--primary-cream));">▦ Dashboard</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🛒 POS / Check-in</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🔧 Tickets <span class="ml-auto pill" style="background:rgb(var(--s-700));color:rgb(var(--s-300));">23</span></div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">👥 Customers</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📅 Appointments</div>
+          <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Operations</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📦 Inventory</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📄 Invoices</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">💰 Cash register</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📊 Reports</div>
+          <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Other</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🎯 Leads</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">⚙ Settings</div>
+        </aside>
+        <main class="flex-1 overflow-auto p-5 space-y-4">
+          <div class="rounded-xl px-4 py-3 flex items-center justify-between" style="background: rgb(var(--s-700) / 0.85); border-left: 2px solid rgb(var(--primary-cream));">
+            <div>
+              <div class="display text-2xl" style="color: rgb(var(--s-50));">Good morning, Alex</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">Mon · Jan 12 · Store opens 9:00 · 12 tickets due today</div>
+            </div>
+            <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">+ New ticket</button>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1">$3,142</div><div class="text-xs mt-0.5" style="color:rgb(var(--success-dark));">▲ 18% vs avg</div></div>
+            <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-dark));">● 5 overdue</div></div>
+            <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1">$48.2k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">~ on pace</div></div>
+            <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appointments today</div><div class="display text-2xl mt-1">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">Next 2:30pm · S. Chen</div></div>
+          </div>
+          <!-- Dynamic tiles — paired, content swaps by priority (no appts → texts, no texts → pickups) -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl p-3 flex items-center gap-3" style="background:rgb(var(--s-800));box-shadow:inset 0 0 0 1px rgb(var(--s-700)); border-left: 3px solid rgb(var(--teal-dark));">
+              <div class="w-10 h-10 rounded-xl grid place-items-center text-base shrink-0" style="background:rgb(var(--teal-dark) / 0.18);color:rgb(var(--teal-dark));">📅</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--teal-dark));">NEXT APPT · 4H 49M</div>
+                <div class="display text-base mt-0.5" style="color:rgb(var(--s-50));">2:30 PM — Sarah Chen</div>
+                <div class="text-xs" style="color:rgb(var(--s-400));">MacBook Pro screen · 90 min</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-dark));color:#002b30;">Schedule →</button>
+            </div>
+            <div class="rounded-xl p-3 flex items-center gap-3" style="background:rgb(var(--s-800));box-shadow:inset 0 0 0 1px rgb(var(--s-700)); border-left: 3px solid rgb(var(--burgundy-dark));">
+              <div class="w-10 h-10 rounded-xl grid place-items-center text-base shrink-0" style="background:rgb(var(--burgundy-dark) / 0.18);color:rgb(var(--burgundy-dark));">💬</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--burgundy-dark));">UNANSWERED · 47 MIN</div>
+                <div class="display text-base mt-0.5" style="color:rgb(var(--s-50));">2 texts awaiting reply</div>
+                <div class="text-xs" style="color:rgb(var(--s-400));">S. Chen, J. Wright</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--burgundy-dark));color:#fff;">Reply →</button>
+            </div>
+          </div>
+          <!-- Actionables -->
+          <div class="rounded-xl overflow-hidden" style="background:rgb(var(--s-800));box-shadow:inset 0 0 0 1px rgb(var(--s-700));">
+            <div class="px-4 py-2.5 flex items-center justify-between" style="border-bottom:1px solid rgb(var(--s-700));">
+              <div>
+                <div class="display text-base" style="color:rgb(var(--s-50));">Needs your attention</div>
+                <div class="text-[10px] mt-0.5 mono" style="color:rgb(var(--s-500));">5 actions · prioritized</div>
+              </div>
+              <button class="text-xs" style="color:rgb(var(--teal-dark));">View all →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-700));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--error-dark) / 0.18);color:rgb(var(--error-dark));">5</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-50));">Overdue tickets</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">oldest 3 days late · L. Garcia, M. Park, A. Foster +2</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--error-dark));color:#fff;">Follow up →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-700));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-dark) / 0.18);color:rgb(var(--warning-dark));">5</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-50));">Tickets need parts ordered</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">blocked — iPhone 15 OEM screen, AirPods battery +3</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-dark));color:#2b1400;">Order parts →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-700));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-dark) / 0.18);color:rgb(var(--warning-dark));">7</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-50));">SKUs low on stock</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">below reorder point · auto-reorder rules ready</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-dark));color:#2b1400;">Auto-reorder →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-700));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-dark) / 0.18);color:rgb(var(--warning-dark));">3</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-50));">Invoices unpaid 30+ days</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">$1,240 outstanding · ready to send dunning email</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-dark));color:#2b1400;">Send dunning →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--teal-dark) / 0.18);color:rgb(var(--teal-dark));">2</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-50));">Customer messages awaiting reply</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">oldest 47 min · S. Chen, J. Wright</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-dark));color:#002b30;">Reply →</button>
+            </div>
+          </div>
+          <!-- Reports — click header to navigate to full report -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="web-tile-dark p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Sales this week <span style="color:rgb(var(--teal-dark));">→</span></a>
+              <div class="flex items-end gap-1" style="height:48px;">
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-600));height:35%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-600));height:50%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-600));height:70%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-600));height:45%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-600));height:80%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--primary-cream));height:92%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-700));height:20%"></div>
+              </div>
+              <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));">
+                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+              </div>
+              <div class="text-xs mt-2" style="color:rgb(var(--s-400));">$18.4k week · <span style="color:rgb(var(--success-dark));">▲ 12%</span></div>
+            </div>
+            <div class="web-tile-dark p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Customer trends <span style="color:rgb(var(--teal-dark));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-xl" style="color:rgb(var(--success-dark));">+14</div></div>
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-xl" style="color:rgb(var(--teal-dark));">62%</div></div>
+              </div>
+              <div class="h-1.5 rounded-full overflow-hidden flex" style="background:rgb(var(--s-700));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-dark));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-dark));"></div>
+              </div>
+              <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
+            </div>
+            <div class="web-tile-dark p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Top repairs <span style="color:rgb(var(--teal-dark));">→</span></a>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-cream));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">34</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">23</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">14</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">9</div></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIGHT -->
+  <div class="mode-label">Light</div>
+  <div class="web-frame">
+    <div class="web-chrome-light px-3 py-2 flex items-center gap-2">
+      <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+      <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+      <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+      <div class="flex-1 mx-3 px-3 py-1 rounded-md text-xs mono text-zinc-500" style="background:#fff;">app.bizarrecrm.com/dashboard</div>
+    </div>
+    <div style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); height: 720px;" class="flex flex-col">
+      <div class="flex items-center gap-4 px-4 h-14 flex-shrink-0" style="background: rgb(var(--s-100)); border-bottom: 1px solid rgb(var(--s-200));">
+        <div class="display text-xl">Bizarre CRM</div>
+        <div class="flex-1 max-w-xl mx-auto">
+          <div class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style="background: rgb(var(--s-50)); color: rgb(var(--s-500)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));">
+            🔍 Search customers, tickets, products… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-100));">⌘K</span>
+          </div>
+        </div>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-600));">💬 <span class="pill" style="background:rgb(var(--teal-light) / 0.15);color:rgb(var(--teal-light));padding:1px 7px;">2</span></span>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-600));">🔔 <span class="pill" style="background:rgb(var(--error-light));color:#fff;padding:1px 7px;">3</span></span>
+        <div class="w-8 h-8 rounded-full grid place-items-center text-xs font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">A</div>
+      </div>
+      <div class="flex flex-1 overflow-hidden">
+        <aside class="w-48 flex flex-col py-3 px-2 gap-0.5 text-xs flex-shrink-0" style="background: rgb(var(--s-100)); border-right: 1px solid rgb(var(--s-200)); color: rgb(var(--s-700));">
+          <div class="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Main</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2 font-semibold" style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); box-shadow: inset 2px 0 0 rgb(var(--primary-caramel));">▦ Dashboard</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🛒 POS / Check-in</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🔧 Tickets <span class="ml-auto pill" style="background:rgb(var(--s-200));color:rgb(var(--s-700));">23</span></div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">👥 Customers</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📅 Appointments</div>
+          <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Operations</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📦 Inventory</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📄 Invoices</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">💰 Cash register</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">📊 Reports</div>
+          <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Other</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">🎯 Leads</div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">⚙ Settings</div>
+        </aside>
+        <main class="flex-1 overflow-auto p-5 space-y-4">
+          <div class="rounded-xl px-4 py-3 flex items-center justify-between" style="background: rgb(var(--s-100)); border-left: 2px solid rgb(var(--primary-caramel));">
+            <div>
+              <div class="display text-2xl" style="color: rgb(var(--s-900));">Good morning, Alex</div>
+              <div class="text-xs mt-0.5" style="color: rgb(var(--s-500));">Mon · Jan 12 · Store opens 9:00 · 12 tickets due today</div>
+            </div>
+            <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">+ New ticket</button>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1">$3,142</div><div class="text-xs mt-0.5" style="color:rgb(var(--success-light));">▲ 18% vs avg</div></div>
+            <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-light));">● 5 overdue</div></div>
+            <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1">$48.2k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">~ on pace</div></div>
+            <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appointments today</div><div class="display text-2xl mt-1">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">Next 2:30pm · S. Chen</div></div>
+          </div>
+          <!-- Dynamic tiles — paired, content swaps by priority -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl p-3 flex items-center gap-3" style="background:rgb(var(--s-100));box-shadow:inset 0 0 0 1px rgb(var(--s-200)); border-left: 3px solid rgb(var(--teal-light));">
+              <div class="w-10 h-10 rounded-xl grid place-items-center text-base shrink-0" style="background:rgb(var(--teal-light) / 0.15);color:rgb(var(--teal-light));">📅</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--teal-light));">NEXT APPT · 4H 49M</div>
+                <div class="display text-base mt-0.5" style="color:rgb(var(--s-900));">2:30 PM — Sarah Chen</div>
+                <div class="text-xs" style="color:rgb(var(--s-500));">MacBook Pro screen · 90 min</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-light));color:#fff;">Schedule →</button>
+            </div>
+            <div class="rounded-xl p-3 flex items-center gap-3" style="background:rgb(var(--s-100));box-shadow:inset 0 0 0 1px rgb(var(--s-200)); border-left: 3px solid rgb(var(--burgundy-light));">
+              <div class="w-10 h-10 rounded-xl grid place-items-center text-base shrink-0" style="background:rgb(var(--burgundy-light) / 0.15);color:rgb(var(--burgundy-light));">💬</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--burgundy-light));">UNANSWERED · 47 MIN</div>
+                <div class="display text-base mt-0.5" style="color:rgb(var(--s-900));">2 texts awaiting reply</div>
+                <div class="text-xs" style="color:rgb(var(--s-500));">S. Chen, J. Wright</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--burgundy-light));color:#fff;">Reply →</button>
+            </div>
+          </div>
+          <!-- Actionables -->
+          <div class="rounded-xl overflow-hidden" style="background:rgb(var(--s-100));box-shadow:inset 0 0 0 1px rgb(var(--s-200));">
+            <div class="px-4 py-2.5 flex items-center justify-between" style="border-bottom:1px solid rgb(var(--s-200));">
+              <div>
+                <div class="display text-base" style="color:rgb(var(--s-900));">Needs your attention</div>
+                <div class="text-[10px] mt-0.5 mono" style="color:rgb(var(--s-500));">5 actions · prioritized</div>
+              </div>
+              <button class="text-xs" style="color:rgb(var(--teal-light));">View all →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-200));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--error-light) / 0.15);color:rgb(var(--error-light));">5</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-900));">Overdue tickets</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">oldest 3 days late · L. Garcia, M. Park, A. Foster +2</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--error-light));color:#fff;">Follow up →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-200));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-light) / 0.15);color:rgb(var(--warning-light));">5</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-900));">Tickets need parts ordered</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">blocked — iPhone 15 OEM screen, AirPods battery +3</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-light));color:#fff;">Order parts →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-200));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-light) / 0.15);color:rgb(var(--warning-light));">7</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-900));">SKUs low on stock</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">below reorder point · auto-reorder rules ready</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-light));color:#fff;">Auto-reorder →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3" style="border-bottom:1px solid rgb(var(--s-200));">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--warning-light) / 0.15);color:rgb(var(--warning-light));">3</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-900));">Invoices unpaid 30+ days</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">$1,240 outstanding · ready to send dunning email</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--warning-light));color:#fff;">Send dunning →</button>
+            </div>
+            <div class="px-4 py-2.5 flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold shrink-0" style="background:rgb(var(--teal-light) / 0.15);color:rgb(var(--teal-light));">2</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold" style="color:rgb(var(--s-900));">Customer messages awaiting reply</div>
+                <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">oldest 47 min · S. Chen, J. Wright</div>
+              </div>
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-light));color:#fff;">Reply →</button>
+            </div>
+          </div>
+          <!-- Reports — click header to navigate to full report -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="web-tile-light p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Sales this week <span style="color:rgb(var(--teal-light));">→</span></a>
+              <div class="flex items-end gap-1" style="height:48px;">
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:35%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:50%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:70%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:45%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:80%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--primary-caramel));height:92%"></div>
+                <div class="flex-1 rounded-t" style="background:rgb(var(--s-200));height:20%"></div>
+              </div>
+              <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));">
+                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+              </div>
+              <div class="text-xs mt-2" style="color:rgb(var(--s-600));">$18.4k week · <span style="color:rgb(var(--success-light));">▲ 12%</span></div>
+            </div>
+            <div class="web-tile-light p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Customer trends <span style="color:rgb(var(--teal-light));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-xl" style="color:rgb(var(--success-light));">+14</div></div>
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-xl" style="color:rgb(var(--teal-light));">62%</div></div>
+              </div>
+              <div class="h-1.5 rounded-full overflow-hidden flex" style="background:rgb(var(--s-200));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-light));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-light));"></div>
+              </div>
+              <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
+            </div>
+            <div class="web-tile-light p-3">
+              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Top repairs <span style="color:rgb(var(--teal-light));">→</span></a>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-caramel));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">34</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">23</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">14</div></div>
+                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">9</div></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="bg-zinc-900 text-zinc-400 py-10">
+  <div class="max-w-[1400px] mx-auto px-6">
+    <div class="display text-2xl text-zinc-100">Bizarre CRM</div>
+    <p class="text-sm mt-1">Dashboard study · split from <code class="text-xs">mockups/dashboard.html</code> · 2026-05-04</p>
+  </div>
+</footer>
+
+</body>
+</html>
