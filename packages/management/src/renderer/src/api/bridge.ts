@@ -441,13 +441,22 @@ interface ElectronAPI {
       schedule: string;
       retention_days: number;
       encryption_enabled: boolean;
+      last_backup: string;
+      last_status: string;
     }>>;
     tenantBackupSettingsUpdate(slug: string, settings: {
       backup_path: string;
       schedule: string;
       retention_days: number;
       encryption_enabled: boolean;
-    }): Promise<ApiResponse>;
+    }): Promise<ApiResponse<{
+      backup_path: string;
+      schedule: string;
+      retention_days: number;
+      encryption_enabled: boolean;
+      last_backup: string;
+      last_status: string;
+    }>>;
     backupDrives(): Promise<ApiResponse<DiskDrive[]>>;
   };
   admin: {

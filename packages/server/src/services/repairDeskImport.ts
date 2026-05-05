@@ -1657,17 +1657,21 @@ export async function runRepairDeskImport(db: any, request: ImportRequest): Prom
   // Long-task registry: declare to the cross-platform watchdog so it does
   // not flag the import as a wedge. RepairDesk imports for shops with
   // 10k+ tickets routinely take 30-60 minutes; declare 60-min upper bound.
+  // start() lives INSIDE the try-block so any throw before completion
+  // (e.g. getStoreTimezone, RdApiClient ctor) still hits finally → end().
   const longTaskRegistry = await import('../utils/longTaskRegistry.js');
+  let longTaskActive = false;
+  try {
   longTaskRegistry.start({
     kind: 'repairdesk-import',
     expectedDurationMs: 60 * 60 * 1000,
     details: { tenantSlug, entities: request.entities },
   });
+  longTaskActive = true;
 
   // SEC-H82: snapshot the wall time and timezone once for the whole import.
   const startTime = Date.now();
   const timezone = getStoreTimezone(db);
-  try {
 
   const client = new RdApiClient(request.apiKey, undefined, tenantSlug);
   const stmts = getStatements(db);
@@ -1790,7 +1794,7 @@ export async function runRepairDeskImport(db: any, request: ImportRequest): Prom
     elapsedMs: Date.now() - startTime,
   });
   } finally {
-    longTaskRegistry.end();
+    if (longTaskActive) longTaskRegistry.end();
   }
 }
 

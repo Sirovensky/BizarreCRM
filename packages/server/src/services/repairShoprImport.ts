@@ -1031,15 +1031,20 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
 
   // Long-task registry: declare to the cross-platform watchdog that this is a
   // legitimate long operation, so the watchdog extends its wedge-failure
-  // grace period instead of restarting the server mid-import. RepairShopr
-  // imports for shops with 10k+ tickets routinely take 20-40 minutes; we
-  // declare a 60-minute upper bound (watchdog multiplies by 1.5x → 90 min cap).
+  // grace period instead of restarting the server mid-import. start() is
+  // INSIDE the try-block so that any throw between start() and end() always
+  // unwinds through the finally clause and clears the registry — otherwise
+  // a thrown getStatements() or RsApiClient ctor would leak the long-task
+  // declaration and the watchdog would refuse to restart for 90 minutes.
   const longTaskRegistry = await import('../utils/longTaskRegistry.js');
+  let longTaskActive = false;
+  try {
   longTaskRegistry.start({
     kind: 'repairshopr-import',
     expectedDurationMs: 60 * 60 * 1000,
     details: { tenantSlug, entities: request.entities },
   });
+  longTaskActive = true;
 
   const client = new RsApiClient(request.apiKey, request.subdomain, tenantSlug);
   const stmts = getStatements(db);
@@ -1050,7 +1055,6 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
 
   console.log(`[RS Import] Starting RepairShopr import for: ${toProcess.join(', ')}`);
 
-  try {
   for (const entity of toProcess) {
     if (cancelFlagsRS.get(tenantSlug)) {
       // Mark remaining runs as cancelled
@@ -1099,7 +1103,9 @@ export async function runRepairShoprImport(db: any, request: RsImportRequest): P
   } finally {
     // Always clear the long-task registration so the watchdog reverts to
     // the default wedge threshold once the import is done — even on throw.
-    longTaskRegistry.end();
+    // longTaskActive guards against the (unlikely) case that start() itself
+    // threw before assigning, in which case there's no registration to clear.
+    if (longTaskActive) longTaskRegistry.end();
   }
 }
 

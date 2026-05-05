@@ -1322,11 +1322,29 @@ router.get('/backups', (_req, res) => {
 
 const TENANT_BACKUP_ROUTE_BASE = '/tenants/:slug/backups';
 
-/** Reject filenames that look like path traversal before they reach disk. */
+/**
+ * Reject filenames that look like path traversal before they reach disk.
+ * Defense-in-depth: resolveBackupPath() also enforces containment under the
+ * tenant's configured backup directory, but cheap rejection here surfaces
+ * a clear 400 instead of a downstream 500/file-not-found.
+ *
+ * Guards:
+ *  - empty / missing / overlong
+ *  - parent-traversal `..`
+ *  - directory separators on either platform
+ *  - NUL byte (older Node versions truncated paths at NUL; current versions
+ *    throw ERR_INVALID_ARG_VALUE which would surface as a 500)
+ *  - Windows reserved device names (`CON`, `PRN`, `NUL`, `AUX`, `COM1-9`,
+ *    `LPT1-9`) — these resolve to device objects on Windows and cause
+ *    surprising fs behavior even when the path looks ordinary
+ */
 function rejectUnsafeFilename(filename: string): string | null {
   if (!filename) return 'Filename required';
+  if (filename.length > 255) return 'Filename too long';
   if (filename.includes('..')) return 'Invalid filename';
   if (filename.includes('/') || filename.includes('\\')) return 'Invalid filename';
+  if (filename.includes('\0')) return 'Invalid filename';
+  if (/^(con|prn|nul|aux|com[1-9]|lpt[1-9])(\.|$)/i.test(filename)) return 'Reserved filename';
   return null;
 }
 
@@ -1334,11 +1352,15 @@ function rejectUnsafeFilename(filename: string): string | null {
  * Audit helper for the per-tenant super-admin backup routes. Centralizes
  * the `getMasterDb()!` non-null assertion (master DB is always loaded by
  * the time these routes are reachable; super-admin auth itself runs
- * against it).
+ * against it). Captures the super-admin actor ID from req.superAdmin so
+ * every backup operation is attributable to the operator who triggered
+ * it — required for compliance + post-incident review.
  */
-function auditBackup(action: string, ip: string, details: Record<string, unknown>): void {
+function auditBackup(req: Request, action: string, details: Record<string, unknown>): void {
   const master = getMasterDb()!;
-  audit(master, action, null, ip, details);
+  const actorId = req.superAdmin?.superAdminId ?? null;
+  const ip = req.ip || 'unknown';
+  audit(master, action, actorId, ip, details);
 }
 
 /**
@@ -1392,7 +1414,7 @@ router.post(
     try {
       tdb = await getTenantDb(slug);
       const result = await backupRun(tdb, { tenantSlug: slug, tenantId: tenant.id });
-      auditBackup('super_admin_tenant_backup_run', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_run', {
         tenant_slug: slug,
         tenant_id: tenant.id,
         success: result.success,
@@ -1430,7 +1452,7 @@ router.get(
         res.status(404).json({ success: false, message: 'Backup not found' });
         return;
       }
-      auditBackup('super_admin_tenant_backup_download', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_download', {
         tenant_slug: slug, tenant_id: tenant.id, filename,
       });
       const stat = fs.statSync(fullPath);
@@ -1486,7 +1508,7 @@ router.post(
     }
     const allowUnsigned = req.body?.allow_unsigned === true;
     superAdminRestoreInProgress = true;
-    auditBackup('super_admin_tenant_backup_restore_start', req.ip || 'unknown', {
+    auditBackup(req, 'super_admin_tenant_backup_restore_start', {
       tenant_slug: slug, tenant_id: tenant.id, filename, allowUnsigned,
     });
     let tdb: import('better-sqlite3').Database | undefined;
@@ -1512,7 +1534,7 @@ router.post(
         },
       });
       if (!result.success) {
-        auditBackup('super_admin_tenant_backup_restore_failed', req.ip || 'unknown', {
+        auditBackup(req, 'super_admin_tenant_backup_restore_failed', {
           tenant_slug: slug, tenant_id: tenant.id, filename,
           error: result.message, unsigned: Boolean(result.unsigned),
         });
@@ -1520,7 +1542,7 @@ router.post(
         res.status(status).json({ success: false, message: result.message, unsigned: result.unsigned });
         return;
       }
-      auditBackup('super_admin_tenant_backup_restore_success', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_restore_success', {
         tenant_slug: slug, tenant_id: tenant.id, filename,
         hash: result.hash,
         safetyBackup: result.safetyBackup ? path.basename(result.safetyBackup) : undefined,
@@ -1537,7 +1559,7 @@ router.post(
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      auditBackup('super_admin_tenant_backup_restore_failed', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_restore_failed', {
         tenant_slug: slug, tenant_id: tenant.id, filename, error: msg,
       });
       logger.error('super-admin tenant backup restore crashed', { slug, filename, error: msg });
@@ -1567,7 +1589,7 @@ router.delete(
     try {
       tdb = await getTenantDb(slug);
       const ok = backupDelete(tdb, filename);
-      auditBackup('super_admin_tenant_backup_delete', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_delete', {
         tenant_slug: slug, tenant_id: tenant.id, filename, ok,
       });
       res.json({ success: ok });
@@ -1635,7 +1657,7 @@ router.put(
         ...(encrypt !== undefined && { encrypt: encrypt as boolean }),
       };
       backupUpdateSettings(tdb, safe);
-      auditBackup('super_admin_tenant_backup_settings_update', req.ip || 'unknown', {
+      auditBackup(req, 'super_admin_tenant_backup_settings_update', {
         tenant_slug: slug, tenant_id: tenant.id, fields: Object.keys(safe),
       });
       res.json({ success: true, data: backupGetSettings(tdb) });

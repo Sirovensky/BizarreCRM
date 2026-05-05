@@ -32,11 +32,21 @@ function normalizeBackupRow(row: { name?: string; filename?: string; size: numbe
   };
 }
 
+/**
+ * Renderer-side shape after the IPC mapper in management-api.ts has
+ * normalized the server's `{ path, retention, encrypt, lastBackup, lastStatus }`
+ * into renderer-friendly snake_case. Pre-fix the page read `settings.path`
+ * + `settings.lastRun` which never matched either shape and rendered as
+ * 'Never' / blank for everyone. See rendererToServerBackupSettings /
+ * serverToRendererBackupSettings in the IPC layer.
+ */
 interface BackupSettings {
-  path: string;
+  backup_path: string;
   schedule: string;
-  retention: number;
-  lastRun: string | null;
+  retention_days: number;
+  encryption_enabled?: boolean;
+  last_backup?: string;
+  last_status?: string;
 }
 
 interface TenantOption {
@@ -248,9 +258,9 @@ export function BackupPage() {
 
   // Health: derive freshness band from the most recent backup. Use the
   // backup file's created timestamp if present (more authoritative than
-  // settings.lastRun, which can be stale if the scheduler missed a tick
-  // but a manual `Backup Now` ran).
-  const lastBackupAt = backups.length > 0 ? backups[0].created : settings?.lastRun ?? null;
+  // settings.last_backup, which can be stale if the scheduler missed a
+  // tick but a manual `Backup Now` ran).
+  const lastBackupAt = backups.length > 0 ? backups[0].created : settings?.last_backup ?? null;
   const ageMs = lastBackupAt ? Math.max(0, Date.now() - new Date(lastBackupAt).getTime()) : Infinity;
   const ageHours = ageMs / (1000 * 60 * 60);
   const health: 'fresh' | 'stale' | 'overdue' | 'missing' =
@@ -368,7 +378,7 @@ export function BackupPage() {
               <FolderOpen className="w-4 h-4 text-surface-500" />
               <span className="text-[11px] text-surface-500 uppercase tracking-wider">Backup Path</span>
             </div>
-            <div className="text-xs font-mono text-surface-300 truncate">{settings.path || 'Not configured'}</div>
+            <div className="text-xs font-mono text-surface-300 truncate">{settings.backup_path || 'Not configured'}</div>
           </div>
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-2">
@@ -382,7 +392,7 @@ export function BackupPage() {
               <Database className="w-4 h-4 text-surface-500" />
               <span className="text-[11px] text-surface-500 uppercase tracking-wider">Last Backup</span>
             </div>
-            <div className="text-xs text-surface-300">{settings.lastRun ? formatDateTime(settings.lastRun) : 'Never'}</div>
+            <div className="text-xs text-surface-300">{settings.last_backup ? formatDateTime(settings.last_backup) : 'Never'}</div>
           </div>
         </div>
       )}

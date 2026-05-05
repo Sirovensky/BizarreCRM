@@ -151,6 +151,47 @@ const SchemaBackupSettings = z.object({
   encryption_enabled: z.boolean(),
 }).strict();
 
+/**
+ * Server's getBackupSettings/updateBackupSettings work in `{ path, schedule,
+ * retention, encrypt }` shape (see packages/server/src/services/backup.ts).
+ * The renderer + this validator use the friendlier `{ backup_path, schedule,
+ * retention_days, encryption_enabled }` shape. These two helpers map between
+ * them so a renaming on either side does not silently no-op writes.
+ *
+ * Pre-fix: a successful PUT sent the renderer-shape payload directly through
+ * to the server, which then read `body.path === undefined` → `body.schedule
+ * === undefined` etc. and updated NOTHING. UI showed "saved" but the next
+ * `getStatus()` returned the original values. Same trap was about to ship in
+ * the new super-admin per-tenant settings PUT.
+ */
+function rendererToServerBackupSettings(s: z.infer<typeof SchemaBackupSettings>): {
+  path: string; schedule: string; retention: number; encrypt: boolean;
+} {
+  return {
+    path: s.backup_path,
+    schedule: s.schedule,
+    retention: s.retention_days,
+    encrypt: s.encryption_enabled,
+  };
+}
+
+function serverToRendererBackupSettings(s: {
+  path?: string; schedule?: string; retention?: number; encrypt?: boolean;
+  lastBackup?: string; lastStatus?: string;
+}): {
+  backup_path: string; schedule: string; retention_days: number; encryption_enabled: boolean;
+  last_backup: string; last_status: string;
+} {
+  return {
+    backup_path: s.path ?? '',
+    schedule: s.schedule ?? '',
+    retention_days: typeof s.retention === 'number' ? s.retention : 30,
+    encryption_enabled: Boolean(s.encrypt),
+    last_backup: s.lastBackup ?? '',
+    last_status: s.lastStatus ?? '',
+  };
+}
+
 // ── Env-editor whitelist (boot-time vars editable from dashboard) ────
 // Generic env editor reads + writes these specific keys via .env file
 // since they are evaluated at server boot (before DB open). Each key is
@@ -1223,7 +1264,13 @@ export function registerManagementIpc(): void {
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(s)}/backup-settings`,
     );
-    return bodyOf(res);
+    const body = bodyOf(res) as { success?: boolean; data?: unknown; message?: string };
+    if (body.success && body.data) {
+      // Map server-shape `{ path, schedule, retention, encrypt, lastBackup, lastStatus }`
+      // to renderer-shape so the bridge type stays accurate end-to-end.
+      return { ...body, data: serverToRendererBackupSettings(body.data as never) };
+    }
+    return body;
   }));
 
   ipcMain.handle('super-admin:tenant-backup-settings-update', wrapHandler(async (event, slug: unknown, settings: unknown) => {
@@ -1233,12 +1280,21 @@ export function registerManagementIpc(): void {
     if (!parsed.success) {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid backup settings' };
     }
+    // Translate renderer-shape `{ backup_path, retention_days, ... }` to the
+    // server's `{ path, retention, encrypt, ... }` shape — the server's PUT
+    // validator silently ignored the renderer keys before this fix and
+    // returned 200 without applying any settings.
+    const serverPayload = rendererToServerBackupSettings(parsed.data);
     const res = await apiRequest(
       'PUT',
       `/super-admin/api/tenants/${encodeURIComponent(s)}/backup-settings`,
-      parsed.data,
+      serverPayload,
     );
-    return bodyOf(res);
+    const body = bodyOf(res) as { success?: boolean; data?: unknown; message?: string };
+    if (body.success && body.data) {
+      return { ...body, data: serverToRendererBackupSettings(body.data as never) };
+    }
+    return body;
   }));
 
   // Host-level drive listing — used by the path picker on either single
@@ -1979,7 +2035,14 @@ export function registerManagementIpc(): void {
   ipcMain.handle('admin:get-status', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/admin/status');
-    return bodyOf(res);
+    const body = bodyOf(res) as { success?: boolean; data?: { backup?: unknown; [k: string]: unknown }; message?: string };
+    // The status payload includes a nested `backup` block in server shape;
+    // map it through to renderer shape so BackupPage and SetupChecklist see
+    // consistent keys regardless of which entry point they came in through.
+    if (body.success && body.data && body.data.backup && typeof body.data.backup === 'object') {
+      return { ...body, data: { ...body.data, backup: serverToRendererBackupSettings(body.data.backup as never) } };
+    }
+    return body;
   }));
 
   ipcMain.handle('admin:list-drives', wrapHandler(async (event) => {
@@ -2030,8 +2093,18 @@ export function registerManagementIpc(): void {
     if (!parsed.success) {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid backup settings' };
     }
-    const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', parsed.data);
-    return bodyOf(res);
+    // Same shape mapping as super-admin:tenant-backup-settings-update — the
+    // server's PUT body uses `{ path, retention, encrypt }` keys, not the
+    // renderer's `{ backup_path, retention_days, encryption_enabled }`.
+    // Without this map the server silently ignored every field and returned
+    // 200 with the unchanged settings.
+    const serverPayload = rendererToServerBackupSettings(parsed.data);
+    const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', serverPayload);
+    const body = bodyOf(res) as { success?: boolean; data?: unknown; message?: string };
+    if (body.success && body.data) {
+      return { ...body, data: serverToRendererBackupSettings(body.data as never) };
+    }
+    return body;
   }));
 
   ipcMain.handle('admin:delete-backup', wrapHandler(async (event, filename: unknown) => {

@@ -672,13 +672,12 @@ export async function scrapeCatalog(
 
   // Long-task registry: declare to the cross-platform watchdog. Catalog
   // scrapes have a hard 60-minute SEC-H76 ceiling enforced below, so we
-  // declare the same upper bound to the watchdog.
+  // declare the same upper bound to the watchdog. start() is registered
+  // INSIDE the existing try-block below (search for `longTaskRegistry.start`)
+  // so any throw before completion still unwinds through finally → end()
+  // and avoids leaking the registration.
   const longTaskRegistry = await import('../utils/longTaskRegistry.js');
-  longTaskRegistry.start({
-    kind: 'catalog-scrape',
-    expectedDurationMs: 60 * 60 * 1000,
-    details: { source, jobId: jid },
-  });
+  let longTaskActive = false;
 
   let totalUpserted = 0;
   let pagesTotal = 0;
@@ -697,6 +696,13 @@ export async function scrapeCatalog(
   let wallclockHit = false;
 
   try {
+    longTaskRegistry.start({
+      kind: 'catalog-scrape',
+      expectedDurationMs: 60 * 60 * 1000,
+      details: { source, jobId: jid },
+    });
+    longTaskActive = true;
+
     const seenExternalIds = new Set<string>();
 
     for (const query of FULL_CATALOG_QUERIES) {
@@ -838,7 +844,7 @@ export async function scrapeCatalog(
     logger.error('scrape threw unhandled error', { source, error: message });
     throw err;
   } finally {
-    longTaskRegistry.end();
+    if (longTaskActive) longTaskRegistry.end();
   }
 }
 

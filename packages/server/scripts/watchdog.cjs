@@ -268,17 +268,24 @@ function probeLiveness(opts) {
       const code = err && err.code;
       // Map known TLS errors to cert-error path so a real expired cert
       // surfaces as a different alarm than a wedged event loop.
-      if (
-        code === 'CERT_HAS_EXPIRED' ||
-        code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
-        code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
-        code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
-        code === 'ERR_TLS_CERT_ALTNAME_INVALID' ||
-        (typeof err.message === 'string' && err.message.toLowerCase().includes('certificate'))
-      ) {
+      // We INTENTIONALLY do NOT match on err.message substrings — earlier
+      // versions did and risked DNS / network errors whose message strings
+      // happened to contain "certificate" (e.g. some EAI_AGAIN aggregations)
+      // being silently routed to cert-error and never triggering a restart.
+      // Strict code-based match keeps the cert-error path narrow.
+      const TLS_CERT_CODES = new Set([
+        'CERT_HAS_EXPIRED',
+        'DEPTH_ZERO_SELF_SIGNED_CERT',
+        'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'ERR_TLS_CERT_ALTNAME_INVALID',
+        'CERT_NOT_YET_VALID',
+        'CERT_REJECTED',
+      ]);
+      if (typeof code === 'string' && TLS_CERT_CODES.has(code)) {
         // Self-signed local certs hit DEPTH_ZERO_SELF_SIGNED_CERT but we set
-        // rejectUnauthorized:false, so this branch is reached only for true
-        // cert-validation faults the server returned. Treat as cert-error.
+        // rejectUnauthorized:false, so this branch is only reached for true
+        // cert-validation faults the OS layer surfaced. Treat as cert-error.
         resolve({ kind: 'cert-error', code, message: err.message });
         return;
       }
@@ -372,17 +379,27 @@ function emitWatchdogEvent(repoRoot, event) {
 
 // ─── Tunables loader ───────────────────────────────────────────────────────
 
-function intEnv(name, fallback) {
+function intEnv(name, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
   const parsed = parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (!Number.isFinite(parsed)) return fallback;
+  // Clamp to keep the watchdog loop sane: a zero / negative pollIntervalMs
+  // would busy-loop the process, and a huge max-restarts threshold would
+  // hide real wedges. Clamping is intentional silent fallback to defaults
+  // — a console warning would spam every 30s on every rerun.
+  if (parsed < min) return Math.max(fallback, min);
+  if (parsed > max) return max;
+  return parsed;
 }
-function floatEnv(name, fallback) {
+function floatEnv(name, fallback, { min = 0, max = Number.MAX_VALUE } = {}) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
   const parsed = parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < min) return Math.max(fallback, min);
+  if (parsed > max) return max;
+  return parsed;
 }
 function strEnv(name, fallback) {
   const raw = process.env[name];
@@ -391,17 +408,20 @@ function strEnv(name, fallback) {
 }
 
 function loadOptions() {
+  // All clamps are minimums; ceilings prevent absurd values (e.g. one-day
+  // poll interval) that would defeat the watchdog. PORT is allowed to be
+  // any 1-65535 so dev / co-tenant deployments work.
   return {
-    port: intEnv('PORT', 443),
-    pollIntervalMs: intEnv('WATCHDOG_POLL_INTERVAL_MS', 30_000),
-    failureThreshold: intEnv('WATCHDOG_FAILURE_THRESHOLD', 3),
-    longTaskMultiplier: floatEnv('WATCHDOG_LONG_TASK_MULTIPLIER', 1.5),
-    longTaskMaxMs: intEnv('WATCHDOG_LONG_TASK_MAX_MS', 30 * 60 * 1000),
-    logCorroborationWindowMs: intEnv('WATCHDOG_LOG_CORROBORATION_WINDOW_MS', 60_000),
-    cascadeWindowMs: intEnv('WATCHDOG_CASCADE_WINDOW_MS', 60 * 60 * 1000),
-    cascadeMaxRestarts: intEnv('WATCHDOG_CASCADE_MAX_RESTARTS', 3),
-    certErrorThreshold: intEnv('WATCHDOG_CERT_ERROR_THRESHOLD', 5),
-    requestTimeoutMs: intEnv('WATCHDOG_REQUEST_TIMEOUT_MS', 5000),
+    port: intEnv('PORT', 443, { min: 1, max: 65535 }),
+    pollIntervalMs: intEnv('WATCHDOG_POLL_INTERVAL_MS', 30_000, { min: 1000, max: 5 * 60_000 }),
+    failureThreshold: intEnv('WATCHDOG_FAILURE_THRESHOLD', 3, { min: 1, max: 50 }),
+    longTaskMultiplier: floatEnv('WATCHDOG_LONG_TASK_MULTIPLIER', 1.5, { min: 1, max: 10 }),
+    longTaskMaxMs: intEnv('WATCHDOG_LONG_TASK_MAX_MS', 30 * 60 * 1000, { min: 60_000, max: 24 * 60 * 60 * 1000 }),
+    logCorroborationWindowMs: intEnv('WATCHDOG_LOG_CORROBORATION_WINDOW_MS', 60_000, { min: 5_000, max: 30 * 60 * 1000 }),
+    cascadeWindowMs: intEnv('WATCHDOG_CASCADE_WINDOW_MS', 60 * 60 * 1000, { min: 5 * 60_000, max: 24 * 60 * 60 * 1000 }),
+    cascadeMaxRestarts: intEnv('WATCHDOG_CASCADE_MAX_RESTARTS', 3, { min: 1, max: 100 }),
+    certErrorThreshold: intEnv('WATCHDOG_CERT_ERROR_THRESHOLD', 5, { min: 1, max: 50 }),
+    requestTimeoutMs: intEnv('WATCHDOG_REQUEST_TIMEOUT_MS', 5000, { min: 500, max: 60_000 }),
     targetApp: strEnv('WATCHDOG_TARGET_APP', 'bizarre-crm'),
   };
 }

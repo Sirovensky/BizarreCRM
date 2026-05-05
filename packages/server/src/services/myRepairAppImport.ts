@@ -1260,14 +1260,19 @@ export async function runMyRepairAppImport(db: any, request: MraImportRequest): 
   const tenantSlug = request.tenantSlug || 'default';
   cancelFlagsMRA.set(tenantSlug, false);
 
-  // Long-task registry: declare to the cross-platform watchdog.
-  // MyRepairApp imports for large shops can take 30-60 minutes.
+  // Long-task registry: declare to the cross-platform watchdog. start() is
+  // INSIDE the try-block so a throw before completion (e.g. MraApiClient
+  // ctor, getStatements) still unwinds through finally → end() and avoids
+  // leaking the registration.
   const longTaskRegistry = await import('../utils/longTaskRegistry.js');
+  let longTaskActive = false;
+  try {
   longTaskRegistry.start({
     kind: 'myrepairapp-import',
     expectedDurationMs: 60 * 60 * 1000,
     details: { tenantSlug, entities: request.entities },
   });
+  longTaskActive = true;
 
   const client = new MraApiClient(request.apiKey, request.baseUrl, tenantSlug);
   const stmts = getStatements(db);
@@ -1277,7 +1282,6 @@ export async function runMyRepairAppImport(db: any, request: MraImportRequest): 
   const toProcess = orderedEntities.filter(e => request.entities.includes(e));
 
   console.log(`[MRA Import] Starting MyRepairApp import for: ${toProcess.join(', ')}`);
-  try {
 
   for (const entity of toProcess) {
     if (cancelFlagsMRA.get(tenantSlug)) {
@@ -1328,6 +1332,6 @@ export async function runMyRepairAppImport(db: any, request: MraImportRequest): 
 
   console.log('[MRA Import] MyRepairApp import finished.');
   } finally {
-    longTaskRegistry.end();
+    if (longTaskActive) longTaskRegistry.end();
   }
 }
