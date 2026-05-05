@@ -23,6 +23,7 @@ color 0B
 
 set "ROOT=%~dp0"
 set "REQUIRED_NODE_MAJOR=22"
+set "REJECTED_NODE_MAJOR=25"
 set "NODE_DOWNLOAD_URL=https://nodejs.org/en/download/"
 
 echo  ============================================
@@ -47,6 +48,11 @@ if "%NODE_MAJOR%"=="" (
 if !NODE_MAJOR! LSS %REQUIRED_NODE_MAJOR% (
     echo  Node.js v!NODE_MAJOR! detected, but v%REQUIRED_NODE_MAJOR%+ required.
     goto :try_install_node
+)
+if !NODE_MAJOR! GEQ %REJECTED_NODE_MAJOR% (
+    echo  Node.js v!NODE_MAJOR! detected, but v%REJECTED_NODE_MAJOR%+ is too new.
+    echo  Repo engines require Node 22-24. Install Node 22 LTS.
+    goto :open_download_page
 )
 echo  OK - Node.js v!NODE_MAJOR! detected.
 goto :run_universal

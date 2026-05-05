@@ -16,6 +16,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REQUIRED_NODE_MAJOR=22
+REJECTED_NODE_MAJOR=25
 NODE_DOWNLOAD_URL="https://nodejs.org/en/download/"
 
 # Defined first so it can be called from anywhere below.
@@ -43,9 +44,12 @@ if command -v node >/dev/null 2>&1; then
   NODE_VERSION="$(node --version 2>/dev/null || true)"
   NODE_MAJOR="${NODE_VERSION#v}"
   NODE_MAJOR="${NODE_MAJOR%%.*}"
-  if [[ -n "${NODE_MAJOR}" && "${NODE_MAJOR}" =~ ^[0-9]+$ && "${NODE_MAJOR}" -ge "${REQUIRED_NODE_MAJOR}" ]]; then
+  if [[ -n "${NODE_MAJOR}" && "${NODE_MAJOR}" =~ ^[0-9]+$ && "${NODE_MAJOR}" -ge "${REQUIRED_NODE_MAJOR}" && "${NODE_MAJOR}" -lt "${REJECTED_NODE_MAJOR}" ]]; then
     echo "OK - Node.js ${NODE_VERSION} detected."
     NODE_OK=1
+  elif [[ -n "${NODE_MAJOR}" && "${NODE_MAJOR}" -ge "${REJECTED_NODE_MAJOR}" ]]; then
+    echo "Node.js ${NODE_VERSION} detected, but repo engines require Node 22-24. Install Node 22 LTS."
+    open_download_page
   else
     echo "Node.js ${NODE_VERSION:-(unknown)} detected, but v${REQUIRED_NODE_MAJOR}+ required."
   fi
