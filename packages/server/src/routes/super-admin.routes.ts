@@ -204,10 +204,6 @@ function createSession(masterDb: any, adminId: number, ip: string, userAgent: st
   masterDb.prepare(
     'INSERT INTO super_admin_sessions (id, super_admin_id, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, adminId, ip, userAgent?.substring(0, 200) || '', expiresAt);
-  const nowRow = masterDb.prepare("SELECT datetime('now') AS now").get() as { now: string };
-  logger.info('super-admin session created', {
-    sessionId, adminId, expires_at: expiresAt, db_now: nowRow.now,
-  });
   return sessionId;
 }
 
@@ -234,26 +230,12 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
       return;
     }
 
-    // Verify session is still valid — split the active check from the freshness
-    // check so we can log WHICH branch fired when a fresh post-2FA token gets
-    // a 401. (Previously every miss collapsed to "Session expired" with no
-    // diagnostic surface.)
+    // Verify session is still valid
     const session = masterDb.prepare(
-      "SELECT id, expires_at FROM super_admin_sessions WHERE id = ? AND super_admin_id = ?"
-    ).get(payload.sessionId, payload.superAdminId) as { id: string; expires_at: string } | undefined;
+      "SELECT id FROM super_admin_sessions WHERE id = ? AND super_admin_id = ? AND expires_at > datetime('now')"
+    ).get(payload.sessionId, payload.superAdminId) as any;
 
     if (!session) {
-      logger.warn('super-admin auth: session row not found', {
-        sessionId: payload.sessionId, superAdminId: payload.superAdminId,
-      });
-      res.status(401).json({ success: false, message: 'Session expired' });
-      return;
-    }
-    const nowRow = masterDb.prepare("SELECT datetime('now') AS now").get() as { now: string };
-    if (session.expires_at <= nowRow.now) {
-      logger.warn('super-admin auth: session expired', {
-        sessionId: payload.sessionId, expires_at: session.expires_at, db_now: nowRow.now,
-      });
       res.status(401).json({ success: false, message: 'Session expired' });
       return;
     }
@@ -261,19 +243,13 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
     // Verify admin still active
     const admin = masterDb.prepare('SELECT id, username FROM super_admins WHERE id = ? AND is_active = 1').get(payload.superAdminId) as any;
     if (!admin) {
-      logger.warn('super-admin auth: account deactivated or missing', {
-        superAdminId: payload.superAdminId,
-      });
       res.status(401).json({ success: false, message: 'Account deactivated' });
       return;
     }
 
     req.superAdmin = { superAdminId: admin.id, username: admin.username, role: 'super_admin' };
     next();
-  } catch (err) {
-    logger.warn('super-admin auth: jwt verify threw', {
-      error: err instanceof Error ? err.message : String(err),
-    });
+  } catch {
     res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 }
