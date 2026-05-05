@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollText, RefreshCw, Pause, Play, Filter, Trash2, Copy, ArrowDownToLine } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -30,6 +30,32 @@ function colorize(line: string): string {
   }
   return 'text-surface-300';
 }
+
+// Native browser virtualization. With 500-2000 long lines + break-all wrapping,
+// laying out every off-screen row dominates the frame. content-visibility: auto
+// lets Chromium skip layout/paint for off-screen rows; contain-intrinsic-size
+// gives the scrollbar a stable estimate so the page doesn't jump as rows enter
+// the viewport. Single biggest win for scroll/update perf in this view.
+const LINE_STYLE: React.CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: 'auto 18px',
+};
+
+const LogLine = memo(function LogLine({
+  line,
+  filter,
+  regex,
+}: {
+  line: string;
+  filter: string;
+  regex: RegExp | null;
+}) {
+  return (
+    <div className={`whitespace-pre-wrap break-all ${colorize(line)}`} style={LINE_STYLE}>
+      {renderWithHighlight(line, filter, regex)}
+    </div>
+  );
+});
 
 /**
  * Split a line into plain + highlighted segments wherever the filter
@@ -86,6 +112,14 @@ export function LogsPage() {
   const [selected, setSelected] = useState<string>('bizarre-crm.err.log');
   const [tailLines, setTailLines] = useState(500);
   const [filter, setFilter] = useState('');
+  // Filter scans every line on each keystroke. With 500-2000 lines plus the
+  // poll-driven refresh, debouncing keeps typing snappy and avoids re-running
+  // the filter pipeline four times per character.
+  const [debouncedFilter, setDebouncedFilter] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFilter(filter), 150);
+    return () => clearTimeout(t);
+  }, [filter]);
   // DASH-ELEC-216: regex toggle. Falls back gracefully to substring on
   // invalid pattern so a half-typed `(` doesn't throw and blank the view.
   const [regexMode, setRegexMode] = useState(false);
@@ -169,23 +203,23 @@ export function LogsPage() {
   // the view never blanks out from a SyntaxError.
   const compiledRegex = useMemo<RegExp | null>(() => {
     if (!regexMode) return null;
-    const q = filter.trim();
+    const q = debouncedFilter.trim();
     if (!q) return null;
     try {
       return new RegExp(q, 'i');
     } catch {
       return null;
     }
-  }, [regexMode, filter]);
+  }, [regexMode, debouncedFilter]);
 
   const filteredLines = useMemo(() => {
     if (compiledRegex) {
       return allLines.filter((l) => compiledRegex.test(l));
     }
-    if (!filter.trim()) return allLines;
-    const needle = filter.toLowerCase();
+    if (!debouncedFilter.trim()) return allLines;
+    const needle = debouncedFilter.toLowerCase();
     return allLines.filter((l) => l.toLowerCase().includes(needle));
-  }, [allLines, filter, compiledRegex]);
+  }, [allLines, debouncedFilter, compiledRegex]);
 
   // Extract ERR_* codes that appear in the current tail so operators can
   // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
@@ -393,9 +427,12 @@ export function LogsPage() {
             // DASH-ELEC-039: content-derived key so React can reuse DOM nodes
             // that haven't changed on the 2-second tail refresh rather than
             // diffing the entire list by position.
-            <div key={`${i}-${line.slice(0, 20)}`} className={`whitespace-pre-wrap break-all ${colorize(line)}`}>
-              {renderWithHighlight(line, filter, compiledRegex)}
-            </div>
+            <LogLine
+              key={`${i}-${line.slice(0, 20)}`}
+              line={line}
+              filter={debouncedFilter}
+              regex={compiledRegex}
+            />
           ))
         )}
       </div>
