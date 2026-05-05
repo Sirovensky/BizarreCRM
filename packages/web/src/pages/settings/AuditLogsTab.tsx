@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
-import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck, RefreshCw } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
 
@@ -15,6 +15,52 @@ interface AuditLog {
   details: string | null;
   created_at: string;
 }
+
+// Cap rendered detail length. Huge title-attr strings stall native tooltip
+// rendering and the truncated cell never shows them anyway.
+const MAX_DETAIL_LEN = 300;
+
+function formatDetails(details: string | null): string {
+  if (!details) return '-';
+  let out: string;
+  try {
+    const obj = JSON.parse(details);
+    out = Object.entries(obj)
+      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .join(', ');
+  } catch {
+    out = details;
+  }
+  return out.length > MAX_DETAIL_LEN ? out.slice(0, MAX_DETAIL_LEN) + '…' : out;
+}
+
+const AuditLogRow = memo(function AuditLogRow({ log }: { log: AuditLog }) {
+  const formattedDetails = useMemo(() => formatDetails(log.details), [log.details]);
+  const formattedTime = useMemo(
+    () => formatDateTime(log.created_at?.replace(' ', 'T')),
+    [log.created_at],
+  );
+  const userDisplay = log.user_name || log.username || (log.user_id ? `User #${log.user_id}` : '-');
+
+  return (
+    <tr className="border-b border-surface-800 hover:bg-surface-800/50">
+      <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formattedTime}</td>
+      <td className="py-2 px-3">
+        <span className="inline-block bg-surface-700 text-surface-200 rounded px-2 py-0.5 text-xs font-mono">
+          {log.event}
+        </span>
+      </td>
+      <td className="py-2 px-3 text-surface-300">{userDisplay}</td>
+      <td className="py-2 px-3 text-surface-400 font-mono text-xs">{log.ip_address || '-'}</td>
+      <td
+        className="py-2 px-3 text-surface-400 text-xs max-w-xs truncate"
+        title={formattedDetails}
+      >
+        {formattedDetails}
+      </td>
+    </tr>
+  );
+});
 
 export function AuditLogsTab() {
   const [page, setPage] = useState(1);
@@ -37,7 +83,15 @@ export function AuditLogsTab() {
     return () => clearTimeout(t);
   }, [toDate]);
 
-  const { data, isLoading } = useQuery({
+  // Live tail toggle. When OFF (default), no silent refetches — the user can
+  // scroll/inspect without rows shifting under them. When ON, poll every 5 s
+  // and pin to page 1 (newer rows arrive at top under DESC ordering).
+  const [liveTail, setLiveTail] = useState(false);
+  useEffect(() => {
+    if (liveTail && page !== 1) setPage(1);
+  }, [liveTail, page]);
+
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, pagesize: 50 };
@@ -51,24 +105,14 @@ export function AuditLogsTab() {
         pagination: { page: number; per_page: number; total: number; total_pages: number };
       };
     },
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchInterval: liveTail ? 5000 : false,
   });
 
   const logs = data?.logs ?? [];
   const eventTypes = data?.event_types ?? [];
   const pagination = data?.pagination;
-
-  function formatDetails(details: string | null): string {
-    if (!details) return '-';
-    try {
-      const obj = JSON.parse(details);
-      return Object.entries(obj)
-        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
-        .join(', ');
-    } catch {
-      return details;
-    }
-  }
-
 
   return (
     <div className="space-y-4">
@@ -115,6 +159,28 @@ export function AuditLogsTab() {
             Clear filters
           </button>
         )}
+        <div className="ml-auto flex items-end gap-2 pb-1">
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1 text-xs text-surface-300 hover:text-surface-100 disabled:opacity-50"
+            aria-label="Refresh logs"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+            Refresh
+          </button>
+          <label className="inline-flex items-center gap-1.5 text-xs text-surface-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={liveTail}
+              onChange={(e) => setLiveTail(e.target.checked)}
+              className="h-3.5 w-3.5"
+            />
+            Live
+            {liveTail && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />}
+          </label>
+        </div>
       </div>
 
       {isLoading ? (
@@ -129,7 +195,7 @@ export function AuditLogsTab() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ overflowAnchor: 'none' }}>
             {/* WEB-FE-013 (Fixer-OOO 2026-04-25): added <caption> +
                 scope="col" so screen readers can associate cell values
                 with their column headers. WCAG 1.3.1. */}
@@ -146,21 +212,7 @@ export function AuditLogsTab() {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="border-b border-surface-800 hover:bg-surface-800/50">
-                    <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formatDateTime(log.created_at?.replace(' ', 'T'))}</td>
-                    <td className="py-2 px-3">
-                      <span className="inline-block bg-surface-700 text-surface-200 rounded px-2 py-0.5 text-xs font-mono">
-                        {log.event}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-surface-300">
-                      {log.user_name || log.username || (log.user_id ? `User #${log.user_id}` : '-')}
-                    </td>
-                    <td className="py-2 px-3 text-surface-400 font-mono text-xs">{log.ip_address || '-'}</td>
-                    <td className="py-2 px-3 text-surface-400 text-xs max-w-xs truncate" title={formatDetails(log.details)}>
-                      {formatDetails(log.details)}
-                    </td>
-                  </tr>
+                  <AuditLogRow key={log.id} log={log} />
                 ))}
               </tbody>
             </table>
