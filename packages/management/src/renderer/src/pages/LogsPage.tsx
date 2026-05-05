@@ -221,6 +221,21 @@ export function LogsPage() {
     return allLines.filter((l) => l.toLowerCase().includes(needle));
   }, [allLines, debouncedFilter, compiledRegex]);
 
+  // Stable keys: when the tail slides on each poll, positional keys shift for
+  // every row so React unmounts and remounts every <LogLine>, dwarfing the
+  // memoisation win. Use `${line}#${occurrence}` so identical content keeps
+  // the same key across polls. Duplicate-line collisions only shift their
+  // own keys when one drops off the front, so reconciliation stays mostly
+  // O(new lines) instead of O(buffer).
+  const keyedLines = useMemo(() => {
+    const seen = new Map<string, number>();
+    return filteredLines.map((line) => {
+      const n = (seen.get(line) ?? 0) + 1;
+      seen.set(line, n);
+      return { line, key: `${line.slice(0, 80)}#${n}` };
+    });
+  }, [filteredLines]);
+
   // Extract ERR_* codes that appear in the current tail so operators can
   // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
   // and one-click filter to just those lines. Only scans what's loaded.
@@ -423,12 +438,9 @@ export function LogsPage() {
             {filter ? 'No lines match the filter.' : 'Log is empty.'}
           </div>
         ) : (
-          filteredLines.map((line, i) => (
-            // DASH-ELEC-039: content-derived key so React can reuse DOM nodes
-            // that haven't changed on the 2-second tail refresh rather than
-            // diffing the entire list by position.
+          keyedLines.map(({ line, key }) => (
             <LogLine
-              key={`${i}-${line.slice(0, 20)}`}
+              key={key}
               line={line}
               filter={debouncedFilter}
               regex={compiledRegex}
