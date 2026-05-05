@@ -236,8 +236,9 @@ export function recomputeRepairPriceProfits(
       const profitEstimate = roundMoney(Number(row.labor_price) - supplierCost);
 
       if (row.last_supplier_cost != null && row.last_supplier_cost > 0) {
-        const pctChange = roundMoney(((supplierCost - row.last_supplier_cost) / row.last_supplier_cost) * 100);
-        if (pctChange > SPIKE_THRESHOLD_PCT) {
+        const rawPct = ((supplierCost - row.last_supplier_cost) / row.last_supplier_cost) * 100;
+        if (rawPct > SPIKE_THRESHOLD_PCT) {
+          const pctChange = roundMoney(rawPct);
           pauseAutoMargin.run(row.id);
           spikeAudit.run(
             row.id, row.device_model_id, row.repair_service_id,

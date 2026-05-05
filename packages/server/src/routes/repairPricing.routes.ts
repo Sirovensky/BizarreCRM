@@ -166,7 +166,10 @@ router.get('/matrix', asyncHandler(async (req, res) => {
   const { category, q } = req.query as { category?: string; q?: string };
   const manufacturerId = parsePositiveInt(req.query.manufacturer_id, 'manufacturer_id');
   const repairServiceId = parsePositiveInt(req.query.repair_service_id, 'repair_service_id');
-  const limit = clampLimit(req.query.limit);
+  // SQLite default SQLITE_MAX_VARIABLE_NUMBER = 999. The price IN(...) query
+  // binds deviceIds + serviceIds, so cap devices low enough to leave headroom
+  // for ~50 services.
+  const limit = clampLimit(req.query.limit, 250, 900);
 
   const serviceParams: unknown[] = [];
   let serviceSql = 'SELECT * FROM repair_services WHERE is_active = 1';

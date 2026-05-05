@@ -385,6 +385,93 @@ describe('DPI Pipeline', () => {
     expect(getMarginAlertSummary(db).total_active).toBe(0);
   });
 
+  it('custom row tier shift writes audit row even though labor preserved', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_b', laborPrice: 120 });
+    db.prepare('UPDATE repair_prices SET labor_price = 250, is_custom = 1 WHERE device_model_id = 1').run();
+    db.prepare(`UPDATE device_models SET release_year = ${CURRENT_YEAR - 4} WHERE id = 1`).run();
+
+    const auditsBefore = db.prepare('SELECT COUNT(*) AS c FROM repair_prices_audit').get() as any;
+    runNightlyRebase(db);
+    const auditsAfter = db.prepare('SELECT COUNT(*) AS c FROM repair_prices_audit').get() as any;
+    expect(auditsAfter.c).toBeGreaterThan(auditsBefore.c);
+
+    const customAudit = db.prepare(`
+      SELECT * FROM repair_prices_audit
+      WHERE device_model_id = 1 AND old_tier_label = 'tier_a' AND new_tier_label = 'tier_b'
+      ORDER BY id DESC LIMIT 1
+    `).get() as any;
+    expect(customAudit).toBeTruthy();
+    expect(customAudit.old_labor_price).toBe(250);
+    expect(customAudit.new_labor_price).toBe(250);
+    expect(customAudit.new_is_custom).toBe(1);
+  });
+
+  it('non-custom row crosses to tier with no stored default — preserves labor + audits', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });
+    // Note: tier_c default is NEVER set via bulkApplyTier
+    db.prepare(`UPDATE device_models SET release_year = ${CURRENT_YEAR - 8} WHERE id = 1`).run();
+
+    const before = db.prepare('SELECT labor_price FROM repair_prices WHERE device_model_id = 1').get() as any;
+    const result = runNightlyRebase(db);
+    const after = db.prepare('SELECT labor_price, tier_label FROM repair_prices WHERE device_model_id = 1').get() as any;
+
+    expect(result.skipped_custom).toBeGreaterThanOrEqual(1);
+    expect(after.labor_price).toBe(before.labor_price);
+    expect(after.tier_label).toBe('tier_c');
+  });
+
+  it('resolved alert reopens when profit dips again', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_c', laborPrice: 50 });
+    db.prepare('UPDATE repair_prices SET profit_estimate = 30, last_supplier_cost = 20 WHERE device_model_id = 3').run();
+    evaluateMarginAlerts(db);
+
+    db.prepare('UPDATE repair_prices SET profit_estimate = 60 WHERE device_model_id = 3').run();
+    evaluateMarginAlerts(db);
+    expect(getMarginAlertSummary(db).total_active).toBe(0);
+
+    db.prepare('UPDATE repair_prices SET profit_estimate = 25 WHERE device_model_id = 3').run();
+    const result = evaluateMarginAlerts(db);
+    expect(result.new_alerts).toBe(1);
+    expect(getMarginAlertSummary(db).total_active).toBe(1);
+  });
+
+  it('spike at exactly 50% boundary does NOT fire (> not >=)', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });
+    db.prepare('UPDATE repair_prices SET last_supplier_cost = 100, auto_margin_enabled = 1 WHERE device_model_id = 1').run();
+    db.prepare('UPDATE supplier_catalog SET price = 150 WHERE id = 1').run();
+
+    const result = recomputeRepairPriceProfits(db);
+    expect(result.spikes).toHaveLength(0);
+
+    db.prepare('UPDATE repair_prices SET last_supplier_cost = 100 WHERE device_model_id = 1').run();
+    db.prepare('UPDATE supplier_catalog SET price = 150.01 WHERE id = 1').run();
+    const result2 = recomputeRepairPriceProfits(db);
+    expect(result2.spikes).toHaveLength(1);
+  });
+
+  it('spike skipped when last_supplier_cost = 0 (no baseline)', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });
+    db.prepare('UPDATE repair_prices SET last_supplier_cost = 0 WHERE device_model_id = 1').run();
+    db.prepare('UPDATE supplier_catalog SET price = 500 WHERE id = 1').run();
+
+    const result = recomputeRepairPriceProfits(db);
+    expect(result.spikes).toHaveLength(0);
+  });
+
+  it('inactive repair_prices excluded from rebase, profit, and alerts', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });
+    db.prepare('UPDATE repair_prices SET is_active = 0, profit_estimate = 5 WHERE device_model_id = 1').run();
+
+    const rebase = runNightlyRebase(db);
+    const profit = recomputeRepairPriceProfits(db);
+    const alerts = evaluateMarginAlerts(db);
+
+    expect(rebase.evaluated).toBe(0);
+    expect(profit.processed).toBe(0);
+    expect(alerts.evaluated).toBe(0);
+  });
+
   it('full nightly pipeline: scrape → profit → rebase → auto-margin → alerts', () => {
     // Step 1: Wizard seeds prices
     bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_a', laborPrice: 200 });

@@ -79,6 +79,12 @@ export function runNightlyRebase(db: Database.Database): NightlyRebaseResult {
 
   const deviceNames = new Map<number, string>();
   const serviceNames = new Map<number, string>();
+  for (const r of db.prepare('SELECT id, name FROM device_models').all() as { id: number; name: string }[]) {
+    deviceNames.set(r.id, r.name);
+  }
+  for (const r of db.prepare('SELECT id, name FROM repair_services').all() as { id: number; name: string }[]) {
+    serviceNames.set(r.id, r.name);
+  }
 
   const tx = db.transaction(() => {
     for (const row of rows) {
@@ -87,6 +93,13 @@ export function runNightlyRebase(db: Database.Database): NightlyRebaseResult {
 
       if (row.is_custom === 1) {
         updateTierOnlyStmt.run(currentTier, row.id);
+        auditStmt.run(
+          row.id, row.device_model_id, row.repair_service_id,
+          row.labor_price, row.labor_price,
+          row.is_custom, row.is_custom,
+          row.tier_label, currentTier,
+          `Custom row tier shifted ${row.tier_label ?? 'unknown'} → ${currentTier}; labor preserved.`,
+        );
         skippedCustom += 1;
         continue;
       }
@@ -94,6 +107,13 @@ export function runNightlyRebase(db: Database.Database): NightlyRebaseResult {
       const defaultLabor = getTierDefaultLabor(db, row.repair_service_id, currentTier);
       if (defaultLabor == null) {
         updateTierOnlyStmt.run(currentTier, row.id);
+        auditStmt.run(
+          row.id, row.device_model_id, row.repair_service_id,
+          row.labor_price, row.labor_price,
+          row.is_custom, row.is_custom,
+          row.tier_label, currentTier,
+          `Tier shifted ${row.tier_label ?? 'unknown'} → ${currentTier}; no stored default for this tier — labor preserved.`,
+        );
         skippedCustom += 1;
         continue;
       }
@@ -113,20 +133,11 @@ export function runNightlyRebase(db: Database.Database): NightlyRebaseResult {
       );
       rebased += 1;
 
-      if (!deviceNames.has(row.device_model_id)) {
-        const d = db.prepare('SELECT name FROM device_models WHERE id = ?').get(row.device_model_id) as { name: string } | undefined;
-        deviceNames.set(row.device_model_id, d?.name ?? `Device #${row.device_model_id}`);
-      }
-      if (!serviceNames.has(row.repair_service_id)) {
-        const s = db.prepare('SELECT name FROM repair_services WHERE id = ?').get(row.repair_service_id) as { name: string } | undefined;
-        serviceNames.set(row.repair_service_id, s?.name ?? `Service #${row.repair_service_id}`);
-      }
-
       crossings.push({
         device_model_id: row.device_model_id,
-        device_name: deviceNames.get(row.device_model_id)!,
+        device_name: deviceNames.get(row.device_model_id) ?? `Device #${row.device_model_id}`,
         repair_service_id: row.repair_service_id,
-        service_name: serviceNames.get(row.repair_service_id)!,
+        service_name: serviceNames.get(row.repair_service_id) ?? `Service #${row.repair_service_id}`,
         old_tier: row.tier_label,
         new_tier: currentTier,
         old_labor: row.labor_price,

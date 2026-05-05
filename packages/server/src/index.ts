@@ -2985,9 +2985,15 @@ server.listen(config.port, config.host, async () => {
               const { runAutoMargin } = await import('./services/repairPricing/autoMargin.js');
               const { runNightlyRebase } = await import('./services/repairPricing/nightlyRebase.js');
               const { evaluateMarginAlerts } = await import('./services/repairPricing/marginAlerts.js');
+              // Order matters: profit recompute (sets last_supplier_cost) → tier rebase (may
+              // overwrite labor on tier crossing) → auto-margin (uses settled labor + supplier
+              // cost) → recompute again so margin alerts see auto-margin's new profit_estimate.
               const recompute = recomputeRepairPriceProfits(tenantDb);
-              const autoMargin = runAutoMargin(tenantDb);
               const rebase = runNightlyRebase(tenantDb);
+              const autoMargin = runAutoMargin(tenantDb);
+              if (autoMargin.adjusted > 0) {
+                recomputeRepairPriceProfits(tenantDb);
+              }
               const alerts = evaluateMarginAlerts(tenantDb);
               console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
               if (recompute.updated > 0 || autoMargin.adjusted > 0) {
