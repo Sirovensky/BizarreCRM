@@ -68,7 +68,40 @@ if [[ "${NODE_OK}" -eq 0 ]]; then
   echo "[2/3] Attempting to install Node.js via Homebrew..."
   if ! command -v brew >/dev/null 2>&1; then
     echo "Homebrew not available on this machine."
-    open_download_page
+    # Attempt to install Homebrew via its official one-liner. The
+    # installer ITSELF prompts for sudo (it runs as the regular user
+    # and escalates only for the parts that need root). Only run if
+    # both stdin AND stdout are TTY — non-interactive contexts cannot
+    # answer the sudo prompt and would hang or silently fail.
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+      echo "Non-interactive shell — cannot install Homebrew."
+      open_download_page
+    fi
+    echo
+    echo "Attempting to install Homebrew (you may be prompted for your password)."
+    echo "Install command: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    echo
+    if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+      echo "Homebrew install failed."
+      open_download_page
+    fi
+    # The Homebrew installer adds shellenv to ~/.zprofile but does NOT
+    # update the current shell's PATH. Eval shellenv from the install
+    # location to bring brew into scope so the `brew install node@22`
+    # call below works without a shell restart. /opt/homebrew is the
+    # Apple Silicon prefix; /usr/local is Intel.
+    if [[ -x /opt/homebrew/bin/brew ]]; then
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -x /usr/local/bin/brew ]]; then
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
+    if ! command -v brew >/dev/null 2>&1; then
+      echo "Homebrew installed but is not on PATH for this shell."
+      echo "Close this terminal and re-run setup from a NEW terminal."
+      read -rp "Press Enter to exit..."
+      exit 1
+    fi
+    echo "OK - Homebrew installed and available on PATH."
   fi
 
   # `brew install node@22` pins to the LTS major. brew handles its own sudo
