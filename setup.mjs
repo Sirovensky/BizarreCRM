@@ -394,10 +394,55 @@ function buildDashboard() {
 
 // ─── 10. PM2 start + save ──────────────────────────────────────────────────
 
+/**
+ * Ensure PM2 is on PATH. If not, attempt a global npm install. On Linux/
+ * macOS the npm prefix often defaults to a system path requiring sudo;
+ * retry under sudo IF interactive. Returns true if PM2 is usable after
+ * the call, false if the install failed and the caller should use the
+ * direct-node fallback.
+ *
+ * Why this matters: without PM2 the operator gets the worst possible
+ * UX — a detached node spawn with stdio:'ignore', no logs, no restart,
+ * no watchdog, no autostart. On macOS with default PORT=443 the spawn
+ * silently dies on EACCES. New operators end up with "Firefox can't
+ * connect" and zero diagnostics. PM2 makes every failure visible.
+ */
+function ensurePm2() {
+  if (hasCmd('pm2')) return true;
+  console.log(c.yellow('  PM2 not on PATH — installing globally via npm.'));
+  console.log(c.dim('  Command: npm install -g pm2'));
+
+  let r = run('npm', ['install', '-g', 'pm2']);
+  if (!r.ok) {
+    // Most common cause on Linux/macOS: npm prefix defaults to
+    // /usr/local/lib/node_modules which is owned by root. Retry under
+    // sudo only if interactive — CI-style invocations would hang on
+    // sudo's password prompt.
+    if (!IS_WIN && process.stdin.isTTY && process.stdout.isTTY) {
+      console.log(c.yellow('  Global install failed (likely permission error). Retrying with sudo...'));
+      console.log(c.dim('  Command: sudo npm install -g pm2'));
+      r = run('sudo', ['npm', 'install', '-g', 'pm2']);
+    }
+    if (!r.ok) {
+      warn('Failed to install PM2 globally. Run `npm install -g pm2` manually (or with sudo on Linux/macOS), then re-run setup.');
+      return false;
+    }
+  }
+  // npm install of a global cmd usually puts it on PATH because the
+  // npm prefix bin dir is typically already there. If not, the operator
+  // needs a fresh shell so PATH reloads.
+  if (!hasCmd('pm2')) {
+    warn('PM2 installed but not on PATH for this shell. Close this terminal and re-run setup from a NEW terminal.');
+    return false;
+  }
+  ok('PM2 installed globally');
+  return true;
+}
+
 function startPm2() {
   step('Starting PM2 (server + watchdog)');
-  if (!hasCmd('pm2')) {
-    warn('pm2 not on PATH. Falling back to direct node launch (no auto-restart, no watchdog).');
+  if (!ensurePm2()) {
+    warn('PM2 unavailable. Falling back to direct node launch (no auto-restart, no watchdog).');
     // Detach a node process so setup.mjs can return. NB: this is a fallback;
     // the operator should `npm install -g pm2` and re-run setup for the
     // full supervised flow.
