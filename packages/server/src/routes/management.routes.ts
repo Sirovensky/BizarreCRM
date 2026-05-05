@@ -271,9 +271,25 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
       // Verify session still exists and is not expired.
       if (payload.sessionId) {
         const session = masterDb.prepare(
-          "SELECT id FROM super_admin_sessions WHERE id = ? AND expires_at > datetime('now')"
-        ).get(payload.sessionId);
+          "SELECT id, super_admin_id, expires_at FROM super_admin_sessions WHERE id = ?"
+        ).get(payload.sessionId) as { id: string; super_admin_id: number; expires_at: string } | undefined;
         if (!session) {
+          logger.warn('management auth: session row not found', {
+            sessionId: payload.sessionId,
+            superAdminId: payload.superAdminId,
+            path: req.path,
+          });
+          res.status(401).json({ success: false, message: 'Session expired' });
+          return;
+        }
+        const nowRow = masterDb.prepare("SELECT datetime('now') AS now").get() as { now: string };
+        if (session.expires_at <= nowRow.now) {
+          logger.warn('management auth: session expired', {
+            sessionId: payload.sessionId,
+            expires_at: session.expires_at,
+            db_now: nowRow.now,
+            path: req.path,
+          });
           res.status(401).json({ success: false, message: 'Session expired' });
           return;
         }
@@ -284,6 +300,10 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
           'SELECT id FROM super_admins WHERE id = ? AND is_active = 1'
         ).get(payload.superAdminId);
         if (!adminRow) {
+          logger.warn('management auth: account deactivated or missing', {
+            superAdminId: payload.superAdminId,
+            path: req.path,
+          });
           res.status(401).json({ success: false, message: 'Account deactivated' });
           return;
         }
@@ -291,7 +311,11 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
     }
 
     next();
-  } catch {
+  } catch (err) {
+    logger.warn('management auth: jwt verify threw', {
+      error: err instanceof Error ? err.message : String(err),
+      path: req.path,
+    });
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_TOKEN, message: 'Invalid or expired token' });
   }
 }
