@@ -59,7 +59,10 @@ const REQUIRED_NODE_MAJOR = 22;
 const REJECTED_NODE_MAJOR = 25;
 
 // ─── Tiny ANSI helpers (no chalk dep) ──────────────────────────────────────
-const ANSI_OFF = process.env.NO_COLOR || !process.stdout.isTTY;
+// NO_COLOR convention (https://no-color.org): disable color when the env var
+// is PRESENT, regardless of value. Empty string `NO_COLOR=""` should still
+// disable color — checking truthiness misses that case.
+const ANSI_OFF = 'NO_COLOR' in process.env || !process.stdout.isTTY;
 const c = {
   red: (s) => (ANSI_OFF ? s : `\x1b[31m${s}\x1b[0m`),
   green: (s) => (ANSI_OFF ? s : `\x1b[32m${s}\x1b[0m`),
@@ -85,17 +88,40 @@ function fatal(msg) {
 
 // ─── Process helpers ───────────────────────────────────────────────────────
 
+const IS_WIN = process.platform === 'win32';
+
+/**
+ * Cross-platform spawn shim. On Windows, npm/pm2/git/node all ship as
+ * `.cmd` shims (e.g. `pm2.cmd`); spawnSync without `shell: true` fails
+ * with ENOENT for them. The `winShell` set lists commands that are known
+ * to be `.cmd` on Windows so callers don't have to remember to flip
+ * `shell: true` per call.
+ *
+ * Verified to be `.cmd` on Windows: pm2, npm, npx, electron, electron-builder.
+ * `node.exe` itself is a real exe and does NOT need shell:true; never put
+ * 'node' in this set.
+ */
+const WIN_CMD_SHIMS = new Set(['pm2', 'npm', 'npx']);
+function needsShell(cmd, opts) {
+  if (typeof opts?.shell === 'boolean') return opts.shell;
+  return IS_WIN && WIN_CMD_SHIMS.has(cmd);
+}
+
 /**
  * Run a command synchronously with inherited stdio (so the operator sees
  * progress). Returns { ok, code }. Never throws — callers branch on `.ok`.
+ *
+ * `shell` flips automatically based on `cmd` on Windows (see WIN_CMD_SHIMS);
+ * callers can override by passing `shell: true|false`.
  */
 function run(cmd, args = [], opts = {}) {
   const r = spawnSync(cmd, args, {
     cwd: opts.cwd || REPO_ROOT,
     stdio: opts.stdio || 'inherit',
     env: { ...process.env, ...(opts.env || {}) },
-    shell: opts.shell ?? false,
+    shell: needsShell(cmd, opts),
     encoding: 'utf8',
+    timeout: opts.timeout,
   });
   return { ok: r.status === 0, code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
@@ -175,8 +201,11 @@ function stopRunning() {
     warn('pm2 not on PATH — nothing to stop. Will install/use PM2 in step 10.');
     return;
   }
-  // Gracefully stop both apps. Ignore errors — apps may not be running.
-  capture('pm2', ['stop', 'bizarre-crm', 'bizarre-crm-watchdog']);
+  // Gracefully stop each app individually. Some PM2 versions only act on
+  // the first positional arg when multiple names are passed to `pm2 stop`,
+  // silently leaving the second app running.
+  capture('pm2', ['stop', 'bizarre-crm']);
+  capture('pm2', ['stop', 'bizarre-crm-watchdog']);
   ok('PM2 apps stopped (if running)');
 }
 
@@ -184,7 +213,7 @@ function stopRunning() {
 
 function npmInstall() {
   step('Installing dependencies');
-  const r = run('npm', ['install'], { shell: process.platform === 'win32' });
+  const r = run('npm', ['install']);
   if (!r.ok) fatal(`npm install failed (exit ${r.code}).`);
   ok('Dependencies installed');
 }
@@ -197,7 +226,12 @@ async function ensureEnv() {
   if (!existsSync(envPath)) {
     let domain = process.env.SETUP_DOMAIN;
     if (!domain) {
-      if (input.isTTY) {
+      // Both ends must be TTY for an interactive prompt. If stdout is piped
+      // (e.g. `setup.mjs | tee setup.log`), the question lands in the log
+      // and the operator never sees it — they hit Enter blindly and we'd
+      // accept a default they didn't intend. Treat piped stdout as
+      // non-interactive.
+      if (input.isTTY && output.isTTY) {
         const rl = readline.createInterface({ input, output });
         const answer = (await rl.question(
           '\n  Enter your domain (e.g. example.com), or press Enter for localhost: '
@@ -206,7 +240,7 @@ async function ensureEnv() {
         domain = answer || 'localhost';
       } else {
         domain = 'localhost';
-        warn('No TTY and SETUP_DOMAIN unset — defaulting to localhost.');
+        warn('Non-interactive (TTY check failed) and SETUP_DOMAIN unset — defaulting to localhost. Set SETUP_DOMAIN=<host> to override.');
       }
     }
     const r = run('node', ['packages/server/scripts/generate-env.cjs', domain]);
@@ -230,8 +264,12 @@ async function ensureEnv() {
 
 function ensureCerts() {
   step('Ensuring SSL certificates');
+  // Server boots only when BOTH cert + key are present. Checking only one
+  // and skipping generation leaves a partial-state install where the
+  // server FATALs on the missing file and operators see no clear cause.
   const certPath = path.join(REPO_ROOT, 'packages/server/certs/server.cert');
-  if (existsSync(certPath)) {
+  const keyPath = path.join(REPO_ROOT, 'packages/server/certs/server.key');
+  if (existsSync(certPath) && existsSync(keyPath)) {
     ok('SSL certs already present');
     return;
   }
@@ -247,7 +285,7 @@ function ensureCerts() {
 
 function buildApp() {
   step('Building shared + web + server');
-  const r = run('npm', ['run', 'build'], { shell: process.platform === 'win32' });
+  const r = run('npm', ['run', 'build']);
   if (!r.ok) fatal(`Root build failed (exit ${r.code}).`);
 
   // tsc does not emit non-TS files; copy the piscina worker manually. The
@@ -278,8 +316,11 @@ function buildAndroid() {
     warn('android/ directory missing — skipping APK build.');
     return;
   }
-  const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-  const r = run(gradlew, ['assembleRelease'], { cwd: androidDir, shell: true });
+  // gradlew.bat is a .bat file (needs shell:true on Windows); ./gradlew is a
+  // real shell script and runs natively without shell:true. Quoted-via-shell
+  // would also break paths with spaces on POSIX; keep shell off there.
+  const gradlew = IS_WIN ? 'gradlew.bat' : './gradlew';
+  const r = run(gradlew, ['assembleRelease'], { cwd: androidDir, shell: IS_WIN });
   if (!r.ok) {
     warn(`Android APK build failed (exit ${r.code}). Mobile app will not be updated.`);
     return;
@@ -314,7 +355,7 @@ function buildDashboard() {
   }
 
   // Sources build cross-platform via the workspace npm script.
-  const r = run('npm', ['run', 'build', '-w', '@bizarre-crm/management'], { shell: process.platform === 'win32' });
+  const r = run('npm', ['run', 'build', '-w', '@bizarre-crm/management']);
   if (!r.ok) {
     warn(`Dashboard build failed (exit ${r.code}). Server still works. Browser dashboard will replace this in a future release (see docs/dashboard-migration-plan.md).`);
     return;
@@ -325,7 +366,7 @@ function buildDashboard() {
   // hard-codes `electron-builder --win`. Per dashboard-migration-plan this is
   // transitional; once the browser dashboard ships, this whole step disappears.
   if (process.platform === 'win32') {
-    const r2 = run('npm', ['run', 'package', '-w', '@bizarre-crm/management'], { shell: true });
+    const r2 = run('npm', ['run', 'package', '-w', '@bizarre-crm/management']);
     if (!r2.ok) {
       warn('Dashboard packaging (Electron .exe) failed. Sources built but no installable EXE.');
       return;
@@ -398,30 +439,51 @@ async function registerAutostart() {
 
   // Operator consent — autostart adapters need sudo on Linux/macOS or
   // Administrator on Windows. Don't escalate without an explicit yes.
-  let consent = true;
-  if (input.isTTY) {
+  // Both stdin AND stdout must be TTY: a piped stdout means the prompt
+  // lands in the log file and a blind Enter would silently default to
+  // "yes", auto-running sudo. Treat any non-TTY end as a hard skip.
+  let consent = false;
+  if (input.isTTY && output.isTTY) {
     const rl = readline.createInterface({ input, output });
     const answer = (await rl.question(
       '\n  Register BizarreCRM to start automatically at boot? [Y/n] '
     )).trim();
     rl.close();
     consent = !/^n/i.test(answer);
+  } else {
+    ok('Non-interactive (TTY check failed) — autostart skipped. Set SETUP_NO_AUTOSTART=0 + run interactively to enable, or pre-install the unit manually.');
+    return;
   }
   if (!consent) {
     ok('Operator declined autostart. Server will need manual `pm2 resurrect` after reboot.');
     return;
   }
 
+  // PM2 JS entry resolution. Win32 adapter REQUIRES a working JS path —
+  // its launcher does `"node.exe" "<pm2-bin>" resurrect`. Linux/macOS
+  // ignore this field (PM2's own startup unit handles paths internally),
+  // but resolution failure on those platforms is still a useful signal
+  // that the operator's PM2 install is broken.
+  const pm2Bin = resolvePm2Bin();
+  if (!pm2Bin && IS_WIN) {
+    warn('Could not resolve PM2 JS entry — autostart skipped. Install PM2 globally: npm install -g pm2');
+    return;
+  }
+  if (!pm2Bin) {
+    warn('Could not resolve PM2 JS entry. Linux/macOS autostart will still work via pm2 startup, but a fallback path is missing — proceeding.');
+  }
+
   try {
     const { register } = await import('./scripts/autostart/index.mjs');
-    // The spec is advisory for Linux/macOS (PM2 startup ignores command/args
-    // and uses its own dump file). Windows reads command/args and writes a
-    // Task Scheduler entry that spawns PM2 directly.
+    // The spec is advisory for Linux/macOS (PM2 startup ignores
+    // command/args/env and uses its own dump file). Windows reads
+    // command/args/env and writes a launcher .cmd + Task Scheduler entry
+    // that exec's it.
     const result = await register({
       name: 'BizarreCRM-PM2',
       description: 'Resurrects BizarreCRM PM2 apps at boot',
       command: process.execPath,
-      args: [resolvePm2Bin(), 'resurrect'],
+      args: pm2Bin ? [pm2Bin, 'resurrect'] : ['resurrect'],
       env: { PM2_HOME: process.env.PM2_HOME || path.join(REPO_ROOT, '.pm2') },
       workingDir: REPO_ROOT,
     });
@@ -433,28 +495,59 @@ async function registerAutostart() {
 }
 
 /**
- * Resolve PM2's `bin/pm2` script path so the autostart task can invoke
- * `node <pm2-bin>` directly without depending on the SYSTEM-context PATH
- * (which won't include npm-global / nvm shims).
+ * Resolve PM2's `bin/pm2` JS entry point so the autostart task can invoke
+ * `node <pm2-bin> resurrect` without depending on the SYSTEM-context PATH
+ * (which won't include npm-global / nvm shims). The Task Scheduler task
+ * runs `node.exe <pm2-js-entry>` — note `node.exe`, NOT `pm2.cmd`. The
+ * cmd shim wraps the JS file but cannot be invoked by `node.exe` directly.
+ *
+ * Returns null if PM2's JS entry cannot be located. Caller should warn
+ * and skip autostart rather than registering a broken task.
  */
 function resolvePm2Bin() {
-  // Try `npm root -g` first — most reliable.
-  const r = capture('npm', ['root', '-g'], { shell: process.platform === 'win32' });
+  // Primary: `npm root -g`. On most stock Node installs, PM2 is installed
+  // globally and `npm root -g` returns the global node_modules dir; the
+  // JS entry is at <dir>/pm2/bin/pm2.
+  const r = capture('npm', ['root', '-g']);
   if (r.ok && r.stdout) {
     const dir = r.stdout.trim();
-    const candidate = path.join(dir, 'pm2/bin/pm2');
+    const candidate = path.join(dir, 'pm2', 'bin', 'pm2');
     if (existsSync(candidate)) return candidate;
   }
-  // Fallback: try `which pm2` and walk the symlink. PM2's bin entry is
-  // usually a wrapper that points to the JS file.
-  const probe = process.platform === 'win32' ? 'where' : 'which';
+  // Fallback: `which pm2` returns the bin shim. Read the shim's first
+  // line to find the JS entry it wraps.
+  // - On POSIX, the shim is `#!/usr/bin/env node\nrequire(...)/pm2.js`
+  //   OR the shim itself IS the JS file. We accept either if it parses
+  //   as a JS file.
+  // - On Windows, `where pm2` returns `pm2.cmd`. Reading the .cmd file's
+  //   contents reveals the JS path it spawns. We match `node "*pm2*"`
+  //   inside the .cmd to extract the underlying JS path.
+  const probe = IS_WIN ? 'where' : 'which';
   const w = capture(probe, ['pm2']);
   if (w.ok && w.stdout) {
-    const found = w.stdout.split(/\r?\n/)[0].trim();
-    if (found && existsSync(found)) return found;
+    const lines = w.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    for (const found of lines) {
+      if (!existsSync(found)) continue;
+      // POSIX: a JS file ends with no extension OR `.js`; .cmd shim is Windows-only.
+      if (!IS_WIN && !found.endsWith('.cmd') && !found.endsWith('.bat') && !found.endsWith('.ps1')) {
+        return found;
+      }
+      // Windows: read the .cmd shim and pull out the JS entry.
+      if (IS_WIN && found.endsWith('.cmd')) {
+        try {
+          const txt = readFileSync(found, 'utf8');
+          // Match `node ... "<path>\\pm2\\bin\\pm2"` or `"%~dp0\\node_modules\\pm2\\bin\\pm2"`.
+          const m = txt.match(/"([^"]*pm2[\\/]+bin[\\/]+pm2)"/i);
+          if (m && m[1]) {
+            // `%~dp0\\...` → resolve relative to the .cmd's directory.
+            let resolved = m[1].replace(/%~dp0/gi, path.dirname(found) + path.sep);
+            if (existsSync(resolved)) return resolved;
+          }
+        } catch { /* fall through */ }
+      }
+    }
   }
-  // Last resort: just `pm2` and hope SYSTEM finds it.
-  return 'pm2';
+  return null;
 }
 
 // ─── 12. Open browser ──────────────────────────────────────────────────────
@@ -466,10 +559,13 @@ async function openBrowser() {
     return;
   }
   // Read PORT from .env so we don't guess. Falls back to 443 (server default).
+  // Regex tolerates an inline `# comment` after the value — operators
+  // commonly annotate their .env this way; the prior `\s*$` anchor refused
+  // to match those lines and silently fell back to 443.
   let port = '443';
   try {
     const env = readFileSync(path.join(REPO_ROOT, '.env'), 'utf8');
-    const m = env.match(/^\s*PORT\s*=\s*"?(\d+)"?\s*$/m);
+    const m = env.match(/^\s*PORT\s*=\s*"?(\d+)"?/m);
     if (m) port = m[1];
   } catch { /* .env may not exist on first run failure path */ }
 

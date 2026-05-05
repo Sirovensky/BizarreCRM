@@ -101,37 +101,41 @@ if [[ "${NODE_OK}" -eq 0 ]]; then
 
   INSTALLED=0
 
+  # NB: `set -e` is active. Each install branch must NOT exit on a failed
+  # install command — instead set INSTALLED=0 and fall through to the
+  # `if [[ INSTALLED -ne 1 ]]; open_download_page` fallback below. The
+  # `||` operator short-circuits and prevents `set -e` from firing.
   if command -v apt-get >/dev/null 2>&1; then
     echo "Detected apt-get (Debian/Ubuntu)."
     # NodeSource is the upstream-blessed install path for Debian/Ubuntu.
     # Two-step: register the NodeSource apt repo, then `apt-get install nodejs`.
     if confirm_sudo "curl -fsSL https://deb.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x | sudo bash - && sudo apt-get install -y nodejs"; then
-      curl -fsSL "https://deb.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo apt-get install -y nodejs && INSTALLED=1
+      { curl -fsSL "https://deb.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo apt-get install -y nodejs; } && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v dnf >/dev/null 2>&1; then
     echo "Detected dnf (Fedora/RHEL)."
     if confirm_sudo "curl -fsSL https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x | sudo bash - && sudo dnf install -y nodejs"; then
-      curl -fsSL "https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo dnf install -y nodejs && INSTALLED=1
+      { curl -fsSL "https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo dnf install -y nodejs; } && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v yum >/dev/null 2>&1; then
     echo "Detected yum (older RHEL/CentOS)."
     if confirm_sudo "curl -fsSL https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x | sudo bash - && sudo yum install -y nodejs"; then
-      curl -fsSL "https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo yum install -y nodejs && INSTALLED=1
+      { curl -fsSL "https://rpm.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x" | sudo bash - && sudo yum install -y nodejs; } && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v pacman >/dev/null 2>&1; then
     echo "Detected pacman (Arch/Manjaro)."
     if confirm_sudo "sudo pacman -S --noconfirm nodejs npm"; then
-      sudo pacman -S --noconfirm nodejs npm && INSTALLED=1
+      sudo pacman -S --noconfirm nodejs npm && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v zypper >/dev/null 2>&1; then
     echo "Detected zypper (openSUSE)."
     if confirm_sudo "sudo zypper install -y nodejs${REQUIRED_NODE_MAJOR}"; then
-      sudo zypper install -y "nodejs${REQUIRED_NODE_MAJOR}" && INSTALLED=1
+      sudo zypper install -y "nodejs${REQUIRED_NODE_MAJOR}" && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v apk >/dev/null 2>&1; then
     echo "Detected apk (Alpine)."
     if confirm_sudo "sudo apk add --update nodejs npm"; then
-      sudo apk add --update nodejs npm && INSTALLED=1
+      sudo apk add --update nodejs npm && INSTALLED=1 || INSTALLED=0
     fi
   elif command -v brew >/dev/null 2>&1; then
     echo "Detected Homebrew (macOS terminal install)."

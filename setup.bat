@@ -40,21 +40,33 @@ if %errorlevel% neq 0 (
 )
 
 :: Parse major version from `node --version` (e.g. v22.11.0 -> 22).
-for /f "tokens=1,2,3 delims=v." %%a in ('node --version 2^>nul') do set "NODE_MAJOR=%%a"
+:: Prior implementation used `tokens=1,2,3 delims=v.` which puts the empty
+:: string before the leading 'v' into token 1, leaving NODE_MAJOR empty
+:: for every Node version. Fix: ask Node itself for the major; this also
+:: avoids any CRLF / nightly-tag parsing hazards.
+for /f "delims=" %%v in ('node -e "process.stdout.write(String(process.versions.node.split('.')[0]))" 2^>nul') do set "NODE_MAJOR=%%v"
 if "%NODE_MAJOR%"=="" (
     echo  WARNING: Could not parse Node.js version. Proceeding anyway.
     goto :run_universal
 )
-if !NODE_MAJOR! LSS %REQUIRED_NODE_MAJOR% (
-    echo  Node.js v!NODE_MAJOR! detected, but v%REQUIRED_NODE_MAJOR%+ required.
+:: Use /a arithmetic comparisons so the comparison is integer-typed; the
+:: legacy LSS/GEQ on cmd.exe string vars was lexicographic and would
+:: misorder single-digit majors (e.g. "8" vs "22").
+set /a NM=%NODE_MAJOR% 2>nul
+if "%NM%"=="" (
+    echo  WARNING: Node.js version "%NODE_MAJOR%" could not be parsed as integer. Proceeding anyway.
+    goto :run_universal
+)
+if %NM% LSS %REQUIRED_NODE_MAJOR% (
+    echo  Node.js v%NM% detected, but v%REQUIRED_NODE_MAJOR%+ required.
     goto :try_install_node
 )
-if !NODE_MAJOR! GEQ %REJECTED_NODE_MAJOR% (
-    echo  Node.js v!NODE_MAJOR! detected, but v%REJECTED_NODE_MAJOR%+ is too new.
+if %NM% GEQ %REJECTED_NODE_MAJOR% (
+    echo  Node.js v%NM% detected, but v%REJECTED_NODE_MAJOR%+ is too new.
     echo  Repo engines require Node 22-24. Install Node 22 LTS.
     goto :open_download_page
 )
-echo  OK - Node.js v!NODE_MAJOR! detected.
+echo  OK - Node.js v%NM% detected.
 goto :run_universal
 
 :: ── Step 2: Try to install Node.js ───────────────────────────────
