@@ -23,6 +23,16 @@ import {
   setAutoMarginSettings,
 } from '../services/repairPricing/autoMargin.js';
 import { seedRepairPricingDefaults } from '../services/repairPricing/seedDefaults.js';
+import {
+  runNightlyRebase,
+  getLastRebaseSummary,
+  ackRebaseSummary,
+} from '../services/repairPricing/nightlyRebase.js';
+import {
+  getActiveMarginAlerts,
+  getMarginAlertSummary,
+  ackMarginAlert,
+} from '../services/repairPricing/marginAlerts.js';
 
 const router = Router();
 
@@ -423,6 +433,63 @@ router.post('/recompute-profits', adminOrManager, asyncHandler(async (req, res) 
     auto_margin_adjusted: autoMargin?.adjusted ?? 0,
   });
   res.json({ success: true, data: { recompute, auto_margin: autoMargin } });
+}));
+
+// ==================== Nightly Rebase ====================
+
+router.get('/rebase-summary', asyncHandler(async (req, res) => {
+  const summary = getLastRebaseSummary(req.db);
+  res.json({ success: true, data: summary });
+}));
+
+router.post('/rebase-ack', adminOrManager, asyncHandler(async (req, res) => {
+  ackRebaseSummary(req.db);
+  audit(req.db, 'repair_pricing_rebase_acked', req.user!.id, req.ip || 'unknown', {});
+  res.json({ success: true });
+}));
+
+router.post('/rebase-run', adminOnly, asyncHandler(async (req, res) => {
+  const result = runNightlyRebase(req.db);
+  audit(req.db, 'repair_pricing_rebase_manual', req.user!.id, req.ip || 'unknown', {
+    evaluated: result.evaluated,
+    rebased: result.rebased,
+    crossing_count: result.crossing_count,
+  });
+  res.json({ success: true, data: result });
+}));
+
+// ==================== Margin Alerts ====================
+
+router.get('/margin-alerts', asyncHandler(async (req, res) => {
+  const limit = clampLimit(req.query.limit, 100, 500);
+  const minDays = Number(req.query.min_days) || 0;
+  const alerts = getActiveMarginAlerts(req.db, { limit, minDays });
+  res.json({ success: true, data: alerts });
+}));
+
+router.get('/margin-alerts/summary', asyncHandler(async (req, res) => {
+  const summary = getMarginAlertSummary(req.db);
+  res.json({ success: true, data: summary });
+}));
+
+router.post('/margin-alerts/:id/ack', adminOrManager, asyncHandler(async (req, res) => {
+  const alertId = parsePositiveInt(req.params.id, 'id');
+  if (!alertId) throw new AppError('id is required', 400);
+  const updated = ackMarginAlert(req.db, alertId);
+  if (!updated) throw new AppError('Alert not found or already resolved', 404);
+  audit(req.db, 'margin_alert_acked', req.user!.id, req.ip || 'unknown', { alert_id: alertId });
+  res.json({ success: true });
+}));
+
+router.post('/unpause-auto-margin/:id', adminOrManager, asyncHandler(async (req, res) => {
+  const priceId = parsePositiveInt(req.params.id, 'id');
+  if (!priceId) throw new AppError('id is required', 400);
+  const existing = req.db.prepare('SELECT id, auto_margin_paused_at FROM repair_prices WHERE id = ?').get(priceId) as { id: number; auto_margin_paused_at: string | null } | undefined;
+  if (!existing) throw new AppError('Price not found', 404);
+  if (!existing.auto_margin_paused_at) throw new AppError('Auto-margin is not paused for this price', 400);
+  req.db.prepare('UPDATE repair_prices SET auto_margin_paused_at = NULL, updated_at = datetime(\'now\') WHERE id = ?').run(priceId);
+  audit(req.db, 'repair_pricing_auto_margin_unpaused', req.user!.id, req.ip || 'unknown', { price_id: priceId });
+  res.json({ success: true });
 }));
 
 // ==================== Repair Services CRUD ====================

@@ -20,10 +20,20 @@ interface SupplierMatch {
   method: 'grade' | 'compatibility' | 'fuzzy';
 }
 
+export interface SupplierSpike {
+  repair_price_id: number;
+  device_model_id: number;
+  repair_service_id: number;
+  old_cost: number;
+  new_cost: number;
+  pct_change: number;
+}
+
 export interface ProfitRecomputeResult {
   processed: number;
   updated: number;
   stale: number;
+  spikes: SupplierSpike[];
   details: Array<{
     repair_price_id: number;
     supplier_catalog_id: number | null;
@@ -132,6 +142,8 @@ function findSupplierMatch(db: Database.Database, price: PriceProfitRow): Suppli
     ?? catalogMatchForPrice(db, price, false);
 }
 
+const SPIKE_THRESHOLD_PCT = 50;
+
 export function recomputeRepairPriceProfits(
   db: Database.Database,
   opts: { priceIds?: number[]; detailLimit?: number } = {},
@@ -142,7 +154,7 @@ export function recomputeRepairPriceProfits(
   if (opts.priceIds && opts.priceIds.length > 0) {
     const ids = opts.priceIds.map((id) => Math.trunc(id)).filter((id) => Number.isInteger(id) && id > 0);
     if (ids.length === 0) {
-      return { processed: 0, updated: 0, stale: 0, details: [] };
+      return { processed: 0, updated: 0, stale: 0, spikes: [], details: [] };
     }
     where += ` AND rp.id IN (${ids.map(() => '?').join(',')})`;
     params.push(...ids);
@@ -180,9 +192,24 @@ export function recomputeRepairPriceProfits(
         updated_at = datetime('now')
     WHERE id = ?
   `);
+  const pauseAutoMargin = db.prepare(`
+    UPDATE repair_prices
+    SET auto_margin_paused_at = datetime('now'),
+        updated_at = datetime('now')
+    WHERE id = ? AND auto_margin_enabled = 1
+  `);
+  const spikeAudit = db.prepare(`
+    INSERT INTO repair_prices_audit (
+      repair_price_id, device_model_id, repair_service_id,
+      old_labor_price, new_labor_price, supplier_cost, profit_estimate,
+      source, note
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'supplier-spike', ?)
+  `);
 
   let updated = 0;
   let stale = 0;
+  const spikes: SupplierSpike[] = [];
   const details: ProfitRecomputeResult['details'] = [];
   const detailLimit = opts.detailLimit ?? 50;
 
@@ -207,6 +234,28 @@ export function recomputeRepairPriceProfits(
 
       const supplierCost = roundMoney(Number(match.price));
       const profitEstimate = roundMoney(Number(row.labor_price) - supplierCost);
+
+      if (row.last_supplier_cost != null && row.last_supplier_cost > 0) {
+        const pctChange = roundMoney(((supplierCost - row.last_supplier_cost) / row.last_supplier_cost) * 100);
+        if (pctChange > SPIKE_THRESHOLD_PCT) {
+          pauseAutoMargin.run(row.id);
+          spikeAudit.run(
+            row.id, row.device_model_id, row.repair_service_id,
+            row.labor_price, row.labor_price,
+            supplierCost, profitEstimate,
+            `Supplier cost spike: $${row.last_supplier_cost} → $${supplierCost} (+${pctChange}%). Auto-margin paused pending review.`,
+          );
+          spikes.push({
+            repair_price_id: row.id,
+            device_model_id: row.device_model_id,
+            repair_service_id: row.repair_service_id,
+            old_cost: row.last_supplier_cost,
+            new_cost: supplierCost,
+            pct_change: pctChange,
+          });
+        }
+      }
+
       updateFresh.run(supplierCost, match.last_seen, profitEstimate, row.id);
       updated += 1;
 
@@ -224,5 +273,5 @@ export function recomputeRepairPriceProfits(
   });
 
   tx();
-  return { processed: rows.length, updated, stale, details };
+  return { processed: rows.length, updated, stale, spikes, details };
 }

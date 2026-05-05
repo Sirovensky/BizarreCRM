@@ -2983,11 +2983,24 @@ server.listen(config.port, config.host, async () => {
             if (result.copied > 0) {
               const { recomputeRepairPriceProfits } = await import('./services/repairPricing/profitRecompute.js');
               const { runAutoMargin } = await import('./services/repairPricing/autoMargin.js');
+              const { runNightlyRebase } = await import('./services/repairPricing/nightlyRebase.js');
+              const { evaluateMarginAlerts } = await import('./services/repairPricing/marginAlerts.js');
               const recompute = recomputeRepairPriceProfits(tenantDb);
               const autoMargin = runAutoMargin(tenantDb);
+              const rebase = runNightlyRebase(tenantDb);
+              const alerts = evaluateMarginAlerts(tenantDb);
               console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
               if (recompute.updated > 0 || autoMargin.adjusted > 0) {
                 console.log(`[CatalogSync] Refreshed repair pricing for ${_slug || 'default'}: profit=${recompute.updated}, autoMargin=${autoMargin.adjusted}`);
+              }
+              if (rebase.rebased > 0) {
+                console.log(`[CatalogSync] Tier rebase for ${_slug || 'default'}: ${rebase.rebased} prices rebased, ${rebase.crossing_count} devices crossed tiers`);
+              }
+              if (recompute.spikes.length > 0) {
+                console.log(`[CatalogSync] Supplier spikes for ${_slug || 'default'}: ${recompute.spikes.length} prices paused (>50% cost jump)`);
+              }
+              if (alerts.new_alerts > 0 || alerts.resolved > 0) {
+                console.log(`[CatalogSync] Margin alerts for ${_slug || 'default'}: ${alerts.new_alerts} new, ${alerts.resolved} resolved`);
               }
             }
           }
