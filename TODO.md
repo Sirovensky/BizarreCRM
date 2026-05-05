@@ -7696,6 +7696,12 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   - [ ] BLOCKED: deferred per operator preference 2026-05-05. Plan exists in [serviceplan.md](./serviceplan.md) "Out Of Scope (Documented Limitations)" — current `setup.bat` is Windows-only and includes its own Node-installer prompt; converting to Node-based `setup.mjs` would mean the script can't run before Node is present, so the .bat shim must still bootstrap Node detection/install (or operators install Node manually first). Decision deferred until: (1) we decide whether operators must install Node manually as a documented prerequisite, or (2) we vendor a Node bootstrap step in the .bat/.sh shims. Until that decision, the watchdog ships without auto-startup automation; PM2 + watchdog must be started manually after reboot on Windows. Linux/macOS operators can run `pm2 startup` + `pm2 save` per existing PM2 docs, no code change needed.
   - Scope when unblocked: `scripts/setup.mjs` (cross-platform Node), 1-line `setup.bat` + `setup.sh` shims, `scripts/autostart/{index,linux,darwin,win32}.mjs` with thin per-OS adapters (Linux/macOS → `pm2 startup` + `pm2 save`; Windows → Task Scheduler XML via `schtasks` — NO vendored binaries, NO PowerShell scripts).
   - Acceptance when unblocked: fresh boot on Linux/macOS/Windows brings CRM online without user login; zero `process.platform === 'win32'` branches outside the three adapter files.
+  - Related: [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) Phase C-pre — `setup.mjs` also drops the Electron build/launch from this script and replaces with `vite build` of the static dashboard + open-in-browser to `https://localhost/super-admin/`. The two changes land together when this entry unblocks.
+
+- [ ] OPS-DEFERRED-002. **Browser-served super-admin dashboard (deprecate Electron `packages/management/`).**
+  - [ ] BLOCKED: planning doc complete at [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) 2026-05-05; implementation gated on team capacity (~4 weeks for one engineer). Replaces ~4500 lines of Electron main + ~89 IPC handlers + Chromium binary + per-OS code-signing pipeline with: server-side `/super-admin/api/management/*` REST routes + static SPA at `/super-admin/` + a tiny `bizarre-crm-rescue` PM2 app for the crashed-server case.
+  - Pairs with `OPS-DEFERRED-001` — Phase C-pre of this plan modifies `setup.bat`/`setup.mjs` to drop Electron build/launch and open browser instead. Independent of (3)/(4) of dashboardplan can start any time; (5)/(6)/(8) gate on multi-OS setup migration.
+  - Acceptance: `packages/management/` deleted, fresh `setup.mjs` opens default browser to `https://localhost/super-admin/`, phone/tablet remote management works on LAN, Rescue Agent at `http://localhost:7474/rescue` handles crashed-main-server case.
 
 ### Web UI/UX Audit — Pass 33 (2026-05-05, flow walk: Send Bulk SMS — segment pick, preview token, confirm, partial-fail visibility)
 
@@ -7791,3 +7797,223 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 - [ ] WEB-UIUX-1523. **[NIT] Preview banner copy "Confirmation expires in 5 minutes" is static — doesn't actually expire visibly (see WEB-UIUX-1514). Even without a countdown, tighten to "Confirmation valid for 5 min — re-preview if you wait longer."** L2 truthfulness.
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:191-194`
+
+### Web UI/UX Audit — Pass 34 (2026-05-05, flow walk: Record Payment on Invoice — modal entry, methods, dedup, receipt, recovery)
+
+#### Blocker — wrong response shape, dedup blocks legitimate split tender
+
+- [ ] WEB-UIUX-1524. **[BLOCKER] Custom payment methods configured in Settings never reach the Record Payment modal. Server returns `{ success: true, data: <array of methods> }` (`settings.routes.ts:840-841`), but client reads `pmData?.data?.data?.payment_methods` (`InvoiceDetailPage.tsx:92`) — `<array>.payment_methods` is `undefined`, so `paymentMethods` is always `[]` and the hardcoded fallback `[Cash, Credit Card, Debit Card, Other]` runs every time. Tenant adds Zelle / Venmo / Wire / Cashier's Check via Settings → SettingsPage shows them (it parses `res.data.data` correctly at `SettingsPage.tsx:1346`) → cashier opens Record Payment → none of the custom methods appear → every non-default tender gets booked as "Other" → ledger reports collapse all wires + ACH + crypto into a single bucket, and the Settings UI looks broken to admins ("I added Zelle, why isn't it offered?"). Fix: read `pmData?.data?.data` as the array directly, mirror `SettingsPage`'s shape.** L2 truthfulness, L11 consistency, L4 flow integrity.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:77-92`
+  `packages/server/src/routes/settings.routes.ts:838-842`
+  <!-- meta: fix=replace-`pmData?.data?.data?.payment_methods`-with-`Array.isArray(pmData?.data?.data)?pmData.data.data:[]`;-typed-as-PaymentMethod[];-keep-fallback-only-when-array-is-empty -->
+
+- [ ] WEB-UIUX-1525. **[BLOCKER] Same-amount-same-user dedup window (5s in-memory + 10s DB at `invoices.routes.ts:763-776`) blocks a legitimate split tender. Two friends each hand the cashier $50 cash for a $100 invoice. Cashier records first $50 → success. Records second $50 immediately → server returns 409 "Duplicate payment detected. Please wait before retrying." Toast message implies the prior write didn't land, so cashier waits, retries, fails again. Common workarounds: change second amount to $50.01, or split into two payments by method (cash + cash again later) — both falsify the ledger. Either (a) require an explicit `force` flag with an "Yes, this is a separate tender" confirmation when dedup hits, or (b) include an idempotency key from the client so the dedup is keyed on intent not amount.** L2 truthfulness, L4 flow integrity, L8 recovery.
+  `packages/server/src/routes/invoices.routes.ts:760-777`
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`
+  <!-- meta: fix=client-sends-Idempotency-Key-uuid-on-mutate;-server-dedup-on-key-not-amount;-on-409-toast-"Looks-like-duplicate-(prior-payment-of-$X-recorded-Ns-ago).-Record-this-as-a-separate-tender?"-with-Force-button -->
+
+#### Major — recovery / hierarchy / feedback
+
+- [ ] WEB-UIUX-1526. **[MAJOR] No way to reverse a single mis-typed payment. Cashier fat-fingers $5,000 instead of $50; only paths back are (a) Void Invoice (`InvoiceDetailPage.tsx:384-388`) which marks every payment on the invoice as `[VOIDED]` (`invoices.routes.ts:930`) — including legitimate prior payments — and restores stock + cancels commission, or (b) Credit Note (`:377-380`) which is capped at `amount_paid`, requires a structured reason picker, and is bookkept as a refund. The payment timeline (`:484-547`) renders each payment row but offers no per-row action. Add a per-payment "Reverse" affordance (manager-PIN gated, time-windowed e.g. 30 min, marks the row [VOIDED] without nuking the rest of the invoice).** L8 recovery, L13 forgiveness.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:484-547`
+  `packages/server/src/routes/invoices.routes.ts:925-935`
+  <!-- meta: fix=add-DELETE-/invoices/:id/payments/:paymentId-(or-POST-/payments/:id/void)-gated-on-invoices.void_payment-+-time-window;-render-Reverse-button-on-each-non-voided-row-in-timeline -->
+
+- [ ] WEB-UIUX-1527. **[MAJOR] Receipt prompt closes on backdrop click without confirmation. `InvoiceDetailPage.tsx:677` wraps the prompt in `<div ... onClick={() => setShowReceiptPrompt(false)}>`. Cashier records payment, modal swaps to "Send Receipt?", customer is mid-conversation, cashier instinctively clicks outside to dismiss the modal → receipt is silently skipped, no acknowledgment. Customer leaves expecting an SMS that never arrives. Either (a) require an explicit Skip/Send choice (no backdrop close), or (b) on backdrop dismiss show a tiny toast "Receipt skipped — re-send from invoice detail" so cashier knows.** L7 feedback, L8 recovery, L13 forgiveness.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:677-735`
+  <!-- meta: fix=remove-backdrop-onClose-OR-on-dismiss-toast.success("Receipt-skipped — Re-send-from-Payment-Timeline")-with-link-to-resend-flow -->
+
+- [ ] WEB-UIUX-1528. **[MAJOR] SMS receipt body lies on partial payment. `:704` builds `Receipt for Invoice #${invoice.order_id}: Total ${formatCurrency(invoice.total)}. Thank you for your business!` — uses `invoice.total` (the headline), not the payment amount or remaining balance. Customer pays $50 deposit on a $500 invoice, gets SMS "Total $500.00. Thank you for your business!" → reads like the whole invoice is paid; customer assumes job is done, won't pay the rest. Body must include payment_amount + balance_due + method (e.g., "Received $50.00 cash on INV-1234. Balance remaining: $450.00.").** L2 truthfulness, L7 feedback.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:700-714`
+  <!-- meta: fix=template="Received-${formatCurrency(paid)}-${method}-on-${order_id}.${amount_due>0?`-Balance:-${formatCurrency(amount_due)}.`:`-Paid-in-full.`}-Thanks!" -->
+
+- [ ] WEB-UIUX-1529. **[MAJOR] Backdrop click destroys typed payment in flight. Modal root at `:597` is `onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}`. Cashier types `$1,250.00`, picks Credit Card, types auth code into Notes, then accidentally clicks outside the inner card while reaching for "Record Payment" → modal closes, all state cleared (`setPaymentForm` reset never fires here, but next open re-mounts and starts blank because the `useState` lives at component scope and is preserved — actually re-opening with state intact would help, BUT the modal mount is conditional on `showPayment` so state persists across close/reopen). Still: backdrop dismissal during a financial entry is too easy. Either disable backdrop close entirely on this modal, or warn before discarding non-empty input ("Discard payment entry?").** L8 recovery, L13 forgiveness.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:591-672`
+  <!-- meta: fix=remove-backdrop-close;-or-on-dismiss-when-(amount||notes||method!=='cash')-show-confirm-"Discard-payment-entry?" -->
+
+- [ ] WEB-UIUX-1530. **[MAJOR] Overpayment guard uses native `window.confirm()` (`InvoiceDetailPage.tsx:236`). Native dialog is unstyled, can be muted by browser site settings, and looks identical for "$50 overage on a $50 invoice (likely tip)" vs "$4,950 overage on a $50 invoice (definitely typo)". The guard accepts any amount on Yes — no typed confirmation, no "Record overage as $X store credit?" preview, no breakdown showing where the excess will land. Replace with a styled ConfirmDialog that surfaces the planned store_credit insert and requires typed confirmation when overage > e.g. 50% of invoice total.** L5 destructive hierarchy, L7 feedback, L13 forgiveness.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:225-242`
+  `packages/server/src/routes/invoices.routes.ts:792-798,825-861`
+  <!-- meta: fix=swap-window.confirm-for-ConfirmDialog-with-{amount,balance,overage,store_credit_target,customer_name};-requireTyping=overage>balance*0.5 -->
+
+- [ ] WEB-UIUX-1531. **[MAJOR] No structured `transaction_id` field — auth codes get buried in `notes`. Server schema has a dedicated `payments.transaction_id` column (`invoices.routes.ts:780`) and the route accepts it (`:750`). Client never renders an input for it; the only freeform field is "Notes (optional)" with placeholder "Transaction ID, check number, etc." (`InvoiceDetailPage.tsx:643`). Cashier types AUTH-12345 into notes — not searchable, not surfaced on the timeline, never reconcilable against processor reports. For non-terminal card flows (offline backup, manual cash imprint, ACH wire confirmations) this is the only place to capture it. Add a `Reference / Transaction ID` field that conditionally appears for non-cash methods.** L6 discoverability, L11 consistency.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:641-644`
+  `packages/server/src/routes/invoices.routes.ts:750,780-783`
+  <!-- meta: fix=add-{transaction_id}-to-paymentForm;-render-input-conditional-on-method!=='cash';-pass-through-on-payMutation;-render-on-timeline-row -->
+
+- [ ] WEB-UIUX-1532. **[MAJOR] No deposit / payment-type toggle. Server distinguishes `payment_type` ∈ {payment, deposit} (`invoices.routes.ts:750-758`). Client never exposes it; every record posts as `payment` (default). Shops that take a 30% deposit on a custom build use this UI for the deposit, then again for the balance — but reporting that splits revenue accrual vs deferred-revenue can't tell them apart. Either expose a `Deposit` checkbox in the modal, or default `payment_type='deposit'` when invoice has zero prior payments and `amount_due == total` and the entered amount is < total.** L6 discoverability, L11 consistency.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:43,101,225-242`
+  `packages/server/src/routes/invoices.routes.ts:750,754-758`
+  <!-- meta: fix=add-payment_type-toggle-or-derive-from-(amount<total&&amount_paid===0);-pass-through-on-mutate -->
+
+- [ ] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability.
+  `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`
+  <!-- meta: fix=add-quick-pay-button-on-rows-with-amount_due>0;-mount-shared-PaymentModal-component-with-invoiceId-+-onClose;-extract-modal-from-InvoiceDetailPage.tsx-into-components/billing/RecordPaymentModal.tsx -->
+
+#### Minor — clarity / consistency
+
+- [ ] WEB-UIUX-1534. **[MINOR] Amount placeholder is currency-naive. `InvoiceDetailPage.tsx:611` renders `placeholder={Number(invoice.amount_due).toFixed(2)}` (e.g., "1234.56") inside an input prefixed with a hardcoded `$` glyph (`:605`). Same file uses `formatCurrency()` everywhere else (totals, payment timeline, max-credit hint). Tenants on EUR / GBP / MXN see "$1234.56" alongside €/£/$ totals on the surrounding card — currency cognitive whiplash. Use `formatCurrency(invoice.amount_due)` for the placeholder and drop the static `$` prefix; render the currency glyph from tenant settings.** L2 truthfulness, L11 consistency.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:603-617`
+  <!-- meta: fix=placeholder=formatCurrency(invoice.amount_due);-remove-hardcoded-$-prefix-OR-derive-from-tenant.currency_symbol -->
+
+- [ ] WEB-UIUX-1535. **[MINOR] "Pay full balance" is a tiny text link, not the primary action. `InvoiceDetailPage.tsx:618-621` renders the most-common-case ("collect the full outstanding balance") as a 12px underline-on-hover link below the input. Most cashiers type the amount manually because the link doesn't read as a button. Promote it: make the input default-empty with a prominent "Pay {formatCurrency(amount_due)} (full balance)" preset button at the top of the modal, and a "Custom amount" toggle for partial.** L1 visual hierarchy, L6 discoverability.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:602-622`
+  <!-- meta: fix=primary-CTA="Pay-{full}";-secondary-toggle-"Custom-amount"-reveals-input;-existing-link-replaced-by-button -->
+
+- [ ] WEB-UIUX-1536. **[MINOR] Method `<button>` highlight depends on a normalize that breaks on rename. `InvoiceDetailPage.tsx:629,631` matches `paymentForm.method === pm.name.toLowerCase().replace(/\s+/g, '_')`. Admin renames "Credit Card" → "Credit" in Settings → method string becomes `credit` not `credit_card` → all historical reports keyed on `credit_card` lose continuity. The `payment_methods` table has a stable `id` column (`settings.routes.ts:849`); use that as the wire value, with `name` only for display. Same fix unblocks WEB-UIUX-1524.** L11 consistency, L10 trust (reports).
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:626-639`
+  `packages/server/src/routes/settings.routes.ts:838-851`
+  <!-- meta: fix=submit-pm.id-(or-canonical-slug)-as-method;-server-resolves-to-display-name;-historical-reports-keep-stable-key-across-renames -->
+
+- [ ] WEB-UIUX-1537. **[MINOR] Initial method state hardcoded `'cash'`, may not match any rendered button. `InvoiceDetailPage.tsx:43` initializes `method: 'cash'`. If tenant disables Cash in Settings (e.g., card-only retail, no register float), cash is no longer in `payment_methods`, but the form still defaults to `'cash'` and submits it on Record Payment — server accepts the string blindly. No method button is highlighted on first open → cashier sees four equally-unselected buttons → confused which is active. Initialize `method` from `paymentMethods[0]?.id` once data loads.** L2 truthfulness, L7 feedback.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:43,77-92`
+  <!-- meta: fix=useEffect-once-pmData-loads-{setPaymentForm(p=>({...p,method:paymentMethods[0]?.id||'cash'}))} -->
+
+- [ ] WEB-UIUX-1538. **[MINOR] Customer cache not invalidated after payment. `InvoiceDetailPage.tsx:96-98` invalidates `['invoice', id]` and `['invoices']` on success but not `['customer', invoice.customer_id]`. Customer profile page renders a "Lifetime Value" + "Outstanding Balance" pair that the server updates via `recordCustomerInteraction` (`:822`) — values become stale until the user manually navigates away and back, or the staleTime expires. Add `['customer', invoice.customer_id]` to the invalidation list.** L11 consistency, L7 feedback.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`
+  `packages/server/src/routes/invoices.routes.ts:820-823`
+  <!-- meta: fix=add-queryClient.invalidateQueries({queryKey:['customer',invoice.customer_id]});-also-on-credit-note-success-+-void -->
+
+- [ ] WEB-UIUX-1539. **[MINOR] No focus trap on Record Payment modal. `:591-596` sets `role="dialog" aria-modal="true"`. autoFocus lands on the amount input (`:615`) — good — but tabbing past Cancel/Record cycles into the underlying invoice page (Print / Void / etc.). Screen-reader user listening to "Record Payment" suddenly hears "Void" buttons read out from outside the dialog. Wrap inner card with `react-focus-lock` or the existing modal primitive used elsewhere (e.g., `ConfirmDialog`).** L12 a11y.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:591-672`
+  <!-- meta: fix=use-shared-Modal-primitive-OR-react-focus-lock;-trap-focus-within-card;-restore-focus-to-Record-Payment-button-on-close -->
+
+#### Nit — copy / polish
+
+- [ ] WEB-UIUX-1540. **[NIT] Notes placeholder invites unstructured data dumping. "Transaction ID, check number, etc." (`InvoiceDetailPage.tsx:643`) trains the cashier to pour structured fields into notes. After WEB-UIUX-1531 lands (dedicated `transaction_id` field), update the notes placeholder to "Memo (e.g., 'invoice paid at front desk')".** L2 truthfulness.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:642-644`
+
+- [ ] WEB-UIUX-1541. **[NIT] Receipt prompt header "Send Receipt?" doesn't acknowledge partial payment. `:680`. If the just-recorded payment leaves `invoice.amount_due > 0`, the prompt should say "Send Partial Receipt?" with the remaining balance shown beneath, so the cashier deliberately picks SMS / Email / Skip with full context (the partial-vs-full distinction is critical when WEB-UIUX-1528 is fixed and the SMS body is honest).** L2 truthfulness, L7 feedback.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:679-685`
+
+- [ ] WEB-UIUX-1542. **[NIT] Method buttons forced into 2-col grid — odd layout when payment_methods has 5+ entries. `:625` `grid grid-cols-2 gap-2`. Five methods → 2-2-1 with a half-width orphan. Switch to flex-wrap with min-width buttons so 1-3-5 wrap gracefully.** L1 visual hierarchy.
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:625`
+
+### Web UI/UX Audit — Pass 35 (2026-05-05, flow walk: Issue Gift Card — entry, reveal-once, code reveal truthfulness, recipient delivery, end-to-end redeem path)
+
+#### Blocker — broken end-to-end flow / lying copy / missing controls
+
+- [ ] WEB-UIUX-1543. **[BLOCKER] No redeem surface anywhere in POS or invoice. Server exposes `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:328`) and `GET /gift-cards/lookup/:code` (`:172`); web client wires `giftCardApi.redeem` and `giftCardApi.lookup` (`endpoints.ts:1274-1276`) but NO UI calls them. `CashRegisterPage.tsx` has zero references to "gift", "redeem", "giftCard"; `InvoiceDetailPage.tsx` payment-method buttons render only what `payment_methods` table returns (no built-in gift-card tender). Cashier issues a $200 gift card, customer returns to redeem → cashier physically cannot accept it. End-to-end flow does not close. Either (a) add Gift Card as a payment-method option in the Record Payment modal that opens a code-lookup-first flow, or (b) build a dedicated Redeem page and link it from the Gift Cards list.** L4 flow completion, L6 discoverability.
+  `packages/web/src/pages/pos/CashRegisterPage.tsx`
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:625-639`
+  `packages/server/src/routes/giftCards.routes.ts:328-392`
+  <!-- meta: fix=add-Gift-Card-method-button-in-RecordPaymentModal+lookup-by-code-step+redeem-mutation;-OR-add-/gift-cards/redeem-route-with-LookupForm+RedeemForm -->
+
+- [ ] WEB-UIUX-1544. **[BLOCKER] "Save this code now — it will not be shown again" is a lie. Issue success modal copy at `GiftCardsListPage.tsx:139-141` claims one-time reveal. Detail page `GiftCardDetailPage.tsx:235` toggles full plaintext code via Eye/EyeOff button — server `GET /gift-cards/:id` returns full `code` column unconditionally (`giftCards.routes.ts:444-450`, `code` selected via `SELECT *`). Worse: GET has no `requirePermission` gate — only `authMiddleware` (`server/index.ts:1623`). ANY authed user (including base-role cashiers without `gift_cards.issue`/`gift_cards.redeem` perms) can iterate `/gift-cards/:id` and harvest plaintext codes for redemption elsewhere. Either (a) finish the SEC-H38 hash-rollover (drop plaintext `code` column, never return it from GET) and remove the false claim, or (b) gate the plaintext branch behind a manager-PIN re-auth + audit log entry per reveal.** L2 truthfulness, L10 trust, security overlap.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138-143`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:233-244`
+  `packages/server/src/routes/giftCards.routes.ts:441-451`
+  `packages/server/src/index.ts:1623`
+  <!-- meta: fix=server-GET-/:id-strips-code+code_hash-from-response;-detail-page-removes-Eye-toggle;-OR-keep-reveal-but-add-requirePermission('gift_cards.view_code')-+-audit-on-each-fetch -->
+
+- [ ] WEB-UIUX-1545. **[BLOCKER] `recipient_email` is collected, validated, persisted — never delivered. Issue modal asks for "Recipient email (optional)" with placeholder "jane@example.com" (`GiftCardsListPage.tsx:204-215`). Server `validateTextLength(recipient_email, 200)` then INSERTs (`giftCards.routes.ts:281-300`). Zero `email`/`sms`/`notify`/`sendgrid`/`twilio` references anywhere in the route. Customer pays $100 to gift to Jane, types Jane's email, hits Issue → Jane gets nothing. Cashier never warned. The whole "send a gift" mental model the field implies does not exist. Either (a) wire post-issue email (Mailgun/SendGrid client used elsewhere in repo) with the code rendered in the body, or (b) drop the recipient_email field and rename the modal to "Issue gift card (cashier hands code to customer)".** L2 truthfulness, L4 flow completion, L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
+  `packages/server/src/routes/giftCards.routes.ts:253-323`
+  <!-- meta: fix=after-INSERT-success-call-mailer.send({to:recipient_email,template:'gift-card-issued',vars:{recipient_name,code,initial_balance,expires_at,sender:tenant.name}});-add-Settings-toggle-"send-gift-on-issue" -->
+
+- [ ] WEB-UIUX-1546. **[BLOCKER] No way to disable / void / mark-lost a gift card. Server `giftCards.routes.ts` ends at line 451 with no DELETE / PATCH / POST :id/disable route. Customer reports their card stolen → admin opens detail page → no "Disable" button. Status enum has `disabled` value (`:117`) but nothing flips a card to it. Stolen card stays redeemable until drained. Add `POST /gift-cards/:id/disable` (manager+ role, audited) and a Disable button on the detail page next to Reload.** L4 flow completion, L8 recovery.
+  `packages/server/src/routes/giftCards.routes.ts:441-453`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
+  <!-- meta: fix=server-POST-/:id/disable-{reason}-flips-status='disabled'+audit;-detail-page-renders-Disable-button-(red-secondary)-with-reason-prompt;-list-page-row-action -->
+
+#### Major — discoverability / hierarchy / recovery
+
+- [ ] WEB-UIUX-1547. **[MAJOR] Gift Cards page is orphaned from primary navigation. `App.tsx:98,536-538` registers the routes with comment "§ gift-cards orphan UI". `Sidebar.tsx` has zero "gift" matches. Only entry points: Cmd-K palette (`CommandPalette.tsx:73`) and direct URL. Cashier asked to issue a gift card cannot find the page without prior knowledge. Add to Sidebar under Sales/Billing group with `gift_cards.issue` perm gate so non-issuers don't see a button they can't use.** L6 discoverability.
+  `packages/web/src/components/layout/Sidebar.tsx`
+  `packages/web/src/App.tsx:536-538`
+  <!-- meta: fix=add-NavItem{label:'Gift Cards',icon:Gift,path:'/gift-cards',permission:'gift_cards.issue'}-under-Sales-section -->
+
+- [ ] WEB-UIUX-1548. **[MAJOR] Past expiry dates accepted on issue; immediately-expired card is silent. `<input type="date">` at `GiftCardsListPage.tsx:220-225` has no `min={today}` attribute. Server `validateIsoDate` (`validate.ts:169-195`) checks ISO format only — does NOT reject past dates. Cashier mis-types "2025" instead of "2026" → card issued with `expires_at=2025-05-05` → next redemption attempt errors "Gift card expired". No client warning, no server reject, no `expires_at < created_at` constraint at INSERT. Add `min` on the input + a server-side `if (expires_at && new Date(expires_at) <= new Date()) throw 400`.** L2 truthfulness, L4 flow integrity.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:220-225`
+  `packages/server/src/routes/giftCards.routes.ts:287-289`
+  `packages/server/src/utils/validate.ts:169-195`
+  <!-- meta: fix=client-min={new Date().toISOString().slice(0,10)};-server-rejects-expires_at<=now()-with-"Expiry-must-be-in-the-future" -->
+
+- [ ] WEB-UIUX-1549. **[MAJOR] Date-only expiry parsed as UTC midnight — card expires the night before in user's local time. `isExpired()` at `giftCards.routes.ts:38-46` calls `Date.parse('2026-05-05')` → `2026-05-05T00:00:00Z`. A US Pacific (UTC-7/8) tenant's card showing "Expires May 5" is dead at 5pm May 4 local time. Customer walks in May 5 morning, gets "Gift card expired" error. Either (a) coerce expiry to end-of-day in tenant timezone (`expires_at + 'T23:59:59' + tenantTz`), or (b) interpret a date-only expiry as "valid through end of that day local" by appending `T23:59:59.999Z` and accepting the wider window.** L2 truthfulness.
+  `packages/server/src/routes/giftCards.routes.ts:38-46,287-289`
+  <!-- meta: fix=at-INSERT-store-expires_at-as-{date}T23:59:59-in-tenant-tz;-OR-isExpired-treats-date-only-as-end-of-day-local -->
+
+- [ ] WEB-UIUX-1550. **[MAJOR] Lookup-by-code UI does not exist. Server has rate-limited `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172`) and client wires `giftCardApi.lookup` (`endpoints.ts:1274`) but no page calls it. List `keyword` search hits `gc.code LIKE` (`:113`), but list rows display `maskCode` (`****XXXX`) — cashier cannot see if their typed prefix matches. Customer hands physical card "C7E2-4F11-..." and cashier has no quick lookup form. Add a "Look up code" input above the list table (or a /gift-cards/lookup route) that hits the lookup endpoint and routes to detail on hit.** L4 flow completion, L6 discoverability.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331`
+  `packages/server/src/routes/giftCards.routes.ts:172`
+  <!-- meta: fix=add-LookupBar-component-above-filters-with-code-input+Enter→navigate(`/gift-cards/${data.id}`);-error-toast-on-404 -->
+
+- [ ] WEB-UIUX-1551. **[MAJOR] Cents/dollars heuristic silently mangles legitimate large balances. `formatCurrency` at `GiftCardsListPage.tsx:57-63` and identical in `GiftCardDetailPage.tsx:41-43` treats integer values >= 1000 as cents. `GIFT_CARD_MAX_AMOUNT = 10_000` (`giftCards.routes.ts:29`) — corporate gifting ($1,000 / $5,000 / $10,000 cards) is an explicit allowed range. A $1,000 card with `current_balance = 1000` (dollars) falls into the heuristic and renders as `$10.00`. Comment at `:51-53` admits "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — but corporate gifting is exactly the workflow this product enables. Heuristic should die: pin server to one representation (dollars OR cents), update SELECT, drop the if-branch.** L2 truthfulness, L10 trust.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-53`
+  `packages/server/src/routes/giftCards.routes.ts:29,297-300`
+  <!-- meta: fix=pick-one-representation-(recommend-cents-everywhere-since-rest-of-POS-is-migrating-to-cents);-update-INSERT-to-multiply-by-100;-formatCurrency-collapses-to-formatCurrencyShared(n/100) -->
+
+- [ ] WEB-UIUX-1552. **[MAJOR] Issued-code reveal modal closes on backdrop click — code lost in <100ms reflex. Modal root `GiftCardsListPage.tsx:125-130` is `<div ... onClick={onClose}>`. Cashier reads code aloud, clicks anywhere outside the inner card to dismiss → modal closes → list refetches → row shows masked `****XXXX`. Code is recoverable via detail Eye toggle (until WEB-UIUX-1544 lands), but cashier doesn't know that. While the reveal screen is up, backdrop click should be inert; only Done/X/Esc dismisses. Pair with a "Copy code" button next to Done so the friction of code capture isn't a single visual scan.** L8 recovery, L13 forgiveness.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:123-153`
+  <!-- meta: fix=removed-onClick=onClose-on-issuedCode-screen;-add-Copy-button-(navigator.clipboard.writeText(code)+toast)-+-Print-button -->
+
+- [ ] WEB-UIUX-1553. **[MAJOR] Issue success "Done" button does literally nothing useful. `GiftCardsListPage.tsx:145-150` renders single button labeled "Done" wired to `onClose`. No copy-to-clipboard, no print receipt, no "Email to recipient", no "SMS to phone" — even though `recipient_email` is in scope and a printer is the canonical POS hardware. Cashier reads the code on screen, manually transcribes onto a paper card, customer leaves. Replace with a 4-button bar: Copy / Print receipt / Email to recipient (if filled) / Done.** L4 flow completion, L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-150`
+  <!-- meta: fix=render-{Copy,Print,Email-to-${recipient_email||'…'},Done};-Email-disabled-when-no-recipient_email;-Print-opens-thermal-receipt-template -->
+
+- [ ] WEB-UIUX-1554. **[MAJOR] Issue modal: no denomination presets. `GiftCardsListPage.tsx:182-190` is a single freeform `type="number"` input. Most retail flows are $25/$50/$100/$200/$500. Cashier types every time → typo risk on a financial entry. Render preset buttons above the input, plus a "Custom" toggle that falls back to the freeform input.** L1 hierarchy, L6 discoverability.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-191`
+  <!-- meta: fix=presets=[25,50,100,200,500];-render-grid-of-buttons-that-setForm({amount:String(v)});-keep-input-as-Custom-fallback -->
+
+- [ ] WEB-UIUX-1555. **[MAJOR] Status filter has no `expired` option. `GiftCardsListPage.tsx:325-329` offers active/used/disabled. Server doesn't persist an `expired` status — `isExpired` is computed at lookup/redeem only. Manager wants to email customers whose cards expire next month — no UI path. Either (a) persist a `gift_card_expired` daemon (the `giftCardExpirySweep` service exists at `packages/server/src/services/giftCardExpirySweep.ts` — wire its output to the status column), or (b) add a virtual `expired` filter that translates to `expires_at < datetime('now')` on the server.** L6 discoverability.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
+  `packages/server/src/services/giftCardExpirySweep.ts`
+  `packages/server/src/routes/giftCards.routes.ts:117`
+  <!-- meta: fix=add-<option-value="expired">+server-translates-status=expired-to-WHERE-status='active'-AND-expires_at<datetime('now');-also-"expiring_soon"-(within-30d) -->
+
+- [ ] WEB-UIUX-1556. **[MAJOR] No bulk issue. `IssueModal` issues one card per submission. HR wanting to drop 50 holiday gift cards has to repeat the form 50 times. Add a "Bulk issue" path that takes a CSV (recipient_name, recipient_email, amount, expires_at) or a count + flat amount, returns a downloadable CSV of {recipient, code} for handoff.** L6 discoverability.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:84-248`
+  `packages/server/src/routes/giftCards.routes.ts:253-323`
+  <!-- meta: fix=server-POST-/gift-cards/bulk-{rows}-loops-with-single-tx-+-rate-cap;-client-BulkIssueModal-with-CSV-paste-+-download-result -->
+
+#### Minor — clarity / consistency / a11y
+
+- [ ] WEB-UIUX-1557. **[MINOR] Client doesn't enforce `GIFT_CARD_MAX_AMOUNT`. Issue input has `min="0.01"` but no `max` (`GiftCardsListPage.tsx:184`). User types $50,000 → submit → server 400 "Gift card amount cannot exceed $10,000" → toast shows, but admin spent time filling in recipient + email. Mirror server cap: `max="10000"` + helper text "Up to $10,000".** L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
+  `packages/server/src/routes/giftCards.routes.ts:29,262-264`
+  <!-- meta: fix=add-max="10000"+helper-"Maximum-$10,000-per-card";-disable-Submit-when-amount>10000 -->
+
+- [ ] WEB-UIUX-1558. **[MINOR] Detail page reload toast lacks the new balance. `GiftCardDetailPage.tsx:96-100` toasts "Gift card reloaded". Server response includes `new_balance` (`giftCards.routes.ts:437`) but client ignores it. Should toast "Reloaded $25 — new balance $150.00".** L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-104`
+  <!-- meta: fix=onSuccess(res)→toast.success(`Reloaded ${formatCurrency(amount)} — new balance ${formatCurrency(res.data.data.new_balance)}`) -->
+
+- [ ] WEB-UIUX-1559. **[MINOR] "of $X initial" line is meaningless after reload. `GiftCardDetailPage.tsx:252-253` shows "$current of $initial initial". Reload a $50 card 3× by $25 → balance $125, "of $50.00 initial" is jarring. Replace with "Loaded total $X" (initial + sum of reloads) computed from transactions, or drop the line when `initial_balance < current_balance`.** L11 consistency.
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-254`
+  <!-- meta: fix=loadedTotal=initial_balance+sum(adjustment-reload-tx);-render-"of-${formatBalance(loadedTotal)}-loaded";-OR-suppress-line-when-current>initial -->
+
+- [ ] WEB-UIUX-1560. **[MINOR] `txLabel('adjustment')` hardcoded "Reload". Server uses `'adjustment'` for the reload write (`giftCards.routes.ts:423`) and that's the only adjustment write today, but if a future feature adds manual corrections / refund credits / promo bumps under the same enum, history rows mislabel. Either (a) split into `'reload'` and `'adjustment'` enums on the server, or (b) read the `notes` field for label discrimination ("Reloaded" → Reload, otherwise → Adjustment).** L2 truthfulness, L11 consistency.
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:55-61`
+  `packages/server/src/routes/giftCards.routes.ts:421-424`
+  <!-- meta: fix=widen-tx.type-enum-to-include-'reload'+migration-to-relabel-existing-adjustments-where-notes='Reloaded' -->
+
+- [ ] WEB-UIUX-1561. **[MINOR] Issue modal: no autofocus on amount field on open. `GiftCardsListPage.tsx:182-190` lacks `autoFocus`. Reload modal has it (`GiftCardDetailPage.tsx:133`). Inconsistent. Cashier opening Issue modal must click into the amount field before typing.** L11 consistency, a11y.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
+  <!-- meta: fix=add-autoFocus-to-amount-input;-mirror-pattern-from-ReloadModal -->
+
+- [ ] WEB-UIUX-1562. **[MINOR] Issue modal: no focus trap. `role="dialog" aria-modal="true"` set (`:164-166`), but tab past Cancel/Issue cycles into list table actions in the page below. Same on Reload modal (`GiftCardDetailPage.tsx:115-122`). Wrap inner card with `react-focus-lock` or shared modal primitive.** a11y / L12.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:163-247`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
+  <!-- meta: fix=use-shared-Modal-primitive-OR-react-focus-lock-around-inner-card;-restore-focus-to-trigger-button-on-close -->
+
+- [ ] WEB-UIUX-1563. **[MINOR] List `keyword` search matches `gc.code LIKE` but display masks the code. `giftCards.routes.ts:113-115` does `code LIKE %keyword%`, but row renders `****XXXX`. Cashier searching for "C7E2" can't visually confirm the match. Either (a) only search by recipient_name when keyword is short (< full-code length), or (b) when keyword matches a code prefix, reveal the matched chars in the row (e.g., `C7E2****`).** L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
+  `packages/server/src/routes/giftCards.routes.ts:112-116`
+  <!-- meta: fix=if-keyword-looks-like-code-prefix-(/^[A-F0-9]{4,}/i)-render-${prefix}****${suffix};-else-mask-fully -->
+
+- [ ] WEB-UIUX-1564. **[MINOR] Email input has no client-side validity feedback before submit. `GiftCardsListPage.tsx:208-214` is `<input type="email">` — browser silently fails the constraint check on submit but the issue button is wired via React `onClick` not `<form onSubmit>`, so native validation never runs. Server `validateTextLength(recipient_email, 200)` accepts "not-an-email" up to 200 chars. Card issued with garbage email → if WEB-UIUX-1545 ships email delivery, dispatch silently fails. Wrap inputs in `<form onSubmit>` to enable native validity OR validate with a regex before mutate.** L2 truthfulness, L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
+  `packages/server/src/routes/giftCards.routes.ts:281-283`
+  <!-- meta: fix=client-/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email)-before-mutate;-server-add-validateEmail-helper -->
+
+#### Nit — copy / polish
+
+- [ ] WEB-UIUX-1565. **[NIT] Title-case mismatch. List header "Gift Cards" (`:292`), modal title "Issue gift card" (`:171`), success modal "Gift card issued" (`:138`), Reload modal "Reload gift card" (`GiftCardDetailPage.tsx:124`). Three different cases for the same noun. Standardize on sentence case ("Issue gift card" / "Gift card issued" / "Gift cards") or Title Case — pick one.** L11 consistency.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138,171,292`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124`
+
+- [ ] WEB-UIUX-1566. **[NIT] Initial value placeholder "25.00" with `min="0.01"` and `step="0.01"`. A $0.01 gift card is nonsense; server enforces only `validatePositiveAmount` which accepts any > 0. Bump `min="1"` and consider `step="1"` (whole-dollar) — fewer fat-finger options and matches real-world denominations.** L13 forgiveness.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
+
+- [ ] WEB-UIUX-1567. **[NIT] List date columns lose intra-day ordering. `formatDate(card.created_at)` (`:388`) renders date only on most locale impls — issuing 5 cards on a busy day all show same date with `ORDER BY created_at DESC` driving the list. Fine for at-a-glance, but tooltip with full timestamp would help reconcile against shift logs.** L7 feedback.
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:387-389`
