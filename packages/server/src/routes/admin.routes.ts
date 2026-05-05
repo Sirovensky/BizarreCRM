@@ -40,6 +40,8 @@ const TOKEN_ABSOLUTE_MAX_MS = 8 * 60 * 60 * 1000; // 8h absolute max
 const ADMIN_TOKENS_CAP = 1000;
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { getMasterDb } from '../db/master-connection.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 
 // SCAN-563: evict oldest entry (insertion-order) when the Map would exceed cap,
@@ -125,7 +127,54 @@ router.post('/logout', (req: Request, res: Response) => {
 
 // Auth middleware for all other admin routes
 // SCAN-892: hash lookup + timing-safe verify; SCAN-896: absolute max check
+//
+// AUD-MGT-014: Accept the super-admin JWT (Authorization: Bearer) as an
+// alternative to the legacy x-admin-token. The Electron management dashboard
+// authenticates with a super-admin JWT post-2FA and never obtains a legacy
+// admin token, so without this fallback every /api/v1/admin/* call returned
+// 401 ("Session expired — please log in again") immediately after login.
+// Super-admin role strictly dominates the local admin token's scope, so this
+// is not a privilege escalation — it just lets the same operator authenticate
+// with their stronger credential.
 function adminAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ') && config.superAdminSecret) {
+    const bearer = authHeader.slice(7);
+    try {
+      const payload = jwt.verify(bearer, config.superAdminSecret, {
+        algorithms: ['HS256'],
+        issuer: 'bizarre-crm',
+        audience: 'bizarre-crm-super-admin',
+      }) as { role?: string; superAdminId?: number; sessionId?: string };
+      if (payload.role === 'super_admin') {
+        const masterDb = getMasterDb();
+        if (masterDb && payload.sessionId) {
+          const session = masterDb.prepare(
+            "SELECT id, expires_at FROM super_admin_sessions WHERE id = ?"
+          ).get(payload.sessionId) as { id: string; expires_at: string } | undefined;
+          if (!session) {
+            return res.status(401).json({ success: false, message: 'Session expired' });
+          }
+          const nowRow = masterDb.prepare("SELECT datetime('now') AS now").get() as { now: string };
+          if (session.expires_at <= nowRow.now) {
+            return res.status(401).json({ success: false, message: 'Session expired' });
+          }
+        }
+        if (masterDb && payload.superAdminId) {
+          const adminRow = masterDb.prepare(
+            'SELECT id FROM super_admins WHERE id = ? AND is_active = 1'
+          ).get(payload.superAdminId);
+          if (!adminRow) {
+            return res.status(401).json({ success: false, message: 'Account deactivated' });
+          }
+        }
+        return next();
+      }
+    } catch {
+      // Fall through to legacy x-admin-token check
+    }
+  }
+
   const token = (req.headers['x-admin-token'] as string) || '';
   const tokenHash = hashToken(token);
   const session = adminTokens.get(tokenHash);
