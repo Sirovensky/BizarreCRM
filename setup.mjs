@@ -229,6 +229,12 @@ function npmInstall() {
   // after the regular install completes.
   const stampPath = path.join(REPO_ROOT, 'node_modules', '.bizarre-crm-node-major');
   const currentMajor = process.versions.node.split('.')[0];
+  // Marker for any installed native binding. better-sqlite3 is the
+  // most commonly-broken one and is always installed on a working
+  // BizarreCRM checkout, so it's a reliable proxy for "node_modules
+  // contains compiled native code that may be ABI-locked to a
+  // specific Node major."
+  const nativeMarker = path.join(REPO_ROOT, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
   let needsRebuild = false;
   try {
     if (existsSync(stampPath)) {
@@ -237,6 +243,15 @@ function npmInstall() {
         needsRebuild = true;
         console.log(c.yellow(`  Node major changed since last install (was v${stamped}, now v${currentMajor}) — will rebuild native modules.`));
       }
+    } else if (existsSync(nativeMarker)) {
+      // First setup.mjs run with the stamp logic, but native bindings
+      // already exist from a prior install. We don't know which Node
+      // major they were built against, and we cannot cheaply load the
+      // .node binary from this ESM context to test it. Rebuild
+      // defensively to guarantee ABI alignment with current Node. One-
+      // time cost; subsequent runs use the stamp file.
+      needsRebuild = true;
+      console.log(c.yellow(`  Native bindings present but no Node-major stamp — rebuilding defensively against current Node v${currentMajor}.`));
     }
   } catch { /* stamp read errors are non-fatal */ }
 
@@ -507,9 +522,30 @@ function startPm2() {
   capture('pm2', ['delete', 'bizarre-crm']);
   capture('pm2', ['delete', 'bizarre-crm-watchdog']);
 
-  const r = run('pm2', ['start', path.join(REPO_ROOT, 'ecosystem.config.js'), '--update-env']);
-  if (!r.ok) fatal(`pm2 start failed (exit ${r.code}).`);
-  ok('PM2 apps started');
+  // ecosystem.config.js sets `wait_ready: true` + `listen_timeout: 600_000`
+  // for bizarre-crm so PM2 will block this `pm2 start` call for up to
+  // TEN MINUTES waiting for the server's `process.send('ready')`. On a
+  // real failure (crash loop, EACCES on bind) the operator stares at a
+  // hung setup with no output for 10 minutes.
+  //
+  // CLI override: `--listen-timeout 60000` caps the wait at 60s.
+  // PM2 keeps trying to start the app in the background regardless;
+  // we just stop blocking setup.mjs after a reasonable wait. Operator
+  // can `pm2 logs` to debug whatever the underlying crash is.
+  const r = run('pm2', [
+    'start',
+    path.join(REPO_ROOT, 'ecosystem.config.js'),
+    '--update-env',
+    '--listen-timeout', '60000',
+  ]);
+  if (!r.ok) {
+    // Non-fatal: PM2 may have started the apps but timed out waiting
+    // for ready. Leave them in PM2 and let setup proceed; the operator
+    // will see the actual state via `pm2 list`.
+    warn(`pm2 start returned non-zero (exit ${r.code}). Apps may still be in PM2 but in a crashed/launching state — check \`pm2 logs bizarre-crm\` for the real error.`);
+  } else {
+    ok('PM2 apps started');
+  }
 
   const r2 = run('pm2', ['save']);
   if (!r2.ok) warn(`pm2 save failed (exit ${r2.code}). Autostart may not survive reboot.`);
