@@ -1469,13 +1469,20 @@ app.use('/super-admin/api', localhostOnly, superAdminRoutes);
 const adminCsp = "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'";
 // Serve the extracted admin JS files under /admin/js/ (needed by both panels).
 app.use('/admin/js', express.static(path.resolve(__dirname, 'admin/js'), { index: false }));
+// Super-admin panel is available in BOTH single-tenant and multi-tenant
+// modes. The original gate (`if (!config.multiTenant) return 404`) was too
+// strict — single-tenant operators legitimately need super-admin features
+// for: audit log review, JWT secret rotation, super-admin password / 2FA
+// setup, security alert review, session management, platform config
+// editing. The tenant CRUD endpoints under super-admin are no-ops or
+// redirect-to-self in single-tenant; harmless. The HTML page does not
+// need a multi-tenant gate; the underlying /super-admin/api/* routes
+// already enforce super-admin authentication regardless of mode.
 app.get('/super-admin', localhostOnly, (_req, res) => {
-  if (!config.multiTenant) return res.status(404).send('Not available');
   res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
 });
 app.get('/super-admin/*', localhostOnly, (_req, res) => {
-  if (!config.multiTenant) return res.status(404).send('Not available');
   res.setHeader('Content-Security-Policy', adminCsp);
   res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
 });
