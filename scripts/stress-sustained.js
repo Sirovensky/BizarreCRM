@@ -12,7 +12,7 @@ const TARGET_RPS = parseInt(process.argv[2]) || 1000;
 const CONCURRENCY = parseInt(process.argv[3]) || 300;
 
 const agent = new https.Agent({
-  rejectAuthorized: false,
+  rejectUnauthorized: false,
   keepAlive: true,
   maxSockets: CONCURRENCY,
 });
@@ -53,7 +53,7 @@ let startTime = Date.now();
 function sendRequest() {
   const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
   const opts = {
-    hostname: 'localhost',
+    hostname: 'bizarrecrm.com',
     port: 443,
     path: ep.path,
     method: ep.method,
