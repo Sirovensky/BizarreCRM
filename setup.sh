@@ -85,8 +85,16 @@ if command -v node >/dev/null 2>&1; then
     echo "OK - Node.js ${NODE_VERSION} detected."
     NODE_OK=1
   elif [[ -n "${NODE_MAJOR}" && "${NODE_MAJOR}" -ge "${REJECTED_NODE_MAJOR}" ]]; then
-    echo "Node.js ${NODE_VERSION} detected, but repo engines require Node 22-24. Install Node 22 LTS."
-    open_download_page
+    # Node too new: fall through to the install branch below. NodeSource
+    # setup_22.x replaces the apt repo source list and `apt-get install
+    # nodejs` then downgrades to v22. brew on macOS/Linuxbrew uses
+    # `brew unlink node && brew link node@22` (handled in the install
+    # branch). pacman/zypper/apk track their distro's current Node
+    # version and may not be able to downgrade — fallback to download
+    # page if so.
+    echo "Node.js ${NODE_VERSION} detected, but repo engines require Node 22-24."
+    echo "Attempting to install Node 22 LTS via host package manager..."
+    NODE_OK=0
   else
     echo "Node.js ${NODE_VERSION:-(unknown)} detected, but v${REQUIRED_NODE_MAJOR}+ required."
   fi
@@ -140,6 +148,10 @@ if [[ "${NODE_OK}" -eq 0 ]]; then
   elif command -v brew >/dev/null 2>&1; then
     echo "Detected Homebrew (macOS terminal install)."
     if brew install "node@${REQUIRED_NODE_MAJOR}"; then
+      # Unlink any existing `node` formula (e.g. v25 currently linked) so
+      # link --overwrite --force doesn't fight a peer formula. Failures
+      # are tolerable; `command -v node` below is the source of truth.
+      brew unlink node 2>/dev/null || true
       brew link --overwrite --force "node@${REQUIRED_NODE_MAJOR}" || true
       INSTALLED=1
     fi

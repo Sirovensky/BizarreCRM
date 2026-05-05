@@ -48,8 +48,13 @@ if command -v node >/dev/null 2>&1; then
     echo "OK - Node.js ${NODE_VERSION} detected."
     NODE_OK=1
   elif [[ -n "${NODE_MAJOR}" && "${NODE_MAJOR}" -ge "${REJECTED_NODE_MAJOR}" ]]; then
-    echo "Node.js ${NODE_VERSION} detected, but repo engines require Node 22-24. Install Node 22 LTS."
-    open_download_page
+    # Node too new: fall through to the install branch below. brew install
+    # node@22 + brew link --overwrite --force will downgrade the active
+    # node binary on PATH (works whether the existing Node was brew- or
+    # MSI-installed, because keg-only versioned formulae are independent).
+    echo "Node.js ${NODE_VERSION} detected, but repo engines require Node 22-24."
+    echo "Attempting to install Node 22 LTS alongside and relink it via Homebrew..."
+    NODE_OK=0
   else
     echo "Node.js ${NODE_VERSION:-(unknown)} detected, but v${REQUIRED_NODE_MAJOR}+ required."
   fi
@@ -74,7 +79,11 @@ if [[ "${NODE_OK}" -eq 0 ]]; then
     open_download_page
   fi
 
-  # node@22 is keg-only by default — symlink so it's on PATH.
+  # Unlink any other `node` formula currently linked (e.g. v25), then
+  # link node@22 over the top. `--overwrite --force` tolerates pre-existing
+  # symlinks. Failures here are best-effort: the next `command -v node`
+  # check is the source of truth.
+  brew unlink node 2>/dev/null || true
   brew link --overwrite --force node@22 || true
 
   if ! command -v node >/dev/null 2>&1; then

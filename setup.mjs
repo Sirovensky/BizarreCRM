@@ -569,7 +569,14 @@ async function openBrowser() {
     if (m) port = m[1];
   } catch { /* .env may not exist on first run failure path */ }
 
-  const url = port === '443' ? 'https://localhost/' : `https://localhost:${port}/`;
+  // Open the super-admin dashboard, NOT the customer-facing CRM landing.
+  // Post-setup the operator needs to (a) finish first-run super-admin
+  // password + 2FA setup, OR (b) hit their existing super-admin login.
+  // /super-admin serves admin/super-admin.html (see server/src/index.ts
+  // mounting at line ~1472). Opening the root `/` lands on the customer
+  // login page which is the wrong destination at the end of an install.
+  const base = port === '443' ? 'https://localhost' : `https://localhost:${port}`;
+  const url = `${base}/super-admin`;
 
   try {
     const { openInBrowser } = await import('./scripts/autostart/index.mjs');

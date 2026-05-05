@@ -63,8 +63,10 @@ if %NM% LSS %REQUIRED_NODE_MAJOR% (
 )
 if %NM% GEQ %REJECTED_NODE_MAJOR% (
     echo  Node.js v%NM% detected, but v%REJECTED_NODE_MAJOR%+ is too new.
-    echo  Repo engines require Node 22-24. Install Node 22 LTS.
-    goto :open_download_page
+    echo  Repo engines require Node 22-24. Will attempt to install Node 22 LTS via winget.
+    echo  Note: winget may install LTS alongside the existing Node; if PATH still
+    echo  resolves to v%NM% after install, manually uninstall the newer Node first.
+    goto :try_install_node
 )
 echo  OK - Node.js v%NM% detected.
 goto :run_universal
