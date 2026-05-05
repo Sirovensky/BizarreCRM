@@ -81,6 +81,7 @@
               <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">Mon · Jan 12</div>
             </div>
             <div class="flex items-center gap-2">
+              <div class="w-10 h-10 rounded-full grid place-items-center text-base" style="background:rgb(var(--s-800));color:rgb(var(--s-300));" title="Customize dashboard · drag, reorder, toggle widgets · sync to web inside">⚙</div>
               <div class="w-10 h-10 rounded-full grid place-items-center text-base" style="background:rgb(var(--s-800));color:rgb(var(--s-300));">🔍</div>
               <div class="w-10 h-10 rounded-full grid place-items-center text-sm font-semibold" style="background:rgb(var(--primary-cream));color:rgb(var(--primary-onPrimary));">A</div>
             </div>
@@ -99,7 +100,8 @@
               <div class="m3-tile-dark p-4 col-span-2"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Sales today</div><div class="display text-4xl mt-1" style="color:rgb(var(--s-50));">$3,142</div><div class="text-xs mt-1 flex items-center gap-2" style="color:rgb(var(--success-dark));">▲ 18% vs avg <span class="pill" style="background:rgba(52,196,126,0.15);">on track</span></div></div>
               <div class="m3-tile-dark p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Tickets</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-50));">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-dark));">● 5 overdue</div></div>
               <div class="m3-tile-dark p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Revenue MTD</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-50));">$48k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">~ pace</div></div>
-              <div class="m3-tile-dark p-4 col-span-2"><div class="flex items-center gap-3"><div class="text-3xl">📅</div><div><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">APPOINTMENTS TODAY · 7</div><div class="display text-2xl mt-0.5" style="color:rgb(var(--s-50));">Next 2:30pm — S. Chen</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">in 4hr 49m</div></div></div></div>
+              <div class="m3-tile-dark p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Avg ticket</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-50));">$137</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">stable</div></div>
+              <div class="m3-tile-dark p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Appts</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-50));">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">2:30pm S.C.</div></div>
             </div>
             <!-- Dynamic tiles — paired, swaps by priority (M3) -->
             <div class="grid grid-cols-2 gap-3">
@@ -149,23 +151,16 @@
               </div>
               <div class="text-[10px] mt-1" style="color:rgb(var(--s-400));">$18.4k · <span style="color:rgb(var(--success-dark));">▲ 12%</span></div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div class="m3-tile-dark p-4">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-50));">Customers <span style="color:rgb(var(--teal-dark));">→</span></a>
-                <div class="display text-lg" style="color:rgb(var(--success-dark));">+14</div>
-                <div class="text-[10px] mono" style="color:rgb(var(--s-500));">new this mo</div>
-                <div class="h-1 rounded-full mt-1.5 overflow-hidden flex" style="background:rgb(var(--s-700));">
-                  <div class="h-full" style="width:62%;background:rgb(var(--teal-dark));"></div>
-                  <div class="h-full" style="width:22%;background:rgb(var(--success-dark));"></div>
-                </div>
+            <!-- Customer trends · Top repairs widget removed per design decision -->
+            <div class="m3-tile-dark p-4">
+              <a href="#" class="display text-xs flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Customer trends <span style="color:rgb(var(--teal-dark));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-xl" style="color:rgb(var(--success-dark));">+14</div></div>
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-xl" style="color:rgb(var(--teal-dark));">62%</div></div>
               </div>
-              <div class="m3-tile-dark p-4">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-50));">Top repairs <span style="color:rgb(var(--teal-dark));">→</span></a>
-                <div class="space-y-1">
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Screen</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-cream));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Battery</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-dark));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Board</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-dark));"></div></div></div>
-                </div>
+              <div class="h-1.5 rounded-full overflow-hidden flex" style="background:rgb(var(--s-700));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-dark));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-dark));"></div>
               </div>
             </div>
           </div>
@@ -173,9 +168,9 @@
           <div class="absolute bottom-0 left-0 right-0 pt-2 pb-3" style="background:rgb(var(--s-800));">
             <div class="flex justify-around items-center text-[10px] mono">
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 rounded-full" style="background:rgb(var(--primary-cream));color:rgb(var(--primary-onPrimary));">▦</div><span style="color:rgb(var(--primary-cream));font-weight:600;">Home</span></div>
-              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">🛒</div><span style="color:rgb(var(--s-400));">POS</span></div>
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">🔧</div><span style="color:rgb(var(--s-400));">Tickets</span></div>
-              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">👥</div><span style="color:rgb(var(--s-400));">Customers</span></div>
+              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">🛒</div><span style="color:rgb(var(--s-400));">POS</span></div>
+              <div class="flex flex-col items-center gap-1 relative"><div class="px-4 py-1 text-base relative" style="color:rgb(var(--s-400));">💬<span class="absolute top-0 right-2 text-[8px] px-1 rounded-full" style="background:rgb(var(--burgundy-dark));color:#fff;">2</span></div><span style="color:rgb(var(--s-400));">Comms</span></div>
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-400));">⋯</div><span style="color:rgb(var(--s-400));">More</span></div>
             </div>
           </div>
@@ -198,6 +193,7 @@
               <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">Mon · Jan 12</div>
             </div>
             <div class="flex items-center gap-2">
+              <div class="w-10 h-10 rounded-full grid place-items-center text-base" style="background:rgb(var(--s-100));color:rgb(var(--s-700));" title="Customize dashboard · drag, reorder, toggle widgets · sync to web inside">⚙</div>
               <div class="w-10 h-10 rounded-full grid place-items-center text-base" style="background:rgb(var(--s-100));color:rgb(var(--s-700));">🔍</div>
               <div class="w-10 h-10 rounded-full grid place-items-center text-sm font-semibold" style="background:rgb(var(--primary-caramel));color:rgb(var(--primary-onCaramel));">A</div>
             </div>
@@ -213,7 +209,8 @@
               <div class="m3-tile-light p-4 col-span-2"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-4xl mt-1" style="color:rgb(var(--s-900));">$3,142</div><div class="text-xs mt-1 flex items-center gap-2" style="color:rgb(var(--success-light));">▲ 18% vs avg <span class="pill" style="background:rgba(31,122,74,0.15);">on track</span></div></div>
               <div class="m3-tile-light p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Tickets</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-900));">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-light));">● 5 overdue</div></div>
               <div class="m3-tile-light p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-900));">$48k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">~ pace</div></div>
-              <div class="m3-tile-light p-4 col-span-2"><div class="flex items-center gap-3"><div class="text-3xl">📅</div><div><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">APPOINTMENTS TODAY · 7</div><div class="display text-2xl mt-0.5" style="color:rgb(var(--s-900));">Next 2:30pm — S. Chen</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">in 4hr 49m</div></div></div></div>
+              <div class="m3-tile-light p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-900));">$137</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">stable</div></div>
+              <div class="m3-tile-light p-4"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appts</div><div class="display text-3xl mt-1" style="color:rgb(var(--s-900));">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">2:30pm S.C.</div></div>
             </div>
             <!-- Dynamic tiles — paired, swaps by priority (M3) -->
             <div class="grid grid-cols-2 gap-3">
@@ -262,38 +259,76 @@
               </div>
               <div class="text-[10px] mt-1" style="color:rgb(var(--s-500));">$18.4k · <span style="color:rgb(var(--success-light));">▲ 12%</span></div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div class="m3-tile-light p-4">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-900));">Customers <span style="color:rgb(var(--teal-light));">→</span></a>
-                <div class="display text-lg" style="color:rgb(var(--success-light));">+14</div>
-                <div class="text-[10px] mono" style="color:rgb(var(--s-500));">new this mo</div>
-                <div class="h-1 rounded-full mt-1.5 overflow-hidden flex" style="background:rgb(var(--s-200));">
-                  <div class="h-full" style="width:62%;background:rgb(var(--teal-light));"></div>
-                  <div class="h-full" style="width:22%;background:rgb(var(--success-light));"></div>
-                </div>
+            <!-- Customer trends · Top repairs widget removed per design decision -->
+            <div class="m3-tile-light p-4">
+              <a href="#" class="display text-xs flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Customer trends <span style="color:rgb(var(--teal-light));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-xl" style="color:rgb(var(--success-light));">+14</div></div>
+                <div><div class="text-[10px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-xl" style="color:rgb(var(--teal-light));">62%</div></div>
               </div>
-              <div class="m3-tile-light p-4">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-900));">Top repairs <span style="color:rgb(var(--teal-light));">→</span></a>
-                <div class="space-y-1">
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Screen</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-caramel));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Battery</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-light));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Board</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-light));"></div></div></div>
-                </div>
+              <div class="h-1.5 rounded-full overflow-hidden flex" style="background:rgb(var(--s-200));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-light));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-light));"></div>
               </div>
             </div>
           </div>
           <div class="absolute bottom-0 left-0 right-0 pt-2 pb-3" style="background:rgb(var(--s-100));">
             <div class="flex justify-around items-center text-[10px] mono">
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 rounded-full" style="background:rgb(var(--primary-caramel));color:rgb(var(--primary-onCaramel));">▦</div><span style="color:rgb(var(--primary-caramel));font-weight:600;">Home</span></div>
-              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">🛒</div><span style="color:rgb(var(--s-600));">POS</span></div>
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">🔧</div><span style="color:rgb(var(--s-600));">Tickets</span></div>
-              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">👥</div><span style="color:rgb(var(--s-600));">Customers</span></div>
+              <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">🛒</div><span style="color:rgb(var(--s-600));">POS</span></div>
+              <div class="flex flex-col items-center gap-1 relative"><div class="px-4 py-1 text-base relative" style="color:rgb(var(--s-600));">💬<span class="absolute top-0 right-2 text-[8px] px-1 rounded-full" style="background:rgb(var(--burgundy-light));color:#fff;">2</span></div><span style="color:rgb(var(--s-600));">Comms</span></div>
               <div class="flex flex-col items-center gap-1"><div class="px-4 py-1 text-base" style="color:rgb(var(--s-600));">⋯</div><span style="color:rgb(var(--s-600));">More</span></div>
             </div>
           </div>
           <!-- Extended FAB · default action: Snap to ticket (configurable in Settings) -->
           <button class="absolute flex items-center gap-2 m3-fab-light px-5" style="right:16px; bottom:96px; height:56px; border-radius:18px; font-size:14px; font-weight:600;"><span style="font-size:20px;">📷</span> Snap to ticket</button>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== DESIGN NOTES ============== -->
+<section class="max-w-[1400px] mx-auto px-6 pb-12">
+  <div class="rounded-3xl p-6" style="background: rgb(var(--s-900));">
+    <h2 class="display text-2xl mb-1" style="color:rgb(var(--s-50));">Design notes — Android phone · M3 Expressive</h2>
+    <p class="text-xs mono uppercase tracking-wider mb-4" style="color:rgb(var(--s-500));">Decisions captured · 2026-05-04</p>
+    <div class="grid md:grid-cols-2 gap-3 text-sm">
+      <div class="m3-tile-dark p-4">
+        <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Snap to ticket — Extended FAB</h3>
+        <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+          <li>M3 Extended FAB · cream/caramel fill · 18px radius</li>
+          <li>Default action: 📷 Snap to ticket (configurable in Settings)</li>
+          <li>Alt actions: 🎤 Voice note · 🔍 Scan IMEI · 📞 Call · 📤 Quote · 📦 Receive part · ⏱ Labor timer · 🏁 Advance stage · 💰 Drawer</li>
+        </ul>
+      </div>
+      <div class="m3-tile-dark p-4">
+        <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Bottom nav — 5 destinations</h3>
+        <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+          <li><strong style="color:rgb(var(--primary-cream));">Home · Tickets · POS · Comms · More</strong></li>
+          <li>Comms = unified customer inbox · pill highlight on active</li>
+          <li>Customers / Inventory / Reports / Settings live in More</li>
+          <li>M3 spec: 3-5 destinations max</li>
+        </ul>
+      </div>
+      <div class="m3-tile-dark p-4">
+        <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Dynamic dashboard</h3>
+        <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+          <li>2-col tile grid · phone constraint</li>
+          <li>Phones: <strong>reorder + toggle only</strong> (no resize)</li>
+          <li>Compose: <code class="mono text-[11px]" style="color:rgb(var(--primary-cream));">Calvin-LL/Reorderable</code> + <code class="mono text-[11px]" style="color:rgb(var(--primary-cream));">LazyVerticalGrid</code></li>
+          <li>⚙ icon button in header opens edit mode</li>
+          <li>Cross-device sync lives in <strong>Settings → Dashboard → Sync</strong> (not on chrome)</li>
+        </ul>
+      </div>
+      <div class="m3-tile-dark p-4">
+        <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Removed / Added</h3>
+        <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+          <li><strong>Removed:</strong> Top repairs widget · Customers wide-tile · "Top repairs" mini-tile</li>
+          <li><strong>Added:</strong> Avg ticket KPI ($137) · Comms tab · ⚙ Customize button · Customer trends report</li>
+          <li>Bell removed — system events surface in Needs-attention card</li>
+        </ul>
       </div>
     </div>
   </div>

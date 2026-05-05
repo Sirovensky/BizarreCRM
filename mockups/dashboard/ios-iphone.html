@@ -158,12 +158,13 @@
               <div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">12 tickets due today</div>
               <div class="text-xs mt-1" style="color:rgb(var(--s-300));">$4,820 in pending invoices</div>
             </div>
-            <!-- KPI 2x2 -->
+            <!-- KPI · dynamic widgets · 2-col grid · phone = reorder + toggle only (no resize) -->
             <div class="grid grid-cols-2 gap-3">
               <div class="rounded-2xl p-3 glass-dark"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Sales today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$3,142</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--success-dark));">▲ 18%</div></div>
               <div class="rounded-2xl p-3 glass-dark"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Open tickets</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">23</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--warning-dark));">● 5 overdue</div></div>
+              <div class="rounded-2xl p-3 glass-dark"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Avg ticket</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$137</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">stable</div></div>
               <div class="rounded-2xl p-3 glass-dark"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Revenue MTD</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$48.2k</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">~ on pace</div></div>
-              <div class="rounded-2xl p-3 glass-dark"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">7</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">Next 2:30pm</div></div>
+              <div class="rounded-2xl p-3 glass-dark col-span-2 flex items-center justify-between"><div><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-400));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">7</div></div><div class="text-[11px]" style="color:rgb(var(--teal-dark));">Next 2:30pm · S. Chen</div></div>
             </div>
             <!-- Dynamic tiles — paired, swaps by priority -->
             <div class="grid grid-cols-2 gap-2">
@@ -248,33 +249,30 @@
               </div>
               <div class="text-[10px] mt-1" style="color:rgb(var(--s-400));">$18.4k · <span style="color:rgb(var(--success-dark));">▲ 12%</span></div>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-2xl glass-dark p-3">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-50));">Customers <span style="color:rgb(var(--teal-dark));">→</span></a>
-                <div class="display text-lg" style="color:rgb(var(--success-dark));">+14</div>
-                <div class="text-[10px] mono" style="color:rgb(var(--s-500));">new this mo</div>
-                <div class="h-1 rounded-full mt-1.5 overflow-hidden flex" style="background:rgb(var(--s-700));">
-                  <div class="h-full" style="width:62%;background:rgb(var(--teal-dark));"></div>
-                  <div class="h-full" style="width:22%;background:rgb(var(--success-dark));"></div>
-                </div>
+            <!-- Customer trends · Top repairs widget removed per design decision -->
+            <div class="rounded-2xl glass-dark p-3">
+              <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-50));">Customer trends <span style="color:rgb(var(--teal-dark));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[9px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-base" style="color:rgb(var(--success-dark));">+14</div></div>
+                <div><div class="text-[9px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-base" style="color:rgb(var(--teal-dark));">62%</div></div>
               </div>
-              <div class="rounded-2xl glass-dark p-3">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-50));">Top repairs <span style="color:rgb(var(--teal-dark));">→</span></a>
-                <div class="space-y-1">
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Screen</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-cream));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Battery</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-dark));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-300));">Board</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-dark));"></div></div></div>
-                </div>
+              <div class="h-1 rounded-full overflow-hidden flex" style="background:rgb(var(--s-700));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-dark));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-dark));"></div>
               </div>
             </div>
           </div>
+          <!-- Bottom accessory · Liquid Glass capsule · tabViewBottomAccessory (iOS 26 pattern · Apple Maps / Health / Music) -->
+          <button class="absolute z-30 flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold" style="bottom: 86px; right: 12px; background: rgba(253,238,208,0.16); backdrop-filter: blur(40px) saturate(180%); -webkit-backdrop-filter: blur(40px) saturate(180%); border: 0.5px solid rgba(253,238,208,0.30); border-radius: 9999px; color: rgb(var(--primary-cream)); box-shadow: inset 0 1px 0 rgba(253,238,208,0.25), 0 12px 32px -8px rgba(0,0,0,0.45), 0 0 24px -4px rgba(253,238,208,0.30);">
+            <span style="font-size:14px;">📷</span> Snap
+          </button>
           <!-- Tab bar (glass) -->
           <div class="absolute bottom-0 left-0 right-0 glass-toolbar-dark z-20" style="border-top:0.5px solid rgba(255,254,250,0.08);border-bottom:none;">
             <div class="flex justify-around py-2 pb-6 text-[10px] mono">
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--primary-cream));"><div class="text-lg">▦</div>Dashboard</div>
-              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🛒</div>POS</div>
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🔧</div>Tickets</div>
-              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">👥</div>Customers</div>
+              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🛒</div>POS</div>
+              <div class="flex flex-col items-center gap-0.5 relative" style="color:rgb(var(--s-500));"><div class="text-lg relative">💬<span class="absolute -top-1 -right-2 text-[8px] px-1 rounded-full" style="background:rgb(var(--burgundy-dark));color:#fff;">2</span></div>Comms</div>
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">⋯</div>More</div>
             </div>
           </div>
@@ -306,11 +304,13 @@
               <div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">12 tickets due today</div>
               <div class="text-xs mt-1" style="color:rgb(var(--s-600));">$4,820 in pending invoices</div>
             </div>
+            <!-- KPI · dynamic widgets · 2-col grid · phone = reorder + toggle only (no resize) -->
             <div class="grid grid-cols-2 gap-3">
               <div class="rounded-2xl p-3 glass-light"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$3,142</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--success-light));">▲ 18%</div></div>
               <div class="rounded-2xl p-3 glass-light"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">23</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--warning-light));">● 5 overdue</div></div>
+              <div class="rounded-2xl p-3 glass-light"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$137</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">stable</div></div>
               <div class="rounded-2xl p-3 glass-light"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$48.2k</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">~ on pace</div></div>
-              <div class="rounded-2xl p-3 glass-light"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">7</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">Next 2:30pm</div></div>
+              <div class="rounded-2xl p-3 glass-light col-span-2 flex items-center justify-between"><div><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">7</div></div><div class="text-[11px]" style="color:rgb(var(--teal-light));">Next 2:30pm · S. Chen</div></div>
             </div>
             <!-- Dynamic tiles — paired, swaps by priority -->
             <div class="grid grid-cols-2 gap-2">
@@ -394,35 +394,82 @@
               </div>
               <div class="text-[10px] mt-1" style="color:rgb(var(--s-500));">$18.4k · <span style="color:rgb(var(--success-light));">▲ 12%</span></div>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-2xl glass-light p-3">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-900));">Customers <span style="color:rgb(var(--teal-light));">→</span></a>
-                <div class="display text-lg" style="color:rgb(var(--success-light));">+14</div>
-                <div class="text-[10px] mono" style="color:rgb(var(--s-500));">new this mo</div>
-                <div class="h-1 rounded-full mt-1.5 overflow-hidden flex" style="background:rgb(var(--s-200));">
-                  <div class="h-full" style="width:62%;background:rgb(var(--teal-light));"></div>
-                  <div class="h-full" style="width:22%;background:rgb(var(--success-light));"></div>
-                </div>
+            <!-- Customer trends · Top repairs widget removed per design decision -->
+            <div class="rounded-2xl glass-light p-3">
+              <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-900));">Customer trends <span style="color:rgb(var(--teal-light));">→</span></a>
+              <div class="flex gap-4 mb-2">
+                <div><div class="text-[9px] mono" style="color:rgb(var(--s-500));">New / mo</div><div class="display text-base" style="color:rgb(var(--success-light));">+14</div></div>
+                <div><div class="text-[9px] mono" style="color:rgb(var(--s-500));">Returning</div><div class="display text-base" style="color:rgb(var(--teal-light));">62%</div></div>
               </div>
-              <div class="rounded-2xl glass-light p-3">
-                <a href="#" class="display text-xs flex items-center gap-1 mb-1" style="color:rgb(var(--s-900));">Top repairs <span style="color:rgb(var(--teal-light));">→</span></a>
-                <div class="space-y-1">
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Screen</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-caramel));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Battery</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-light));"></div></div></div>
-                  <div class="flex items-center gap-1"><div class="text-[10px] flex-1" style="color:rgb(var(--s-700));">Board</div><div class="flex-1 h-1 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-light));"></div></div></div>
-                </div>
+              <div class="h-1 rounded-full overflow-hidden flex" style="background:rgb(var(--s-200));">
+                <div class="h-full" style="width:62%;background:rgb(var(--teal-light));"></div>
+                <div class="h-full" style="width:22%;background:rgb(var(--success-light));"></div>
               </div>
             </div>
           </div>
+          <!-- Bottom accessory · Liquid Glass capsule · tabViewBottomAccessory (iOS 26 pattern · Apple Maps / Health / Music) -->
+          <button class="absolute z-30 flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold" style="bottom: 86px; right: 12px; background: rgba(166,109,31,0.16); backdrop-filter: blur(40px) saturate(180%); -webkit-backdrop-filter: blur(40px) saturate(180%); border: 0.5px solid rgba(166,109,31,0.30); border-radius: 9999px; color: rgb(var(--primary-caramel)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 12px 32px -8px rgba(0,0,0,0.10), 0 0 24px -4px rgba(166,109,31,0.30);">
+            <span style="font-size:14px;">📷</span> Snap
+          </button>
           <div class="absolute bottom-0 left-0 right-0 glass-toolbar-light z-20" style="border-top:0.5px solid rgba(15,14,12,0.08);border-bottom:none;">
             <div class="flex justify-around py-2 pb-6 text-[10px] mono">
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--primary-caramel));"><div class="text-lg">▦</div>Dashboard</div>
-              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🛒</div>POS</div>
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🔧</div>Tickets</div>
-              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">👥</div>Customers</div>
+              <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">🛒</div>POS</div>
+              <div class="flex flex-col items-center gap-0.5 relative" style="color:rgb(var(--s-500));"><div class="text-lg relative">💬<span class="absolute -top-1 -right-2 text-[8px] px-1 rounded-full" style="background:rgb(var(--burgundy-light));color:#fff;">2</span></div>Comms</div>
               <div class="flex flex-col items-center gap-0.5" style="color:rgb(var(--s-500));"><div class="text-lg">⋯</div>More</div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== DESIGN NOTES ============== -->
+<section class="max-w-[1400px] mx-auto px-6 pb-12">
+  <div class="rounded-2xl p-6" style="background: linear-gradient(165deg, #0e0d0b 0%, #0a0908 50%, #060503 100%); position: relative; overflow: hidden;">
+    <div style="position: absolute; inset: 0; background: radial-gradient(ellipse 140% 80% at 50% -30%, rgba(253,238,208,0.05), transparent 50%), radial-gradient(ellipse 100% 80% at 110% 110%, rgba(77,184,201,0.04), transparent 60%); pointer-events: none;"></div>
+    <div class="relative">
+      <h2 class="display text-2xl mb-1" style="color:rgb(var(--s-50));">Design notes — iPhone · Liquid Glass</h2>
+      <p class="text-xs mono uppercase tracking-wider mb-4" style="color:rgb(var(--s-500));">Decisions captured · 2026-05-04</p>
+      <div class="grid md:grid-cols-2 gap-4 text-sm">
+        <div class="rounded-2xl glass-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Snap to ticket — bottom accessory</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>Liquid Glass capsule above tab bar · cream tint + halo</li>
+            <li>Pattern: SwiftUI <code class="mono text-[11px]" style="color:rgb(var(--primary-cream));">tabViewBottomAccessory</code> (iOS 26)</li>
+            <li>Apple precedent: Music · Podcasts · Health · Maps</li>
+            <li>Tap → camera capture → attach photo to in-progress ticket</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl glass-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Tab bar — 5 destinations</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li><strong style="color:rgb(var(--primary-cream));">Dashboard · Tickets · POS · Comms · More</strong></li>
+            <li>Comms = unified customer inbox (SMS, calls, voicemail, email, chat) · badge = unread</li>
+            <li>Customers / Inventory / Reports / Settings live in More</li>
+            <li>HIG max 5 tabs respected</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl glass-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Dynamic dashboard</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>2-col tile grid · phone constraint</li>
+            <li>Phones: <strong>reorder + toggle only</strong> (no resize)</li>
+            <li>Edit mode entered via long-press tile or Settings</li>
+            <li>Cross-device sync lives in <strong>Settings → Dashboard → Sync</strong> (not on chrome)</li>
+            <li>Layout placement diverges per platform; widget catalog shared</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl glass-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Bell vs Comms · Removed widgets</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>Bell removed from iPhone toolbar — system events surface in Needs-attention card</li>
+            <li>Comms = customer messages (tab bar)</li>
+            <li><strong>Removed:</strong> Top repairs · Peak hour</li>
+            <li><strong>Added:</strong> Avg ticket KPI ($137)</li>
+          </ul>
         </div>
       </div>
     </div>

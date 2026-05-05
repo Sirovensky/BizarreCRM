@@ -79,8 +79,7 @@
             🔍 Search customers, tickets, products… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-900));">⌘K</span>
           </div>
         </div>
-        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-400));">💬 <span class="pill" style="background:rgb(var(--teal-dark) / 0.15);color:rgb(var(--teal-dark));padding:1px 7px;">2</span></span>
-        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-400));">🔔 <span class="pill" style="background:rgb(var(--error-dark));color:#fff;padding:1px 7px;">3</span></span>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-400));" title="System alerts · parts arrived, payments, low-stock crossed">🔔 <span class="pill" style="background:rgb(var(--error-dark));color:#fff;padding:1px 7px;">3</span></span>
         <div class="w-8 h-8 rounded-full grid place-items-center text-xs font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">A</div>
       </div>
       <div class="flex flex-1 overflow-hidden">
@@ -89,6 +88,7 @@
           <div class="px-3 py-2 rounded-md flex items-center gap-2 font-semibold" style="background: rgb(var(--s-700)); color: rgb(var(--primary-cream)); box-shadow: inset 2px 0 0 rgb(var(--primary-cream));">▦ Dashboard</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">🛒 POS / Check-in</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">🔧 Tickets <span class="ml-auto pill" style="background:rgb(var(--s-700));color:rgb(var(--s-300));">23</span></div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">💬 Comms <span class="ml-auto pill" style="background:rgb(var(--burgundy-dark) / 0.20);color:rgb(var(--burgundy-dark));">2</span></div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">👥 Customers</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">📅 Appointments</div>
           <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Operations</div>
@@ -106,11 +106,16 @@
               <div class="display text-2xl" style="color: rgb(var(--s-50));">Good morning, Alex</div>
               <div class="text-xs mt-0.5" style="color: rgb(var(--s-400));">Mon · Jan 12 · Store opens 9:00 · 12 tickets due today</div>
             </div>
-            <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">+ New ticket</button>
+            <div class="flex items-center gap-2">
+              <button class="rounded-lg px-3 py-2 text-xs font-medium flex items-center gap-1.5" style="background: rgb(var(--s-800)); color: rgb(var(--s-300)); box-shadow: inset 0 0 0 1px rgb(var(--s-600));" title="Edit dashboard layout · drag, resize, toggle widgets · cross-device sync lives in Settings">⚙ Customize</button>
+              <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-cream)); color: rgb(var(--primary-onPrimary));">+ New ticket</button>
+            </div>
           </div>
-          <div class="grid grid-cols-4 gap-3">
+          <!-- Dynamic KPI tiles · user-configurable in Edit mode (resize 1×1 → 2×2) -->
+          <div class="grid grid-cols-5 gap-3">
             <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1">$3,142</div><div class="text-xs mt-0.5" style="color:rgb(var(--success-dark));">▲ 18% vs avg</div></div>
             <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-dark));">● 5 overdue</div></div>
+            <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-2xl mt-1">$137</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">stable</div></div>
             <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1">$48.2k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">~ on pace</div></div>
             <div class="web-tile-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appointments today</div><div class="display text-2xl mt-1">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-dark));">Next 2:30pm · S. Chen</div></div>
           </div>
@@ -185,8 +190,8 @@
               <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-dark));color:#002b30;">Reply →</button>
             </div>
           </div>
-          <!-- Reports — click header to navigate to full report -->
-          <div class="grid grid-cols-3 gap-3">
+          <!-- Reports — dynamic widgets · click header to navigate · Top repairs removed per design decision -->
+          <div class="grid grid-cols-2 gap-3">
             <div class="web-tile-dark p-3">
               <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Sales this week <span style="color:rgb(var(--teal-dark));">→</span></a>
               <div class="flex items-end gap-1" style="height:48px;">
@@ -215,15 +220,6 @@
               </div>
               <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
             </div>
-            <div class="web-tile-dark p-3">
-              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Top repairs <span style="color:rgb(var(--teal-dark));">→</span></a>
-              <div class="space-y-2">
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-cream));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">34</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">23</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">14</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">9</div></div>
-              </div>
-            </div>
           </div>
         </main>
       </div>
@@ -247,8 +243,7 @@
             🔍 Search customers, tickets, products… <span class="ml-auto px-1.5 py-0.5 rounded mono" style="background: rgb(var(--s-100));">⌘K</span>
           </div>
         </div>
-        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-600));">💬 <span class="pill" style="background:rgb(var(--teal-light) / 0.15);color:rgb(var(--teal-light));padding:1px 7px;">2</span></span>
-        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-600));">🔔 <span class="pill" style="background:rgb(var(--error-light));color:#fff;padding:1px 7px;">3</span></span>
+        <span class="text-xs flex items-center gap-2" style="color: rgb(var(--s-600));" title="System alerts · parts arrived, payments, low-stock crossed">🔔 <span class="pill" style="background:rgb(var(--error-light));color:#fff;padding:1px 7px;">3</span></span>
         <div class="w-8 h-8 rounded-full grid place-items-center text-xs font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">A</div>
       </div>
       <div class="flex flex-1 overflow-hidden">
@@ -257,6 +252,7 @@
           <div class="px-3 py-2 rounded-md flex items-center gap-2 font-semibold" style="background: rgb(var(--s-50)); color: rgb(var(--s-900)); box-shadow: inset 2px 0 0 rgb(var(--primary-caramel));">▦ Dashboard</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">🛒 POS / Check-in</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">🔧 Tickets <span class="ml-auto pill" style="background:rgb(var(--s-200));color:rgb(var(--s-700));">23</span></div>
+          <div class="px-3 py-2 rounded-md flex items-center gap-2">💬 Comms <span class="ml-auto pill" style="background:rgb(var(--burgundy-light) / 0.15);color:rgb(var(--burgundy-light));">2</span></div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">👥 Customers</div>
           <div class="px-3 py-2 rounded-md flex items-center gap-2">📅 Appointments</div>
           <div class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color: rgb(var(--s-500));">Operations</div>
@@ -274,11 +270,16 @@
               <div class="display text-2xl" style="color: rgb(var(--s-900));">Good morning, Alex</div>
               <div class="text-xs mt-0.5" style="color: rgb(var(--s-500));">Mon · Jan 12 · Store opens 9:00 · 12 tickets due today</div>
             </div>
-            <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">+ New ticket</button>
+            <div class="flex items-center gap-2">
+              <button class="rounded-lg px-3 py-2 text-xs font-medium flex items-center gap-1.5" style="background: rgb(var(--s-50)); color: rgb(var(--s-700)); box-shadow: inset 0 0 0 1px rgb(var(--s-200));" title="Edit dashboard layout · drag, resize, toggle widgets · cross-device sync lives in Settings">⚙ Customize</button>
+              <button class="rounded-lg px-4 py-2 text-sm font-semibold" style="background: rgb(var(--primary-caramel)); color: rgb(var(--primary-onCaramel));">+ New ticket</button>
+            </div>
           </div>
-          <div class="grid grid-cols-4 gap-3">
+          <!-- Dynamic KPI tiles · user-configurable in Edit mode (resize 1×1 → 2×2) -->
+          <div class="grid grid-cols-5 gap-3">
             <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1">$3,142</div><div class="text-xs mt-0.5" style="color:rgb(var(--success-light));">▲ 18% vs avg</div></div>
             <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1">23</div><div class="text-xs mt-0.5" style="color:rgb(var(--warning-light));">● 5 overdue</div></div>
+            <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-2xl mt-1">$137</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">stable</div></div>
             <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1">$48.2k</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">~ on pace</div></div>
             <div class="web-tile-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appointments today</div><div class="display text-2xl mt-1">7</div><div class="text-xs mt-0.5" style="color:rgb(var(--teal-light));">Next 2:30pm · S. Chen</div></div>
           </div>
@@ -353,8 +354,8 @@
               <button class="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-light));color:#fff;">Reply →</button>
             </div>
           </div>
-          <!-- Reports — click header to navigate to full report -->
-          <div class="grid grid-cols-3 gap-3">
+          <!-- Reports — dynamic widgets · click header to navigate · Top repairs removed per design decision -->
+          <div class="grid grid-cols-2 gap-3">
             <div class="web-tile-light p-3">
               <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Sales this week <span style="color:rgb(var(--teal-light));">→</span></a>
               <div class="flex items-end gap-1" style="height:48px;">
@@ -383,17 +384,55 @@
               </div>
               <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
             </div>
-            <div class="web-tile-light p-3">
-              <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Top repairs <span style="color:rgb(var(--teal-light));">→</span></a>
-              <div class="space-y-2">
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-caramel));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">34</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">23</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">14</div></div>
-                <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">9</div></div>
-              </div>
-            </div>
           </div>
         </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== DESIGN NOTES ============== -->
+<section class="max-w-[1400px] mx-auto px-6 pb-12">
+  <div class="bg-white rounded-xl p-6 ring-1 ring-zinc-200">
+    <h2 class="display text-2xl mb-1">Design notes — Web</h2>
+    <p class="text-xs mono uppercase tracking-wider text-zinc-500 mb-4">Decisions captured · 2026-05-04</p>
+    <div class="grid md:grid-cols-2 gap-x-8 gap-y-4 text-sm text-zinc-700">
+      <div>
+        <h3 class="display text-base mb-1">Dynamic dashboard</h3>
+        <ul class="space-y-1 list-disc pl-5">
+          <li>Tile-based grid · 12-col · drag, drop, resize, toggle widgets</li>
+          <li>Library plan: <code>react-grid-layout</code></li>
+          <li>Tile sizes 1×1 → 4×3 (web ceiling); each widget declares min/max</li>
+          <li><strong>Customize</strong> button opens edit mode</li>
+          <li>Cross-device sync lives in <strong>Settings → Dashboard → Sync</strong> (not on toolbar)</li>
+          <li>Sync copies enabled-widget set across platforms; layout placement diverges per platform</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="display text-base mb-1">Admin policy</h3>
+        <ul class="space-y-1 list-disc pl-5">
+          <li>Default: per-user layout</li>
+          <li>Admin can set: <code>Per-user</code> · <code>Per-role</code> · <code>Store-locked</code></li>
+          <li>Resolver: user → role → store → default-preset</li>
+          <li>Defaults shipped per role: Owner / Tech / Cashier</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="display text-base mb-1">Widget catalog (shared across platforms)</h3>
+        <ul class="space-y-1 list-disc pl-5">
+          <li>KPIs: Sales today, Open tickets, <strong>Avg ticket</strong>, Revenue MTD, Appts today</li>
+          <li>Greeting · Next appt · Unanswered messages · Needs attention</li>
+          <li>Sales week · Customer trends</li>
+          <li><strong>Removed</strong>: Top repairs · Peak hour · "Store opens in 19 min"</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="display text-base mb-1">Bell vs Comms</h3>
+        <ul class="space-y-1 list-disc pl-5">
+          <li><strong>🔔 Bell</strong> = system events only (parts arrived, payments, low-stock crossed)</li>
+          <li><strong>💬 Comms</strong> = unified customer inbox (SMS, calls, voicemail, email, chat)</li>
+          <li>Comms lives in sidebar with unread badge</li>
+        </ul>
       </div>
     </div>
   </div>

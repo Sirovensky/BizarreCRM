@@ -182,6 +182,7 @@
         <div class="lg-sel-dark px-3 py-2 rounded-xl flex items-center gap-2 font-semibold text-sm" style="color:rgb(var(--primary-cream));">▦ Dashboard</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-300));">🛒 POS</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-300));">🔧 Tickets <span class="ml-auto pill" style="background:rgba(255,254,250,0.10);color:rgb(var(--s-200));">23</span></div>
+        <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-300));">💬 Comms <span class="ml-auto pill" style="background:rgba(197,86,109,0.20);color:rgb(var(--burgundy-dark));">2</span></div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-300));">👥 Customers</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-300));">📅 Appointments</div>
         <div class="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color:rgb(var(--s-500));">Operations</div>
@@ -204,23 +205,21 @@
       </div>
       <button class="absolute flex items-center gap-2 px-5 py-2 text-sm font-semibold" style="top:14px; right:14px; height:48px; border-radius:9999px; background:rgb(var(--primary-cream)); color:rgb(var(--primary-onPrimary)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 8px 20px -4px rgba(253,238,208,0.35), 0 12px 32px -8px rgba(0,0,0,0.4);">+ New ticket</button>
 
-      <div class="lg-card-dark absolute flex items-center gap-3 px-3 py-2" style="top:74px; right:14px; width:280px; border-radius:16px;">
-        <div class="w-8 h-8 rounded-full grid place-items-center" style="background:rgba(77,184,201,0.20);color:rgb(var(--teal-dark));">💬</div>
-        <div class="flex-1 text-xs">
-          <div class="font-medium" style="color:rgb(var(--s-50));">2 new messages</div>
-          <div style="color:rgb(var(--s-400));">S. Chen, J. Wright</div>
-        </div>
-        <span style="color:rgb(var(--s-500));">›</span>
+      <!-- Customize · Liquid Glass capsule (replaces former msgs card · Comms now in sidebar · cross-device sync lives in Settings) -->
+      <div class="lg-capsule-dark absolute flex items-center px-1.5 py-1" style="top:74px; right:14px;">
+        <button class="px-4 py-1.5 text-[11px] font-semibold flex items-center gap-1 rounded-full" style="color:rgb(var(--s-200));">⚙ Customize</button>
       </div>
 
       <main class="absolute overflow-auto" style="top:78px; left:248px; right:14px; bottom:14px; padding-top:60px;">
         <div class="lg-card-dark p-4 mb-3" style="border-left: 2px solid rgb(var(--primary-cream));">
           <div class="display text-2xl" style="color:rgb(var(--s-50));">Good morning, Alex</div>
-          <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">12 tickets due today · $4,820 in pending invoices · 7 appointments · <span style="color:rgb(var(--teal-dark));">store opens in 19 min</span></div>
+          <div class="text-xs mt-0.5" style="color:rgb(var(--s-400));">12 tickets due today · $4,820 in pending invoices · 7 appointments</div>
         </div>
-        <div class="grid grid-cols-4 gap-3 mb-3">
+        <!-- KPI · dynamic widgets · 4-col grid · iPad supports resize 1×1 → 3×3 -->
+        <div class="grid grid-cols-5 gap-3 mb-3">
           <div class="lg-card-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$3,142</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--success-dark));">▲ 18%</div></div>
           <div class="lg-card-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">23</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--warning-dark));">● 5 overdue</div></div>
+          <div class="lg-card-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$137</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">stable</div></div>
           <div class="lg-card-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">$48.2k</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">~ on pace</div></div>
           <div class="lg-card-dark p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-50));">7</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-dark));">Next 2:30pm</div></div>
         </div>
@@ -295,8 +294,8 @@
             <button class="rounded-lg px-4 py-2 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-dark));color:#002b30;box-shadow:0 4px 12px rgba(77,184,201,0.30);">Reply →</button>
           </div>
         </div>
-        <!-- Reports — click header → full report -->
-        <div class="grid grid-cols-3 gap-3 mt-3">
+        <!-- Reports — dynamic widgets · Top repairs removed per design decision -->
+        <div class="grid grid-cols-2 gap-3 mt-3">
           <div class="lg-card-dark p-4">
             <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Sales this week <span style="color:rgb(var(--teal-dark));">→</span></a>
             <div class="flex items-end gap-1" style="height:48px;">
@@ -323,15 +322,6 @@
             </div>
             <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
           </div>
-          <div class="lg-card-dark p-4">
-            <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-50));">Top repairs <span style="color:rgb(var(--teal-dark));">→</span></a>
-            <div class="space-y-2">
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-cream));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">34</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">23</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">14</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-300));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-700));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-dark));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-400));">9</div></div>
-            </div>
-          </div>
         </div>
       </main>
     </div>
@@ -350,6 +340,7 @@
         <div class="lg-sel-light px-3 py-2 rounded-xl flex items-center gap-2 font-semibold text-sm" style="color:rgb(var(--primary-caramel));">▦ Dashboard</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-700));">🛒 POS</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-700));">🔧 Tickets <span class="ml-auto pill" style="background:rgba(15,14,12,0.06);color:rgb(var(--s-700));">23</span></div>
+        <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-700));">💬 Comms <span class="ml-auto pill" style="background:rgba(142,45,64,0.15);color:rgb(var(--burgundy-light));">2</span></div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-700));">👥 Customers</div>
         <div class="px-3 py-2 rounded-xl flex items-center gap-2 text-sm" style="color:rgb(var(--s-700));">📅 Appointments</div>
         <div class="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider mono" style="color:rgb(var(--s-500));">Operations</div>
@@ -372,23 +363,21 @@
       </div>
       <button class="absolute flex items-center gap-2 px-5 py-2 text-sm font-semibold" style="top:14px; right:14px; height:48px; border-radius:9999px; background:rgb(var(--primary-caramel)); color:rgb(var(--primary-onCaramel)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 20px -4px rgba(166,109,31,0.30), 0 12px 32px -8px rgba(0,0,0,0.15);">+ New ticket</button>
 
-      <div class="lg-card-light absolute flex items-center gap-3 px-3 py-2" style="top:74px; right:14px; width:280px; border-radius:16px;">
-        <div class="w-8 h-8 rounded-full grid place-items-center" style="background:rgba(14,122,138,0.15);color:rgb(var(--teal-light));">💬</div>
-        <div class="flex-1 text-xs">
-          <div class="font-medium" style="color:rgb(var(--s-900));">2 new messages</div>
-          <div style="color:rgb(var(--s-500));">S. Chen, J. Wright</div>
-        </div>
-        <span style="color:rgb(var(--s-500));">›</span>
+      <!-- Customize · Liquid Glass capsule (replaces former msgs card · Comms now in sidebar · cross-device sync lives in Settings) -->
+      <div class="lg-capsule-light absolute flex items-center px-1.5 py-1" style="top:74px; right:14px;">
+        <button class="px-4 py-1.5 text-[11px] font-semibold flex items-center gap-1 rounded-full" style="color:rgb(var(--s-700));">⚙ Customize</button>
       </div>
 
       <main class="absolute overflow-auto" style="top:78px; left:248px; right:14px; bottom:14px; padding-top:60px;">
         <div class="lg-card-light p-4 mb-3" style="border-left: 2px solid rgb(var(--primary-caramel));">
           <div class="display text-2xl" style="color:rgb(var(--s-900));">Good morning, Alex</div>
-          <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">12 tickets due today · $4,820 in pending invoices · 7 appointments · <span style="color:rgb(var(--teal-light));">store opens in 19 min</span></div>
+          <div class="text-xs mt-0.5" style="color:rgb(var(--s-500));">12 tickets due today · $4,820 in pending invoices · 7 appointments</div>
         </div>
-        <div class="grid grid-cols-4 gap-3 mb-3">
+        <!-- KPI · dynamic widgets · 5-col grid · iPad supports resize 1×1 → 3×3 -->
+        <div class="grid grid-cols-5 gap-3 mb-3">
           <div class="lg-card-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Sales today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$3,142</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--success-light));">▲ 18%</div></div>
           <div class="lg-card-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Open tickets</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">23</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--warning-light));">● 5 overdue</div></div>
+          <div class="lg-card-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Avg ticket</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$137</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">stable</div></div>
           <div class="lg-card-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Revenue MTD</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">$48.2k</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">~ on pace</div></div>
           <div class="lg-card-light p-3"><div class="text-[10px] mono uppercase tracking-wider" style="color:rgb(var(--s-500));">Appts today</div><div class="display text-2xl mt-1" style="color:rgb(var(--s-900));">7</div><div class="text-[11px] mt-0.5" style="color:rgb(var(--teal-light));">Next 2:30pm</div></div>
         </div>
@@ -462,8 +451,8 @@
             <button class="rounded-lg px-4 py-2 text-xs font-semibold shrink-0" style="background:rgb(var(--teal-light));color:#fff;box-shadow:0 4px 12px rgba(14,122,138,0.25);">Reply →</button>
           </div>
         </div>
-        <!-- Reports — click header → full report -->
-        <div class="grid grid-cols-3 gap-3 mt-3">
+        <!-- Reports — dynamic widgets · Top repairs removed per design decision -->
+        <div class="grid grid-cols-2 gap-3 mt-3">
           <div class="lg-card-light p-4">
             <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Sales this week <span style="color:rgb(var(--teal-light));">→</span></a>
             <div class="flex items-end gap-1" style="height:48px;">
@@ -490,17 +479,56 @@
             </div>
             <div class="flex justify-between text-[9px] mono mt-1" style="color:rgb(var(--s-500));"><span>returning 62%</span><span>new 22%</span><span>lapsed 16%</span></div>
           </div>
-          <div class="lg-card-light p-4">
-            <a href="#" class="display text-sm flex items-center gap-1 mb-2" style="color:rgb(var(--s-900));">Top repairs <span style="color:rgb(var(--teal-light));">→</span></a>
-            <div class="space-y-2">
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Screen</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:72%;background:rgb(var(--primary-caramel));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">34</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Battery</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:48%;background:rgb(var(--teal-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">23</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Logic board</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:30%;background:rgb(var(--burgundy-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">14</div></div>
-              <div class="flex items-center gap-2"><div class="text-xs flex-1 truncate" style="color:rgb(var(--s-700));">Water dmg</div><div class="flex-1 h-1.5 rounded-full" style="background:rgb(var(--s-200));"><div class="h-full rounded-full" style="width:18%;background:rgb(var(--warning-light));"></div></div><div class="text-[10px] mono w-6 text-right" style="color:rgb(var(--s-500));">9</div></div>
-            </div>
-          </div>
         </div>
       </main>
+    </div>
+  </div>
+</section>
+
+<!-- ============== DESIGN NOTES ============== -->
+<section class="max-w-[1400px] mx-auto px-6 pb-12">
+  <div class="rounded-2xl p-6" style="background: linear-gradient(165deg, #0e0d0b 0%, #0a0908 50%, #060503 100%); position: relative; overflow: hidden;">
+    <div style="position: absolute; inset: 0; background: radial-gradient(ellipse 140% 80% at 50% -30%, rgba(253,238,208,0.05), transparent 50%), radial-gradient(ellipse 100% 80% at 110% 110%, rgba(77,184,201,0.04), transparent 60%); pointer-events: none;"></div>
+    <div class="relative">
+      <h2 class="display text-2xl mb-1" style="color:rgb(var(--s-50));">Design notes — iPad · Liquid Glass</h2>
+      <p class="text-xs mono uppercase tracking-wider mb-4" style="color:rgb(var(--s-500));">Decisions captured · 2026-05-04</p>
+      <div class="grid md:grid-cols-2 gap-4 text-sm">
+        <div class="lg-card-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Dynamic dashboard</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>5-col tile grid · drag, drop, <strong>resize 1×1 → 3×3</strong> (tablet ceiling)</li>
+            <li>Edit mode: long-press tile or ⚙ Customize capsule</li>
+            <li>SwiftUI: <code class="mono text-[11px]" style="color:rgb(var(--primary-cream));">LazyVGrid</code> + <code class="mono text-[11px]" style="color:rgb(var(--primary-cream));">.draggable() / .dropDestination()</code></li>
+            <li>Cross-device sync lives in <strong>Settings → Dashboard → Sync</strong> (not on toolbar)</li>
+            <li>Layout placement diverges per platform; widget catalog shared</li>
+          </ul>
+        </div>
+        <div class="lg-card-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Sidebar nav (9 items)</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>Floating glass platter · cream selection halo</li>
+            <li><strong style="color:rgb(var(--primary-cream));">+ Comms</strong> (after Tickets) · unified customer inbox</li>
+            <li>Comms badge = unread count from SMS / calls / voicemail / email / chat</li>
+            <li>Bell removed — system events surface in Needs-attention card</li>
+          </ul>
+        </div>
+        <div class="lg-card-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Removed / Added</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li><strong>Removed:</strong> floating "2 new messages" card · "store opens in 19 min" subtitle · Top repairs widget</li>
+            <li><strong>Added:</strong> Avg ticket KPI ($137) · Comms sidebar item · Customize capsule (sync moved to Settings)</li>
+          </ul>
+        </div>
+        <div class="lg-card-dark p-4">
+          <h3 class="display text-base mb-2" style="color:rgb(var(--s-50));">Liquid Glass conventions</h3>
+          <ul class="space-y-1 list-disc pl-5" style="color:rgb(var(--s-300));">
+            <li>Chrome (sidebar, capsules) = real translucent glass + blur</li>
+            <li>Content tiles = SOLID surface-elev for readability</li>
+            <li>No saturated radial blobs — barely-visible ambient + grain + vignette</li>
+            <li>Modeled on Apple Wallet / Photos / Maps + Square / Toast iPad POS</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </section>
