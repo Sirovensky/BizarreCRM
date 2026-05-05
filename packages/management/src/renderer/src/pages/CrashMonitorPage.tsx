@@ -24,6 +24,13 @@ export function CrashMonitorPage() {
   // AbortController hook of its own, so the pattern guards setState only.
   const mountedRef = useRef(true);
 
+  // DASH-ELEC-071: show all toggle. MUST be declared above any early return
+  // (e.g. the loading spinner branch below) — React hooks must be called in
+  // the same order every render. Previous placement after the `if (loading)`
+  // return triggered "Rendered more hooks than during the previous render"
+  // and crashed the section under the ErrorBoundary on every first paint.
+  const [showAll, setShowAll] = useState(false);
+
   const refresh = useCallback(async () => {
     try {
       const api = getAPI();
@@ -91,21 +98,9 @@ export function CrashMonitorPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <RefreshCw className="w-5 h-5 text-surface-500 animate-spin" />
-      </div>
-    );
-  }
-
-  // DASH-ELEC-071: show all toggle
-  const [showAll, setShowAll] = useState(false);
-  const allReversed = [...crashes].reverse();
-  const recentCrashes = showAll ? allReversed : allReversed.slice(0, 50);
-
   // Last 30 days crash rate — per-day bucket for a sparkline trend chart.
   // Uses crashes rather than crashStats because we need the per-event timestamps.
+  // MUST stay above the `if (loading)` early return so hook order is stable.
   const dailyCounts = useMemo(() => {
     const now = Date.now();
     const DAYS = 30;
@@ -120,6 +115,7 @@ export function CrashMonitorPage() {
   }, [crashes]);
 
   // Group by route for the "top offending routes" bar — helps spot patterns.
+  // MUST stay above the `if (loading)` early return so hook order is stable.
   const topRoutes = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of crashes) {
@@ -129,6 +125,18 @@ export function CrashMonitorPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
   }, [crashes]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="w-5 h-5 text-surface-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // Plain derived values (no hooks) — safe below the early return.
+  const allReversed = [...crashes].reverse();
+  const recentCrashes = showAll ? allReversed : allReversed.slice(0, 50);
 
   return (
     <div className="space-y-3 lg:space-y-5 animate-fade-in">
