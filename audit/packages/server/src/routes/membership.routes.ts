@@ -1,0 +1,555 @@
+/**
+ * Membership Routes — Tier management, subscription lifecycle, BlockChyp integration.
+ * All routes are per-tenant (use req.db / req.asyncDb).
+ */
+import { Router, Request, Response } from 'express';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { AppError } from '../middleware/errorHandler.js';
+import { audit } from '../utils/audit.js';
+import { enrollCard, createPaymentLink, chargeToken, isBlockChypEnabled } from '../services/blockchyp.js';
+import type { AsyncDb } from '../db/async-db.js';
+import { config } from '../config.js';
+import { isFeatureAllowed } from '@bizarre-crm/shared';
+import { ERROR_CODES } from '../utils/errorCodes.js';
+
+const router = Router();
+type AnyRow = Record<string, any>;
+
+function now(): string {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function safeJsonParseArray(s: string | null | undefined): unknown[] {
+  if (!s) return [];
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// SEC (PL6): Every write/billing route here must verify the actor is an admin,
+// regardless of whatever middleware the router is mounted under. Relying on
+// the mount point means a future routing refactor can silently expose tier
+// creation / subscription lifecycle / payment-link generation to clerks.
+function requireAdmin(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
+}
+
+// POST-ENRICH AUDIT §23.3 (PL6 defense-in-depth): the router is mounted
+// behind `requireFeature('memberships')` in index.ts. The prior audit called
+// router-level gating brittle because a middleware reorder can silently open
+// this file to Free-tier tenants. Mirror the feature gate inside each write
+// handler so a routing refactor cannot bypass it. We leave reads open so a
+// Free-tier admin can still load tier definitions and see what Pro unlocks.
+function requireMembershipsFeature(req: Request): void {
+  if (!config.multiTenant) return;
+  const plan = req.tenantPlan;
+  if (!plan || !isFeatureAllowed(plan, 'memberships')) {
+    throw new AppError('memberships require Pro', 402);
+  }
+}
+
+// ── Tiers CRUD ───────────────────────────────────────────────────────
+
+router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const tiers = await adb.all<AnyRow>(
+    'SELECT * FROM membership_tiers WHERE is_active = 1 ORDER BY sort_order ASC'
+  );
+  // Parse benefits JSON
+  const shaped = tiers.map(t => ({
+    ...t,
+    benefits: safeJsonParseArray(t.benefits),
+  }));
+  res.json({ success: true, data: shaped });
+}));
+
+router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order } = req.body;
+
+  if (!name || !monthly_price) {
+    res.status(400).json({ success: false, message: 'Name and monthly price required' });
+    return;
+  }
+
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const result = await adb.run(
+    `INSERT INTO membership_tiers (name, slug, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    name, slug, monthly_price, discount_pct || 0, discount_applies_to || 'labor',
+    JSON.stringify(benefits || []), color || '#3b82f6', sort_order || 0
+  );
+
+  audit(req.db, 'membership_tier_created', req.user!.id, req.ip || 'unknown', { tier_id: result.lastInsertRowid, name });
+  const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ?', result.lastInsertRowid);
+  res.status(201).json({ success: true, data: tier });
+}));
+
+router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order, is_active } = req.body;
+
+  await adb.run(
+    `UPDATE membership_tiers SET name = COALESCE(?, name), monthly_price = COALESCE(?, monthly_price),
+     discount_pct = COALESCE(?, discount_pct), discount_applies_to = COALESCE(?, discount_applies_to),
+     benefits = COALESCE(?, benefits), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+     is_active = COALESCE(?, is_active), updated_at = ? WHERE id = ?`,
+    name ?? null, monthly_price ?? null, discount_pct ?? null, discount_applies_to ?? null,
+    benefits ? JSON.stringify(benefits) : null, color ?? null, sort_order ?? null,
+    is_active ?? null, now(), id
+  );
+
+  const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ?', id);
+  res.json({ success: true, data: tier });
+}));
+
+router.delete('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+
+  // Soft delete — don't remove active subscriptions
+  await adb.run('UPDATE membership_tiers SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  res.json({ success: true, data: { deleted: true } });
+}));
+
+// ── Customer Membership ──────────────────────────────────────────────
+
+router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = parseInt(req.params.customerId as string, 10);
+
+  const subscription = await adb.get<AnyRow>(`
+    SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.discount_pct,
+           mt.discount_applies_to, mt.benefits, mt.color
+    FROM customer_subscriptions cs
+    JOIN membership_tiers mt ON mt.id = cs.tier_id
+    WHERE cs.customer_id = ? AND cs.status IN ('active', 'past_due')
+    ORDER BY cs.created_at DESC LIMIT 1
+  `, customerId);
+
+  if (subscription) {
+    subscription.benefits = safeJsonParseArray(subscription.benefits);
+  }
+
+  res.json({ success: true, data: subscription || null });
+}));
+
+// ── Subscribe ────────────────────────────────────────────────────────
+
+router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const db = req.db;
+  const { customer_id, tier_id, blockchyp_token, signature_file } = req.body;
+
+  if (!customer_id || !tier_id) {
+    res.status(400).json({ success: false, message: 'customer_id and tier_id required' });
+    return;
+  }
+
+  const customer = await adb.get<AnyRow>('SELECT id, first_name, last_name FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
+  if (!customer) {
+    res.status(404).json({ success: false, message: 'Customer not found' });
+    return;
+  }
+
+  const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ? AND is_active = 1', tier_id);
+  if (!tier) {
+    res.status(404).json({ success: false, message: 'Membership tier not found' });
+    return;
+  }
+
+  // Calculate period
+  const start = now();
+  const endDate = new Date();
+  endDate.setMonth(endDate.getMonth() + 1);
+  const end = endDate.toISOString().replace('T', ' ').substring(0, 19);
+
+  // The UNIQUE partial index idx_customer_subscriptions_active_unique on
+  // customer_subscriptions(customer_id) WHERE status IN ('active','past_due')
+  // (migration 110) is the authoritative guard against concurrent duplicates.
+  // A racing second INSERT hits the index and raises SQLITE_CONSTRAINT_UNIQUE,
+  // which we catch here and surface as 409 Conflict.
+  let result: Awaited<ReturnType<typeof adb.run>>;
+  try {
+    result = await adb.run(
+      `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
+       current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+      customer_id, tier_id, blockchyp_token || null, start, end,
+      signature_file || null, start, tier.monthly_price
+    );
+  } catch (err: unknown) {
+    if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+      res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+      return;
+    }
+    throw err;
+  }
+
+  // Update customer quick-lookup
+  await adb.run('UPDATE customers SET active_subscription_id = ? WHERE id = ?', result.lastInsertRowid, customer_id);
+
+  // Record first payment
+  await adb.run(
+    'INSERT INTO subscription_payments (subscription_id, amount, status) VALUES (?, ?, ?)',
+    result.lastInsertRowid, tier.monthly_price, 'success'
+  );
+
+  audit(db, 'membership_subscribed', req.user!.id, req.ip || 'unknown', {
+    customer_id, tier_id, tier_name: tier.name, amount: tier.monthly_price,
+  });
+
+  const subscription = await adb.get<AnyRow>('SELECT * FROM customer_subscriptions WHERE id = ?', result.lastInsertRowid);
+  res.status(201).json({ success: true, data: subscription });
+}));
+
+// ── Cancel / Pause / Resume ──────────────────────────────────────────
+
+router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  const { immediate } = req.body;
+
+  if (immediate) {
+    await adb.run("UPDATE customer_subscriptions SET status = 'cancelled', updated_at = ? WHERE id = ?", now(), id);
+    const sub = await adb.get<AnyRow>('SELECT customer_id FROM customer_subscriptions WHERE id = ?', id);
+    if (sub) await adb.run('UPDATE customers SET active_subscription_id = NULL WHERE id = ?', sub.customer_id);
+  } else {
+    await adb.run('UPDATE customer_subscriptions SET cancel_at_period_end = 1, updated_at = ? WHERE id = ?', now(), id);
+  }
+
+  audit(req.db, 'membership_cancelled', req.user!.id, req.ip || 'unknown', { subscription_id: id, immediate: !!immediate });
+  res.json({ success: true, data: { cancelled: true, immediate: !!immediate } });
+}));
+
+router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, updated_at = ? WHERE id = ?",
+    req.body.reason || null, now(), id);
+  res.json({ success: true, data: { paused: true } });
+}));
+
+router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  await adb.run("UPDATE customer_subscriptions SET status = 'active', pause_reason = NULL, updated_at = ? WHERE id = ?", now(), id);
+  res.json({ success: true, data: { resumed: true } });
+}));
+
+// ── Payment History ──────────────────────────────────────────────────
+
+router.get('/:id/payments', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  const payments = await adb.all<AnyRow>(
+    'SELECT * FROM subscription_payments WHERE subscription_id = ? ORDER BY created_at DESC',
+    id
+  );
+  res.json({ success: true, data: payments });
+}));
+
+// ── All Active Subscriptions (for admin) ─────────────────────────────
+
+router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const subs = await adb.all<AnyRow>(`
+    SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.color,
+           c.first_name, c.last_name, c.phone, c.email
+    FROM customer_subscriptions cs
+    JOIN membership_tiers mt ON mt.id = cs.tier_id
+    JOIN customers c ON c.id = cs.customer_id
+    WHERE cs.status IN ('active', 'past_due', 'paused')
+    ORDER BY cs.created_at DESC
+  `);
+  res.json({ success: true, data: subs });
+}));
+
+// ── BlockChyp: Enroll card on terminal ───────────────────────────────
+
+router.post('/enroll', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const db = req.db;
+  const result = await enrollCard(db);
+
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error || 'Card enrollment failed' });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      token: result.token,
+      maskedPan: result.maskedPan,
+      cardType: result.cardType,
+    },
+  });
+}));
+
+// ── BlockChyp: Generate payment link (for remote signup) ─────────────
+
+// ── Run Billing for a Single Subscription (WEB-W3-020) ───────────────
+// Admin-only. Charges the stored BlockChyp token and extends the period.
+// Idempotent within the current period — rejects if already billed this cycle.
+router.post('/:id/run-billing', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const db = req.db;
+  const adb = req.asyncDb;
+
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(id) || id < 1) throw new AppError('Invalid subscription id', 400);
+
+  const sub = await adb.get<AnyRow>(
+    `SELECT cs.*, mt.name AS tier_name, mt.monthly_price
+       FROM customer_subscriptions cs
+       JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.id = ?`,
+    id,
+  );
+  if (!sub) throw new AppError('Subscription not found', 404);
+  if (sub.status === 'cancelled') throw new AppError('Cannot bill a cancelled subscription', 400);
+  if (sub.status === 'paused') throw new AppError('Cannot bill a paused subscription', 400);
+
+  if (!sub.blockchyp_token) {
+    throw new AppError('No payment method on file for this subscription', 400);
+  }
+  if (!isBlockChypEnabled(db)) {
+    throw new AppError('BlockChyp is not configured', 400);
+  }
+
+  // Guard: refuse if current_period_end is still in the future (already billed)
+  if (sub.current_period_end) {
+    const periodEnd = new Date(sub.current_period_end).getTime();
+    if (periodEnd > Date.now()) {
+      throw new AppError(
+        `Subscription is not yet due for renewal (period ends ${sub.current_period_end})`,
+        409,
+      );
+    }
+  }
+
+  const amount = Number(sub.monthly_price);
+  if (!amount || amount <= 0) throw new AppError('Invalid subscription amount', 400);
+
+  const description = `${sub.tier_name} membership renewal`;
+  const chargeResult = await chargeToken(db, sub.blockchyp_token, amount.toFixed(2), description);
+
+  if (!chargeResult.success) {
+    // Mark past_due on failed charge
+    await adb.run(
+      "UPDATE customer_subscriptions SET status = 'past_due', updated_at = ? WHERE id = ?",
+      now(), id,
+    );
+    audit(db, 'subscription_billing_failed', req.user!.id, req.ip || 'unknown', {
+      subscription_id: id, amount, error: chargeResult.error,
+    });
+    throw new AppError(`Payment failed: ${chargeResult.error}`, 402);
+  }
+
+  // Advance the period by one month
+  const newPeriodStart = now();
+  const endDate = new Date();
+  endDate.setMonth(endDate.getMonth() + 1);
+  const newPeriodEnd = endDate.toISOString().replace('T', ' ').substring(0, 19);
+
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET status = 'active',
+            current_period_start = ?,
+            current_period_end = ?,
+            last_charge_at = ?,
+            last_charge_amount = ?,
+            updated_at = ?
+      WHERE id = ?`,
+    newPeriodStart, newPeriodEnd, newPeriodStart, amount, newPeriodStart, id,
+  );
+
+  await adb.run(
+    'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)',
+    id, amount, 'success', chargeResult.transactionId ?? null,
+  );
+
+  audit(db, 'subscription_billing_success', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id, amount, transaction_id: chargeResult.transactionId,
+  });
+
+  const updated = await adb.get<AnyRow>('SELECT * FROM customer_subscriptions WHERE id = ?', id);
+  res.json({ success: true, data: { subscription: updated, transaction_id: chargeResult.transactionId } });
+}));
+
+router.post('/payment-link', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const db = req.db;
+  const adb = req.asyncDb;
+  const { tier_id, customer_id } = req.body;
+
+  if (!tier_id) {
+    res.status(400).json({ success: false, message: 'tier_id required' });
+    return;
+  }
+
+  const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ? AND is_active = 1', tier_id);
+  if (!tier) {
+    res.status(404).json({ success: false, message: 'Tier not found' });
+    return;
+  }
+
+  const description = `${tier.name} Membership - $${tier.monthly_price}/mo`;
+  const result = await createPaymentLink(db, tier.monthly_price.toFixed(2), description);
+
+  if (!result.success) {
+    res.status(400).json({ success: false, message: result.error || 'Failed to create payment link' });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      linkUrl: result.linkUrl,
+      linkCode: result.linkCode,
+      tier_name: tier.name,
+      amount: tier.monthly_price,
+    },
+  });
+}));
+
+// ─── WEB-W3-020: POST /:id/run-billing — admin-triggered immediate charge ─────
+//
+// Charges the stored BlockChyp token for the current billing period.
+// Guards:
+//   1. Status must be 'active' or 'past_due' (not cancelled/paused).
+//   2. blockchyp_token must exist on the subscription.
+//   3. BlockChyp must be configured for this tenant.
+//   4. Idempotency: if current_period_end is still in the future, reject —
+//      billing is not yet due. Staff can override by calling with ?force=1.
+// On success: advances current_period_end by 1 month, inserts subscription_payments.
+// On charge failure: flips status to 'past_due', audits.
+router.post('/:id/run-billing', asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user!;
+  if (user.role !== 'admin') throw new AppError('Admin role required', 403);
+
+  const db = req.db;
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  const force = req.query.force === '1';
+
+  const sub = await adb.get<AnyRow>(
+    `SELECT cs.*, mt.monthly_price, mt.name AS tier_name
+       FROM customer_subscriptions cs
+       JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.id = ?`,
+    id,
+  );
+  if (!sub) throw new AppError('Subscription not found', 404);
+
+  if (sub.status === 'cancelled') throw new AppError('Cannot bill a cancelled subscription', 400);
+  if (sub.status === 'paused') throw new AppError('Cannot bill a paused subscription', 400);
+
+  if (!sub.blockchyp_token) {
+    throw new AppError('No card on file for this subscription', 400);
+  }
+
+  if (!isBlockChypEnabled(db)) {
+    throw new AppError('BlockChyp is not configured for this tenant', 503);
+  }
+
+  // Idempotency: reject if period hasn't ended yet (unless forced).
+  if (!force && sub.current_period_end) {
+    const periodEnd = Date.parse(sub.current_period_end);
+    if (!Number.isNaN(periodEnd) && periodEnd > Date.now()) {
+      throw new AppError(
+        'Subscription billing period has not ended yet. Add ?force=1 to override.',
+        409,
+      );
+    }
+  }
+
+  const amount: number = sub.monthly_price;
+  const description = `${sub.tier_name} Membership renewal`;
+
+  const chargeResult = await chargeToken(db, sub.blockchyp_token, amount.toFixed(2), description);
+
+  if (!chargeResult.success) {
+    // Mark past_due on failure.
+    await adb.run(
+      `UPDATE customer_subscriptions SET status = 'past_due', updated_at = datetime('now') WHERE id = ?`,
+      id,
+    );
+    audit(db, 'membership_billing_failed', user.id, req.ip ?? 'unknown', {
+      subscription_id: id,
+      error: chargeResult.error,
+    });
+    throw new AppError(chargeResult.error ?? 'Billing failed', 402);
+  }
+
+  // Advance period by 1 month.
+  const newPeriodEnd = sub.current_period_end
+    ? new Date(new Date(sub.current_period_end).setMonth(new Date(sub.current_period_end).getMonth() + 1)).toISOString()
+    : new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString();
+
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET status = 'active',
+            current_period_end = ?,
+            last_charge_amount = ?,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    newPeriodEnd,
+    amount,
+    id,
+  );
+
+  // Record in subscription_payments.
+  await adb.run(
+    `INSERT INTO subscription_payments
+       (subscription_id, amount, status, blockchyp_transaction_id, paid_at)
+     VALUES (?, ?, 'succeeded', ?, datetime('now'))`,
+    id,
+    amount,
+    chargeResult.transactionId ?? null,
+  );
+
+  audit(db, 'membership_billing_success', user.id, req.ip ?? 'unknown', {
+    subscription_id: id,
+    amount,
+    transaction_id: chargeResult.transactionId,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      id,
+      status: 'active',
+      current_period_end: newPeriodEnd,
+      transaction_id: chargeResult.transactionId ?? null,
+    },
+  });
+}));
+
+export default router;

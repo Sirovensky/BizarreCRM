@@ -1,0 +1,2409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1360, initial-scale=0.7">
+<title>Bizarre CRM — Android tablet login flow (M3 Expressive α)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ════════════════════════════════════════════════════════════════════════════
+   BIZARRE CRM — Android tablet (Pixel Tablet 1280×800) login flow mockups
+   Material 3 Expressive α — MEDIUM window class
+
+   Layout pattern:
+     - Left nav rail (80px) — app logo cookie + 3 fake nav (Sign in active,
+       Help, Settings) + bottom avatar slot. surface-container bg.
+     - Center detail pane (~60%) — login form. Hero 56sp Barlow Condensed.
+       Centered max-width 520px content.
+     - Right supporting pane (~30%) — context: tenant history, providers,
+       help, sub-step rail, biometric prompt. surface-container-high bg.
+
+   Components (M3 Expressive α):
+     - LargeFlexibleTopAppBar (72px tall, bottom-anchored 36sp title)
+     - LinearWavyProgressIndicator (inline SVG sine wave)
+     - MaterialShapes 9-sided cookie (72px hero / 96px success / 44px logo)
+     - Shape morphing buttons (28dp → 12dp morph hint)
+     - FAB Menu (expanded by default in one frame)
+     - Split Button
+     - Emphasized type — 56sp W600 Barlow Condensed welcome
+
+   Solid surfaces, layered scrims. Zero glassmorphism (Theme.kt §1.4 line 196).
+   ════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Brand fonts — Bebas Neue (display) + Futura Medium (body, Jost fallback) + JetBrains Mono.
+     See TODO BRAND-FONTS-PARITY for Theme.kt + iOS DesignSystem + web alignment. */
+  --font-text: "Futura", "Futura Medium", "Jost", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Bebas Neue", "Saved By Zero", "Impact", "Futura", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: #07060c;
+  color: #ECE9F3;
+  font-family: var(--font-text);
+  font-size: 13px;
+  min-height: 100vh;
+}
+h1 {
+  text-align: center;
+  padding: 36px 16px 6px; margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px; font-weight: 600; letter-spacing: -0.01em;
+  background: linear-gradient(180deg, #FDEED0, #C9A56A);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.intro {
+  text-align: center; color: #A79FB8;
+  padding: 0 24px 16px; font-size: 14px; line-height: 1.6;
+  max-width: 980px; margin: 0 auto;
+}
+.intro code {
+  background: rgba(253,238,208,0.07); padding: 1px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 12px; color: #FDEED0;
+}
+.section-label {
+  text-align: center; color: #7E7894;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 36px 16px 14px;
+}
+.frame-caption {
+  text-align: center; color: #A79FB8;
+  font-size: 12.5px; padding: 6px 24px 14px;
+  letter-spacing: 0.01em; max-width: 1000px; margin: 0 auto;
+}
+.frame-caption code {
+  background: rgba(253,238,208,0.07); padding: 1px 5px; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 11.5px; color: #FDEED0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(960px, 1fr));
+  gap: 48px;
+  padding: 16px 32px 56px;
+  max-width: 2880px; margin: 0 auto;
+  justify-items: center;
+}
+.frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Pixel Tablet landscape — 1280×800, 6px black bezel, 28px corner radius
+   Camera dot top-center, no notch. Landscape only.
+   ───────────────────────────────────────────────────────────────────────── */
+.tablet {
+  position: relative;
+  width: 1280px; height: 800px;
+  border: 6px solid #050308;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 30px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(253,238,208,0.05);
+}
+.tablet .cam {
+  position: absolute;
+  top: 0; left: 50%; transform: translate(-50%, 30%);
+  width: 6px; height: 6px;
+  background: #050308;
+  border-radius: 50%;
+  z-index: 200;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), inset 0 0 0 1px #1a0a18;
+}
+
+/* Three-pane body grid: nav rail · detail · supporting */
+.body {
+  width: 100%; height: 100%;
+  display: grid;
+  grid-template-columns: 80px 1fr 380px;
+  grid-template-rows: 72px 1fr;
+  grid-template-areas:
+    "rail topbar topbar"
+    "rail detail support";
+  position: relative;
+}
+
+/* ─── DARK theme tokens (Theme.kt DarkColorScheme) ─── */
+.t-dark {
+  --primary: #FDEED0;
+  --on-primary: #2B1400;
+  --primary-container: #3D2C14;
+  --on-primary-container: #FDEED0;
+  --secondary: #4DB8C9;
+  --on-secondary: #003740;
+  --secondary-container: #004E5C;
+  --on-secondary-container: #AAE9F5;
+  --tertiary: #D94F9B;
+  --on-tertiary: #3D0028;
+  --tertiary-container: #5A1045;
+  --on-tertiary-container: #FFD8EC;
+  --error: #E2526C;
+  --on-error: #410009;
+  --error-container: #6B0E1E;
+  --on-error-container: #FFB3BC;
+  /* Surface ramp aligned with bizarrecrm.com web (Zinc neutral) — brand parity across platforms */
+  --bg: #09090B;
+  --on-bg: #FAFAFA;
+  --surface: #18181B;
+  --on-surface: #FAFAFA;
+  --surface-variant: #27272A;
+  --on-surface-variant: #A1A1AA;
+  --surface-container: #18181B;
+  --surface-container-high: #27272A;
+  --surface-container-highest: #3F3F46;
+  --outline: #3F3F46;
+  --outline-variant: #27272A;
+  --success: #34C47E;
+  --warning: #E8A33D;
+  --brand-orange: #F58220;
+}
+/* ─── LIGHT theme tokens (Theme.kt LightColorScheme) ─── */
+.t-light {
+  --primary: #A66D1F;
+  --on-primary: #FFFFFF;
+  --primary-container: #FDEED0;
+  --on-primary-container: #2B1400;
+  --secondary: #0E7A8A;
+  --on-secondary: #FFFFFF;
+  --secondary-container: #CCF0F5;
+  --on-secondary-container: #012D35;
+  --tertiary: #B01E7A;
+  --on-tertiary: #FFFFFF;
+  --tertiary-container: #FFD8EC;
+  --on-tertiary-container: #3D0028;
+  --error: #BA1A2E;
+  --on-error: #FFFFFF;
+  --error-container: #FFDADC;
+  --on-error-container: #410009;
+  --bg: #FAFAFA;
+  --on-bg: #18181B;
+  --surface: #FFFFFF;
+  --on-surface: #18181B;
+  --surface-variant: #F4F4F5;
+  --on-surface-variant: #52525B;
+  --surface-container: #F4F4F5;
+  --surface-container-high: #E4E4E7;
+  --surface-container-highest: #D4D4D8;
+  --outline: #E4E4E7;
+  --outline-variant: #F4F4F5;
+  --success: #0E7A3B;
+  --warning: #8B5F00;
+  --brand-orange: #F58220;
+}
+
+.tablet { background: var(--bg); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Biometric modal — centered focus dialog over a dim scrim.
+   Frame 5 uses this; the rest of the tablet body is intentionally muted
+   so the prompt is the unmistakable primary action after sign-in.
+   ───────────────────────────────────────────────────────────────────────── */
+.bio-scrim {
+  position: absolute; inset: 0;
+  background: rgba(8, 6, 12, 0.55);
+  backdrop-filter: blur(2px) saturate(85%);
+  -webkit-backdrop-filter: blur(2px) saturate(85%);
+  z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  animation: scrim-in 280ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.t-light .bio-scrim {
+  background: rgba(20, 14, 38, 0.42);
+}
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.bio-modal {
+  width: 480px; max-width: calc(100% - 64px);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 28px;
+  padding: 32px 32px 24px;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 30px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(253,238,208,0.06);
+  animation: modal-in 420ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.t-light .bio-modal {
+  box-shadow:
+    0 0 0 1px rgba(43,20,0,0.04) inset,
+    0 24px 60px rgba(43,20,0,0.18),
+    0 0 0 1px rgba(166,109,31,0.10);
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bio-modal .bio-icon {
+  width: 96px; height: 96px;
+  border-radius: 28px;
+  background: var(--primary-container);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+  position: relative;
+  animation: bio-pulse 2.4s ease-in-out infinite;
+}
+@keyframes bio-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(253,238,208,0.0); }
+  50%      { box-shadow: 0 0 0 14px rgba(253,238,208,0.10); }
+}
+.t-light .bio-modal .bio-icon {
+  animation-name: bio-pulse-l;
+}
+@keyframes bio-pulse-l {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(166,109,31,0.0); }
+  50%      { box-shadow: 0 0 0 14px rgba(166,109,31,0.14); }
+}
+.bio-modal h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--on-surface);
+}
+.bio-modal p {
+  margin: 0 0 22px;
+  font-size: 14px; line-height: 1.55;
+  color: var(--on-surface-variant);
+  max-width: 360px;
+}
+.bio-modal .bio-actions {
+  display: flex; gap: 10px; width: 100%;
+}
+.bio-modal .bio-actions button { flex: 1; }
+.bio-modal .bio-foot {
+  margin-top: 14px;
+  font-size: 12px; color: var(--on-surface-variant);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Left nav rail (80px) — surface-container bg, divider on right
+   App logo (9-sided cookie 44px), 3 fake nav, bottom avatar
+   ───────────────────────────────────────────────────────────────────────── */
+.rail {
+  grid-area: rail;
+  background: var(--surface-container);
+  border-right: 1px solid var(--outline);
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 14px 0 16px;
+  gap: 8px;
+  position: relative;
+}
+.rail .logo-cookie {
+  width: 44px; height: 44px;
+  margin-bottom: 12px;
+}
+.rail .logo-cookie svg { display: block; }
+.rail-item {
+  width: 56px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  color: var(--on-surface-variant);
+  cursor: default;
+}
+.rail-item .icon-bg {
+  width: 56px; height: 32px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.rail-item.active .icon-bg {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.rail-item.active { color: var(--on-surface); }
+.rail-item .icon-bg svg { display: block; }
+.rail-item .lbl {
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.rail .spacer { flex: 1; }
+.rail .avatar-slot {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--outline);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--on-surface-variant);
+  font-size: 14px; font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LargeFlexibleTopAppBar — 72px, bottom-anchored title 36sp emphasized
+   ───────────────────────────────────────────────────────────────────────── */
+.topbar {
+  grid-area: topbar;
+  background: var(--surface);
+  border-bottom: 1px solid var(--outline);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 28px 10px;
+}
+.topbar .t-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--on-surface);
+  line-height: 1;
+}
+.topbar .t-actions {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 4px;
+}
+.icon-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+.icon-btn:hover { background: var(--surface-variant); }
+
+/* Detail pane center */
+.detail {
+  grid-area: detail;
+  background: var(--surface);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.detail-inner {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 36px 48px 28px;
+  overflow: hidden;
+}
+.detail-inner.compact { padding-top: 24px; }
+.detail-content {
+  width: 100%; max-width: 520px;
+  display: flex; flex-direction: column;
+}
+
+/* Supporting pane */
+.support {
+  grid-area: support;
+  background: var(--surface-container-high);
+  border-left: 1px solid var(--outline);
+  padding: 28px 24px;
+  display: flex; flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+.support .sup-h {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+.support .sup-sub { font-size: 12px; color: var(--on-surface-variant); line-height: 1.5; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Hero, headline, supporting copy
+   ───────────────────────────────────────────────────────────────────────── */
+.hero-cookie {
+  width: 72px; height: 72px;
+  margin-bottom: 18px;
+}
+.headline {
+  font-family: var(--font-display);
+  font-size: 56px; font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  color: var(--on-surface);
+  margin: 0 0 10px;
+}
+.headline.smaller { font-size: 44px; }
+.subhead {
+  font-size: 15px;
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+  margin: 0 0 28px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   M3 outlined text fields — label floated, 4-corner shape morph hint
+   ───────────────────────────────────────────────────────────────────────── */
+.field {
+  position: relative;
+  display: flex; align-items: center;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--outline);
+  background: transparent;
+  margin-bottom: 14px;
+  font-size: 16px;
+  color: var(--on-surface);
+}
+.field.focused {
+  border-color: var(--primary);
+  border-width: 2px;
+}
+.field .field-label {
+  position: absolute;
+  top: -9px; left: 12px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--surface);
+  color: var(--on-surface-variant);
+}
+.field.focused .field-label { color: var(--primary); }
+.field .field-value { font-size: 16px; color: var(--on-surface); }
+.field .field-placeholder { font-size: 16px; color: var(--on-surface-variant); opacity: 0.6; }
+.field .field-trailing {
+  margin-left: auto;
+  color: var(--on-surface-variant);
+  display: flex; align-items: center; gap: 8px;
+}
+.field .leading-prefix {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--on-surface-variant);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.field .field-suffix {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--on-surface-variant);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.field .caret {
+  width: 1.5px; height: 22px;
+  background: var(--primary);
+  margin-left: 1px;
+  animation: none;
+}
+
+.helper {
+  font-size: 11.5px; color: var(--on-surface-variant);
+  margin: -6px 0 14px 14px;
+}
+.helper.error { color: var(--error); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Buttons — Filled, Outlined, Text. Shape morph hint = 28dp / 12dp diff
+   ───────────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 24px;
+  border-radius: 26px; /* 28dp morph */
+  font-size: 15px; font-weight: 600;
+  letter-spacing: 0.01em;
+  border: none;
+  cursor: default;
+  font-family: var(--font-text);
+}
+.btn.filled {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn.outlined {
+  background: transparent;
+  color: var(--primary);
+  border: 1.5px solid var(--outline);
+}
+.btn.tonal {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.btn.text {
+  background: transparent;
+  color: var(--primary);
+  height: 40px; padding: 0 12px;
+}
+.btn.tertiary {
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+.btn.success {
+  background: var(--success);
+  color: #08160E;
+}
+.btn.full { width: 100%; }
+.btn.compact {
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 12px; /* 12dp morph variant */
+  font-size: 13.5px;
+}
+
+/* Split Button — primary action + dropdown trigger, hinge gap */
+.split-btn {
+  display: inline-flex;
+  height: 52px;
+  border-radius: 26px;
+  overflow: hidden;
+  background: var(--primary);
+  color: var(--on-primary);
+  align-items: stretch;
+}
+.split-btn .sb-main {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 28px;
+  font-size: 15px; font-weight: 600;
+  flex: 1;
+  border-right: 2px solid color-mix(in srgb, var(--primary) 70%, var(--on-primary) 30%);
+}
+.split-btn .sb-trigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 52px;
+}
+.split-btn.full { width: 100%; }
+
+/* FAB Menu — expanded, vertical stack of mini fabs + labels */
+.fab-menu {
+  position: absolute;
+  right: 24px; bottom: 24px;
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 12px;
+  z-index: 50;
+}
+.fab-menu .fm-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.fab-menu .fm-pill {
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--outline);
+}
+.fab-menu .fm-fab {
+  width: 48px; height: 48px;
+  border-radius: 16px;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  display: flex; align-items: center; justify-content: center;
+}
+.fab-menu .fm-main {
+  width: 64px; height: 64px;
+  border-radius: 20px;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Tenant card / list rows / pills
+   ───────────────────────────────────────────────────────────────────────── */
+.tenant-card {
+  background: var(--surface);
+  border-radius: 20px;
+  border: 1px solid var(--outline);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.tenant-card .tc-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.tenant-card .tc-logo {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px;
+  font-family: var(--font-display);
+}
+.tenant-card .tc-name { font-size: 14.5px; font-weight: 600; color: var(--on-surface); }
+.tenant-card .tc-url { font-size: 11.5px; font-family: var(--font-mono); color: var(--on-surface-variant); margin-top: 2px; }
+.tenant-card .tc-foot { display: flex; justify-content: flex-end; }
+
+.recent-list { display: flex; flex-direction: column; gap: 10px; }
+.recent-row {
+  background: var(--surface);
+  border-radius: 16px;
+  border: 1px solid var(--outline);
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.recent-row .rr-logo {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+.recent-row .rr-text { flex: 1; min-width: 0; }
+.recent-row .rr-name { font-size: 13.5px; font-weight: 600; color: var(--on-surface); }
+.recent-row .rr-meta {
+  font-size: 11px; color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.recent-row .rr-time { font-size: 10.5px; color: var(--on-surface-variant); }
+
+/* Provider pills (tertiary container) */
+.provider-list { display: flex; flex-direction: column; gap: 8px; }
+.provider-pill {
+  height: 42px;
+  border-radius: 14px;
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  display: flex; align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  font-size: 13px; font-weight: 600;
+}
+.provider-pill .pp-icon {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+}
+.provider-pill .pp-trail { margin-left: auto; opacity: 0.7; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   OTP cells (6-digit)
+   ───────────────────────────────────────────────────────────────────────── */
+.otp-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.otp-cell {
+  height: 64px;
+  border-radius: 16px;
+  border: 1.5px solid var(--outline);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-size: 32px; font-weight: 600;
+  color: var(--on-surface);
+}
+.otp-cell.filled { border-color: var(--primary); }
+.otp-cell.focused {
+  border-color: var(--primary);
+  border-width: 2.5px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.otp-cell .caret {
+  width: 2px; height: 28px;
+  background: var(--primary);
+}
+
+/* Switch (Material 3 toggle) */
+.switch {
+  width: 52px; height: 32px;
+  border-radius: 16px;
+  background: var(--primary);
+  position: relative;
+  flex-shrink: 0;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  right: 4px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--on-primary);
+}
+.switch.off {
+  background: var(--surface-variant);
+  border: 1.5px solid var(--outline);
+}
+.switch.off::after {
+  right: auto;
+  left: 6px;
+  width: 16px; height: 16px;
+  background: var(--on-surface-variant);
+}
+
+.toggle-row {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface);
+  border-radius: 16px;
+  border: 1px solid var(--outline);
+  padding: 12px 14px;
+}
+.toggle-row .tr-text { flex: 1; min-width: 0; }
+.toggle-row .tr-title { font-size: 13.5px; font-weight: 600; color: var(--on-surface); }
+.toggle-row .tr-sub { font-size: 11.5px; color: var(--on-surface-variant); margin-top: 2px; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Wavy progress (LinearWavyProgressIndicator)
+   ───────────────────────────────────────────────────────────────────────── */
+.wavy {
+  width: 100%;
+  height: 16px;
+  display: block;
+  margin: 8px 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Step rail (4-step register sub-step rail in supporting pane)
+   ───────────────────────────────────────────────────────────────────────── */
+.step-rail {
+  display: flex; flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.step-rail .sr-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+.step-rail .sr-row.active {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.step-rail .sr-bullet {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  border: 1.5px solid var(--outline);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.step-rail .sr-row.done .sr-bullet {
+  background: var(--success);
+  color: #08160E;
+  border-color: var(--success);
+}
+.step-rail .sr-row.active .sr-bullet {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.step-rail .sr-text { display: flex; flex-direction: column; gap: 2px; }
+.step-rail .sr-title { font-size: 13.5px; font-weight: 600; }
+.step-rail .sr-cap { font-size: 11px; opacity: 0.78; }
+
+/* Strength meter */
+.strength {
+  display: flex; gap: 4px;
+  margin: 4px 0 6px;
+}
+.strength .seg {
+  flex: 1; height: 4px;
+  border-radius: 2px;
+  background: var(--outline);
+}
+.strength .seg.on-fair { background: var(--warning); }
+.strength .seg.on-strong { background: var(--success); }
+
+/* Shortcut card grid (final step) */
+.shortcut-card {
+  background: var(--surface);
+  border-radius: 24px;
+  border: 1px solid var(--outline);
+  padding: 16px;
+  display: flex; align-items: center; gap: 14px;
+}
+.shortcut-card .sc-cookie {
+  width: 56px; height: 56px;
+  flex-shrink: 0;
+}
+.shortcut-card .sc-text { flex: 1; min-width: 0; }
+.shortcut-card .sc-title {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--on-surface);
+}
+.shortcut-card .sc-sub { font-size: 12px; color: var(--on-surface-variant); margin-top: 2px; }
+
+.split-center {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  width: 100%;
+  align-items: stretch;
+}
+.split-center .scl-left {
+  display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: center;
+}
+.split-center .scl-right {
+  display: flex; flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* Top wavy progress for register flow */
+.top-progress-row {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 18px;
+}
+.top-progress-row .tp-label {
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+.top-progress-row svg { flex: 1; }
+
+/* Tooltip helper text under password */
+.muted-meta { font-size: 11.5px; color: var(--on-surface-variant); }
+
+/* Trust device toggle styling */
+.help-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--primary); font-size: 12.5px; font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Frame caption pill above each tablet
+   ───────────────────────────────────────────────────────────────────────── */
+.frame-tag {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #C9C2DC;
+  font-weight: 600;
+  padding: 6px 12px;
+  margin: 0 0 10px;
+  border-radius: 99px;
+  background: rgba(253,238,208,0.05);
+  border: 1px solid rgba(253,238,208,0.12);
+}
+.frame-tag .num {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #FDEED0; color: #2B1400;
+  font-size: 10.5px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.foot {
+  text-align: center; color: #5e596f;
+  font-size: 11px; padding: 22px 16px 32px;
+  font-family: var(--font-mono);
+}
+
+/* divider between successful done success cookie */
+.success-cookie-wrap {
+  width: 96px; height: 96px;
+  margin-bottom: 18px;
+}
+
+/* compact frame wrapper for 2-up grid feel at very wide viewports */
+@media (min-width: 2900px) {
+  .grid { grid-template-columns: repeat(2, minmax(960px, 1fr)); }
+}
+</style>
+</head>
+<body>
+
+<h1>Bizarre CRM — Android tablet login flow</h1>
+<p class="intro">
+  Pixel Tablet landscape (1280×800) · Material 3 Expressive α · MEDIUM window class.
+  Three-pane adaptive layout: <code>NavigationRail</code> (80dp) + center detail (~60%) + supporting pane (~30%).
+  This is <em>not</em> an upscaled phone — the supporting pane carries context that lives in a sheet on compact.
+  Solid surfaces with layered scrims; zero glassmorphism per <code>Theme.kt §1.4</code>.
+  Each frame appears in both Dark and Light variants from <code>BizarreCrmTheme</code>.
+  Verbatim copy is sourced from <code>LoginScreen.kt</code> ("Connect to Your Shop", "Sign In", "Two-Factor Authentication", "Create your admin account", etc.).
+</p>
+
+<div class="section-label">Dark · DarkColorScheme</div>
+
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 1 — Server pick (Dark)
+       Left rail (Sign in active) · Center: hero "Pick your shop." +
+       slug input + Continue · Right pane: recent tenants + Add new shop.
+       FAB Menu expanded (Self-host toggle / Help / Scan QR) bottom-right.
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">1</span>Server pick · Dark</div>
+    <div class="tablet t-dark">
+      <span class="cam"></span>
+      <div class="body">
+
+        <!-- Nav rail -->
+        <aside class="rail">
+          <div class="logo-cookie">
+            <!-- 9-sided cookie · brand cream (44px) -->
+            <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
+              <defs>
+                <linearGradient id="cookie-44-d1" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#FFF7E0"/>
+                  <stop offset="1" stop-color="#FDEED0"/>
+                </linearGradient>
+              </defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z"
+                    fill="url(#cookie-44-d1)" stroke="rgba(43,20,0,0.15)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle"
+                    font-family="Barlow Condensed, Inter" font-weight="700" font-size="20"
+                    fill="#2B1400">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                <polyline points="10 17 15 12 10 7"/>
+                <line x1="15" y1="12" x2="3" y2="12"/>
+              </svg>
+            </div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/>
+                <circle cx="12" cy="17" r=".7" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+              </svg>
+            </div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot" title="signed-out placeholder">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 21a8 8 0 0 1 16 0"/>
+            </svg>
+          </div>
+        </aside>
+
+        <!-- Top app bar -->
+        <div class="topbar">
+          <div class="t-title">Connect to Your Shop</div>
+          <div class="t-actions">
+            <div class="icon-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            </div>
+            <div class="icon-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail pane -->
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="detail-content">
+              <div class="hero-cookie">
+                <svg viewBox="0 0 72 72" width="72" height="72">
+                  <defs>
+                    <linearGradient id="hero-d1" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#FFF7E0"/>
+                      <stop offset="1" stop-color="#FDEED0"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M36 3 L54 8 L67 22 L70 40 L61 56 L46 67 L28 70 L12 62 L4 47 L6 28 L21 10 Z"
+                        fill="url(#hero-d1)" stroke="rgba(43,20,0,0.15)" stroke-width="1.5"/>
+                  <text x="36" y="46" text-anchor="middle" font-family="Barlow Condensed, Inter"
+                        font-weight="700" font-size="34" fill="#2B1400">B</text>
+                </svg>
+              </div>
+              <h2 class="headline">Pick your shop.</h2>
+              <p class="subhead">Enter your shop name to connect to BizarreCRM Cloud, or switch to a self-hosted server.</p>
+
+              <div class="field focused">
+                <span class="field-label">Shop Name</span>
+                <span class="leading-prefix">https://</span>
+                <span class="field-value">paradise-repair</span>
+                <span class="caret"></span>
+                <span class="field-suffix">.bizarrecrm.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34C47E" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+              <div class="helper" style="color: var(--success);">Shop reachable · responded in 84 ms</div>
+
+              <button class="btn filled full" style="margin-top: 6px;">
+                Continue
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+
+              <div style="display:flex; align-items:center; gap:12px; margin: 20px 0 4px;">
+                <div style="flex:1; height:1px; background: var(--outline);"></div>
+                <div class="muted-meta">or</div>
+                <div style="flex:1; height:1px; background: var(--outline);"></div>
+              </div>
+
+              <button class="btn outlined full">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h4M6 14h12"/></svg>
+                Use self-hosted server
+              </button>
+
+            </div>
+          </div>
+
+          <!-- Expanded FAB Menu -->
+          <div class="fab-menu">
+            <div class="fm-row"><span class="fm-pill">Scan QR from another device</span><span class="fm-fab">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v3M14 21h7"/></svg>
+            </span></div>
+            <div class="fm-row"><span class="fm-pill">Help &amp; troubleshooting</span><span class="fm-fab">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            </span></div>
+            <div class="fm-row"><span class="fm-pill">Register new shop</span><span class="fm-main">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span></div>
+          </div>
+        </main>
+
+        <!-- Supporting pane -->
+        <aside class="support">
+          <div class="sup-h">Recent shops</div>
+          <div class="recent-list">
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--primary-container); color: var(--on-primary-container);">PR</div>
+              <div class="rr-text">
+                <div class="rr-name">Paradise Repair</div>
+                <div class="rr-meta">paradise-repair.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">2d</div>
+            </div>
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--secondary-container); color: var(--on-secondary-container);">FB</div>
+              <div class="rr-text">
+                <div class="rr-name">Fixit Bros</div>
+                <div class="rr-meta">fixit-bros.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">9d</div>
+            </div>
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--tertiary-container); color: var(--on-tertiary-container);">SC</div>
+              <div class="rr-text">
+                <div class="rr-name">Sunset Cell &amp; Tablet</div>
+                <div class="rr-meta">sunsetcell.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">3w</div>
+            </div>
+          </div>
+
+          <div style="height:1px; background: var(--outline); margin: 4px 0;"></div>
+
+          <button class="btn text" style="align-self: flex-start; padding-left: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add new shop
+          </button>
+
+          <div class="sup-h" style="margin-top:6px;">Tip</div>
+          <div class="sup-sub">Your shop name is the subdomain you chose during sign-up. It's the part before <code style="font-family:var(--font-mono); font-size:11px;">.bizarrecrm.com</code>.</div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 2 — Credentials (Dark)
+       Center: "Sign in to Paradise Repair." + username + password +
+       Split Button "Sign in" / dropdown.  Right: tenant card + provider list.
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">2</span>Credentials · Dark</div>
+    <div class="tablet t-dark">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-d2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7E0"/><stop offset="1" stop-color="#FDEED0"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-d2)" stroke="rgba(43,20,0,0.15)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#2B1400">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Sign In</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Switch shop
+            </button>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner compact">
+            <div class="detail-content">
+              <h2 class="headline smaller">Sign in to Paradise&nbsp;Repair.</h2>
+              <p class="subhead">Welcome back. Use your shop credentials to continue.</p>
+
+              <div class="field">
+                <span class="field-label">Username</span>
+                <span class="field-value">sergei@paradise-repair.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+
+              <div class="field focused">
+                <span class="field-label">Password</span>
+                <span class="field-value" style="letter-spacing: 4px;">••••••••••••</span>
+                <span class="caret"></span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content: space-between; margin: 4px 0 18px;">
+                <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:var(--on-surface-variant);">
+                  <span style="width:18px; height:18px; border-radius:5px; background:var(--primary); display:inline-flex; align-items:center; justify-content:center;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2B1400" stroke-width="3.4"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                  Remember me
+                </label>
+                <a class="help-link" href="#">Forgot password?</a>
+              </div>
+
+              <!-- Split Button: Sign in | dropdown for "Sign in & Stay signed in" -->
+              <div class="split-btn full">
+                <div class="sb-main">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="margin-right:8px;"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                  Sign In
+                </div>
+                <div class="sb-trigger">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; gap: 10px; margin-top: 20px; color:var(--on-surface-variant); font-size:12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Connection secured · TLS · biometric available
+              </div>
+
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Signing in to</div>
+          <div class="tenant-card">
+            <div class="tc-row">
+              <div class="tc-logo">PR</div>
+              <div style="flex:1; min-width:0;">
+                <div class="tc-name">Paradise Repair</div>
+                <div class="tc-url">paradise-repair.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="tc-foot">
+              <button class="btn text" style="padding-left:8px; padding-right:8px;">Switch shop</button>
+            </div>
+          </div>
+
+          <div class="sup-h" style="margin-top: 4px;">Other ways to sign in</div>
+          <div class="provider-list">
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="9" r="5"/><path d="M7 13a5 5 0 0 0-5 5v3h20v-3a5 5 0 0 0-5-5"/><circle cx="12" cy="9" r="1.5" fill="currentColor"/></svg>
+              </span>
+              Use a passkey
+              <span class="pp-trail">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4c-.2 1.3-1 2.4-2 3.1v2.6h3.3c2-1.8 3.1-4.5 3.1-7.5z"/><path fill="currentColor" opacity=".7" d="M12 22c2.7 0 5-1 6.7-2.5l-3.3-2.6c-.9.6-2.1 1-3.5 1-2.6 0-4.9-1.8-5.7-4.2H2.9v2.6A10 10 0 0 0 12 22z"/><path fill="currentColor" opacity=".5" d="M6.3 13.7A6 6 0 0 1 6 12c0-.6.1-1.2.3-1.7V7.7H2.9A10 10 0 0 0 2 12c0 1.6.4 3.1 1 4.4l3.3-2.7z"/><path fill="currentColor" opacity=".4" d="M12 5.8c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 12 2 10 10 0 0 0 2.9 7.7l3.3 2.6c.8-2.4 3-4.2 5.8-4.5z"/></svg>
+              </span>
+              Continue with Google
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 1.6c0 1.2-.5 2.4-1.3 3.2-.8.9-2.1 1.6-3.3 1.5-.1-1.2.5-2.4 1.3-3.2.8-.9 2.2-1.5 3.3-1.5zM20 17c-.5 1.2-.8 1.7-1.5 2.7-.9 1.4-2.2 3.1-3.9 3.1-1.5 0-1.9-1-3.8-1-2 0-2.5 1-3.9 1-1.6 0-2.9-1.6-3.8-3-2.5-3.7-2.7-8 -1.2-10.4 1.1-1.7 2.8-2.7 4.4-2.7 1.6 0 2.7 1 4 1 1.3 0 2-1 3.9-1 1.5 0 3 .8 4 2.2-3.5 2-3 7 1.8 8.1z"/></svg>
+              </span>
+              Continue with Apple
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>
+              </span>
+              Email me a link
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 3 — 2FA verify (Dark)
+       Center: "Enter your 6-digit code." + 6 OTP cells.
+       Right: trust-device switch, backup codes, lost device, wavy resend.
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">3</span>2FA verify · Dark</div>
+    <div class="tablet t-dark">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-d3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7E0"/><stop offset="1" stop-color="#FDEED0"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-d3)" stroke="rgba(43,20,0,0.15)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#2B1400">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Two-Factor Authentication</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="detail-content">
+              <h2 class="headline smaller">Enter your 6-digit&nbsp;code.</h2>
+              <p class="subhead">Open your authenticator app (Google Authenticator, Authy, …) and type the current code for <strong style="color:var(--on-surface);">Paradise Repair</strong>.</p>
+
+              <div class="otp-row">
+                <div class="otp-cell filled">3</div>
+                <div class="otp-cell filled">7</div>
+                <div class="otp-cell filled">4</div>
+                <div class="otp-cell filled">2</div>
+                <div class="otp-cell focused"><span class="caret"></span></div>
+                <div class="otp-cell"></div>
+              </div>
+
+              <button class="btn filled full" style="margin-top:6px;">Continue</button>
+
+              <div style="margin-top: 18px; display:flex; gap: 10px; align-items:center;">
+                <span class="muted-meta">Sign-in expires in 4m 32s</span>
+                <div style="flex:1;"></div>
+                <button class="btn text">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="1 4 1 10 7 10"/><path d="M3.5 15A9 9 0 1 0 6 5.3L1 10"/></svg>
+                  Lost 2FA access? Use a backup code
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Trust this device</div>
+          <div class="toggle-row">
+            <div class="tr-text">
+              <div class="tr-title">Trust this device for 30 days</div>
+              <div class="tr-sub">Skip 2FA on this Pixel Tablet for the next month.</div>
+            </div>
+            <span class="switch"></span>
+          </div>
+
+          <div class="sup-h" style="margin-top: 4px;">Resend code</div>
+          <div class="sup-sub">A new code can be sent in <strong style="color: var(--on-surface);">00:18</strong>.</div>
+          <!-- LinearWavyProgressIndicator — sine wave, animated visually via dasharray look -->
+          <svg class="wavy" viewBox="0 0 320 16" preserveAspectRatio="none">
+            <path d="M0 8 Q 10 0, 20 8 T 40 8 T 60 8 T 80 8 T 100 8 T 120 8 T 140 8 T 160 8 T 180 8 T 200 8 T 220 8 T 240 8 T 260 8 T 280 8 T 300 8 T 320 8"
+                  fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  style="color: var(--primary);"
+                  stroke-dasharray="190 130"/>
+          </svg>
+          <div class="sup-sub" style="font-family: var(--font-mono); font-size:11px;">62%</div>
+
+          <div style="height:1px; background: var(--outline); margin: 4px 0;"></div>
+
+          <div class="sup-h">Trouble?</div>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            Lost your device?
+          </a>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>
+            Use SMS instead
+          </a>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            Use a backup code
+          </a>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 4 — Register · multi-pane (Dark)
+       Top: LinearWavyProgressIndicator 2/4 filled.
+       Center: Owner sub-step (first/last/email/password) + strength meter.
+       Right: 4-step vertical rail · Company ✓ · **Owner** · Server · Confirm.
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">4</span>Register · Owner step · Dark</div>
+    <div class="tablet t-dark">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-d4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7E0"/><stop offset="1" stop-color="#FDEED0"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-d4)" stroke="rgba(43,20,0,0.15)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#2B1400">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Account Owner</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+            <span style="font-size:11.5px; color:var(--on-surface-variant); font-family:var(--font-mono); padding-bottom:4px;">Step 2 of 4</span>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner compact">
+            <div class="detail-content">
+              <!-- LinearWavyProgressIndicator — 2/4 filled (50%) -->
+              <div class="top-progress-row">
+                <span class="tp-label">Setting up · 50%</span>
+                <svg class="wavy" viewBox="0 0 480 16" preserveAspectRatio="none">
+                  <path d="M0 8 Q 10 0, 20 8 T 40 8 T 60 8 T 80 8 T 100 8 T 120 8 T 140 8 T 160 8 T 180 8 T 200 8 T 220 8 T 240 8"
+                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                        style="color: var(--primary);"/>
+                  <path d="M240 8 L 480 8"
+                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6"
+                        style="color: var(--outline);"/>
+                </svg>
+              </div>
+
+              <h2 class="headline smaller">Create your admin account</h2>
+              <p class="subhead">You'll be the owner. You can invite teammates after sign-up.</p>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="field">
+                  <span class="field-label">First Name</span>
+                  <span class="field-value">Sergei</span>
+                </div>
+                <div class="field">
+                  <span class="field-label">Last Name</span>
+                  <span class="field-value">Volkov</span>
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="field-label">Email</span>
+                <span class="field-value">sergei@paradise-repair.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34C47E" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+
+              <div class="field focused">
+                <span class="field-label">Password</span>
+                <span class="field-value" style="letter-spacing:4px;">••••••••••••</span>
+                <span class="caret"></span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              <div class="strength" aria-label="strength meter — strong">
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+              </div>
+              <div class="helper" style="color: var(--success); margin-top:0;">Strong password · Minimum 8 characters</div>
+
+              <button class="btn filled full" style="margin-top: 6px;">
+                Next
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Sign-up steps</div>
+          <div class="step-rail">
+            <div class="sr-row done">
+              <span class="sr-bullet">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <span class="sr-text">
+                <span class="sr-title">Company</span>
+                <span class="sr-cap">Paradise Repair · paradise-repair</span>
+              </span>
+            </div>
+            <div class="sr-row active">
+              <span class="sr-bullet">2</span>
+              <span class="sr-text">
+                <span class="sr-title">Owner</span>
+                <span class="sr-cap">Name, email, password</span>
+              </span>
+            </div>
+            <div class="sr-row">
+              <span class="sr-bullet">3</span>
+              <span class="sr-text">
+                <span class="sr-title">Server URL</span>
+                <span class="sr-cap">Cloud or self-hosted</span>
+              </span>
+            </div>
+            <div class="sr-row">
+              <span class="sr-bullet">4</span>
+              <span class="sr-text">
+                <span class="sr-title">Confirm</span>
+                <span class="sr-cap">Review &amp; create account</span>
+              </span>
+            </div>
+          </div>
+
+          <div style="height:1px; background: var(--outline); margin: 6px 0 0;"></div>
+          <div class="sup-h">Why we ask</div>
+          <div class="sup-sub">The owner has full admin rights and is the recovery contact for this shop. You can transfer ownership later under <strong style="color:var(--on-surface);">Settings → Team</strong>.</div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 5 — Biometric offer / Done (Dark)
+       Center split: left "You're in." + green ✓ cookie 96px.
+       Right: 3 shortcut cards (POS / Tickets / Inventory).
+       Right pane: "Enable Face Unlock?" Enable / Not now.
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">5</span>Biometric offer · Dark</div>
+    <div class="tablet t-dark">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-d5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7E0"/><stop offset="1" stop-color="#FDEED0"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-d5)" stroke="rgba(43,20,0,0.15)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#2B1400">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <!-- Avatar fully resolved on success -->
+          <div class="avatar-slot" style="background:var(--primary); color:var(--on-primary); border-style:solid; border-color: var(--primary); font-family:var(--font-display);">
+            SV
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Welcome to Paradise Repair</div>
+          <div class="t-actions">
+            <span class="muted-meta" style="padding-bottom:4px;">Signed in as <strong style="color:var(--on-surface);">sergei@paradise-repair.com</strong></span>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="split-center" style="max-width: 640px;">
+              <div class="scl-left">
+                <div class="success-cookie-wrap">
+                  <svg viewBox="0 0 96 96" width="96" height="96">
+                    <defs>
+                      <linearGradient id="cookie-success-d" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="#5BE3A6"/>
+                        <stop offset="1" stop-color="#34C47E"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M48 4 L72 10 L88 28 L94 52 L82 74 L62 90 L36 94 L16 82 L4 60 L8 36 L28 14 Z"
+                          fill="url(#cookie-success-d)" stroke="rgba(8,22,14,0.2)" stroke-width="1.5"/>
+                    <polyline points="28 50 42 64 70 32" fill="none"
+                              stroke="#08160E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <h2 class="headline">You're in.</h2>
+                <p class="subhead" style="margin-bottom:16px;">Where would you like to start?</p>
+              </div>
+              <div class="scl-right">
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--primary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <path d="M18 22h20l-2 18H20z" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linejoin="round"/>
+                      <path d="M22 22a6 6 0 0 1 12 0" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Open POS</div>
+                    <div class="sc-sub">Ring a sale or scan a barcode</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--secondary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <rect x="16" y="18" width="24" height="22" rx="2" fill="none" stroke="var(--secondary)" stroke-width="2.4"/>
+                      <path d="M21 25h14M21 30h10M21 35h8" stroke="var(--secondary)" stroke-width="2.4" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Tickets</div>
+                    <div class="sc-sub">12 active · 3 awaiting parts</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--tertiary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <path d="M16 22l12-6 12 6v14l-12 6-12-6z" fill="none" stroke="var(--tertiary)" stroke-width="2.4" stroke-linejoin="round"/>
+                      <path d="M16 22l12 6 12-6M28 28v14" fill="none" stroke="var(--tertiary)" stroke-width="2.4" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Inventory</div>
+                    <div class="sc-sub">2,481 SKUs · 4 low-stock alerts</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Last sign-in</div>
+          <div class="sup-sub">Just now · Pixel Tablet · 192.168.1.4 · Connection secured (TLS).</div>
+
+          <div class="sup-h" style="margin-top: 12px;">Tip</div>
+          <div class="sup-sub">Biometric unlock skips the password next time. Toggle in <strong style="color:var(--on-surface);">Settings → Security</strong>.</div>
+        </aside>
+
+      </div>
+
+      <!-- ── Biometric prompt: focused modal over dim scrim. Primary action after sign-in. ── -->
+      <div class="bio-scrim">
+        <div class="bio-modal">
+          <div class="bio-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--on-primary-container)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 7V6a3 3 0 0 1 3-3h1"/>
+              <path d="M19 7V6a3 3 0 0 0-3-3h-1"/>
+              <path d="M5 17v1a3 3 0 0 0 3 3h1"/>
+              <path d="M19 17v1a3 3 0 0 1-3 3h-1"/>
+              <path d="M9 11v2"/>
+              <path d="M15 11v2"/>
+              <path d="M9 16c.7.7 1.8 1.2 3 1.2s2.3-.5 3-1.2"/>
+            </svg>
+          </div>
+          <h3>Enable biometric unlock?</h3>
+          <p>Auto-detects Face Unlock or fingerprint, whichever your tablet supports. Encrypted token stays on device — disable any time in Settings.</p>
+          <div class="bio-actions">
+            <button class="btn filled">Enable</button>
+            <button class="btn outlined">Not now</button>
+          </div>
+          <div class="bio-foot">You can also keep using your password.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="section-label">Light · LightColorScheme</div>
+
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 1 — Server pick (Light)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">1</span>Server pick · Light</div>
+    <div class="tablet t-light">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-l1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A66D1F"/><stop offset="1" stop-color="#7B4F12"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-l1)" stroke="rgba(43,20,0,0.25)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#FFFFFF">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Connect to Your Shop</div>
+          <div class="t-actions">
+            <div class="icon-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            </div>
+            <div class="icon-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="detail-content">
+              <div class="hero-cookie">
+                <svg viewBox="0 0 72 72" width="72" height="72">
+                  <defs><linearGradient id="hero-l1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FDEED0"/><stop offset="1" stop-color="#E8C588"/></linearGradient></defs>
+                  <path d="M36 3 L54 8 L67 22 L70 40 L61 56 L46 67 L28 70 L12 62 L4 47 L6 28 L21 10 Z" fill="url(#hero-l1)" stroke="rgba(43,20,0,0.25)" stroke-width="1.5"/>
+                  <text x="36" y="46" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="34" fill="#2B1400">B</text>
+                </svg>
+              </div>
+              <h2 class="headline">Pick your shop.</h2>
+              <p class="subhead">Enter your shop name to connect to BizarreCRM Cloud, or switch to a self-hosted server.</p>
+
+              <div class="field focused">
+                <span class="field-label">Shop Name</span>
+                <span class="leading-prefix">https://</span>
+                <span class="field-value">paradise-repair</span>
+                <span class="caret"></span>
+                <span class="field-suffix">.bizarrecrm.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E7A3B" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+              <div class="helper" style="color: var(--success);">Shop reachable · responded in 84 ms</div>
+
+              <button class="btn filled full" style="margin-top: 6px;">
+                Continue
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+
+              <div style="display:flex; align-items:center; gap:12px; margin: 20px 0 4px;">
+                <div style="flex:1; height:1px; background: var(--outline);"></div>
+                <div class="muted-meta">or</div>
+                <div style="flex:1; height:1px; background: var(--outline);"></div>
+              </div>
+
+              <button class="btn outlined full">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h4M6 14h12"/></svg>
+                Use self-hosted server
+              </button>
+            </div>
+          </div>
+
+          <div class="fab-menu">
+            <div class="fm-row"><span class="fm-pill">Scan QR from another device</span><span class="fm-fab">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v3M14 21h7"/></svg>
+            </span></div>
+            <div class="fm-row"><span class="fm-pill">Help &amp; troubleshooting</span><span class="fm-fab">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            </span></div>
+            <div class="fm-row"><span class="fm-pill">Register new shop</span><span class="fm-main">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span></div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Recent shops</div>
+          <div class="recent-list">
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--primary-container); color: var(--on-primary-container);">PR</div>
+              <div class="rr-text">
+                <div class="rr-name">Paradise Repair</div>
+                <div class="rr-meta">paradise-repair.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">2d</div>
+            </div>
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--secondary-container); color: var(--on-secondary-container);">FB</div>
+              <div class="rr-text">
+                <div class="rr-name">Fixit Bros</div>
+                <div class="rr-meta">fixit-bros.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">9d</div>
+            </div>
+            <div class="recent-row">
+              <div class="rr-logo" style="background: var(--tertiary-container); color: var(--on-tertiary-container);">SC</div>
+              <div class="rr-text">
+                <div class="rr-name">Sunset Cell &amp; Tablet</div>
+                <div class="rr-meta">sunsetcell.bizarrecrm.com</div>
+              </div>
+              <div class="rr-time">3w</div>
+            </div>
+          </div>
+
+          <div style="height:1px; background: var(--outline); margin: 4px 0;"></div>
+
+          <button class="btn text" style="align-self: flex-start; padding-left: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add new shop
+          </button>
+
+          <div class="sup-h" style="margin-top:6px;">Tip</div>
+          <div class="sup-sub">Your shop name is the subdomain you chose during sign-up. It's the part before <code style="font-family:var(--font-mono); font-size:11px;">.bizarrecrm.com</code>.</div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 2 — Credentials (Light)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">2</span>Credentials · Light</div>
+    <div class="tablet t-light">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-l2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A66D1F"/><stop offset="1" stop-color="#7B4F12"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-l2)" stroke="rgba(43,20,0,0.25)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#FFFFFF">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Sign In</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Switch shop
+            </button>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner compact">
+            <div class="detail-content">
+              <h2 class="headline smaller">Sign in to Paradise&nbsp;Repair.</h2>
+              <p class="subhead">Welcome back. Use your shop credentials to continue.</p>
+
+              <div class="field">
+                <span class="field-label">Username</span>
+                <span class="field-value">sergei@paradise-repair.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+
+              <div class="field focused">
+                <span class="field-label">Password</span>
+                <span class="field-value" style="letter-spacing: 4px;">••••••••••••</span>
+                <span class="caret"></span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content: space-between; margin: 4px 0 18px;">
+                <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:var(--on-surface-variant);">
+                  <span style="width:18px; height:18px; border-radius:5px; background:var(--primary); display:inline-flex; align-items:center; justify-content:center;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.4"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                  Remember me
+                </label>
+                <a class="help-link" href="#">Forgot password?</a>
+              </div>
+
+              <div class="split-btn full">
+                <div class="sb-main">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="margin-right:8px;"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                  Sign In
+                </div>
+                <div class="sb-trigger">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; gap: 10px; margin-top: 20px; color:var(--on-surface-variant); font-size:12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Connection secured · TLS · biometric available
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Signing in to</div>
+          <div class="tenant-card">
+            <div class="tc-row">
+              <div class="tc-logo">PR</div>
+              <div style="flex:1; min-width:0;">
+                <div class="tc-name">Paradise Repair</div>
+                <div class="tc-url">paradise-repair.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="tc-foot">
+              <button class="btn text" style="padding-left:8px; padding-right:8px;">Switch shop</button>
+            </div>
+          </div>
+
+          <div class="sup-h" style="margin-top: 4px;">Other ways to sign in</div>
+          <div class="provider-list">
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="9" r="5"/><path d="M7 13a5 5 0 0 0-5 5v3h20v-3a5 5 0 0 0-5-5"/><circle cx="12" cy="9" r="1.5" fill="currentColor"/></svg>
+              </span>
+              Use a passkey
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4c-.2 1.3-1 2.4-2 3.1v2.6h3.3c2-1.8 3.1-4.5 3.1-7.5z"/><path fill="currentColor" opacity=".7" d="M12 22c2.7 0 5-1 6.7-2.5l-3.3-2.6c-.9.6-2.1 1-3.5 1-2.6 0-4.9-1.8-5.7-4.2H2.9v2.6A10 10 0 0 0 12 22z"/><path fill="currentColor" opacity=".5" d="M6.3 13.7A6 6 0 0 1 6 12c0-.6.1-1.2.3-1.7V7.7H2.9A10 10 0 0 0 2 12c0 1.6.4 3.1 1 4.4l3.3-2.7z"/><path fill="currentColor" opacity=".4" d="M12 5.8c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 12 2 10 10 0 0 0 2.9 7.7l3.3 2.6c.8-2.4 3-4.2 5.8-4.5z"/></svg>
+              </span>
+              Continue with Google
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 1.6c0 1.2-.5 2.4-1.3 3.2-.8.9-2.1 1.6-3.3 1.5-.1-1.2.5-2.4 1.3-3.2.8-.9 2.2-1.5 3.3-1.5zM20 17c-.5 1.2-.8 1.7-1.5 2.7-.9 1.4-2.2 3.1-3.9 3.1-1.5 0-1.9-1-3.8-1-2 0-2.5 1-3.9 1-1.6 0-2.9-1.6-3.8-3-2.5-3.7-2.7-8 -1.2-10.4 1.1-1.7 2.8-2.7 4.4-2.7 1.6 0 2.7 1 4 1 1.3 0 2-1 3.9-1 1.5 0 3 .8 4 2.2-3.5 2-3 7 1.8 8.1z"/></svg>
+              </span>
+              Continue with Apple
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="provider-pill">
+              <span class="pp-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>
+              </span>
+              Email me a link
+              <span class="pp-trail"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 3 — 2FA verify (Light)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">3</span>2FA verify · Light</div>
+    <div class="tablet t-light">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-l3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A66D1F"/><stop offset="1" stop-color="#7B4F12"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-l3)" stroke="rgba(43,20,0,0.25)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#FFFFFF">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Two-Factor Authentication</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="detail-content">
+              <h2 class="headline smaller">Enter your 6-digit&nbsp;code.</h2>
+              <p class="subhead">Open your authenticator app (Google Authenticator, Authy, …) and type the current code for <strong style="color:var(--on-surface);">Paradise Repair</strong>.</p>
+
+              <div class="otp-row">
+                <div class="otp-cell filled">3</div>
+                <div class="otp-cell filled">7</div>
+                <div class="otp-cell filled">4</div>
+                <div class="otp-cell filled">2</div>
+                <div class="otp-cell focused"><span class="caret"></span></div>
+                <div class="otp-cell"></div>
+              </div>
+
+              <button class="btn filled full" style="margin-top:6px;">Continue</button>
+
+              <div style="margin-top: 18px; display:flex; gap: 10px; align-items:center;">
+                <span class="muted-meta">Sign-in expires in 4m 32s</span>
+                <div style="flex:1;"></div>
+                <button class="btn text">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="1 4 1 10 7 10"/><path d="M3.5 15A9 9 0 1 0 6 5.3L1 10"/></svg>
+                  Lost 2FA access? Use a backup code
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Trust this device</div>
+          <div class="toggle-row">
+            <div class="tr-text">
+              <div class="tr-title">Trust this device for 30 days</div>
+              <div class="tr-sub">Skip 2FA on this Pixel Tablet for the next month.</div>
+            </div>
+            <span class="switch"></span>
+          </div>
+
+          <div class="sup-h" style="margin-top: 4px;">Resend code</div>
+          <div class="sup-sub">A new code can be sent in <strong style="color: var(--on-surface);">00:18</strong>.</div>
+          <svg class="wavy" viewBox="0 0 320 16" preserveAspectRatio="none">
+            <path d="M0 8 Q 10 0, 20 8 T 40 8 T 60 8 T 80 8 T 100 8 T 120 8 T 140 8 T 160 8 T 180 8 T 200 8 T 220 8 T 240 8 T 260 8 T 280 8 T 300 8 T 320 8"
+                  fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  style="color: var(--primary);"
+                  stroke-dasharray="190 130"/>
+          </svg>
+          <div class="sup-sub" style="font-family: var(--font-mono); font-size:11px;">62%</div>
+
+          <div style="height:1px; background: var(--outline); margin: 4px 0;"></div>
+
+          <div class="sup-h">Trouble?</div>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg>
+            Lost your device?
+          </a>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>
+            Use SMS instead
+          </a>
+          <a class="help-link" href="#">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            Use a backup code
+          </a>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 4 — Register · multi-pane (Light)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">4</span>Register · Owner step · Light</div>
+    <div class="tablet t-light">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-l4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A66D1F"/><stop offset="1" stop-color="#7B4F12"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-l4)" stroke="rgba(43,20,0,0.25)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#FFFFFF">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Account Owner</div>
+          <div class="t-actions">
+            <button class="btn text" style="height:36px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+            <span style="font-size:11.5px; color:var(--on-surface-variant); font-family:var(--font-mono); padding-bottom:4px;">Step 2 of 4</span>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner compact">
+            <div class="detail-content">
+              <div class="top-progress-row">
+                <span class="tp-label">Setting up · 50%</span>
+                <svg class="wavy" viewBox="0 0 480 16" preserveAspectRatio="none">
+                  <path d="M0 8 Q 10 0, 20 8 T 40 8 T 60 8 T 80 8 T 100 8 T 120 8 T 140 8 T 160 8 T 180 8 T 200 8 T 220 8 T 240 8"
+                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                        style="color: var(--primary);"/>
+                  <path d="M240 8 L 480 8"
+                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6"
+                        style="color: var(--outline);"/>
+                </svg>
+              </div>
+
+              <h2 class="headline smaller">Create your admin account</h2>
+              <p class="subhead">You'll be the owner. You can invite teammates after sign-up.</p>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="field">
+                  <span class="field-label">First Name</span>
+                  <span class="field-value">Sergei</span>
+                </div>
+                <div class="field">
+                  <span class="field-label">Last Name</span>
+                  <span class="field-value">Volkov</span>
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="field-label">Email</span>
+                <span class="field-value">sergei@paradise-repair.com</span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E7A3B" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+              </div>
+
+              <div class="field focused">
+                <span class="field-label">Password</span>
+                <span class="field-value" style="letter-spacing:4px;">••••••••••••</span>
+                <span class="caret"></span>
+                <span class="field-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              <div class="strength" aria-label="strength meter — strong">
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+                <span class="seg on-strong"></span>
+              </div>
+              <div class="helper" style="color: var(--success); margin-top:0;">Strong password · Minimum 8 characters</div>
+
+              <button class="btn filled full" style="margin-top: 6px;">
+                Next
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Sign-up steps</div>
+          <div class="step-rail">
+            <div class="sr-row done">
+              <span class="sr-bullet">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <span class="sr-text">
+                <span class="sr-title">Company</span>
+                <span class="sr-cap">Paradise Repair · paradise-repair</span>
+              </span>
+            </div>
+            <div class="sr-row active">
+              <span class="sr-bullet">2</span>
+              <span class="sr-text">
+                <span class="sr-title">Owner</span>
+                <span class="sr-cap">Name, email, password</span>
+              </span>
+            </div>
+            <div class="sr-row">
+              <span class="sr-bullet">3</span>
+              <span class="sr-text">
+                <span class="sr-title">Server URL</span>
+                <span class="sr-cap">Cloud or self-hosted</span>
+              </span>
+            </div>
+            <div class="sr-row">
+              <span class="sr-bullet">4</span>
+              <span class="sr-text">
+                <span class="sr-title">Confirm</span>
+                <span class="sr-cap">Review &amp; create account</span>
+              </span>
+            </div>
+          </div>
+
+          <div style="height:1px; background: var(--outline); margin: 6px 0 0;"></div>
+          <div class="sup-h">Why we ask</div>
+          <div class="sup-sub">The owner has full admin rights and is the recovery contact for this shop. You can transfer ownership later under <strong style="color:var(--on-surface);">Settings → Team</strong>.</div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       FRAME 5 — Biometric offer / Done (Light)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-tag"><span class="num">5</span>Biometric offer · Light</div>
+    <div class="tablet t-light">
+      <span class="cam"></span>
+      <div class="body">
+
+        <aside class="rail">
+          <div class="logo-cookie">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <defs><linearGradient id="cookie-44-l5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A66D1F"/><stop offset="1" stop-color="#7B4F12"/></linearGradient></defs>
+              <path d="M22 2 L33 5 L41 13 L43 24 L38 33 L29 40 L18 42 L8 38 L3 28 L4 17 L13 6 Z" fill="url(#cookie-44-l5)" stroke="rgba(43,20,0,0.25)" stroke-width="1"/>
+              <text x="22" y="28" text-anchor="middle" font-family="Barlow Condensed, Inter" font-weight="700" font-size="20" fill="#FFFFFF">B</text>
+            </svg>
+          </div>
+          <div class="rail-item active">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div>
+            <div class="lbl">Sign in</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 4.7 1.2c-.4.9-1.7 1.3-1.7 2.6"/><circle cx="12" cy="17" r=".7" fill="currentColor"/></svg></div>
+            <div class="lbl">Help</div>
+          </div>
+          <div class="rail-item">
+            <div class="icon-bg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+            <div class="lbl">Settings</div>
+          </div>
+          <div class="spacer"></div>
+          <div class="avatar-slot" style="background:var(--primary); color:var(--on-primary); border-style:solid; border-color: var(--primary); font-family:var(--font-display);">
+            SV
+          </div>
+        </aside>
+
+        <div class="topbar">
+          <div class="t-title">Welcome to Paradise Repair</div>
+          <div class="t-actions">
+            <span class="muted-meta" style="padding-bottom:4px;">Signed in as <strong style="color:var(--on-surface);">sergei@paradise-repair.com</strong></span>
+          </div>
+        </div>
+
+        <main class="detail">
+          <div class="detail-inner">
+            <div class="split-center" style="max-width: 640px;">
+              <div class="scl-left">
+                <div class="success-cookie-wrap">
+                  <svg viewBox="0 0 96 96" width="96" height="96">
+                    <defs>
+                      <linearGradient id="cookie-success-l" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="#3FA66B"/>
+                        <stop offset="1" stop-color="#0E7A3B"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M48 4 L72 10 L88 28 L94 52 L82 74 L62 90 L36 94 L16 82 L4 60 L8 36 L28 14 Z"
+                          fill="url(#cookie-success-l)" stroke="rgba(8,22,14,0.25)" stroke-width="1.5"/>
+                    <polyline points="28 50 42 64 70 32" fill="none"
+                              stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <h2 class="headline">You're in.</h2>
+                <p class="subhead" style="margin-bottom:16px;">Where would you like to start?</p>
+              </div>
+              <div class="scl-right">
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--primary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <path d="M18 22h20l-2 18H20z" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linejoin="round"/>
+                      <path d="M22 22a6 6 0 0 1 12 0" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Open POS</div>
+                    <div class="sc-sub">Ring a sale or scan a barcode</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--secondary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <rect x="16" y="18" width="24" height="22" rx="2" fill="none" stroke="var(--secondary)" stroke-width="2.4"/>
+                      <path d="M21 25h14M21 30h10M21 35h8" stroke="var(--secondary)" stroke-width="2.4" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Tickets</div>
+                    <div class="sc-sub">12 active · 3 awaiting parts</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="shortcut-card">
+                  <div class="sc-cookie">
+                    <svg viewBox="0 0 56 56" width="56" height="56">
+                      <path d="M28 3 L42 7 L51 17 L54 30 L48 42 L36 51 L22 53 L10 47 L4 36 L5 22 L15 10 Z" fill="var(--tertiary-container)" stroke="var(--outline)" stroke-width="1"/>
+                      <path d="M16 22l12-6 12 6v14l-12 6-12-6z" fill="none" stroke="var(--tertiary)" stroke-width="2.4" stroke-linejoin="round"/>
+                      <path d="M16 22l12 6 12-6M28 28v14" fill="none" stroke="var(--tertiary)" stroke-width="2.4" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <div class="sc-text">
+                    <div class="sc-title">Inventory</div>
+                    <div class="sc-sub">2,481 SKUs · 4 low-stock alerts</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--on-surface-variant)" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="support">
+          <div class="sup-h">Last sign-in</div>
+          <div class="sup-sub">Just now · Pixel Tablet · 192.168.1.4 · Connection secured (TLS).</div>
+
+          <div class="sup-h" style="margin-top: 12px;">Tip</div>
+          <div class="sup-sub">Biometric unlock skips the password next time. Toggle in <strong style="color:var(--on-surface);">Settings → Security</strong>.</div>
+        </aside>
+
+      </div>
+
+      <!-- ── Biometric prompt: focused modal over dim scrim. Primary action after sign-in. ── -->
+      <div class="bio-scrim">
+        <div class="bio-modal">
+          <div class="bio-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--on-primary-container)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 7V6a3 3 0 0 1 3-3h1"/>
+              <path d="M19 7V6a3 3 0 0 0-3-3h-1"/>
+              <path d="M5 17v1a3 3 0 0 0 3 3h1"/>
+              <path d="M19 17v1a3 3 0 0 1-3 3h-1"/>
+              <path d="M9 11v2"/>
+              <path d="M15 11v2"/>
+              <path d="M9 16c.7.7 1.8 1.2 3 1.2s2.3-.5 3-1.2"/>
+            </svg>
+          </div>
+          <h3>Enable biometric unlock?</h3>
+          <p>Auto-detects Face Unlock or fingerprint, whichever your tablet supports. Encrypted token stays on device — disable any time in Settings.</p>
+          <div class="bio-actions">
+            <button class="btn filled">Enable</button>
+            <button class="btn outlined">Not now</button>
+          </div>
+          <div class="bio-foot">You can also keep using your password.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">
+  Bizarre CRM · Android tablet · Material 3 Expressive α · 5 frames × 2 themes · Pixel Tablet 1280 × 800 · MEDIUM window class
+</div>
+
+</body>
+</html>

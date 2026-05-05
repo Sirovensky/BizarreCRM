@@ -1,0 +1,549 @@
+import { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useUiStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
+import { ticketApi } from '@/api/endpoints';
+import { useSettings } from '@/hooks/useSettings';
+import { cn } from '@/utils/cn';
+import {
+  LayoutDashboard,
+  Wrench,
+  Users,
+  Package,
+  FileText,
+  UserPlus,
+  Calendar,
+  ClipboardList,
+  ShoppingCart,
+  BarChart3,
+  MessageSquare,
+  UserCog,
+  Settings,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronDown,
+  ChevronRight,
+  Receipt,
+  Store,
+  ListTodo,
+  Kanban,
+  Megaphone,
+  Target,
+  TrendingUp,
+  Gift,
+  Star,
+  Phone,
+  DollarSign,
+  BookOpen,
+  Smartphone,
+  Repeat,
+  Award,
+  Trophy,
+} from 'lucide-react';
+
+interface NavItem {
+  label: string;
+  path: string;
+  icon: React.ElementType;
+  badge?: number;
+  adminOnly?: boolean;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+}
+
+// @audit-fixed: marked the Admin section as `adminOnly`. Previously every
+// technician saw "Employees" and "Reports" in the sidebar even though both
+// pages are admin-gated server-side, producing a dead-click → 403 toast.
+// The Sidebar component below filters sections + items by `user.role`.
+const navSections: NavSection[] = [
+  {
+    title: 'Main',
+    items: [
+      { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+      { label: 'POS / Check-In', path: '/pos', icon: ShoppingCart },
+      { label: 'Tickets', path: '/tickets', icon: Wrench },
+      { label: 'Customers', path: '/customers', icon: Users },
+    ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { label: 'Inventory', path: '/inventory', icon: Package },
+      { label: 'Catalog', path: '/catalog', icon: BookOpen },
+      { label: 'Invoices', path: '/invoices', icon: FileText },
+      { label: 'Expenses', path: '/expenses', icon: Receipt },
+      { label: 'Purchase Orders', path: '/purchase-orders', icon: Package },
+      { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
+      { label: 'Loaners', path: '/loaners', icon: Smartphone },
+      { label: 'Gift Cards', path: '/gift-cards', icon: Gift },
+      { label: 'Subscriptions', path: '/subscriptions', icon: Repeat },
+    ],
+  },
+  {
+    title: 'Communications',
+    items: [
+      { label: 'Messages', path: '/communications', icon: MessageSquare },
+      { label: 'Voice Calls', path: '/voice', icon: Phone },
+      { label: 'Leads', path: '/leads', icon: UserPlus },
+      { label: 'Pipeline', path: '/pipeline', icon: Kanban },
+      { label: 'Calendar', path: '/calendar', icon: Calendar },
+      { label: 'Estimates', path: '/estimates', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Marketing & Growth',
+    items: [
+      { label: 'Campaigns', path: '/marketing/campaigns', icon: Megaphone },
+      { label: 'Segments', path: '/marketing/segments', icon: Target },
+      { label: 'NPS Trend', path: '/marketing/nps-trend', icon: TrendingUp },
+      { label: 'Referrals', path: '/marketing/referrals', icon: Gift },
+      { label: 'Reviews', path: '/reviews', icon: Star },
+    ],
+  },
+  // FA-L3: Team + Billing sections were routed but missing from the sidebar,
+  // making them effectively invisible unless staff memorized the URLs.
+  // WEB-FL-006 (Fixer-B14): added Performance Reviews + Goals so the
+  // /team/reviews and /team/goals routes have a discoverable entry.
+  {
+    title: 'Team',
+    items: [
+      { label: 'My Queue', path: '/team/my-queue', icon: ClipboardList },
+      { label: 'Shifts', path: '/team/shifts', icon: Calendar },
+      { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
+      { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
+      { label: 'Goals', path: '/team/goals', icon: Trophy },
+      { label: 'Payroll', path: '/team/payroll', icon: DollarSign, adminOnly: true },
+      { label: 'Performance Reviews', path: '/team/reviews', icon: Award, adminOnly: true },
+    ],
+  },
+  {
+    title: 'Billing',
+    adminOnly: true,
+    items: [
+      { label: 'Payment Links', path: '/billing/payment-links', icon: FileText, adminOnly: true },
+      { label: 'Aging', path: '/billing/aging', icon: FileText, adminOnly: true },
+      { label: 'Dunning', path: '/billing/dunning', icon: FileText, adminOnly: true },
+    ],
+  },
+  {
+    title: 'Admin',
+    adminOnly: true,
+    items: [
+      { label: 'Employees', path: '/employees', icon: UserCog, adminOnly: true },
+      { label: 'Reports', path: '/reports', icon: BarChart3, adminOnly: true },
+      { label: 'Roles & Permissions', path: '/team/roles', icon: UserCog, adminOnly: true },
+    ],
+  },
+];
+
+function SidebarTooltip({ label, show }: { label: string; show: boolean }) {
+  if (!show) return null;
+  return (
+    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg dark:bg-surface-100 dark:text-surface-900">
+      {label}
+      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-surface-900 dark:border-r-surface-100" />
+    </div>
+  );
+}
+
+export function Sidebar() {
+  const { sidebarCollapsed, toggleSidebar } = useUiStore();
+  // @audit-fixed: filter nav sections + items by role so technicians don't see
+  // admin-only links (Employees, Reports, Settings). Server still enforces auth
+  // — this just removes the broken-click experience.
+  //
+  // SCAN-1145: shared ROLE_PERMISSIONS grants manager every permission except
+  // a handful of user-admin + destructive ones (see shared/constants/permissions).
+  // Treat manager like admin for sidebar filtering so the Settings + Reports
+  // sections are visible to them; server-side `requirePermission` still gates
+  // the specific endpoints that stay admin-only.
+  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
+  const visibleSections = navSections
+    .filter((section) => !section.adminOnly || isAdminOrManager)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.adminOnly || isAdminOrManager),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  return (
+    <aside
+      data-app-chrome="true"
+      className={cn(
+        'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-surface-200 bg-white transition-all duration-200 dark:border-surface-800 dark:bg-surface-900',
+        sidebarCollapsed ? 'w-16' : 'w-64'
+      )}
+    >
+      {/* App Name */}
+      <div
+        className={cn(
+          'flex h-16 shrink-0 items-center border-b border-surface-200 dark:border-surface-800',
+          sidebarCollapsed ? 'justify-center px-2' : 'px-5'
+        )}
+      >
+        {!sidebarCollapsed && (
+          <NavLink
+            to="/"
+            className="truncate text-lg font-bold tracking-tight text-surface-900 hover:text-primary-500 dark:text-surface-50 dark:hover:text-primary-500 transition-colors"
+          >
+            Bizarre CRM
+          </NavLink>
+        )}
+      </div>
+
+      {/* Navigation Items — WEB-FX-010: `aria-label` on the <nav> landmark so
+          screen readers can distinguish primary navigation from any other nav
+          regions (rotor / NVDA landmarks shortcut). `role="navigation"` is
+          implicit on <nav> so we omit it to pass jsx-a11y/no-redundant-roles. */}
+      <nav
+        aria-label="Primary navigation"
+        className="flex-1 overflow-y-auto overflow-x-hidden py-3"
+      >
+        {sidebarCollapsed ? (
+          <ul className="flex flex-col gap-0.5 px-2">
+            {visibleSections.flatMap((s) => s.items).map((item) => (
+              <SidebarItem key={item.path} item={item} collapsed />
+            ))}
+          </ul>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {visibleSections.map((section) => (
+              <SidebarSection key={section.title} section={section} />
+            ))}
+          </div>
+        )}
+      </nav>
+
+      {/* Recent Views */}
+      <RecentViews collapsed={sidebarCollapsed} />
+
+      {/* My Queue Widget */}
+      <MyQueueWidget collapsed={sidebarCollapsed} />
+
+      {/* Bottom Section */}
+      <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-800">
+        {/* Settings — admin + manager (server enforces /settings writes by role) */}
+        {isAdminOrManager && (
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              cn(
+                'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
+                  : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
+                sidebarCollapsed && 'justify-center px-0'
+              )
+            }
+          >
+            <Settings className="h-5 w-5 shrink-0" />
+            {!sidebarCollapsed && <span className="ml-3 truncate">Settings</span>}
+            {sidebarCollapsed && (
+              <SidebarTooltipWrapper label="Settings" />
+            )}
+          </NavLink>
+        )}
+
+        {/* Collapse Toggle */}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className={cn(
+            'mt-1 flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-50 hover:text-surface-600 dark:text-surface-500 dark:hover:bg-surface-800/60 dark:hover:text-surface-300',
+            sidebarCollapsed && 'justify-center px-0'
+          )}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {sidebarCollapsed ? (
+            <ChevronsRight className="h-5 w-5 shrink-0" />
+          ) : (
+            <>
+              <ChevronsLeft className="h-5 w-5 shrink-0" />
+              <span className="ml-3 truncate">Collapse</span>
+            </>
+          )}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// WEB-FAE-003: namespace `recent_views` per user.id so logging out User A and
+// signing in User B on the same browser doesn't leak A's last 20 customers /
+// tickets into B's sidebar. The User type has no `tenant_id` field
+// (packages/shared/src/types/employee.ts:1), so per-user is the strongest
+// scope we can express client-side; cross-tenant leak follows for free since
+// a single user.id can't span tenants. The `auth-cleared` listener below
+// also wipes any persisted `recent_views:*` keys + the legacy unscoped key.
+export function recentViewsKey(userId: number | null | undefined): string {
+  return userId ? `recent_views:u${userId}` : 'recent_views';
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try {
+      // Drop the legacy unscoped key (pre-fix data) and every per-user
+      // namespaced entry so a kiosk handoff doesn't expose the previous
+      // user's recent customer/ticket labels.
+      localStorage.removeItem('recent_views');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('recent_views:')) localStorage.removeItem(k);
+      }
+    } catch (err) {
+      console.warn('[Sidebar] recent_views auth-cleared wipe failed', err);
+    }
+  });
+}
+
+function RecentViews({ collapsed }: { collapsed: boolean }) {
+  const location = useLocation();
+  const userId = useAuthStore((s) => s.user?.id);
+  const [items, setItems] = useState<{ type: string; id: number; label: string; path: string }[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
+      if (!Array.isArray(stored)) return;
+      // Validate each entry — without this, a corrupted or XSS-injected
+      // `path` field would flow straight into <NavLink to={item.path}>.
+      // WEB-FD-001 (Fixer-RRR 2026-04-25): also lock down `type` to a small
+      // allowlist (used as React `key` and to drive future icon mapping) and
+      // cap `label` length + strip control chars so a malicious localStorage
+      // writer cannot phish via the truncated collapsed-mode label.
+      const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
+      const safe: { type: string; id: number; label: string; path: string }[] = [];
+      for (const raw of stored.slice(0, 5)) {
+        if (!raw || typeof raw !== 'object') continue;
+        const it = raw as Record<string, unknown>;
+        const path = it.path;
+        if (typeof path !== 'string' || !path.startsWith('/')) continue;
+        // Reject paths with embedded protocol/host (e.g. "/\\evil.com") that
+        // some browsers normalize away from the leading slash.
+        if (path.startsWith('//') || path.includes('\\')) continue;
+        const type = typeof it.type === 'string' && ALLOWED_TYPES.has(it.type) ? it.type : '';
+        const rawLabel = typeof it.label === 'string' ? it.label : '';
+        // Strip C0/DEL control chars + cap at 64 chars so collapsed-mode
+        // 6-char slice cannot be primed with control chars or oversized
+        // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
+        // eslint-disable-next-line no-control-regex
+        const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
+        safe.push({
+          type,
+          id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
+          label,
+          path,
+        });
+      }
+      setItems(safe);
+    } catch (err) {
+      // Corrupted recent_views JSON or storage unavailable — clear list silently.
+      console.warn('[Sidebar] recent_views parse failed', err);
+    }
+  }, [location.pathname, userId]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="shrink-0 border-t border-surface-200 dark:border-surface-800 px-2 py-2">
+      {!collapsed && (
+        <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500">
+          Recent
+        </p>
+      )}
+      <ul className="space-y-0.5">
+        {items.map((item) => (
+          <li key={`${item.type}-${item.id}`}>
+            <NavLink
+              to={item.path}
+              className={({ isActive }) =>
+                cn(
+                  'group relative flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                  isActive
+                    ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
+                    : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
+                  collapsed && 'justify-center px-0'
+                )
+              }
+            >
+              {!collapsed && (
+                <span className="truncate">{item.label}</span>
+              )}
+              {collapsed && (
+                <>
+                  <span className="text-[10px]">{item.label.slice(0, 6)}</span>
+                  <SidebarTooltipWrapper label={item.label} />
+                </>
+              )}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const { getSetting } = useSettings();
+
+  // CROSS1: hide when ticket assignment feature is off (default)
+  const assignmentEnabled = getSetting('ticket_all_employees_view_all', '1') === '0';
+
+  const { data } = useQuery({
+    queryKey: ['my-queue', user?.id],
+    queryFn: () => ticketApi.myQueue(),
+    enabled: !!user && assignmentEnabled,
+    refetchInterval: 30_000,
+    // Avoid a redundant refetch on every sidebar remount — the 30 s interval
+    // is already covering freshness; anything <25 s old is still useful.
+    staleTime: 25_000,
+  });
+
+  const queue = data?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
+
+  if (!assignmentEnabled) return null;
+  if (queue.total === 0) return null;
+
+  return (
+    <div className="shrink-0 border-t border-surface-200 dark:border-surface-800 px-2 py-2">
+      <button
+        onClick={() => navigate('/tickets?assigned_to=me')}
+        className={cn(
+          'group relative flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/60',
+          collapsed && 'justify-center px-0'
+        )}
+        title="My Queue"
+      >
+        <ListTodo className="h-5 w-5 shrink-0 text-brand-500" />
+        {!collapsed && (
+          <div className="ml-3 flex-1 text-left">
+            <p className="text-xs font-semibold text-surface-700 dark:text-surface-200">My Queue</p>
+            <p className="text-[10px] text-surface-500 dark:text-surface-400">
+              {queue.open > 0 && <span>{queue.open} open</span>}
+              {queue.open > 0 && queue.in_progress > 0 && <span>, </span>}
+              {queue.in_progress > 0 && <span>{queue.in_progress} in progress</span>}
+              {(queue.open > 0 || queue.in_progress > 0) && queue.waiting_parts > 0 && <span>, </span>}
+              {queue.waiting_parts > 0 && <span>{queue.waiting_parts} waiting parts</span>}
+            </p>
+          </div>
+        )}
+        {!collapsed && (
+          <span className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+            {queue.total}
+          </span>
+        )}
+        {collapsed && (
+          <>
+            <span className="absolute right-1 top-1 h-4 min-w-[16px] rounded-full bg-brand-500 px-1 text-[9px] font-bold leading-4 text-white text-center">
+              {queue.total}
+            </span>
+            <SidebarTooltipWrapper label={`My Queue (${queue.total})`} />
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function SidebarTooltipWrapper({ label }: { label: string }) {
+  return (
+    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-surface-100 dark:text-surface-900">
+      {label}
+      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-surface-900 dark:border-r-surface-100" />
+    </div>
+  );
+}
+
+function SidebarSection({ section }: { section: NavSection }) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-300"
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {section.title}
+      </button>
+      {expanded && (
+        <ul className="flex flex-col gap-0.5 px-2">
+          {section.items.map((item) => (
+            <SidebarItem key={item.path} item={item} collapsed={false} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  const Icon = item.icon;
+
+  return (
+    <li>
+      <NavLink
+        to={item.path}
+        end={item.path === '/'}
+        className={({ isActive }) =>
+          cn(
+            'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+            isActive
+              ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400'
+              : 'text-surface-600 hover:bg-surface-50 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-100',
+            collapsed && 'justify-center px-0'
+          )
+        }
+      >
+        {({ isActive }) => (
+          <>
+            {/* Active indicator bar */}
+            {isActive && (
+              <div className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-brand-500" />
+            )}
+
+            <Icon className={cn('h-5 w-5 shrink-0', isActive && 'text-brand-600 dark:text-brand-400')} />
+
+            {!collapsed && (
+              <>
+                <span className="ml-3 flex-1 truncate">{item.label}</span>
+
+                {item.badge != null && item.badge > 0 && (
+                  <span
+                    className={cn(
+                      'ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none',
+                      isActive
+                        ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300'
+                        : 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300'
+                    )}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </>
+            )}
+
+            {/* Badge dot when collapsed */}
+            {collapsed && item.badge != null && item.badge > 0 && (
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-500" />
+            )}
+
+            {/* Tooltip when collapsed */}
+            {collapsed && (
+              <SidebarTooltipWrapper label={item.label} />
+            )}
+          </>
+        )}
+      </NavLink>
+    </li>
+  );
+}

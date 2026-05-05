@@ -1,0 +1,63 @@
+area: imports
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/import.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+auth: bearer
+safety_notes:
+  - Never document real external API keys.
+  - Nuclear/factory wipe endpoints must stay strongly confirmed and permission-gated.
+  - RepairDesk typo field compatibility must be preserved by importer code.
+endpoints:
+  - method: POST
+    path: /api/v1/import/repairdesk/test-connection
+    purpose: Test RepairDesk connection.
+    request:
+      api_key: string
+  - method: POST
+    path: /api/v1/import/repairdesk/start
+    purpose: Start RepairDesk import.
+    request:
+      api_key: string
+      entities: string[]
+  - method: GET
+    path: /api/v1/import/repairdesk/status
+    purpose: Get RepairDesk import status.
+  - method: POST
+    path: /api/v1/import/repairshopr/test-connection
+    purpose: Test RepairShopr connection.
+    request:
+      api_key: string
+      subdomain: string
+  - method: POST
+    path: /api/v1/import/repairshopr/start
+    purpose: Start RepairShopr import.
+    request:
+      api_key: string
+      subdomain: string
+      entities: string[]
+  - method: POST
+    path: /api/v1/import/myrepairapp/test-connection
+    purpose: Test MyRepairApp connection.
+    request:
+      api_key: string
+  - method: POST
+    path: /api/v1/import/myrepairapp/start
+    purpose: Start MyRepairApp import.
+    request:
+      api_key: string
+      entities: string[]
+  - method: GET
+    path: /api/v1/import/oauth/status
+    purpose: Get OAuth import connection status.
+  - method: GET
+    path: /api/v1/import/oauth/authorize-url
+    purpose: Get OAuth authorization URL.
+  - method: POST
+    path: /api/v1/import/factory-wipe
+    purpose: Perform strongly confirmed data wipe.
+    request:
+      confirm: string
+      password: string
+      categories: object

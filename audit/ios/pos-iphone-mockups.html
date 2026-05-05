@@ -1,0 +1,3306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre POS — iPhone mockups (Liquid Glass, cream)</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     BIZARRE POS — iPhone mockups
+     Built from docs/pos-redesign-plan.md §3 + 7 parallel research agents.
+     Cream primary #fdeed0 on warm-dark-glass. iOS 26 Liquid Glass chrome.
+     iOS-native patterns (NOT a port of the Android mockups):
+       • .searchable(placement: .navigationBarDrawer(displayMode: .always))
+       • .safeAreaInset(edge: .bottom) tender CTA, 56pt min, cream fill
+       • No FAB. No bottom-docked search.
+       • Sheet detents for mid-flow editors.
+       • Barlow Condensed hero numerics.
+     ═════════════════════════════════════════════════════════════════════ */
+  :root {
+    --bg-deep: #050403;
+    --bg: #0c0b09;
+    --surface-solid: #141211;
+    --surface-elev: #1b1917;
+    --surface-glass: rgba(28, 25, 22, 0.48);
+    --outline: rgba(255, 250, 240, 0.08);
+    --outline-bright: rgba(255, 250, 240, 0.14);
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --primary-soft: rgba(253, 238, 208, 0.14);
+    --on-primary: #2b1400;
+    --on: #f2eef9;
+    --muted: #a8a4a0;
+    --muted-2: #7e7a76;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --on-success-chip: #145c37;
+    --on-warning-chip: #7a5200;
+    --radius-lg: 22px;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.06), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.03), transparent 60%),
+      var(--bg-deep);
+    color: var(--on);
+    font-family: var(--font-text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 32px 16px 6px; margin: 0;
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #d4cfc8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: var(--muted);
+    padding: 0 24px 16px; font-size: 14px; line-height: 1.55;
+    max-width: 780px; margin: 0 auto;
+  }
+  .intro code {
+    background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 12px; color: var(--primary);
+  }
+  .section-label {
+    text-align: center; color: var(--muted-2);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 28px 16px 12px;
+  }
+  .frame-caption {
+    text-align: center; color: var(--muted);
+    font-size: 12.5px; padding-bottom: 10px; letter-spacing: 0.02em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 36px; padding: 12px 24px 56px;
+    max-width: 1800px; margin: 0 auto;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     iPhone 16 Pro frame (390 × 844)
+     ───────────────────────────────────────────────────────────── */
+  .phone {
+    width: 390px; height: 844px; margin: 0 auto;
+    background: var(--bg);
+    border: 7px solid #0a080d;
+    border-radius: 52px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 30px 80px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.05);
+  }
+  .phone::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 22% 0%, rgba(253,238,208,0.05), transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(253,238,208,0.025), transparent 50%);
+    pointer-events: none;
+  }
+  .island {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 124px; height: 36px; background: #000;
+    border-radius: 22px; z-index: 50;
+  }
+  .home-indicator {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    width: 136px; height: 5px; background: rgba(255,255,255,0.5); border-radius: 3px; z-index: 45;
+  }
+  .phone-body {
+    width: 100%; height: 100%;
+    padding-top: 58px;
+    display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Liquid Glass primitives (iOS 26 approximation).
+     Values from research agent 1: blur(20) saturate(180%) over white 0.25
+     + top-edge highlight + hairline gradient border.
+     ───────────────────────────────────────────────────────────── */
+  .glass {
+    position: relative;
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-radius: var(--radius);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.12),
+      0 8px 22px rgba(0,0,0,0.28);
+  }
+  .glass::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg,
+      rgba(255,255,255,0.22),
+      rgba(255,255,255,0.04) 38%,
+      rgba(253,238,208,0.14) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+  }
+  .glass::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%);
+    pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Nav chrome — topbar + .searchable nav-bar-drawer pattern
+     ───────────────────────────────────────────────────────────── */
+  .nav {
+    position: relative;
+    padding: 8px 16px 4px;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(20,18,15,0.55);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .nav-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0 6px;
+  }
+  .nav-title { font-size: 17px; font-weight: 700; letter-spacing: -0.015em; }
+  .nav-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .nav-back {
+    color: var(--primary);
+    font-size: 17px; font-weight: 500;
+    display: flex; align-items: center; gap: 3px;
+    cursor: pointer;
+  }
+  .nav-ellipsis {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-weight: 700; font-size: 13px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 12.5px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  /* Search bar inside nav drawer — .navigationBarDrawer(displayMode: .always) */
+  .nav-search {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    font-size: 14px; color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .nav-search .s-icon { font-size: 14px; }
+  .nav-search .s-cap {
+    margin-left: auto; color: var(--primary);
+    font-size: 15px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Buttons + chips
+     ───────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 0; border-radius: 14px;
+    padding: 14px 18px;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.75),
+      0 10px 26px rgba(253,238,208,0.10);
+  }
+  .btn.secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--on);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: none;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--on);
+    border: 1px dashed rgba(255,255,255,0.14);
+    box-shadow: none;
+  }
+  .btn.destructive {
+    background: rgba(226,82,108,0.12);
+    color: var(--error);
+    border: 1px solid rgba(226,82,108,0.35);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 99px;
+    font-size: 11px; font-weight: 600;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .chip.primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+  }
+  .chip.success {
+    background: rgba(52,196,126,0.14);
+    border-color: rgba(52,196,126,0.38);
+    color: var(--success);
+  }
+  .chip.teal {
+    background: rgba(77,184,201,0.14);
+    border-color: rgba(77,184,201,0.38);
+    color: var(--teal);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Cart strip + rows
+     ───────────────────────────────────────────────────────────── */
+  .cart-strip {
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    background: rgba(32,29,26,0.35);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-strip .avatar-mini {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cart-strip .cs-name { font-size: 13.5px; font-weight: 700; }
+  .cart-strip .cs-meta { font-size: 11px; color: var(--muted); }
+  .cart-strip .cs-count {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display); font-weight: 600;
+  }
+  .cart-strip .cs-total {
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Catalog tiles */
+  .chip-row {
+    display: flex; gap: 8px; padding: 10px 16px 8px;
+    overflow-x: auto;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0;
+    padding: 7px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .filter-chip.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+  }
+
+  .catalog {
+    flex: 1; overflow-y: auto;
+    padding: 4px 16px 16px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    align-content: start;
+  }
+  .catalog::-webkit-scrollbar { display: none; }
+  .tile {
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 110px;
+    position: relative;
+  }
+  .tile .t-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .tile .t-name {
+    font-size: 13px; font-weight: 600;
+    line-height: 1.25;
+  }
+  .tile .t-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: auto;
+  }
+  .tile .t-price {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+  .tile .t-stock { font-size: 10.5px; color: var(--success); }
+  .tile .t-stock.low { color: var(--warning); }
+  .tile .t-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--primary); color: var(--on-primary);
+    font-size: 10px; font-weight: 800;
+    padding: 2px 7px; border-radius: 99px;
+  }
+
+  /* Cart rows */
+  .cart-rows {
+    flex: 1; overflow-y: auto;
+    padding: 4px 0;
+  }
+  .cart-rows::-webkit-scrollbar { display: none; }
+  .cart-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-row .cr-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .cart-row .cr-name { font-size: 14px; font-weight: 600; }
+  .cart-row .cr-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .cart-row .cr-price {
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+
+  /* Safe-area tender section */
+  .tender-safearea {
+    padding: 10px 16px 26px;
+    background: linear-gradient(180deg, rgba(20,18,15,0.0), rgba(20,18,15,0.88) 35%);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .totals-row {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px; color: var(--muted);
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-line {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 8px 0 10px;
+  }
+  .total-line .tl-label {
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .total-line .tl-amount {
+    font-family: var(--font-display);
+    font-size: 32px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+    letter-spacing: -0.02em;
+  }
+  .tender-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 18px;
+    border-radius: 18px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 1px solid rgba(255,255,255,0.30);
+    font-size: 17px; font-weight: 800;
+    letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
+    min-height: 56px;
+  }
+  .tender-btn:active {
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.40),
+      0 4px 10px rgba(253,238,208,0.10);
+    transform: scale(0.99);
+  }
+  .tender-btn .tb-amount {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .tender-btn[disabled], .tender-btn.disabled {
+    opacity: 0.45;
+    box-shadow: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Sheet — detent bottom-sheet
+     ───────────────────────────────────────────────────────────── */
+  .sheet-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    z-index: 30;
+  }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding-bottom: 22px;
+    background: rgba(26,22,18,0.85);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-top-left-radius: 28px; border-top-right-radius: 28px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 -24px 60px rgba(0,0,0,0.55);
+    z-index: 40;
+  }
+  .sheet-handle {
+    width: 40px; height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.22);
+    margin: 10px auto 6px;
+  }
+  .sheet-title {
+    padding: 6px 20px 4px;
+    font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  }
+  .sheet-sub {
+    padding: 0 20px 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  .sheet-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 14px;
+  }
+  .stepper {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .stepper button {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--on); font-size: 18px; font-weight: 700;
+  }
+  .stepper button.plus {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: 0 6px 16px rgba(253,238,208,0.2);
+  }
+  .stepper .val {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 26px; text-align: center;
+  }
+
+  /* Section label */
+  .sect-label {
+    color: var(--muted-2);
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 16px 4px;
+  }
+
+  /* Path row (retail / repair / credit) as flat rows, not 4 big tiles */
+  .path-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    margin: 0 16px 8px;
+    min-height: 60px;
+  }
+  .path-row.primary {
+    border-color: rgba(253,238,208,0.35);
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.06), transparent),
+      var(--surface-solid);
+    box-shadow: 0 8px 22px rgba(253,238,208,0.08);
+  }
+  .path-row .p-icon {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .path-row.primary .p-icon {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: 0 6px 16px rgba(253,238,208,0.25);
+  }
+  .path-row .p-name { font-size: 14px; font-weight: 700; }
+  .path-row .p-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .path-row .p-chev { color: var(--muted); font-size: 18px; }
+  .path-row.primary .p-chev { color: var(--primary); }
+
+  /* Tender method grid */
+  .tender-methods {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 12px 16px;
+  }
+  .method {
+    position: relative;
+    padding: 18px 12px 16px;
+    border-radius: 16px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.09), transparent 65%),
+      rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
+    text-align: center;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 6px 16px rgba(0,0,0,0.20);
+    overflow: hidden;
+  }
+  .method::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 45%, rgba(253,238,208,0.10) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .method.selected {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.50),
+      0 6px 16px rgba(253,238,208,0.10),
+      0 0 0 1px rgba(253,238,208,0.35);
+  }
+  .method.selected::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.55), rgba(253,238,208,0.25) 50%, rgba(255,255,255,0.35) 100%);
+  }
+  /* Cream halo behind selected tile — dimmed */
+  .method.selected::after {
+    content: ""; position: absolute; inset: -8px; border-radius: 24px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.08), transparent 70%);
+    pointer-events: none; z-index: -1;
+  }
+  .method .m-icon { font-size: 24px; margin-bottom: 5px; }
+  .method.selected .m-icon { color: var(--on-primary); }
+  .method .m-name { font-size: 13.5px; font-weight: 800; letter-spacing: -0.01em; }
+  .method .m-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .method.selected .m-sub { color: rgba(43,20,0,0.72); }
+
+  /* Quick-amount strip — above numpad — glassy capsules */
+  .quick-amounts {
+    display: flex; gap: 6px; padding: 10px 16px 4px;
+    overflow-x: auto;
+  }
+  .quick-amounts::-webkit-scrollbar { display: none; }
+  .quick-amount {
+    flex: 1; min-width: 68px;
+    padding: 11px 6px;
+    border-radius: 99px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.11);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+    letter-spacing: -0.01em;
+    min-height: 44px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .quick-amount.selected {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.15), transparent 65%),
+      rgba(253,238,208,0.06);
+    border-color: rgba(253,238,208,0.40);
+    color: var(--primary);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      0 4px 12px rgba(253,238,208,0.06);
+  }
+
+  /* Numpad — tactile Liquid Glass keys */
+  .numpad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    padding: 10px 16px 16px;
+  }
+  .numkey {
+    min-height: 56px;
+    padding: 14px;
+    border-radius: 14px;
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.05), transparent 60%),
+      rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.13);
+    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    color: var(--on);
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.18),
+      inset 0 -1px 0 rgba(0,0,0,0.18),
+      0 4px 10px rgba(0,0,0,0.18);
+    /* Cream ambient glow — always-on subtle warmth */
+    text-shadow: 0 0 18px rgba(253,238,208,0.10);
+  }
+  .numkey::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 50%);
+    pointer-events: none;
+  }
+  /* Active/pressed simulation */
+  .numkey:active {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.18), transparent 60%),
+      rgba(253,238,208,0.08);
+    border-color: rgba(253,238,208,0.30);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      0 2px 6px rgba(0,0,0,0.22),
+      0 0 0 2px rgba(253,238,208,0.14);
+    color: var(--primary);
+  }
+  .numkey.backspace { color: var(--error); font-family: var(--font-text); font-size: 18px; }
+  .numkey.dot { color: var(--muted); }
+
+  /* Received / change panel — Liquid Glass card with specular */
+  .cash-panel {
+    margin: 10px 16px 2px;
+    padding: 18px 20px;
+    border-radius: 18px;
+    position: relative;
+    background: rgba(32,29,26,0.60);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.12);
+    display: flex; justify-content: space-between; align-items: baseline;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.14),
+      0 10px 26px rgba(0,0,0,0.30);
+    overflow: hidden;
+  }
+  .cash-panel::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 40%, rgba(253,238,208,0.14) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .cash-panel::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.09), transparent);
+    pointer-events: none;
+  }
+  .cash-panel .cp-col { position: relative; z-index: 2; }
+  .cash-panel .cp-col .cp-label {
+    font-size: 11px; color: var(--muted); letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .cash-panel .cp-col .cp-amount {
+    font-family: var(--font-display);
+    font-size: 40px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin-top: 3px;
+  }
+  .cash-panel .cp-col.change .cp-amount { color: var(--success); font-size: 30px; }
+
+  /* Hero pickup row on home screen */
+  .pickup-hero {
+    margin: 8px 16px;
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    background:
+      linear-gradient(180deg, rgba(52,196,126,0.12), rgba(52,196,126,0.02)),
+      var(--surface-solid);
+    border: 1.5px solid rgba(52,196,126,0.4);
+    border-radius: 14px;
+  }
+  .pickup-hero .ph-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900;
+    box-shadow: 0 6px 18px rgba(52,196,126,0.35);
+  }
+  .pickup-hero .ph-name { font-size: 13.5px; font-weight: 700; }
+  .pickup-hero .ph-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  /* Receipt */
+  .receipt-hero {
+    padding: 28px 18px 20px; text-align: center;
+    position: relative;
+  }
+  /* Success radial glow behind checkmark */
+  .receipt-hero::before {
+    content: ""; position: absolute;
+    top: 28px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(52,196,126,0.13) 0%, transparent 70%);
+    filter: blur(10px);
+    pointer-events: none;
+  }
+  .receipt-hero .rh-check {
+    width: 72px; height: 72px; margin: 0 auto 14px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; font-weight: 900;
+    box-shadow:
+      0 16px 40px rgba(52,196,126,0.42),
+      inset 0 1px 0 rgba(255,255,255,0.45);
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-amount {
+    font-family: var(--font-display);
+    font-size: 54px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-label {
+    font-size: 13px; font-weight: 600;
+    color: var(--success);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-top: 4px;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-sub {
+    font-size: 12.5px; color: var(--muted); margin-top: 5px;
+    position: relative; z-index: 2;
+  }
+
+  /* Share tiles — glassy rounded rectangles */
+  .share-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;
+    padding: 8px 16px 4px;
+  }
+  .share-tile {
+    position: relative;
+    padding: 14px 6px 12px;
+    border-radius: 16px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    text-align: center;
+    display: flex; flex-direction: column; gap: 5px;
+    align-items: center;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 4px 12px rgba(0,0,0,0.16);
+    overflow: hidden;
+  }
+  .share-tile::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 50%, transparent);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .share-tile.primary {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.30);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.80),
+      0 0 28px rgba(253,238,208,0.18),
+      0 8px 22px rgba(253,238,208,0.22);
+  }
+  .share-tile.primary::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.5), rgba(253,238,208,0.20) 50%, transparent);
+  }
+  .share-tile .st-icon { font-size: 20px; position: relative; z-index: 2; }
+  .share-tile .st-label { font-size: 11px; font-weight: 700; position: relative; z-index: 2; }
+
+  /* Receipt list — physical receipt feel */
+  .receipt-list {
+    margin: 10px 16px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(26, 22, 18, 0.80);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 6px 18px rgba(0,0,0,0.28);
+  }
+  .receipt-list .rl-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  .receipt-list .rl-row.muted { color: var(--muted); }
+  .receipt-list .rl-row.total {
+    font-weight: 700; font-size: 13.5px;
+    font-family: var(--font-mono);
+    border-top: 1px dashed rgba(255,255,255,0.18);
+    margin-top: 6px; padding-top: 8px;
+    color: var(--on);
+  }
+
+  /* Loyalty celebration row */
+  .loyalty-celebration {
+    margin: 10px 16px 4px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)),
+      var(--surface-solid);
+    border: 1px solid rgba(253,238,208,0.40);
+    display: flex; gap: 12px; align-items: center;
+    box-shadow: 0 6px 20px rgba(253,238,208,0.08);
+  }
+  .loyalty-celebration .lc-star {
+    font-size: 28px;
+    filter: drop-shadow(0 0 8px rgba(253,238,208,0.25));
+  }
+  .loyalty-celebration .lc-progress {
+    height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.10);
+    margin-top: 7px;
+    position: relative; overflow: hidden;
+  }
+  .loyalty-celebration .lc-progress::after {
+    content: ""; position: absolute; top: 0; left: 0;
+    height: 100%; width: 57%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-bright));
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(253,238,208,0.22);
+  }
+
+  /* Dynamic Island live activity */
+  .island.active {
+    background: #000;
+    width: 200px; height: 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; border-radius: 22px;
+  }
+  .island.active .ia-left { color: var(--primary); font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .island.active .ia-right {
+    color: var(--primary);
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scroll { flex: 1; overflow-y: auto; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  .meta { text-align: center; color: var(--muted); font-size: 11px; padding: 20px 16px 40px; }
+  .meta code {
+    background: rgba(255,255,255,0.04); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--primary);
+  }
+
+  @media (max-width: 500px) {
+    .grid { grid-template-columns: 1fr; }
+    .phone { transform: scale(0.85); transform-origin: top center; margin-bottom: -120px; }
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════
+     LIGHT MODE SCOPE — tokens overridden inside .light-mode wrapper.
+     Cream primary (#fdeed0) constant; semantics darkened for WCAG AA.
+     ═════════════════════════════════════════════════════════════════════ */
+  .light-mode {
+    --bg-deep:        #faf8f5;
+    --bg:             #f5f2ed;
+    --surface-solid:  #ffffff;
+    --surface-elev:   #faf7f2;
+    --surface-glass:  rgba(255, 250, 245, 0.78);
+    --outline:        rgba(30, 24, 16, 0.10);
+    --outline-bright: rgba(30, 24, 16, 0.18);
+    --on:             #1a1816;
+    --muted:          #5a5550;
+    --muted-2:        #8a847c;
+    /* Light-mode primary flips from cream to deep warm orange —
+       cream-on-cream is invisible. Cream stays the dark-mode primary. */
+    --primary:        #c2410c;
+    --primary-bright: #e2600f;
+    --primary-soft:   rgba(194, 65, 12, 0.12);
+    --on-primary:     #ffffff;
+    --success:        #1a7c4d;
+    --warning:        #a15b00;
+    --error:          #b72a3e;
+    --teal:           #0b5260;
+  }
+  /* Override color mappings that hardcoded cream in light mode */
+  .light-mode .t-price,
+  .light-mode .cr-price,
+  .light-mode .cp,
+  .light-mode .sp-total,
+  .light-mode .pickup-hero b,
+  .light-mode .total-line .tl-amount,
+  .light-mode .cash-panel .cp-amount,
+  .light-mode .cash-panel-big .cp-amount,
+  .light-mode .ttotal .ta,
+  .light-mode .tender-hero .th-amount,
+  .light-mode .rh-amount {
+    color: #7a3a00 !important;
+  }
+  /* Tender CTA: orange fill, white text */
+  .light-mode .tender-btn,
+  .light-mode .btn,
+  .light-mode .tf-primary,
+  .light-mode .insp-btn.primary,
+  .light-mode .chip.primary,
+  .light-mode .method.selected,
+  .light-mode .quick-amount.selected,
+  .light-mode .filter-chip.active,
+  .light-mode .c-pill.active,
+  .light-mode .share-tile.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: #c2410c !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 16px rgba(194,65,12,0.18) !important;
+  }
+  .light-mode .tender-btn .tb-amount { color: #ffffff !important; }
+  .light-mode .p-icon.primary,
+  .light-mode .path-row.primary .p-icon,
+  .light-mode .path-tile.primary .pt-ico,
+  .light-mode .row-card.primary .icon.primary,
+  .light-mode .icon.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: rgba(194,65,12,0.4) !important;
+  }
+  .light-mode .path-row.primary,
+  .light-mode .path-tile.primary {
+    border-color: rgba(194,65,12,0.5) !important;
+    background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid) !important;
+  }
+  /* Badges: cream-tinted backgrounds become orange-tinted */
+  .light-mode .t-badge {
+    background: #c2410c !important;
+    color: #ffffff !important;
+  }
+  .light-mode .phone {
+    border-color: #c8c4be;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 0 0 1px rgba(200,196,190,0.8) inset, 0 30px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(253,238,208,0.20);
+  }
+  .light-mode .phone::before {
+    background: radial-gradient(ellipse at 22% 0%, rgba(253,238,208,0.25), transparent 55%), radial-gradient(ellipse at 90% 100%, rgba(42,122,134,0.08), transparent 50%);
+  }
+  .light-mode .home-indicator { background: rgba(30,24,16,0.22); }
+  .light-mode .glass {
+    background: var(--surface-glass);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 8px 22px rgba(0,0,0,0.08);
+  }
+  .light-mode .glass::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.75), rgba(255,255,255,0.25) 38%, rgba(253,238,208,0.30) 100%);
+  }
+  .light-mode .glass::after { background: linear-gradient(180deg, rgba(255,255,255,0.50), transparent 55%); }
+  .light-mode .nav {
+    background: rgba(245,242,237,0.88);
+    border-bottom-color: rgba(30,24,16,0.08);
+  }
+  .light-mode .nav-search { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); }
+  .light-mode .nav-ellipsis { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.12); }
+  .light-mode .btn.secondary { background: rgba(30,24,16,0.05); color: var(--on); border-color: rgba(30,24,16,0.12); }
+  .light-mode .btn.ghost { border-color: rgba(30,24,16,0.18); }
+  .light-mode .btn.destructive { background: rgba(183,42,62,0.08); color: var(--error); border-color: rgba(183,42,62,0.28); }
+  .light-mode .tender-btn {
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.90), 0 0 40px rgba(253,238,208,0.35), 0 14px 32px rgba(253,238,208,0.35);
+  }
+  .light-mode .chip { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); color: var(--on); }
+  .light-mode .chip.success { background: rgba(26,124,77,0.10); border-color: rgba(26,124,77,0.30); color: var(--success); }
+  .light-mode .chip.teal { background: rgba(42,122,134,0.10); border-color: rgba(42,122,134,0.30); color: var(--teal); }
+  .light-mode .chip.primary { background: var(--primary); border-color: rgba(253,238,208,0.80); color: var(--on-primary); }
+  .light-mode .filter-chip { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.10); }
+  .light-mode .cart-strip {
+    background: rgba(245,242,237,0.88);
+    border-bottom-color: rgba(30,24,16,0.08);
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+  }
+  .light-mode .tile { background: var(--surface-solid); border-color: rgba(30,24,16,0.08); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+  .light-mode .tile .t-price { color: #7a5200; }
+  .light-mode .tile .t-stock { color: var(--success); }
+  .light-mode .tile .t-stock.low { color: var(--warning); }
+  .light-mode .cart-row { border-bottom-color: rgba(30,24,16,0.07); }
+  .light-mode .cart-row .cr-icon { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.09); }
+  .light-mode .cart-row .cr-price { color: #7a5200; }
+  .light-mode .tender-safearea {
+    background: linear-gradient(180deg, rgba(245,242,237,0.0), rgba(245,242,237,0.95) 35%);
+    border-top-color: rgba(30,24,16,0.08);
+  }
+  .light-mode .sheet-backdrop { background: rgba(26,24,22,0.30); }
+  .light-mode .sheet {
+    background: rgba(250,247,242,0.96);
+    border-top-color: rgba(30,24,16,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 -24px 60px rgba(0,0,0,0.12);
+  }
+  .light-mode .sheet-handle { background: rgba(30,24,16,0.18); }
+  .light-mode .sheet-row { border-top-color: rgba(30,24,16,0.07); }
+  .light-mode .stepper button { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.14); color: var(--on); }
+  .light-mode .path-row { background: var(--surface-solid); border-color: rgba(30,24,16,0.09); box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+  .light-mode .path-row.primary { border-color: rgba(253,238,208,0.60); box-shadow: 0 8px 22px rgba(253,238,208,0.20); }
+  .light-mode .path-row .p-icon { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); }
+  .light-mode .method {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.70);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 6px 16px rgba(0,0,0,0.07);
+  }
+  .light-mode .method::before { background: linear-gradient(140deg, rgba(255,255,255,0.90), rgba(255,255,255,0.30) 45%, rgba(253,238,208,0.20) 100%); }
+  .light-mode .method .m-sub { color: var(--muted); }
+  .light-mode .quick-amount {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.70);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
+    color: var(--on);
+  }
+  .light-mode .quick-amount.selected {
+    background: radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.50), transparent 65%), rgba(253,238,208,0.25);
+    border-color: rgba(253,238,208,0.70);
+    color: #7a5200;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 4px 12px rgba(253,238,208,0.25);
+  }
+  .light-mode .numkey {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.95), transparent 60%), rgba(255,255,255,0.80);
+    border-color: rgba(30,24,16,0.12);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(30,24,16,0.08), 0 4px 10px rgba(0,0,0,0.07);
+    text-shadow: none;
+    color: var(--on);
+  }
+  .light-mode .numkey::after { background: linear-gradient(180deg, rgba(255,255,255,0.40), transparent 50%); }
+  .light-mode .numkey.backspace { color: var(--error); }
+  .light-mode .numkey.dot { color: var(--muted); }
+  .light-mode .cash-panel {
+    background: rgba(255,250,245,0.88);
+    border-color: rgba(30,24,16,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 10px 26px rgba(0,0,0,0.07);
+  }
+  .light-mode .cash-panel::before { background: linear-gradient(140deg, rgba(255,255,255,0.80), rgba(255,255,255,0.20) 40%, rgba(253,238,208,0.30) 100%); }
+  .light-mode .cash-panel::after { background: linear-gradient(180deg, rgba(255,255,255,0.50), transparent); }
+  .light-mode .cash-panel .cp-col.change .cp-amount { color: var(--success); }
+  .light-mode .pickup-hero {
+    background: linear-gradient(180deg, rgba(26,124,77,0.08), rgba(26,124,77,0.01)), var(--surface-solid);
+    border-color: rgba(26,124,77,0.30);
+  }
+  .light-mode .receipt-hero .rh-label { color: var(--success); }
+  .light-mode .receipt-hero .rh-sub { color: var(--muted); }
+  .light-mode .share-tile {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.75);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 4px 12px rgba(0,0,0,0.07);
+  }
+  .light-mode .share-tile::before { background: linear-gradient(140deg, rgba(255,255,255,0.85), rgba(255,255,255,0.20) 50%, transparent); }
+  .light-mode .receipt-list {
+    background: var(--surface-solid);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 6px 18px rgba(0,0,0,0.06);
+  }
+  .light-mode .receipt-list .rl-row.total { border-top-color: rgba(30,24,16,0.18); color: var(--on); }
+  .light-mode .loyalty-celebration {
+    background: linear-gradient(180deg, rgba(253,238,208,0.30), rgba(253,238,208,0.05)), var(--surface-solid);
+    border-color: rgba(253,238,208,0.70);
+    box-shadow: 0 6px 20px rgba(253,238,208,0.18);
+  }
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08); }
+  .light-mode .section-label { color: var(--muted-2); }
+  .light-mode .frame-caption { color: #5a5550 !important; }
+  .light-mode .sect-label { color: #5a5550 !important; }
+  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #7a5200; }
+  .light-mode .meta { color: var(--muted); }
+  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #7a5200; }
+
+  /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
+  .light-mode h1 {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: #1a1816 !important;
+  }
+  .light-mode .intro { color: #5a5550 !important; }
+  .light-mode .nav-title { color: #1a1816 !important; }
+  .light-mode .path-row .p-name { color: #1a1816 !important; }
+  .light-mode .cart-head .ch-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cn { color: #1a1816 !important; }
+  .light-mode .cart-row .cr-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cr-price { color: #7a5200 !important; }
+  .light-mode .tile .t-name { color: #1a1816 !important; }
+  .light-mode .tile .t-price { color: #7a5200 !important; }
+  .light-mode .total-line .tl-amount { color: #1a1816 !important; }
+  .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
+  .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
+  .light-mode .sheet-title { color: #1a1816 !important; }
+  .light-mode .chip.primary { color: #2b1400 !important; }
+
+  /* ─── Option C gate — light-mode overrides ────────────────────────────── */
+  .light-mode .gate-btn-create {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.14) !important;
+    color: #1a1816 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80) !important;
+  }
+  .light-mode .gate-btn-walkin {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.20) !important;
+    color: #5a5550 !important;
+  }
+
+  /* ─── Task 2+3: Tender step light-mode visibility fixes ───────────────── */
+  .light-mode .method .m-name { color: #1a1816 !important; }
+  .light-mode .method .m-sub { color: #5a5550 !important; }
+  .light-mode .method.selected .m-name { color: #ffffff !important; }
+  .light-mode .method.selected .m-sub { color: rgba(255,255,255,0.80) !important; }
+  .light-mode .tender-btn[disabled],
+  .light-mode .tender-btn.disabled {
+    background: #e8e3db !important;
+    color: #5a5550 !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+  }
+  .light-mode .tender-footer .tf-aux {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+  .light-mode .btn.secondary,
+  .light-mode .insp-btn {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+  /* Task 3 audit — numpad, tender strings, labels */
+  .light-mode .numkey { color: #1a1816 !important; }
+  .light-mode .tender-hero .th-label { color: #5a5550 !important; }
+  .light-mode .tender-footer { color: #1a1816 !important; }
+  .light-mode .sp-method .mn { color: #1a1816 !important; }
+
+  /* ─── Round 2: comprehensive light-mode visibility sweep ────────────── */
+
+  /* Cart strip sub-text and total */
+  .light-mode .cart-strip .cs-name { color: #1a1816 !important; }
+  .light-mode .cart-strip .cs-meta { color: #5a5550 !important; }
+  .light-mode .cart-strip .cs-total { color: #7a3a00 !important; }
+  .light-mode .cart-strip .cs-count { color: #1a1816 !important; }
+
+  /* Cart row sub-text */
+  .light-mode .cart-row .cr-sub { color: #5a5550 !important; }
+
+  /* Totals rows */
+  .light-mode .totals-row { color: #5a5550 !important; }
+  .light-mode .total-line .tl-label { color: #5a5550 !important; }
+  .light-mode .total-line .tl-amount { color: #1a1816 !important; }
+
+  /* Sheet sub-text and rows */
+  .light-mode .sheet-sub { color: #5a5550 !important; }
+  .light-mode .sheet-row { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.07) !important; }
+  .light-mode .sheet-handle { background: rgba(30,24,16,0.18) !important; }
+
+  /* Share tiles non-primary label */
+  .light-mode .share-tile .st-label { color: #1a1816 !important; }
+  .light-mode .share-tile.primary .st-label { color: #ffffff !important; }
+
+  /* Receipt hero sub-text (already has rh-label/rh-sub but make explicit) */
+  .light-mode .receipt-hero .rh-sub { color: #5a5550 !important; }
+
+  /* Receipt list rows — muted rows and dashed dividers */
+  .light-mode .receipt-list .rl-row.muted { color: #5a5550 !important; }
+  .light-mode .receipt-list .rl-row.total { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.18) !important; }
+  .light-mode .receipt-list { border-color: rgba(30,24,16,0.10) !important; }
+
+  /* Receipt list header border + inner dashes */
+  .light-mode .receipt-list [style*="border-bottom: 1px solid rgba(255,255,255"] { border-bottom-color: rgba(30,24,16,0.08) !important; }
+
+  /* Loyalty progress bar bg */
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08) !important; }
+
+  /* Tile icon bg */
+  .light-mode .tile .t-icon { background: rgba(30,24,16,0.05) !important; }
+
+  /* Filter chip default (inactive) bg already covered by .light-mode .filter-chip but reinforce */
+  .light-mode .filter-chip { background: rgba(30,24,16,0.04) !important; border-color: rgba(30,24,16,0.10) !important; color: #1a1816 !important; }
+  .light-mode .filter-chip.active { color: #ffffff !important; }
+
+  /* Nav sub-text and back button */
+  .light-mode .nav-sub { color: #5a5550 !important; }
+  .light-mode .nav-back { color: #c2410c !important; }
+
+  /* Progress bar bg stripes */
+  .light-mode [style*="background: rgba(255,255,255,0.06)"][style*="height: 3px"] { background: rgba(30,24,16,0.08) !important; }
+
+  /* Inline symptom chips that use rgba(255,255,255,0.04) bg — target by parent context */
+  /* These are inside .scroll inside .phone-body inside .light-mode — use class on the wrap */
+  .light-mode .symptom-chip-inactive {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #5a5550 !important;
+  }
+
+  /* Device icon backgrounds inside device-list rows in light mode */
+  .light-mode .device-icon-bg {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.10) !important;
+  }
+
+  /* Split-tender hint box */
+  .light-mode .split-tender-hint {
+    background: rgba(30,24,16,0.03) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+
+  /* Section "Save above, or:" caption */
+  .light-mode .gate-caption { color: #8a847c !important; }
+
+  /* Textarea / input fields in light mode: dark borders + white bg */
+  .light-mode .repair-textarea {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.15) !important;
+    color: #1a1816 !important;
+  }
+
+  /* Dropdown "Device condition" in light mode */
+  .light-mode .condition-dropdown {
+    background: #ffffff !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #1a1816 !important;
+  }
+
+  /* Diagnostic notes textarea in quote step */
+  .light-mode .diagnostic-notes {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #5a5550 !important;
+  }
+
+  /* "Add new device" dashed row border */
+  .light-mode .add-device-row {
+    border-color: rgba(194,65,12,0.28) !important;
+  }
+
+  /* Unselected device radio button circle */
+  .light-mode .device-radio-unchecked {
+    border-color: rgba(30,24,16,0.20) !important;
+  }
+</style>
+</head>
+<body>
+
+<h1>Bizarre POS — iPhone mockups</h1>
+<p class="intro">
+  iPhone 16 Pro · iOS 26 Liquid Glass · cream primary <code>#fdeed0</code>. Not an Android port — native patterns only: <code>.searchable(.navigationBarDrawer(.always))</code>, <code>.safeAreaInset(edge: .bottom)</code> tender CTA, <code>.sheet</code> detents, no FAB, portrait lock. Built from <code>docs/pos-redesign-plan.md</code> + 7 parallel research agents (Liquid Glass specs, SwiftUI idioms, typography math, competitive UX, ergonomics).
+</p>
+
+<div class="section-label">Full flow · 7 iPhone screens (tender split into 5a + 5b)</div>
+
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1 — Customer gate · the mandatory first step · walk-in / existing / new
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1 · Customer gate · walk-in / existing / new · nothing else starts until this picks</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div>
+              <div class="nav-title">POS</div>
+              <div class="nav-sub">Register open · Pavel I.</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="chip success">● Online</span>
+              <div class="nav-ellipsis">⋯</div>
+            </div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">Search by name, phone, ticket, or loyalty #</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding: 20px 0 0;">
+
+          <div style="padding: 0 20px 14px;">
+            <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
+            <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Every sale starts with a customer.</div>
+          </div>
+
+          <!-- Option C: 2 fallback buttons (hero search removed — nav-bar search above covers it) -->
+
+          <div style="text-align: center; font-size: 12px; color: var(--muted-2); margin-bottom: 10px;">Search above, or:</div>
+
+          <div style="display: flex; gap: 10px; padding: 0 16px 20px;">
+            <button class="gate-btn-create" style="
+              flex: 1; padding: 20px 14px;
+              background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+              border-radius: 16px; color: var(--on); font-size: 15px; font-weight: 700;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+              cursor: pointer; min-height: 64px;
+            ">＋ Create new customer</button>
+            <button class="gate-btn-walkin" style="
+              flex: 1; padding: 20px 14px;
+              background: rgba(255,255,255,0.04); border: 1.5px dashed rgba(255,255,255,0.18);
+              border-radius: 16px; color: var(--muted); font-size: 15px; font-weight: 700;
+              cursor: pointer; min-height: 64px;
+            ">🚶 Walk-in · no record</button>
+          </div>
+
+          <!-- Ready-for-pickup strip -->
+          <div style="margin-top: 24px; padding: 0 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 10px;">
+              <span style="font-size: 10.5px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Recent Ready for pickup · 3</span>
+              <button style="background: transparent; border: 0; color: var(--teal); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; padding: 4px 0;">View all →</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: rgba(52,196,126,0.07); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(52,196,126,0.20); color: var(--success); border: 1px solid rgba(52,196,126,0.35); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;">✓</div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 13px; font-weight: 700;">Sarah M.</div>
+                  <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4829 · iPhone 14 screen</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$274</div>
+              </div>
+              <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.22); border-radius: 14px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.30); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;">✓</div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 13px; font-weight: 700;">Marco D.</div>
+                  <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4831 · Samsung S23 battery</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$142</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       REPAIR TICKET PATH — 4 steps (1b→1e)
+       Inserted between customer gate and catalog per §22.1 plan.
+       On iPhone: full-screen NavigationStack frames with back chevron.
+       ════════════════════════════════════════════════════════════════════ -->
+
+</div><!-- close grid -->
+<div class="section-label">Repair ticket path · 4 steps · 1b → 1e</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1b — Repair 1 · Pick device (saved devices on file + Add new + Scan IMEI)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1b · Repair — Pick device · customer attached · saved devices on file + add new + scan IMEI</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Back</span>
+            <div class="nav-title">Pick device</div>
+            <div class="chip" style="font-size: 11px;">Sarah M.</div>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <div class="sect-label">On file · 2</div>
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.38); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">iPhone 14 Pro</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">IMEI 359…8821 · Space Black · 256 GB</div>
+                <div style="font-size: 10px; color: var(--success); margin-top: 2px;">Under warranty until 2026-08-14</div>
+              </div>
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--on-primary); font-weight: 900;">✓</div>
+            </div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">Apple Watch Series 8</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Serial FH7…921 · 45mm Aluminum</div>
+              </div>
+              <div style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+            </div>
+          </div>
+
+          <div class="sect-label" style="padding-top: 16px;">Add new</div>
+          <div style="padding: 0 16px;">
+            <div style="background: transparent; border: 1.5px dashed rgba(253,238,208,0.4); border-radius: 14px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: 0 4px 12px rgba(253,238,208,0.22);">+</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--primary);">Add new device</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Scan IMEI or pick make / model / condition</div>
+              </div>
+              <button style="width: 36px; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--on); font-size: 16px;" title="Scan IMEI">📷</button>
+              <span style="color: var(--primary); font-size: 18px;">›</span>
+            </div>
+          </div>
+
+          <div style="height: 20px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Continue → describe issue</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1c — Repair 2 · Describe issue (symptom textarea + condition + quick chips)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1c · Repair — Describe issue · symptom text · device condition dropdown · quick-pick chips</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Device</span>
+            <div class="nav-title">Issue · Step 2/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 33%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 14px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">What's the problem?</div>
+            <div style="border: 1.5px solid rgba(253,238,208,0.35); border-radius: 14px; padding: 12px; background: rgba(255,255,255,0.03); min-height: 80px; font-size: 13.5px; line-height: 1.5;">
+              Dropped on sidewalk. Screen flickers on calls. Battery also dies fast.<span style="color: var(--primary);">|</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span style="color: var(--teal); font-size: 11px;">🎤 Dictate</span>
+              <span style="color: var(--muted); font-size: 11px;">87 / 2000</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Device condition</div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13.5px; font-weight: 600;">Poor — visible damage</span>
+              <span style="color: var(--muted); font-size: 16px;">⌄</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Quick-pick symptom</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Screen cracked</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Won't charge</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Water damage</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Battery</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Other</div>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Internal notes (tech-only)</div>
+            <div style="border: 1px dashed rgba(232,163,61,0.45); border-radius: 12px; padding: 10px 12px; background: rgba(232,163,61,0.04); font-size: 13px; color: var(--muted);">Prior non-OEM repair visible on frame. <span style="color: var(--warning);">|</span></div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Next → diagnostic quote</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1d — Repair 3 · Diagnostic + quote (checklist + parts + running price + CTA split)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1d · Repair — Diagnostic &amp; quote · suggested parts + labor pre-populated · running price · Save quote vs Continue to deposit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Issue</span>
+            <div class="nav-title">Quote · Step 3/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 66%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 12px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Diagnostic notes</div>
+            <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); font-size: 13px; color: var(--muted);">Screen flex confirmed faulty. Battery at 61% health. OLED bleed visible top-left.<span style="color: var(--primary);">|</span></div>
+          </div>
+
+          <div style="padding: 8px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Suggested parts + labor</div>
+
+            <!-- Part row checkable -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">OEM grade · 22 in stock</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$189</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · screen replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~45 min</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$60</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Battery</div>
+                  <div style="font-size: 10.5px; color: var(--muted); color: var(--warning);">3 in stock — low</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$79</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; opacity: 0.65;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · battery replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~20 min · add if replacing battery</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--muted);">$35</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Running price estimate -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.10), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; justify-content: space-between; align-items: baseline;">
+            <div>
+              <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">Estimate · 3 items</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">+tax · final at pickup</div>
+            </div>
+            <div style="font-family: var(--font-display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--primary);">$327</div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <!-- Split footer CTA -->
+        <div class="tender-safearea" style="padding-top: 8px;">
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 12px;">Save as quote</button>
+          </div>
+          <button class="tender-btn">
+            <span>Continue → deposit</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1e — Repair 4 · Deposit tender (reuse tender UI — showing "Deposit · $50 of $327")
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1e · Repair — Deposit tender · Cash selected · "Deposit · $50 of $327" · same numpad UI as full tender</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Quote</span>
+            <div class="nav-title">Deposit</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$327</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll">
+          <!-- Selected method strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Deposit · $50 of $327</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Balance due at pickup · enter cash received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$50<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$0.00</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount selected">$50</div>
+            <div class="quick-amount">$60</div>
+            <div class="quick-amount">$75</div>
+            <div class="quick-amount">$100</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Confirm deposit</span>
+            <span class="tb-amount">$50.00</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- close repair grid -->
+<div class="section-label">Main sale flow · 7 screens (continued)</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       2 — Catalog · customer attached · cart strip · pinned tender
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">2 · Catalog · customer attached · 3 items in cart</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="nav-back">‹ Back</span>
+            </div>
+            <div class="nav-title">New sale</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">iPhone 14 Pro screen</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <!-- Cart strip · minimal (name + phone only) -->
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">(555) 214-8801</div>
+          </div>
+          <div class="cs-total">$274.51</div>
+        </div>
+
+        <div class="chip-row">
+          <div class="filter-chip active">Matches · 3</div>
+          <div class="filter-chip">Screens</div>
+          <div class="filter-chip">Labor</div>
+          <div class="filter-chip">Accessories</div>
+          <div class="filter-chip">Services</div>
+        </div>
+
+        <div class="catalog">
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔧</div>
+            <div class="t-name">iPhone 14 Pro Screen</div>
+            <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">⚙️</div>
+            <div class="t-name">Labor · screen replace</div>
+            <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔌</div>
+            <div class="t-name">USB-C 3ft cable</div>
+            <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🛡️</div>
+            <div class="t-name">Screen protector · Pro</div>
+            <div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🔋</div>
+            <div class="t-name">iPhone 14 Battery</div>
+            <div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🧽</div>
+            <div class="t-name">Cleaning service</div>
+            <div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div>
+          </div>
+        </div>
+
+        <!-- Pinned safe-area tender -->
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       3 — Cart tab · 3 items · tap line → sheet
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">3 · Cart view · 3 items · swipe to void, tap to edit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">iPhone 14 Pro · repair draft</div>
+          </div>
+          <div class="cs-count"><span class="chip primary">Ticket auto</span></div>
+        </div>
+
+        <div class="cart-rows">
+          <div class="cart-row">
+            <div class="cr-icon">🔧</div>
+            <div style="flex: 1;">
+              <div class="cr-name">iPhone 14 Pro Screen</div>
+              <div class="cr-sub">SKU IPH14P-S · Qty 1</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="cr-price">$189.00</div>
+              <div class="cr-sub" style="text-decoration: line-through;">$199</div>
+            </div>
+          </div>
+          <div class="cart-row">
+            <div class="cr-icon">⚙️</div>
+            <div style="flex: 1;">
+              <div class="cr-name">Labor · screen replacement</div>
+              <div class="cr-sub">Service · 45 min</div>
+            </div>
+            <div class="cr-price">$60.00</div>
+          </div>
+          <div class="cart-row" style="background: rgba(253,238,208,0.06); border-left: 3px solid var(--primary);">
+            <div class="cr-icon">🔌</div>
+            <div style="flex: 1;">
+              <div class="cr-name">USB-C 3 ft cable</div>
+              <div class="cr-sub">SKU USB-C3 · Qty 1</div>
+            </div>
+            <div class="cr-price">$14.00</div>
+          </div>
+
+          <div style="padding: 14px 16px; display: flex; gap: 8px;">
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Misc</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Discount</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Note</div>
+          </div>
+
+          <div class="sect-label">Coupon</div>
+          <div style="padding: 0 16px 14px;">
+            <div class="nav-search" style="margin: 0;">
+              <span style="color: var(--muted);">🏷️</span>
+              <span style="flex: 1;">Enter code or scan</span>
+              <span class="s-cap">✓</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div class="totals-row"><span>Subtotal</span><span>$263.00</span></div>
+          <div class="totals-row" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+          <div class="totals-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="total-line"><span class="tl-label">Total</span><span class="tl-amount">$274.51</span></div>
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       4 — Line-edit sheet · .height(300) detent
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">4 · Line edit · <code>.presentationDetents([.height(320), .medium])</code></div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body" style="position: relative;">
+
+        <div class="nav" style="opacity: 0.6;">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip" style="opacity: 0.55;">
+          <div class="avatar-mini">SM</div>
+          <div><div class="cs-name">Sarah M.</div></div>
+          <div class="cs-total" style="margin-left: auto;">$274.51</div>
+        </div>
+
+        <div class="scroll" style="opacity: 0.45;">
+          <div class="cart-row"><div class="cr-icon">🔧</div><div style="flex:1;"><div class="cr-name">iPhone 14 Pro Screen</div></div><div class="cr-price">$189.00</div></div>
+          <div class="cart-row"><div class="cr-icon">⚙️</div><div style="flex:1;"><div class="cr-name">Labor</div></div><div class="cr-price">$60.00</div></div>
+        </div>
+
+        <div class="sheet-backdrop"></div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">USB-C 3 ft cable</div>
+          <div class="sheet-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+
+          <div class="sheet-row">
+            <span>Qty</span>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+
+          <div class="sheet-row">
+            <span>Unit price</span>
+            <span style="font-family: var(--font-display); font-size: 18px; font-weight: 700;">$14.00</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Line discount</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Apply</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Note</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Add</span>
+          </div>
+
+          <div style="padding: 16px 20px 6px; display: flex; gap: 10px;">
+            <button class="btn destructive" style="flex: 1;">Remove</button>
+            <button class="btn" style="flex: 2;">Save · $14.00</button>
+          </div>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5a — Tender Step 1 · method picker · due amount prominent · no numpad
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">5a · Tender — Step 1 · pick method · due amount front and center · tap to proceed to numpad</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Cart</span>
+            <div class="nav-title">Tender</div>
+            <div class="nav-ellipsis">✕</div>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 16px;">
+
+          <!-- Due amount hero -->
+          <div style="padding: 28px 24px 20px; text-align: center; position: relative;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
+            <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">Sarah M. · 3 items</div>
+          </div>
+
+          <!-- Membership banner -->
+          <div style="margin: 0 16px 16px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.38); display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 14px rgba(253,238,208,0.06);">
+            <span style="font-size: 22px; filter: drop-shadow(0 0 6px rgba(253,238,208,0.45));">★</span>
+            <div style="flex: 1;">
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member · 10% off applied</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Earning 55 pts · $10 saved this sale</div>
+            </div>
+            <span class="chip" style="font-family: var(--font-display); font-size: 12px; padding: 3px 9px;">SAVED $10</span>
+          </div>
+
+          <div class="sect-label" style="padding-top: 4px;">Choose payment method</div>
+
+          <!-- Method picker — 2×2 grid, each one tappable to go to step 2 -->
+          <div class="tender-methods">
+            <div class="method">
+              <div class="m-icon">💳</div>
+              <div class="m-name">Card</div>
+              <div class="m-sub">Tap to Pay</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">💵</div>
+              <div class="m-name">Cash</div>
+              <div class="m-sub">Enter amount</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">🎁</div>
+              <div class="m-name">Gift card</div>
+              <div class="m-sub">Scan / enter</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">💸</div>
+              <div class="m-name">Store credit</div>
+              <div class="m-sub">$42.00 avail.</div>
+            </div>
+          </div>
+
+          <!-- Split tender hint -->
+          <div style="margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.10); display: flex; gap: 10px; align-items: center;">
+            <span style="color: var(--muted); font-size: 15px;">⊕</span>
+            <div style="font-size: 12px; color: var(--muted);">Split tender — pick method, enter partial, then pick another</div>
+          </div>
+
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn disabled" style="opacity: 0.4;">
+            <span>Select a payment method</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5b — Tender Step 2 · Cash amount entry · received + change + numpad
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">5b · Tender — Step 2 · Cash selected · received / change panel + quick-amounts + numpad · Confirm → receipt (or back for split)</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Method</span>
+            <div class="nav-title">Cash</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$274.51</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Selected method confirmation strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(253,238,208,0.22); flex-shrink: 0;">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Cash payment</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Due: $274.51 · enter amount received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <!-- Cash panel — Liquid Glass with specular -->
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$25.49</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount">$275</div>
+            <div class="quick-amount">$280</div>
+            <div class="quick-amount selected">$300</div>
+            <div class="quick-amount">$320</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div style="display: flex; gap: 10px; padding-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">+ Split tender</button>
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Add tip</button>
+          </div>
+          <button class="tender-btn">
+            <span>Confirm cash</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       6 — Receipt · celebration hero · glassy share tiles · receipt preview
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">6 · Receipt · celebration hero · glassy share tiles · JetBrains Mono receipt + loyalty progress bar · Live Activity</div>
+    <div class="phone">
+      <div class="island active">
+        <div class="ia-left">🛍 3 items</div>
+        <div class="ia-right">$274.51</div>
+      </div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Done</span>
+            <div class="nav-title">Paid</div>
+            <span class="chip success" style="font-size: 11px;">✓ #28014</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Hero — elevated, celebratory -->
+          <div class="receipt-hero">
+            <div class="rh-check">✓</div>
+            <div class="rh-label">Payment complete</div>
+            <div class="rh-amount">$274.51</div>
+            <div class="rh-sub">Cash · $300 received · $25.49 change</div>
+          </div>
+
+          <!-- Share tiles — glassy action row -->
+          <div class="sect-label" style="padding-top: 8px;">Send receipt to Sarah M.</div>
+
+          <div class="share-grid">
+            <div class="share-tile primary">
+              <div class="st-icon">💬</div>
+              <div class="st-label">Text</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">✉️</div>
+              <div class="st-label">Email</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">🖨</div>
+              <div class="st-label">Print</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">📡</div>
+              <div class="st-label">AirDrop</div>
+            </div>
+          </div>
+
+          <!-- Loyalty celebration row with progress bar -->
+          <div class="loyalty-celebration">
+            <div class="lc-star">★</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier held</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b></div>
+              <div class="lc-progress" style="margin-top: 7px;"></div>
+              <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-2); margin-top: 3px;"><span>GOLD 285 pts</span><span>PLATINUM 500 pts</span></div>
+            </div>
+          </div>
+
+          <!-- Receipt preview — monospace, elevated -->
+          <div class="receipt-list" style="margin-top: 12px;">
+            <div style="padding: 9px 14px 7px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;">Receipt #28014</span>
+              <span class="chip success" style="font-size: 9px; padding: 2px 7px;">Sent ✓</span>
+            </div>
+            <div style="padding: 10px 14px 12px;">
+              <div class="rl-row muted"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+              <div class="rl-row muted"><span>Labor · screen</span><span>$60.00</span></div>
+              <div class="rl-row muted"><span>USB-C 3ft cable</span><span>$14.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>★ GOLD 10% off</span><span>−$10.00</span></div>
+              <div class="rl-row muted"><span>Tax 8.5%</span><span>$21.51</span></div>
+              <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
+              <div class="rl-row muted" style="padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+            </div>
+          </div>
+
+          <!-- Secondary actions -->
+          <div style="padding: 8px 16px 4px; display: flex; gap: 8px;">
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">View ticket #4829</div>
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">Customer profile</div>
+          </div>
+
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>New sale</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<div class="section-label">Design principles · research-agent consensus</div>
+
+<div style="max-width: 1100px; margin: 0 auto; padding: 0 24px 60px;">
+  <div class="glass" style="padding: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; position: relative; z-index: 2;">
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Search in nav-bar drawer</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.searchable(placement: .navigationBarDrawer(displayMode: .always))</code>. Pinned under title, always visible — zero tap to begin. iOS 26 auto-moves this to bottom; `.always` keeps it at top on current iOS.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Tender in safe-area</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.safeAreaInset(edge: .bottom)</code>. 56pt min height, within 120pt of home indicator per thumb-reach research. Cream gradient, <code>on-primary #2b1400</code> text = AAA 15.23:1.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Sheet detents, not modals</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Line edit = <code>.height(320)</code>. Customer picker = <code>.medium</code>. Receipt = full-screen. Drag indicator on every multi-detent sheet.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Barlow Condensed hero numerics</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>$274.51</code> at 32–42pt with <code>font-variant-numeric: tabular-nums</code>. Size-locked — Dynamic Type caps at <code>.accessibility2</code> for layout-sensitive text.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Two primary actions on home</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <b>New sale</b> + <b>New repair ticket</b>. Separate upfront paths — not a convert-at-tender flow. Matches RepairDesk/RepairShopr ergonomics.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Customer attach optional</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Square/Shopify pattern: attach any time before tender, never blocking. Single-prompt at Charge tap if missing; 2s dismissible.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Quick-amount strip</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Above numpad on every cash screen. <code>Exact · +$5 · +$10 · +$20</code>. Removes the #1 cash entry error (wrong-denom field).
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Dynamic Island live activity</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>ActivityKit.Activity&lt;POSCartAttributes&gt;</code>. Compact leading = cart icon + count, trailing = total. iPhone 14 Pro+. Cleared immediately on Paid.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Liquid Glass on chrome only</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Topbar, cart strip, sheet, tender safe-area, connectivity chip. Content (cart rows, catalog tiles, receipt list) on solid <code>surface-solid</code>. Max 4–5 non-contained glass panels — GPU budget.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Portrait lock</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Matches Square, Shopify POS, Toast Go. Numpad + tender button + cart are portrait-optimized. Use <code>UISupportedInterfaceOrientations</code>.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Haptics</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.sensoryFeedback</code> iOS 17+. Added to cart = <code>.impact(.light)</code>. Scan success = <code>.success</code>. Tender complete = <code>.success + .impact(.heavy, 0.8)</code>.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">App Intents / Siri</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>NewSaleIntent</code>, <code>AddItemIntent(sku:)</code>, <code>FindCustomerIntent(query:)</code>. Auto-appear in Shortcuts, Spotlight, Siri.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="meta">
+  Self-contained preview · no JS · no network. Tokens mirror <code>ios/Packages/DesignSystem/Sources/DesignSystem/BrandColors.swift</code> + <code>BrandFonts.swift</code> + <code>BrandSpacing.swift</code>. Ports directly to SwiftUI.
+</div>
+
+
+
+<div style="background: #f5f2ed; padding: 40px 24px 56px; margin-top: 80px; border-top: 1px solid rgba(0,0,0,0.08);">
+  <h1 style="color: #1a1816; background: linear-gradient(180deg, #1a1816, #5a5550); -webkit-background-clip: text; background-clip: text; color: transparent; padding-top: 8px;">Light mode · same flow</h1>
+  <p class="intro" style="color: #5a5550;">
+    Exact same 11 frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #7a5200;">#fdeed0</code> stays constant.
+    Surface tokens flip to near-white; semantic colours (success / warning / error / teal) are darkened for
+    WCAG AA contrast on white-ish backgrounds.
+  </p>
+
+  <div class="light-mode">
+
+<div class="section-label">Light · Customer gate · same flow</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1 — Customer gate · the mandatory first step · walk-in / existing / new
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 1 · Customer gate · walk-in / existing / new · nothing else starts until this picks</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div>
+              <div class="nav-title">POS</div>
+              <div class="nav-sub">Register open · Pavel I.</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="chip success">● Online</span>
+              <div class="nav-ellipsis">⋯</div>
+            </div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">Search by name, phone, ticket, or loyalty #</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding: 20px 0 0;">
+
+          <div style="padding: 0 20px 14px;">
+            <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
+            <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Every sale starts with a customer.</div>
+          </div>
+
+          <!-- Option C: 2 fallback buttons (hero search removed — nav-bar search above covers it) -->
+
+          <div style="text-align: center; font-size: 12px; color: var(--muted-2); margin-bottom: 10px;">Search above, or:</div>
+
+          <div style="display: flex; gap: 10px; padding: 0 16px 20px;">
+            <button class="gate-btn-create" style="
+              flex: 1; padding: 20px 14px;
+              background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+              border-radius: 16px; color: var(--on); font-size: 15px; font-weight: 700;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+              cursor: pointer; min-height: 64px;
+            ">＋ Create new customer</button>
+            <button class="gate-btn-walkin" style="
+              flex: 1; padding: 20px 14px;
+              background: rgba(255,255,255,0.04); border: 1.5px dashed rgba(255,255,255,0.18);
+              border-radius: 16px; color: var(--muted); font-size: 15px; font-weight: 700;
+              cursor: pointer; min-height: 64px;
+            ">🚶 Walk-in · no record</button>
+          </div>
+
+          <!-- Ready-for-pickup strip -->
+          <div style="margin-top: 24px; padding: 0 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 10px;">
+              <span style="font-size: 10.5px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Recent Ready for pickup · 3</span>
+              <button style="background: transparent; border: 0; color: var(--teal); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; padding: 4px 0;">View all →</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: rgba(52,196,126,0.07); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(52,196,126,0.20); color: var(--success); border: 1px solid rgba(52,196,126,0.35); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;">✓</div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 13px; font-weight: 700;">Sarah M.</div>
+                  <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4829 · iPhone 14 screen</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$274</div>
+              </div>
+              <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.22); border-radius: 14px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.30); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;">✓</div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 13px; font-weight: 700;">Marco D.</div>
+                  <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4831 · Samsung S23 battery</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$142</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       REPAIR TICKET PATH — 4 steps (1b→1e)
+       Inserted between customer gate and catalog per §22.1 plan.
+       On iPhone: full-screen NavigationStack frames with back chevron.
+       ════════════════════════════════════════════════════════════════════ -->
+
+</div><!-- close grid -->
+
+<div class="section-label">Light · Repair ticket path · 4 steps · 1b → 1e</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1b — Repair 1 · Pick device (saved devices on file + Add new + Scan IMEI)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 1b · Repair — Pick device · customer attached · saved devices on file + add new + scan IMEI</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Back</span>
+            <div class="nav-title">Pick device</div>
+            <div class="chip" style="font-size: 11px;">Sarah M.</div>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <div class="sect-label">On file · 2</div>
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: var(--surface-solid); border: 1.5px solid rgba(30,24,16,0.18); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.10); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">iPhone 14 Pro</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">IMEI 359…8821 · Space Black · 256 GB</div>
+                <div style="font-size: 10px; color: var(--success); margin-top: 2px;">Under warranty until 2026-08-14</div>
+              </div>
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--on-primary); font-weight: 900;">✓</div>
+            </div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(30,24,16,0.10); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.10); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">Apple Watch Series 8</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Serial FH7…921 · 45mm Aluminum</div>
+              </div>
+              <div style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(30,24,16,0.22); flex-shrink: 0;"></div>
+            </div>
+          </div>
+
+          <div class="sect-label" style="padding-top: 16px;">Add new</div>
+          <div style="padding: 0 16px;">
+            <div style="background: transparent; border: 1.5px dashed rgba(194,65,12,0.30); border-radius: 14px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: 0 4px 12px rgba(194,65,12,0.18);">+</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--primary);">Add new device</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Scan IMEI or pick make / model / condition</div>
+              </div>
+              <button style="width: 36px; height: 36px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: var(--on); font-size: 16px;" title="Scan IMEI">📷</button>
+              <span style="color: var(--primary); font-size: 18px;">›</span>
+            </div>
+          </div>
+
+          <div style="height: 20px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Continue → describe issue</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1c — Repair 2 · Describe issue (symptom textarea + condition + quick chips)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 1c · Repair — Describe issue · symptom text · device condition dropdown · quick-pick chips</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Device</span>
+            <div class="nav-title">Issue · Step 2/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
+          <div style="height: 100%; width: 33%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 14px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">What's the problem?</div>
+            <div style="border: 1.5px solid rgba(30,24,16,0.15); border-radius: 14px; padding: 12px; background: #ffffff; min-height: 80px; font-size: 13.5px; line-height: 1.5; color: #1a1816;">
+              Dropped on sidewalk. Screen flickers on calls. Battery also dies fast.<span style="color: var(--primary);">|</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span style="color: var(--teal); font-size: 11px;">🎤 Dictate</span>
+              <span style="color: var(--muted); font-size: 11px;">87 / 2000</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Device condition</div>
+            <div style="background: #ffffff; border: 1px solid rgba(30,24,16,0.12); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13.5px; font-weight: 600; color: #1a1816;">Poor — visible damage</span>
+              <span style="color: var(--muted); font-size: 16px;">⌄</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Quick-pick symptom</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(194,65,12,0.10); border: 1.5px solid rgba(194,65,12,0.30); color: var(--primary); font-size: 12px; font-weight: 700;">Screen cracked</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Won't charge</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Water damage</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(194,65,12,0.10); border: 1.5px solid rgba(194,65,12,0.30); color: var(--primary); font-size: 12px; font-weight: 700;">Battery</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Other</div>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Internal notes (tech-only)</div>
+            <div style="border: 1px dashed rgba(161,91,0,0.40); border-radius: 12px; padding: 10px 12px; background: rgba(161,91,0,0.06); font-size: 13px; color: #5a5550;">Prior non-OEM repair visible on frame. <span style="color: var(--warning);">|</span></div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Next → diagnostic quote</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1d — Repair 3 · Diagnostic + quote (checklist + parts + running price + CTA split)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 1d · Repair — Diagnostic &amp; quote · suggested parts + labor pre-populated · running price · Save quote vs Continue to deposit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Issue</span>
+            <div class="nav-title">Quote · Step 3/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
+          <div style="height: 100%; width: 66%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 12px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Diagnostic notes</div>
+            <div style="border: 1px solid rgba(30,24,16,0.12); border-radius: 12px; padding: 10px 12px; background: #ffffff; font-size: 13px; color: #5a5550;">Screen flex confirmed faulty. Battery at 61% health. OLED bleed visible top-left.<span style="color: var(--primary);">|</span></div>
+          </div>
+
+          <div style="padding: 8px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Suggested parts + labor</div>
+
+            <!-- Part row checkable -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">OEM grade · 22 in stock</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$189</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · screen replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~45 min</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$60</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Battery</div>
+                  <div style="font-size: 10.5px; color: var(--warning);">3 in stock — low</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$79</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1px solid rgba(30,24,16,0.10); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; opacity: 0.65;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid rgba(30,24,16,0.20); flex-shrink: 0;"></div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · battery replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~20 min · add if replacing battery</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--muted);">$35</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Running price estimate -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(194,65,12,0.06), rgba(194,65,12,0.01)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.28); display: flex; justify-content: space-between; align-items: baseline;">
+            <div>
+              <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">Estimate · 3 items</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">+tax · final at pickup</div>
+            </div>
+            <div style="font-family: var(--font-display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--primary);">$327</div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <!-- Split footer CTA -->
+        <div class="tender-safearea" style="padding-top: 8px;">
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 12px;">Save as quote</button>
+          </div>
+          <button class="tender-btn">
+            <span>Continue → deposit</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1e — Repair 4 · Deposit tender (reuse tender UI — showing "Deposit · $50 of $327")
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 1e · Repair — Deposit tender · Cash selected · "Deposit · $50 of $327" · same numpad UI as full tender</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Quote</span>
+            <div class="nav-title">Deposit</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$327</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
+          <div style="height: 100%; width: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll">
+          <!-- Selected method strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(194,65,12,0.06); border: 1px solid rgba(194,65,12,0.20); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Deposit · $50 of $327</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Balance due at pickup · enter cash received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$50<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$0.00</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount selected">$50</div>
+            <div class="quick-amount">$60</div>
+            <div class="quick-amount">$75</div>
+            <div class="quick-amount">$100</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Confirm deposit</span>
+            <span class="tb-amount">$50.00</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- close repair grid -->
+
+<div class="section-label">Light · Main sale flow · screens 2 – 6</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       2 — Catalog · customer attached · cart strip · pinned tender
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 2 · Catalog · customer attached · 3 items in cart</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="nav-back">‹ Back</span>
+            </div>
+            <div class="nav-title">New sale</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">iPhone 14 Pro screen</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <!-- Cart strip · minimal (name + phone only) -->
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">(555) 214-8801</div>
+          </div>
+          <div class="cs-total">$274.51</div>
+        </div>
+
+        <div class="chip-row">
+          <div class="filter-chip active">Matches · 3</div>
+          <div class="filter-chip">Screens</div>
+          <div class="filter-chip">Labor</div>
+          <div class="filter-chip">Accessories</div>
+          <div class="filter-chip">Services</div>
+        </div>
+
+        <div class="catalog">
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔧</div>
+            <div class="t-name">iPhone 14 Pro Screen</div>
+            <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">⚙️</div>
+            <div class="t-name">Labor · screen replace</div>
+            <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔌</div>
+            <div class="t-name">USB-C 3ft cable</div>
+            <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🛡️</div>
+            <div class="t-name">Screen protector · Pro</div>
+            <div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🔋</div>
+            <div class="t-name">iPhone 14 Battery</div>
+            <div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🧽</div>
+            <div class="t-name">Cleaning service</div>
+            <div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div>
+          </div>
+        </div>
+
+        <!-- Pinned safe-area tender -->
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       3 — Cart tab · 3 items · tap line → sheet
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 3 · Cart view · 3 items · swipe to void, tap to edit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">iPhone 14 Pro · repair draft</div>
+          </div>
+          <div class="cs-count"><span class="chip primary">Ticket auto</span></div>
+        </div>
+
+        <div class="cart-rows">
+          <div class="cart-row">
+            <div class="cr-icon">🔧</div>
+            <div style="flex: 1;">
+              <div class="cr-name">iPhone 14 Pro Screen</div>
+              <div class="cr-sub">SKU IPH14P-S · Qty 1</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="cr-price">$189.00</div>
+              <div class="cr-sub" style="text-decoration: line-through;">$199</div>
+            </div>
+          </div>
+          <div class="cart-row">
+            <div class="cr-icon">⚙️</div>
+            <div style="flex: 1;">
+              <div class="cr-name">Labor · screen replacement</div>
+              <div class="cr-sub">Service · 45 min</div>
+            </div>
+            <div class="cr-price">$60.00</div>
+          </div>
+          <div class="cart-row" style="background: rgba(194,65,12,0.05); border-left: 3px solid var(--primary);">
+            <div class="cr-icon">🔌</div>
+            <div style="flex: 1;">
+              <div class="cr-name">USB-C 3 ft cable</div>
+              <div class="cr-sub">SKU USB-C3 · Qty 1</div>
+            </div>
+            <div class="cr-price">$14.00</div>
+          </div>
+
+          <div style="padding: 14px 16px; display: flex; gap: 8px;">
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Misc</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Discount</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Note</div>
+          </div>
+
+          <div class="sect-label">Coupon</div>
+          <div style="padding: 0 16px 14px;">
+            <div class="nav-search" style="margin: 0;">
+              <span style="color: var(--muted);">🏷️</span>
+              <span style="flex: 1;">Enter code or scan</span>
+              <span class="s-cap">✓</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div class="totals-row"><span>Subtotal</span><span>$263.00</span></div>
+          <div class="totals-row" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+          <div class="totals-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="total-line"><span class="tl-label">Total</span><span class="tl-amount">$274.51</span></div>
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       4 — Line-edit sheet · .height(300) detent
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 4 · Line edit · <code>.presentationDetents([.height(320), .medium])</code></div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body" style="position: relative;">
+
+        <div class="nav" style="opacity: 0.6;">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip" style="opacity: 0.55;">
+          <div class="avatar-mini">SM</div>
+          <div><div class="cs-name">Sarah M.</div></div>
+          <div class="cs-total" style="margin-left: auto;">$274.51</div>
+        </div>
+
+        <div class="scroll" style="opacity: 0.45;">
+          <div class="cart-row"><div class="cr-icon">🔧</div><div style="flex:1;"><div class="cr-name">iPhone 14 Pro Screen</div></div><div class="cr-price">$189.00</div></div>
+          <div class="cart-row"><div class="cr-icon">⚙️</div><div style="flex:1;"><div class="cr-name">Labor</div></div><div class="cr-price">$60.00</div></div>
+        </div>
+
+        <div class="sheet-backdrop"></div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">USB-C 3 ft cable</div>
+          <div class="sheet-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+
+          <div class="sheet-row">
+            <span>Qty</span>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+
+          <div class="sheet-row">
+            <span>Unit price</span>
+            <span style="font-family: var(--font-display); font-size: 18px; font-weight: 700;">$14.00</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Line discount</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Apply</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Note</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Add</span>
+          </div>
+
+          <div style="padding: 16px 20px 6px; display: flex; gap: 10px;">
+            <button class="btn destructive" style="flex: 1;">Remove</button>
+            <button class="btn" style="flex: 2;">Save · $14.00</button>
+          </div>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5a — Tender Step 1 · method picker · due amount prominent · no numpad
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 5a · Tender — Step 1 · pick method · due amount front and center · tap to proceed to numpad</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Cart</span>
+            <div class="nav-title">Tender</div>
+            <div class="nav-ellipsis">✕</div>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 16px;">
+
+          <!-- Due amount hero -->
+          <div style="padding: 28px 24px 20px; text-align: center; position: relative;">
+            <div style="font-size: 11px; font-weight: 600; color: #5a5550; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
+            <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: #1a1816;">$274.51</div>
+            <div style="font-size: 12px; color: #5a5550; margin-top: 8px;">Sarah M. · 3 items</div>
+          </div>
+
+          <!-- Membership banner -->
+          <div style="margin: 0 16px 16px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.18); display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 14px rgba(194,65,12,0.06);">
+            <span style="font-size: 22px;">★</span>
+            <div style="flex: 1;">
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member · 10% off applied</div>
+              <div style="font-size: 11px; color: #5a5550; margin-top: 1px;">Earning 55 pts · $10 saved this sale</div>
+            </div>
+            <span class="chip" style="font-family: var(--font-display); font-size: 12px; padding: 3px 9px;">SAVED $10</span>
+          </div>
+
+          <div class="sect-label" style="padding-top: 4px;">Choose payment method</div>
+
+          <!-- Method picker — 2×2 grid, each one tappable to go to step 2 -->
+          <div class="tender-methods">
+            <div class="method">
+              <div class="m-icon">💳</div>
+              <div class="m-name">Card</div>
+              <div class="m-sub">Tap to Pay</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">💵</div>
+              <div class="m-name">Cash</div>
+              <div class="m-sub">Enter amount</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">🎁</div>
+              <div class="m-name">Gift card</div>
+              <div class="m-sub">Scan / enter</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">💸</div>
+              <div class="m-name">Store credit</div>
+              <div class="m-sub">$42.00 avail.</div>
+            </div>
+          </div>
+
+          <!-- Split tender hint -->
+          <div style="margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(30,24,16,0.03); border: 1px dashed rgba(30,24,16,0.12); display: flex; gap: 10px; align-items: center;">
+            <span style="color: var(--muted); font-size: 15px;">⊕</span>
+            <div style="font-size: 12px; color: var(--muted);">Split tender — pick method, enter partial, then pick another</div>
+          </div>
+
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn disabled" style="opacity: 0.4;">
+            <span>Select a payment method</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5b — Tender Step 2 · Cash amount entry · received + change + numpad
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 5b · Tender — Step 2 · Cash selected · received / change panel + quick-amounts + numpad · Confirm → receipt (or back for split)</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Method</span>
+            <div class="nav-title">Cash</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$274.51</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Selected method confirmation strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(194,65,12,0.06); border: 1px solid rgba(194,65,12,0.20); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(194,65,12,0.12); flex-shrink: 0;">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Cash payment</div>
+              <div style="font-size: 11px; color: #5a5550; margin-top: 1px;">Due: $274.51 · enter amount received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <!-- Cash panel — Liquid Glass with specular -->
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$25.49</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount">$275</div>
+            <div class="quick-amount">$280</div>
+            <div class="quick-amount selected">$300</div>
+            <div class="quick-amount">$320</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div style="display: flex; gap: 10px; padding-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">+ Split tender</button>
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Add tip</button>
+          </div>
+          <button class="tender-btn">
+            <span>Confirm cash</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       6 — Receipt · celebration hero · glassy share tiles · receipt preview
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">Light · 6 · Receipt · celebration hero · glassy share tiles · JetBrains Mono receipt + loyalty progress bar · Live Activity</div>
+    <div class="phone">
+      <div class="island active">
+        <div class="ia-left">🛍 3 items</div>
+        <div class="ia-right">$274.51</div>
+      </div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Done</span>
+            <div class="nav-title">Paid</div>
+            <span class="chip success" style="font-size: 11px;">✓ #28014</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Hero — elevated, celebratory -->
+          <div class="receipt-hero">
+            <div class="rh-check">✓</div>
+            <div class="rh-label">Payment complete</div>
+            <div class="rh-amount">$274.51</div>
+            <div class="rh-sub">Cash · $300 received · $25.49 change</div>
+          </div>
+
+          <!-- Share tiles — glassy action row -->
+          <div class="sect-label" style="padding-top: 8px;">Send receipt to Sarah M.</div>
+
+          <div class="share-grid">
+            <div class="share-tile primary">
+              <div class="st-icon">💬</div>
+              <div class="st-label">Text</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">✉️</div>
+              <div class="st-label">Email</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">🖨</div>
+              <div class="st-label">Print</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">📡</div>
+              <div class="st-label">AirDrop</div>
+            </div>
+          </div>
+
+          <!-- Loyalty celebration row with progress bar -->
+          <div class="loyalty-celebration">
+            <div class="lc-star">★</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier held</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b></div>
+              <div class="lc-progress" style="margin-top: 7px;"></div>
+              <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-2); margin-top: 3px;"><span>GOLD 285 pts</span><span>PLATINUM 500 pts</span></div>
+            </div>
+          </div>
+
+          <!-- Receipt preview — monospace, elevated -->
+          <div class="receipt-list" style="margin-top: 12px;">
+            <div style="padding: 9px 14px 7px; border-bottom: 1px solid rgba(30,24,16,0.08); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: 700; color: #5a5550; letter-spacing: 0.06em; text-transform: uppercase;">Receipt #28014</span>
+              <span class="chip success" style="font-size: 9px; padding: 2px 7px;">Sent ✓</span>
+            </div>
+            <div style="padding: 10px 14px 12px;">
+              <div class="rl-row muted"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+              <div class="rl-row muted"><span>Labor · screen</span><span>$60.00</span></div>
+              <div class="rl-row muted"><span>USB-C 3ft cable</span><span>$14.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>★ GOLD 10% off</span><span>−$10.00</span></div>
+              <div class="rl-row muted"><span>Tax 8.5%</span><span>$21.51</span></div>
+              <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
+              <div class="rl-row muted" style="padding-top: 8px; border-top: 1px dashed rgba(30,24,16,0.12); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+            </div>
+          </div>
+
+          <!-- Secondary actions -->
+          <div style="padding: 8px 16px 4px; display: flex; gap: 8px;">
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">View ticket #4829</div>
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">Customer profile</div>
+          </div>
+
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>New sale</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+  </div><!-- /.light-mode -->
+</div><!-- /light section -->
+
+</body>
+</html>

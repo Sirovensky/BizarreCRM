@@ -1,0 +1,69 @@
+area: signup
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/signup.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  web_page: packages/web/src/pages/signup/SignupPage.tsx
+auth: public
+notes:
+  - Current intended website mode is immediate tenant creation until platform email is configured.
+  - Future email verification remains available once SMTP/platform email exists.
+  - Captcha uses a public site key in client config and a server secret outside this contract.
+endpoints:
+  - method: GET
+    path: /api/v1/signup/config
+    implementation_status: planned
+    purpose: Let clients discover signup mode and verification requirements.
+    contract_note: Add the server route before web or Android treats this endpoint as callable.
+    response_data:
+      enabled: boolean
+      mode: immediate|email|approval|disabled
+      emailVerificationConfigured: boolean
+      captcha:
+        enabled: boolean
+        siteKey: string nullable
+  - method: GET
+    path: /api/v1/signup/check-slug/{slug}
+    purpose: Check whether a slug is acceptable and available.
+    params:
+      slug: string
+    response_data:
+      available: boolean
+      reason: string nullable
+    security_note: Response should avoid confirming tenant enumeration details.
+  - method: POST
+    path: /api/v1/signup
+    purpose: Create or queue a shop depending on signup mode.
+    request:
+      slug: string
+      shop_name: string
+      admin_email: string
+      admin_password: string
+      admin_first_name: string optional
+      admin_last_name: string optional
+      captcha_token: string optional
+    immediate_response_data:
+      tenant_id: number
+      slug: string
+      url: string
+      message: string
+      mode: immediate
+    email_mode_response_data:
+      message: string
+      mode: email
+  - method: GET
+    path: /api/v1/signup/verify/{token}
+    purpose: Complete email-verified signup.
+    active_when: SIGNUP_MODE=email
+    params:
+      token: string
+    response_data:
+      tenant_id: number
+      slug: string
+      url: string
+      message: string
+      mode: email
+examples:
+  immediate_success: packages/contracts/examples/signup-immediate-success.json
+  disabled_error: packages/contracts/examples/signup-error.json

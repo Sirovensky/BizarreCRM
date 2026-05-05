@@ -1,0 +1,112 @@
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+packages/server/data/crash-reports/
+.env
+.env.*
+!.env.example
+.tokens.json
+# Uploads — cover root-level and server-package paths.
+# /* (not trailing slash) lets the !.gitkeep negation re-include the marker file.
+# Leading slash on /uploads/ anchors it to repo root so it doesn't swallow packages/server/uploads.
+/uploads/
+packages/server/uploads/*
+!packages/server/uploads/.gitkeep
+# Entire server data directory — safety-belt so any future DB/JSON files are covered
+packages/server/data/
+packages/server/data/*.db*
+packages/server/data/master.db
+packages/server/data/backups/
+packages/server/data/crash-log.json
+packages/server/data/tenants/
+# Server downloads (APK builds, exports, generated files)
+packages/server/downloads/
+# Root-level backup target (if admin configures backup_path there)
+/backups/
+packages/server/certs/
+# All cert/key files anywhere in the repo (belt-and-suspenders for the rule above)
+*.pem
+*.key
+*.cert
+*.crt
+*.csr
+*.p12
+*.pfx
+# Generic credential/secret files (defensive catch-all for files outside .env)
+*.secrets.json
+*credentials*.json
+*secrets*.json
+packages/web/dist/
+*.log
+*.tsbuildinfo
+nul
+.DS_Store
+Thumbs.db
+
+# Dashboard build output (Electron management app, repo root only — leading
+# slash anchors so we don't accidentally ignore android/.../ui/screens/dashboard/).
+/dashboard/
+packages/management/release/
+packages/management/dist/
+
+# Android build artifacts
+android/**/build/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+*.apk
+*.aab
+
+# ADB verification screenshots / XML dumps — local dev evidence, not source
+adb-screenshots/
+
+# Editor / IDE directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup / temp files
+*.bak
+*.backup
+*.dump
+*.sql.gz
+*.tar.gz
+
+# Coverage reports
+coverage/
+.nyc_output/
+.cache/
+
+# Additional env file variants (belt-and-suspenders; .env.* glob above covers these,
+# but explicit entries improve readability)
+.env.local
+.env.production
+.env.test
+
+# Markdown docs (keep README + TODO + SECURITY + LICENSES + CODE_OF_CONDUCT + issue templates)
+*.md
+!README.md
+!TODO.md
+!DONETODOS.md
+!SECURITY.md
+!LICENSES.md
+!CODE_OF_CONDUCT.md
+!docs/
+!docs/**/*.md
+!.github/
+!.github/**/*.md
+# Claude harness — never commit (settings, hooks, skills, runtime state, worktrees)
+.claude/
+!ios/ActionPlan.md
+!ios/agent-ownership.md
+!ios/CLAUDE.md
+!android/
+!android/**/*.md
+
+# personal scratchpad — not for public repo
+Repair_Shop_CRM_UIUX_Audit_Instructions.md
+UsersPavel.claudeplansmighty-*.md
+antigravity.md

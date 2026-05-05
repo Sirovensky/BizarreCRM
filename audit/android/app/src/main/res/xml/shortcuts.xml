@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static shortcuts + Google Assistant App Actions.
+
+  The <shortcut> entries show up when the user long-presses the launcher
+  icon. The <capability> entries register intents with Google Assistant so
+  the user can say "Hey Google, create a ticket in BizarreCRM" and land
+  directly on the ticket-create screen.
+
+  The capability names come from Google's App Actions built-in intents
+  catalogue. CREATE_MESSAGE is the closest fit for "create a ticket" since
+  there is no dedicated CREATE_REPAIR_TICKET intent. If a better one lands
+  in a future catalogue we can swap the name without changing the activity.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      §24.3 — Each shortcut has a distinct icon (not the generic app launcher
+      icon).  Icons use brand dark background (#121017) with cream (#FDEED0)
+      foreground paths so they read clearly on both light and dark launcher
+      wallpapers (theme-aware variant).
+
+      Android 13+ (API 33) additionally supports a monochromatic adaptive-icon
+      layer via android:icon on the <adaptive-icon> element; that upgrade path
+      is deferred until the app targets API 33+ by default and the design team
+      supplies monochromatic SVG sources.
+    -->
+
+    <shortcut
+        android:shortcutId="new_ticket"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_ticket"
+        android:shortcutShortLabel="@string/shortcut_new_ticket_short"
+        android:shortcutLongLabel="@string/shortcut_new_ticket_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://ticket/new" />
+        <capability android:name="actions.intent.CREATE_MESSAGE">
+            <parameter
+                android:name="message.recipient.name"
+                android:key="customerName" />
+        </capability>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_customer"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_customer"
+        android:shortcutShortLabel="@string/shortcut_new_customer_short"
+        android:shortcutLongLabel="@string/shortcut_new_customer_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://customer/new" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="scan_barcode"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_scan_barcode"
+        android:shortcutShortLabel="@string/shortcut_scan_short"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://scan" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="clock_in"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_clock_in"
+        android:shortcutShortLabel="@string/shortcut_clock_in_short"
+        android:shortcutLongLabel="@string/shortcut_clock_in_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://clockin" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_sms"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_sms"
+        android:shortcutShortLabel="@string/shortcut_new_sms_short"
+        android:shortcutLongLabel="@string/shortcut_new_sms_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://messages" />
+    </shortcut>
+
+
+    <!--
+      §25.2 Direct-share targets — customers appear as "Share to…" rows in
+      the system chooser when the user shares a PDF, text, or vCard from another
+      app into BizarreCRM.
+      The category string must match ShareHelper.CATEGORY_SHARE_TARGET exactly.
+      ShortcutManagerCompat.addDynamicShortcuts() populates the icons + labels
+      at runtime with the most-recent customers (see util/ShareHelper.kt).
+    -->
+    <share-target android:targetClass="com.bizarreelectronics.crm.MainActivity">
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="text/x-vcard" />
+        <data android:mimeType="image/*" />
+        <category android:name="com.bizarreelectronics.crm.SHARE_TARGET" />
+    </share-target>
+
+</shortcuts>

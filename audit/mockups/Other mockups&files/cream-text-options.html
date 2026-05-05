@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Text on Cream — Options</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a1a; font-family: 'Inter', system-ui, sans-serif; padding: 40px 32px; color: #e8e8e8; }
+  h1 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #666; margin-bottom: 32px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+  .option { border-radius: 14px; overflow: hidden; border: 1px solid #2a2a2a; }
+  .swatch { background: #fdeed0; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .swatch .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 4px; }
+  .swatch .heading { font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .swatch .body { font-size: 14px; line-height: 1.5; }
+  .swatch .btn { display: inline-flex; align-items: center; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; width: fit-content; }
+  .swatch .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+
+  .meta { background: #141414; padding: 14px 18px; }
+  .meta .name { font-size: 13px; font-weight: 600; color: #e8e8e8; margin-bottom: 4px; }
+  .meta .hex { font-size: 12px; color: #666; font-family: monospace; }
+  .meta .ratio { font-size: 11px; margin-top: 6px; }
+  .ratio .pass { color: #6abf6a; font-weight: 600; }
+  .ratio .fail { color: #e06c75; }
+  .ratio .warn { color: #e5c07b; }
+
+  /* Divider */
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #555; margin: 36px 0 16px; }
+
+  /* Recommended badge */
+  .rec { background: #2d4a2d; color: #6abf6a; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h1>Text color on cream (#fdeed0) — pick one</h1>
+
+<p class="section-title">Dark options (high contrast)</p>
+<div class="grid">
+
+  <!-- 1. Near-black warm brown -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#1a0b00">Section label</div>
+        <div class="heading" style="color:#1a0b00">Bizarre CRM</div>
+        <div class="body" style="color:#1a0b00">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="background:#1a0b00; color:#fdeed0">Checkout</div>
+      <div class="badge" style="background:#1a0b00; color:#fdeed0">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Near-black warm brown <span class="rec">Recommended</span></div>
+      <div class="hex">#1a0b00 — primary-950</div>
+      <div class="ratio"><span class="pass">✓ AA 14.2:1</span> — passes AAA</div>
+    </div>
+  </div>
+
+  <!-- 2. Dark brown (current onPrimary) -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#2b1400">Section label</div>
+        <div class="heading" style="color:#2b1400">Bizarre CRM</div>
+        <div class="body" style="color:#2b1400">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="background:#2b1400; color:#fdeed0">Checkout</div>
+      <div class="badge" style="background:#2b1400; color:#fdeed0">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Dark brown (current onPrimary)</div>
+      <div class="hex">#2b1400 — primary-900</div>
+      <div class="ratio"><span class="pass">✓ AA 10.7:1</span> — passes AAA</div>
+    </div>
+  </div>
+
+  <!-- 3. Deep caramel -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#7d4e14">Section label</div>
+        <div class="heading" style="color:#7d4e14">Bizarre CRM</div>
+        <div class="body" style="color:#7d4e14">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="background:#7d4e14; color:#fdeed0">Checkout</div>
+      <div class="badge" style="background:#7d4e14; color:#fdeed0">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Deep caramel</div>
+      <div class="hex">#7d4e14</div>
+      <div class="ratio"><span class="pass">✓ AA 5.3:1</span> — warm, branded feel</div>
+    </div>
+  </div>
+
+</div>
+
+<p class="section-title">Mid options (warm & legible)</p>
+<div class="grid">
+
+  <!-- 4. Amber -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#a66d1f">Section label</div>
+        <div class="heading" style="color:#a66d1f">Bizarre CRM</div>
+        <div class="body" style="color:#a66d1f">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="border: 2px solid #a66d1f; color:#a66d1f">Checkout</div>
+      <div class="badge" style="border: 1.5px solid #a66d1f; color:#a66d1f">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Caramel amber</div>
+      <div class="hex">#a66d1f — old primary-600</div>
+      <div class="ratio"><span class="warn">⚠ AA 3.2:1</span> — borderline, body text fails</div>
+    </div>
+  </div>
+
+  <!-- 5. Charcoal (neutral, no warmth) -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#3f3f46">Section label</div>
+        <div class="heading" style="color:#3f3f46">Bizarre CRM</div>
+        <div class="body" style="color:#3f3f46">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="background:#3f3f46; color:#fdeed0">Checkout</div>
+      <div class="badge" style="background:#3f3f46; color:#fdeed0">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Zinc charcoal (neutral)</div>
+      <div class="hex">#3f3f46 — surface-700</div>
+      <div class="ratio"><span class="pass">✓ AA 8.1:1</span> — no warmth, generic</div>
+    </div>
+  </div>
+
+  <!-- 6. Pure black -->
+  <div class="option">
+    <div class="swatch">
+      <div>
+        <div class="label" style="color:#000">Section label</div>
+        <div class="heading" style="color:#000">Bizarre CRM</div>
+        <div class="body" style="color:#000">Open tickets today — 12 repairs in queue.</div>
+      </div>
+      <div class="btn" style="background:#000; color:#fdeed0">Checkout</div>
+      <div class="badge" style="background:#000; color:#fdeed0">Active</div>
+    </div>
+    <div class="meta">
+      <div class="name">Pure black</div>
+      <div class="hex">#000000</div>
+      <div class="ratio"><span class="pass">✓ AAA 16.7:1</span> — max contrast, feels harsh</div>
+    </div>
+  </div>
+
+</div>
+
+<p style="margin-top:32px; font-size:12px; color:#555;">
+  Recommendation: <strong style="color:#e8e8e8">#1a0b00</strong> (near-black warm brown) gives maximum contrast while staying on-brand warm.
+  #2b1400 (current onPrimary) is slightly softer and also excellent.
+</p>
+
+</body>
+</html>

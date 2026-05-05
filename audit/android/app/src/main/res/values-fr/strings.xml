@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    French (fr) translations — ActionPlan §27.2 Phase-1.
+    Covers fr-CA (Canadian French) and fr-FR. Regional overrides for fr-CA may be
+    added in values-fr-rCA/ if needed (currency/date conventions differ from FR).
+    Keys MUST remain identical to values/strings.xml — do NOT add or remove keys here.
+    Translation pipeline: Weblate / Crowdin (§27.2 stretch goal — not yet wired).
+-->
+<resources>
+    <string name="app_name">Bizarre CRM</string>
+    <string name="nav_dashboard">Tableau de bord</string>
+    <string name="nav_tickets">Tickets</string>
+    <string name="nav_pos">PDV</string>
+    <string name="nav_messages">Messages</string>
+    <string name="nav_more">Plus</string>
+
+    <!-- §47 Team Chat -->
+    <string name="nav_team_chat">Discussion d\'équipe</string>
+    <string name="nav_team_chat_thread">Fil de discussion</string>
+
+    <!-- Home-screen widget -->
+    <string name="widget_description">Revenus aujourd\'hui, tickets ouverts, stock faible</string>
+
+    <!-- Launcher shortcuts / Google Assistant App Actions -->
+    <string name="shortcut_new_ticket_short">Nouveau ticket</string>
+    <string name="shortcut_new_ticket_long">Créer un nouveau ticket de réparation</string>
+    <string name="shortcut_new_customer_short">Nouveau client</string>
+    <string name="shortcut_new_customer_long">Ajouter un nouveau client</string>
+    <string name="shortcut_scan_short">Scanner</string>
+    <string name="shortcut_scan_long">Scanner un code-barres ou un IMEI</string>
+
+    <!-- §14 Employees & Timeclock -->
+    <string name="screen_shift_schedule">Horaire des quarts</string>
+    <string name="screen_leaderboard">Classement</string>
+    <string name="screen_custom_roles">Rôles personnalisés</string>
+    <string name="screen_assign_role">Attribuer un rôle</string>
+
+    <!-- §43 Bench Workflow -->
+    <string name="nav_bench">Mon établi</string>
+    <string name="bench_tile_label">Mon établi</string>
+    <string name="bench_empty_title">Aucun ticket actif sur l\'établi</string>
+    <string name="bench_empty_subtitle">Les tickets qui vous sont assignés avec le statut « En réparation » s\'afficheront ici.</string>
+
+    <!-- §38 Memberships / Loyalty -->
+    <string name="nav_memberships">Abonnements</string>
+    <string name="membership_tier_label">Niveau d\'abonnement</string>
+    <string name="membership_points_label">Points de fidélité</string>
+    <string name="membership_benefit_uses_label">Utilisations des avantages</string>
+    <string name="membership_renews_label">Renouvellement</string>
+    <string name="membership_not_available">Abonnements non disponibles</string>
+    <string name="membership_not_available_subtitle">Mettez à jour votre serveur pour activer les niveaux d\'abonnement et les points de fidélité.</string>
+
+    <!-- §17.7 Weight scale -->
+    <string name="screen_weight_scale">Balance</string>
+    <string name="weight_scale_read_button">Lire le poids</string>
+    <string name="weight_scale_no_scale_title">Aucune balance trouvée</string>
+    <string name="weight_scale_no_scale_subtitle">Associez une balance Bluetooth dans les paramètres Android, puis actualisez ici.</string>
+    <string name="weight_scale_remove_confirm_title">Supprimer la balance</string>
+    <string name="weight_scale_remove_confirm_message">Supprimer la balance associée ? Vous pouvez la réassocier à tout moment.</string>
+
+    <!-- §17.8 NFC HCE tap-to-redeem loyalty -->
+    <string name="loyalty_hce_description">Approchez le téléphone du lecteur pour utiliser des points de fidélité</string>
+    <string name="nfc_customer_tap_title">Carte NFC client</string>
+    <string name="nfc_customer_tap_hint">Approchez une carte NFC Bizarre pour rechercher automatiquement le client.</string>
+
+    <!-- §17.11 Hardware pairing wizard -->
+    <string name="screen_hardware_wizard">Ajouter un appareil</string>
+    <string name="hardware_wizard_step_bluetooth">Activer le Bluetooth</string>
+    <string name="hardware_wizard_step_discover">Rechercher des appareils</string>
+    <string name="hardware_wizard_step_select">Sélectionner un appareil</string>
+    <string name="hardware_wizard_step_role">Attribuer un rôle</string>
+    <string name="hardware_wizard_step_test">Tester et enregistrer</string>
+
+    <!-- §17.12 Reconnect resilience banners -->
+    <string name="hardware_skip_receipt">Reçu ignoré — réimprimez depuis Historique des ventes lorsque l\'imprimante se reconnecte</string>
+    <string name="hardware_skip_label">Étiquette ignorée — réimprimez depuis Inventaire lorsque l\'imprimante se reconnecte</string>
+    <string name="hardware_skip_invoice">Impression de facture ignorée — réimprimez depuis Facture lorsque l\'imprimante se reconnecte</string>
+
+    <!-- §24.4 Quick-Settings tile + §24.x widgets + §1.5 launcher shortcuts -->
+    <string name="tile_clock_in_label">Pointage</string>
+    <string name="widget_clock_in_description">Pointer à l\'arrivée ou au départ depuis l\'écran d\'accueil</string>
+    <string name="widget_low_stock_description">Voir combien d\'articles de stock sont sous le seuil de réapprovisionnement</string>
+    <string name="widget_unread_sms_description">Nombre de conversations SMS non lues</string>
+    <string name="shortcut_recent_customer_short">Client récent</string>
+    <string name="shortcut_recent_customer_long">Ouvrir la fiche du client récent</string>
+    <string name="shortcut_clock_in_short">Pointer l\'arrivée</string>
+    <string name="shortcut_clock_in_long">Pointer l\'arrivée ou le départ de votre quart</string>
+    <string name="shortcut_create_ticket_voice">Créer un ticket</string>
+    <string name="shortcut_clock_in_voice">Pointer mon arrivée</string>
+
+    <!-- §41 Payment Links & Public Pay Page -->
+    <string name="screen_payment_links">Liens de paiement</string>
+    <string name="screen_payment_link_create">Nouveau lien de paiement</string>
+    <string name="payment_link_cancel_title">Annuler le lien de paiement ?</string>
+    <string name="payment_link_cancel_message">Cela invalidera le lien et le client ne pourra plus payer. Impossible d\'annuler.</string>
+    <string name="payment_link_resend_title">Renvoyer la demande de paiement ?</string>
+    <string name="payment_link_resend_message">Le client recevra un autre SMS ou courriel avec le lien de paiement.</string>
+    <string name="payment_link_qr_description">Code QR pour le lien de paiement</string>
+    <string name="payment_link_empty_title">Aucun lien de paiement</string>
+    <string name="payment_link_empty_subtitle">Appuyez sur + pour en créer un</string>
+    <string name="payment_link_not_configured">Les liens de paiement ne sont pas configurés sur ce serveur</string>
+
+    <!-- §60 Inventory Stocktake -->
+    <string name="stocktake_title">Inventaire physique</string>
+    <string name="stocktake_start_subtitle">Comptez physiquement les stocks sur les étagères et réconciliez avec les quantités du système. Fonctionne entièrement hors ligne — les ajustements se synchronisent à la validation.</string>
+    <string name="stocktake_start_cta">Commencer le comptage</string>
+    <string name="stocktake_offline_note">Vous êtes hors ligne. La session s\'exécutera localement et les ajustements se synchroniseront avec le serveur lorsque la connectivité sera rétablie.</string>
+    <string name="stocktake_count_title">Feuille de comptage (%1$d articles)</string>
+    <string name="stocktake_search_hint">Rechercher par nom ou SKU…</string>
+    <string name="stocktake_add_item">Ajouter</string>
+    <string name="stocktake_empty_title">Aucun article compté</string>
+    <string name="stocktake_empty_subtitle">Scannez un code-barres ou recherchez par nom pour ajouter des articles à la feuille de comptage.</string>
+    <string name="stocktake_commit_title">Valider le comptage</string>
+    <string name="stocktake_commit_message">Écrire les ajustements pour %1$d articles comptés. Impossible d\'annuler.</string>
+    <string name="stocktake_commit_confirm">Valider</string>
+    <string name="stocktake_commit_cta">Valider le comptage</string>
+    <string name="stocktake_discard_title">Abandonner la session</string>
+    <string name="stocktake_discard_message">Toutes les quantités comptées seront perdues. Le stock système reste inchangé.</string>
+    <string name="stocktake_discard_confirm">Abandonner</string>
+    <string name="stocktake_scan_fab_cd">Scanner un code-barres pour ajouter un article</string>
+    <string name="stocktake_committed_title">Inventaire physique terminé</string>
+    <string name="stocktake_committed_summary">%1$d articles comptés · %2$d avec écart</string>
+    <string name="stocktake_approval_pending">Les ajustements d\'écart sont en attente d\'approbation du responsable. Les niveaux de stock ont été mis à jour localement.</string>
+    <string name="stocktake_variances_header">Écarts</string>
+    <string name="stocktake_no_variance_header">%1$d articles — aucun écart</string>
+    <string name="stocktake_done">Terminé</string>
+    <string name="cd_back">Retour</string>
+
+    <!-- §19 Settings sub-screens -->
+    <string name="screen_ticket_settings">Paramètres des tickets</string>
+    <string name="screen_payment_settings">PDV et paiement</string>
+    <string name="screen_sms_settings">Paramètres SMS</string>
+    <string name="screen_integrations">Intégrations</string>
+    <string name="screen_team_settings">Équipe et rôles</string>
+    <string name="screen_data_settings">Données</string>
+    <string name="screen_full_diagnostics">Diagnostics</string>
+    <string name="screen_app_info">À propos</string>
+    <string name="screen_business_info">Informations sur l\'entreprise</string>
+
+    <!-- §44 Device Templates / Repair-Pricing Catalog / Device Catalog -->
+    <string name="screen_device_templates">Modèles d\'appareils</string>
+    <string name="screen_repair_pricing">Tarification des réparations</string>
+    <string name="screen_device_catalog">Catalogue d\'appareils</string>
+    <string name="device_templates_add">Ajouter un modèle</string>
+    <string name="device_templates_empty_title">Aucun modèle d\'appareil</string>
+    <string name="device_templates_empty_subtitle">Appuyez sur « +Ajouter un modèle » pour créer votre premier modèle d\'appareil.</string>
+    <string name="device_templates_empty_filtered">Aucun modèle dans cette catégorie.</string>
+    <string name="device_templates_offline_subtitle">Les modèles d\'appareils nécessitent une connexion au serveur.</string>
+    <string name="device_templates_add_dialog_title">Ajouter un modèle d\'appareil</string>
+    <string name="device_templates_edit_dialog_title">Modifier le modèle</string>
+    <string name="device_templates_field_name">Nom du modèle *</string>
+    <string name="device_templates_field_category">Catégorie d\'appareil</string>
+    <string name="device_templates_field_model">Modèle d\'appareil</string>
+    <string name="device_templates_field_fault">Description de la panne</string>
+    <string name="device_templates_field_labor_cost">Coût de main-d\'œuvre</string>
+    <string name="device_templates_field_suggested_price">Prix suggéré</string>
+    <string name="device_templates_field_labor_minutes">Main-d\'œuvre (min)</string>
+    <string name="device_templates_field_warranty_days">Garantie (jours)</string>
+    <string name="device_templates_field_checklist">Liste de vérification préalable</string>
+    <string name="device_templates_field_checklist_hint">Une étape par ligne…</string>
+    <string name="device_templates_delete_title">Supprimer le modèle</string>
+    <string name="device_templates_delete_message">Supprimer « %s » ? Impossible d\'annuler.</string>
+    <string name="device_templates_delete_cd">Supprimer le modèle « %s »</string>
+    <string name="repair_pricing_add">Ajouter un service</string>
+    <string name="repair_pricing_empty_title">Aucun service</string>
+    <string name="repair_pricing_empty_subtitle">Appuyez sur « +Ajouter un service » pour créer votre première entrée de tarification.</string>
+    <string name="repair_pricing_empty_search">Aucun résultat pour « %s »</string>
+    <string name="repair_pricing_empty_filtered">Aucun service dans cette catégorie.</string>
+    <string name="repair_pricing_offline_subtitle">La tarification des réparations nécessite une connexion au serveur.</string>
+    <string name="repair_pricing_search_hint">Rechercher des services…</string>
+    <string name="repair_pricing_add_dialog_title">Ajouter un service</string>
+    <string name="repair_pricing_edit_dialog_title">Modifier le service</string>
+    <string name="repair_pricing_field_name">Nom du service *</string>
+    <string name="repair_pricing_field_name_hint">ex. : Remplacement d\'écran</string>
+    <string name="repair_pricing_field_category">Catégorie (facultatif)</string>
+    <string name="repair_pricing_field_category_hint">ex. : Écran, Batterie</string>
+    <string name="repair_pricing_field_labor_rate">Tarif de main-d\'œuvre par défaut</string>
+    <string name="repair_pricing_field_description">Description (facultatif)</string>
+    <string name="repair_pricing_labor_rate">Main-d\'œuvre : %s</string>
+    <string name="repair_pricing_delete_title">Supprimer le service</string>
+    <string name="repair_pricing_delete_message">Supprimer « %s » ? Impossible d\'annuler.</string>
+    <string name="repair_pricing_delete_cd">Supprimer le service « %s »</string>
+    <string name="device_catalog_search_hint">Rechercher des appareils…</string>
+    <string name="device_catalog_offline_subtitle">Le catalogue d\'appareils nécessite une connexion au serveur.</string>
+    <string name="device_catalog_empty_title">Aucun fabricant</string>
+    <string name="device_catalog_empty_subtitle">Le catalogue d\'appareils est vide sur ce serveur.</string>
+    <string name="device_catalog_no_models">Aucun modèle pour ce fabricant.</string>
+    <string name="device_catalog_model_count">%d modèles</string>
+    <string name="device_catalog_expand">Développer %s</string>
+    <string name="device_catalog_collapse">Réduire %s</string>
+    <string name="device_catalog_no_results_title">Aucun appareil trouvé</string>
+    <string name="device_catalog_no_results_subtitle">Aucun appareil correspondant à « %s ».</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="filter_all">Tous</string>
+    <string name="error_offline">Hors ligne</string>
+    <string name="error_field_required">Obligatoire</string>
+    <string name="cd_navigate_back">Retour</string>
+    <string name="cd_add_template">Ajouter un modèle d\'appareil</string>
+    <string name="cd_add_service">Ajouter un service de réparation</string>
+    <string name="cd_search">Rechercher</string>
+
+    <!-- §40 Gift Cards / Store Credit / Refunds -->
+    <string name="screen_gift_cards">Cartes-cadeaux et crédit en magasin</string>
+    <string name="screen_refunds">Remboursements</string>
+    <string name="screen_gift_card_liability">Rapport sur les passifs</string>
+    <string name="refund_manager_pin_required">NIP du responsable requis pour les remboursements supérieurs à 50 $</string>
+    <string name="refund_type_original_tender">Mode de paiement initial</string>
+    <string name="refund_type_store_credit">Crédit en magasin</string>
+    <string name="refund_type_credit_note">Note de crédit</string>
+    <string name="gift_card_expiry_warning">Expire bientôt</string>
+    <string name="gift_card_liability_title">Passifs en cours</string>
+    <string name="gift_card_liability_subtitle">Soldes dus aux clients</string>
+
+    <!-- §26 Accessibility — a11y_* namespace -->
+    <string name="a11y_signature_pad">Pavé de signature. Dessinez votre signature avec un stylet ou un doigt. Le clavier n\'est pas pris en charge pour ce champ.</string>
+    <string name="a11y_signature_undo">Annuler le dernier tracé</string>
+    <string name="a11y_signature_clear">Effacer la signature</string>
+    <string name="a11y_sync_status_syncing">Synchronisation des données avec le serveur</string>
+    <string name="a11y_sync_status_pending">%1$d modification(s) en attente de synchronisation. Appuyez pour ouvrir les problèmes de synchronisation.</string>
+    <string name="a11y_sync_status_clean">Toutes les données sont synchronisées</string>
+    <string name="a11y_offline_banner">Hors ligne — affichage des données en cache.</string>
+    <string name="a11y_offline_banner_syncing">Hors ligne — affichage des données en cache. Synchronisation.</string>
+    <string name="a11y_offline_banner_pending">Hors ligne — affichage des données en cache. %1$d modification(s) en attente de synchronisation.</string>
+    <string name="a11y_clock_in_tile_on">Pointage actif — %1$s. Appuyez pour pointer le départ ou ouvrir l\'écran de pointage.</string>
+    <string name="a11y_clock_in_tile_off">Pas de pointage — %1$s. Appuyez pour pointer l\'arrivée ou ouvrir l\'écran de pointage.</string>
+    <string name="a11y_clock_in_tile_unknown">Pointage — %1$s. Appuyez pour ouvrir l\'écran de pointage.</string>
+    <string name="a11y_toggle_on">activé</string>
+    <string name="a11y_toggle_off">désactivé</string>
+    <string name="a11y_field_required_error">Ce champ est obligatoire</string>
+    <string name="a11y_skip_to_kpi">Aller au résumé des KPI</string>
+    <string name="a11y_qr_code_for_ticket">Code QR pour le ticket %1$s. Appuyez pour agrandir.</string>
+    <string name="a11y_qr_code_large">Grand code QR pour le ticket %1$s</string>
+    <string name="a11y_barcode_code128">Code-barres Code-128 pour le SKU %1$s</string>
+    <string name="a11y_barcode_qr">Code QR pour le SKU %1$s</string>
+    <string name="a11y_status_badge">Statut : %1$s</string>
+    <string name="a11y_busy_hours_heatmap">Carte de chaleur des heures de pointe : grille de volume de tickets sur 7 jours par 24 heures.</string>
+    <string name="a11y_busy_hours_heatmap_empty">Carte de chaleur des heures de pointe : aucune donnée disponible.</string>
+    <string name="a11y_color_blind_palette_toggle">Palette adaptée aux daltoniens, %1$s</string>
+</resources>

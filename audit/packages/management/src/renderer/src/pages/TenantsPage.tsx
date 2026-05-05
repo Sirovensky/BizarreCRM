@@ -1,0 +1,822 @@
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
+import { getAPI } from '@/api/bridge';
+import type { Tenant } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { CopyText } from '@/components/CopyText';
+import { formatDateTime } from '@/utils/format';
+import { cn } from '@/utils/cn';
+import toast from 'react-hot-toast';
+import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+import { formatApiError } from '@/utils/apiError';
+
+const PLAN_OPTIONS = Object.values(PLAN_DEFINITIONS);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface LastCreatedTenant {
+  slug: string;
+  setup_url?: string;
+  url?: string;
+}
+
+interface TenantDetail {
+  user_count: number;
+  ticket_count: number;
+  customer_count: number;
+  db_size_mb: number;
+}
+
+export function TenantsPage() {
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  // DASH-ELEC-242: debounce keystrokes so we don't re-filter the (potentially
+  // 200-row) tenant list on every keypress. 150 ms is below human-perception
+  // latency for typing flow but coalesces fast typists.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 150);
+    return () => clearTimeout(id);
+  }, [search]);
+  const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Tenant | null>(null);
+  // DASH-ELEC-133: gate Repair behind a ConfirmDialog so a stray click can't
+  // recreate setup tokens / DB tables silently.
+  const [repairTarget, setRepairTarget] = useState<Tenant | null>(null);
+  const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
+  // DASH-ELEC-241: track in-flight requests separately so a fetch that errors
+  // before setting detailCache doesn't leave the row permanently stuck as
+  // 'loading'.  The Set is a ref (not state) because updates don't need a
+  // re-render themselves — detailCache updates drive re-renders.
+  const detailInFlight = useRef<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [planFilter, setPlanFilter] = useState<string>('');
+
+  // Create form state
+  const [newSlug, setNewSlug] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPlan, setNewPlan] = useState<TenantPlan>('free');
+  const [creating, setCreating] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await getAPI().superAdmin.listTenants();
+      // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        const list = Array.isArray(res.data) ? res.data : (res.data as { tenants: Tenant[] }).tenants ?? [];
+        setTenants(list);
+      }
+    } catch {
+      toast.error('Failed to load tenants');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // DASH-ELEC-278: extracted so the inline error <p> can offer a Retry button
+  // — without this, once detailCache[slug]==='error' the toggleExpand short-
+  // circuit (line below) means re-clicking the row never re-fetches.
+  async function loadDetail(slug: string) {
+    // DASH-ELEC-241: guard against duplicate in-flight requests.
+    if (detailInFlight.current.has(slug)) return;
+    detailInFlight.current.add(slug);
+    setDetailCache((c) => ({ ...c, [slug]: 'loading' }));
+    try {
+      const res = await getAPI().superAdmin.getTenant(slug);
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        // DASH-ELEC-189: bridge.ts now types getTenant result with the
+        // denormalised counts directly — no more `as unknown as` double cast.
+        const d = res.data;
+        setDetailCache((c) => ({
+          ...c,
+          [slug]: {
+            user_count: d.user_count ?? 0,
+            ticket_count: d.ticket_count ?? 0,
+            customer_count: d.customer_count ?? 0,
+            db_size_mb: d.db_size_mb ?? 0,
+          },
+        }));
+      } else {
+        setDetailCache((c) => ({ ...c, [slug]: 'error' }));
+      }
+    } catch {
+      setDetailCache((c) => ({ ...c, [slug]: 'error' }));
+    } finally {
+      detailInFlight.current.delete(slug);
+    }
+  }
+
+  async function toggleExpand(slug: string) {
+    if (expandedSlug === slug) {
+      setExpandedSlug(null);
+      return;
+    }
+    setExpandedSlug(slug);
+    // Skip re-fetch if we have a good cache entry (not 'error').
+    // DASH-ELEC-241: also skip if already in-flight (tracked by ref).
+    if (
+      detailCache[slug] &&
+      detailCache[slug] !== 'error' &&
+      !detailInFlight.current.has(slug)
+    ) return;
+    await loadDetail(slug);
+  }
+
+  const filteredTenants = tenants.filter(
+    (t) => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+      if (planFilter && t.plan !== planFilter) return false;
+      const q = debouncedSearch.toLowerCase();
+      if (!q) return true;
+      return (
+        t.slug.toLowerCase().includes(q) ||
+        t.name.toLowerCase().includes(q)
+      );
+    }
+  );
+
+  const planOptions = useMemo(
+    () => Array.from(new Set(tenants.map((t) => t.plan))).sort(),
+    [tenants]
+  );
+
+  const handleCreate = async () => {
+    const slug = newSlug.trim().toLowerCase();
+    const email = newEmail.trim();
+    if (!slug || !newName.trim()) return;
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) || slug.length < 3 || slug.length > 30) {
+      toast.error('Slug must be 3-30 chars: lowercase letters, numbers, hyphens only');
+      return;
+    }
+    if (!email) {
+      toast.error('Admin email is required');
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      toast.error('Invalid email format');
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await getAPI().superAdmin.createTenant({
+        slug,
+        shop_name: newName.trim(),
+        admin_email: email,
+        plan: newPlan,
+      });
+      if (res.success) {
+        // DASH-ELEC-268 (Fixer-C24 2026-04-25): bridge.ts now parameterises
+        // createTenant return shape, so the cast is no longer needed.
+        const created = res.data;
+        setLastCreated({
+          slug: created?.slug ?? slug,
+          setup_url: created?.setup_url,
+          url: created?.url,
+        });
+        toast.success('Tenant created');
+        setShowCreate(false);
+        setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free');
+        refresh();
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch {
+      toast.error('Failed to create tenant');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    const slug = suspendTarget.slug;
+    const res = await getAPI().superAdmin.suspendTenant(slug);
+    if (res.success) {
+      toast.success('Tenant suspended');
+      setSuspendTarget(null);
+      // DASH-ELEC-235: evict cached detail so the next expand-row re-fetches
+      // updated counts rather than showing stale pre-suspend data.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else toast.error(formatApiError(res));
+  };
+
+  const handleActivate = async () => {
+    if (!activateTarget) return;
+    const slug = activateTarget.slug;
+    const res = await getAPI().superAdmin.activateTenant(slug);
+    if (res.success) {
+      toast.success('Tenant activated');
+      setActivateTarget(null);
+      // DASH-ELEC-235: same eviction for activate.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else toast.error(formatApiError(res));
+  };
+
+  // TPH6: additive repair. Never deletes — only creates missing pieces.
+  // If the repair had to generate a new setup token (zero users), the URL is
+  // returned ONCE and surfaced via lastCreated so the operator can copy it.
+  const handleRepair = async (slug: string) => {
+    const res = await getAPI().superAdmin.repairTenant(slug);
+    if (res.success) {
+      toast.success('Tenant repaired');
+      const payload = res.data;
+      if (payload?.setup_url) {
+        setLastCreated({ slug, setup_url: payload.setup_url });
+      }
+      // DASH-ELEC-235: repair may recreate DB tables/rows — evict cached detail.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else {
+      toast.error(formatApiError(res));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const slug = deleteTarget.slug;
+    const res = await getAPI().superAdmin.deleteTenant(slug);
+    if (res.success) {
+      toast.success('Tenant deleted');
+      setDeleteTarget(null);
+      // DASH-ELEC-260: clear detail panel + cache so a stale entry isn't shown if
+      // a new tenant with the same slug is created later in this session.
+      setExpandedSlug((s) => (s === slug ? null : s));
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else {
+      toast.error(formatApiError(res));
+    }
+  };
+
+  const copySetupLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Setup link copied');
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-20"><RefreshCw className="w-5 h-5 text-surface-500 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h1 className="text-base lg:text-lg font-bold text-surface-100 flex items-center gap-2">
+          <Users className="w-5 h-5 text-accent-400" />
+          {/* DASH-ELEC-234: when the search/status filter is active show the
+              filtered count vs total ("3 of 27") so the heading reflects what
+              the table actually renders. Falls back to plain count otherwise. */}
+          Tenants ({filteredTenants.length === tenants.length
+            ? tenants.length
+            : `${filteredTenants.length} of ${tenants.length}`})
+        </h1>
+        <div className="flex items-center gap-2">
+          <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Tenant
+          </button>
+        </div>
+      </div>
+
+      {/* Aggregate stats — total / active / suspended / DB size */}
+      {tenants.length > 0 && (() => {
+        const active = tenants.filter((t) => t.status === 'active').length;
+        const suspended = tenants.length - active;
+        const totalBytes = tenants.reduce((a, t) => a + (t.db_size_bytes ?? 0), 0);
+        const planCounts = tenants.reduce<Record<string, number>>((acc, t) => {
+          acc[t.plan] = (acc[t.plan] ?? 0) + 1;
+          return acc;
+        }, {});
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
+            <div className="stat-card">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Tenants</div>
+              <div className="text-lg lg:text-2xl font-bold text-surface-100">{tenants.length}</div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Active</div>
+              <div className="text-lg lg:text-2xl font-bold text-emerald-300">
+                {active}<span className="text-xs text-surface-500"> / {tenants.length}</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Suspended</div>
+              <div className={cn('text-lg lg:text-2xl font-bold', suspended > 0 ? 'text-amber-300' : 'text-surface-300')}>{suspended}</div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Total DB</div>
+              <div className="text-lg lg:text-2xl font-bold text-surface-100">
+                {totalBytes > 0
+                  ? `${(totalBytes / 1024 / 1024).toFixed(1)} MB`
+                  : '—'}
+              </div>
+              <div className="text-[9px] lg:text-[10px] text-surface-500 mt-0.5 lg:mt-1 truncate" title={Object.entries(planCounts).map(([p, n]) => `${n} ${p}`).join(' • ')}>
+                {Object.entries(planCounts).map(([p, n]) => `${n} ${p}`).join(' • ')}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Search + filter chips */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+          <input
+            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenants..."
+            className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          {(['all', 'active', 'suspended'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1 rounded border transition-colors ${
+                statusFilter === s
+                  ? 'bg-accent-600/20 border-accent-600 text-accent-300'
+                  : 'border-surface-700 text-surface-400 hover:text-surface-200 hover:border-surface-600'
+              }`}
+            >
+              {s[0].toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        {planOptions.length > 1 && (
+          <select
+            value={planFilter}
+            onChange={(e) => setPlanFilter(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200"
+          >
+            <option value="">Any plan</option>
+            {planOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
+      </div>
+
+      {lastCreated?.setup_url ? (
+        <div className="rounded-lg border border-green-700/50 bg-green-950/30 p-4 text-sm text-green-100">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">Tenant created: {lastCreated.slug}</p>
+              <p className="mt-1 text-green-200">Send this setup link to the tenant admin so they can set their password.</p>
+              <p className="mt-2 break-all font-mono text-xs text-green-100">{lastCreated.setup_url}</p>
+            </div>
+            <button
+              onClick={() => copySetupLink(lastCreated.setup_url!)}
+              className="shrink-0 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-600"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Tenant list — empty-state CTA when the install has never created
+          a tenant (fresh super-admin + multi-tenant mode). Falls back to a
+          bare message when the search box filtered every tenant away. */}
+      {filteredTenants.length === 0 ? (
+        tenants.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-surface-700 bg-surface-900/50 p-8 text-center">
+            <Users className="w-8 h-8 text-surface-600 mx-auto mb-2" />
+            <p className="text-sm text-surface-200">No tenants yet</p>
+            <p className="text-xs text-surface-500 mt-1 max-w-sm mx-auto leading-relaxed">
+              Every tenant that uses this server gets its own DB. Create one
+              now to get a slug, an admin setup link, and (if Cloudflare is
+              configured) a DNS record.
+            </p>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="mt-4 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create first tenant
+            </button>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-sm text-surface-500">
+            No tenants match <code className="font-mono text-surface-400">{search}</code>.
+          </div>
+        )
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              {/* DASH-ELEC-239: scope="col" so AT pairs each cell with its
+                  header when the row is announced. */}
+              <tr className="border-b border-surface-800">
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Slug</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Name</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Status</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Plan</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">DB size</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Created</th>
+                <th scope="col" className="text-right py-2 px-3 text-xs text-surface-500 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTenants.map((t) => {
+                const isOpen = expandedSlug === t.slug;
+                const detail = detailCache[t.slug];
+                return (
+                <Fragment key={t.id}>
+                <tr
+                  className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                  onClick={() => toggleExpand(t.slug)}
+                >
+                  <td className="py-2.5 px-3 font-mono text-accent-400 text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <CopyText value={t.slug} toastLabel={`Copied ${t.slug}`}>{t.slug}</CopyText>
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-surface-200">{t.name}</td>
+                  <td className="py-2.5 px-3">
+                    {/* DASH-ELEC-239: aria-label spells the badge value out so
+                        AT users hear "active" / "suspended" instead of just
+                        the visual chip color cue. */}
+                    <span
+                      role="status"
+                      aria-label={`Status: ${t.status}`}
+                      className={cn(
+                        'px-2 py-0.5 rounded-full text-xs font-medium',
+                        t.status === 'active' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                      )}
+                    >
+                      {t.status}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-surface-400 text-xs">{t.plan}</td>
+                  <td className="py-2.5 px-3 text-surface-400 text-xs whitespace-nowrap">
+                    {t.db_size_bytes
+                      ? `${(t.db_size_bytes / 1024 / 1024).toFixed(1)} MB`
+                      : '—'}
+                  </td>
+                  <td className="py-2.5 px-3 text-surface-500 text-xs">{formatDateTime(t.created_at)}</td>
+                  <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={async () => {
+                          // @audit-fixed: this previously called openExternal
+                          // for `https://${slug}.localhost` and silently failed
+                          // because the system:open-external IPC handler in
+                          // src/main/ipc/system-info.ts only allows the bare
+                          // loopback hostnames (localhost / 127.0.0.1 / ::1).
+                          // Subdomains like `myshop.localhost` were rejected
+                          // with no UI feedback. Until the IPC handler is
+                          // expanded to allow `*.localhost` resolution, we
+                          // open the bare loopback URL with the tenant slug
+                          // as a query string so super admins can still reach
+                          // the right tenant view, and we surface failures
+                          // via toast instead of dropping them.
+                          try {
+                            const res = await getAPI().system.openExternal(
+                              `https://localhost/?tenant=${encodeURIComponent(t.slug)}`
+                            );
+                            if (res && res.success === false) {
+                              toast.error(formatApiError(res));
+                            }
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : 'Failed to open tenant URL');
+                          }
+                        }}
+                        className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700"
+                        title="Open"
+                        aria-label={`Open ${t.slug}`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      {/* DASH-ELEC-128: aria-label per tenant so SR gets unique accessible names */}
+                      {t.status === 'active' ? (
+                        <button
+                          onClick={() => setSuspendTarget(t)}
+                          className="p-1.5 rounded text-amber-500 hover:text-amber-300 hover:bg-surface-700"
+                          title="Suspend"
+                          aria-label={`Suspend ${t.name}`}
+                        >
+                          <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setActivateTarget(t)}
+                          className="p-1.5 rounded text-green-500 hover:text-green-300 hover:bg-surface-700"
+                          title="Activate"
+                          aria-label={`Activate ${t.name}`}
+                        >
+                          <Play className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      )}
+                      {/* DASH-ELEC-134: server `repairTenant` (management-api.ts)
+                          carries no status restriction — an active tenant with a
+                          missing DB table needs Repair too. Drop the
+                          `status !== 'active'` gate so the button matches the
+                          server's actual capability. */}
+                      <button
+                        onClick={() => setRepairTarget(t)}
+                        className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
+                        title="Repair (additive — creates missing pieces, never deletes)"
+                        aria-label={`Repair ${t.name}`}
+                      >
+                        <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(t)}
+                        className="p-1.5 rounded text-red-500 hover:text-red-300 hover:bg-surface-700"
+                        title="Delete"
+                        aria-label={`Delete ${t.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-surface-800 bg-surface-900/30">
+                    <td colSpan={7} className="px-3 py-3">
+                      {detail === 'loading' || detail === undefined ? (
+                        <p className="text-xs text-surface-500">Loading tenant metrics…</p>
+                      ) : detail === 'error' ? (
+                        // DASH-ELEC-278: surface a Retry so a transient
+                        // failure isn't permanently sticky in detailCache.
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-red-400">Failed to load tenant metrics.</p>
+                          <button
+                            type="button"
+                            onClick={() => loadDetail(t.slug)}
+                            className="px-2 py-0.5 text-[11px] font-semibold text-red-300 hover:text-red-100 border border-red-900/60 hover:border-red-700 rounded transition-colors"
+                            aria-label={`Retry loading metrics for ${t.name}`}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <DetailMetric label="Active users" value={detail.user_count} />
+                          <DetailMetric label="Tickets" value={detail.ticket_count} />
+                          <DetailMetric label="Customers" value={detail.customer_count} />
+                          <DetailMetric label="DB size" value={`${detail.db_size_mb.toFixed(1)} MB`} />
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {/*
+        DASH-ELEC-120 + DASH-ELEC-166 (Fixer-B27 2026-04-25):
+         - Wrapped the body in a `<form onSubmit>` so Enter from any input
+           submits via handleCreate (was: Enter did nothing, every field had
+           to be tabbed to and the Create button clicked manually).
+         - Added `role="dialog"`, `aria-modal="true"`, `aria-labelledby` so
+           assistive tech announces this as a modal dialog (parity with
+           ConfirmDialog / KeyboardShortcutsHelp).
+         - Added Escape-to-close + a Tab focus trap mirroring ConfirmDialog
+           — without these, Tab walked off the modal into the underlying
+           tenants table and Escape did nothing.
+        Cancel still uses `closeCreate` so the body-state reset happens in
+        one place regardless of how the modal is dismissed (Esc / Cancel /
+        successful submit all reset the same way).
+      */}
+      {showCreate && (
+        <CreateTenantModal
+          newSlug={newSlug}
+          newName={newName}
+          newEmail={newEmail}
+          newPlan={newPlan}
+          creating={creating}
+          setNewSlug={setNewSlug}
+          setNewName={setNewName}
+          setNewEmail={setNewEmail}
+          setNewPlan={setNewPlan}
+          onSubmit={handleCreate}
+          onCancel={() => { setShowCreate(false); setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free'); }}
+        />
+      )}
+
+      {/* Delete confirm */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete Tenant"
+        message={`This will permanently delete "${deleteTarget?.name}" and all its data. This cannot be undone.`}
+        danger requireTyping={deleteTarget?.slug}
+        confirmLabel="Delete Tenant"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Suspend confirm */}
+      <ConfirmDialog
+        open={suspendTarget !== null}
+        title="Suspend Tenant"
+        message={`Suspending "${suspendTarget?.name}" will immediately block all users from signing in. You can re-activate at any time.`}
+        danger
+        confirmLabel="Suspend Tenant"
+        onConfirm={handleSuspend}
+        onCancel={() => setSuspendTarget(null)}
+      />
+
+      {/* Activate confirm */}
+      <ConfirmDialog
+        open={activateTarget !== null}
+        title="Activate Tenant"
+        message={`Re-activate "${activateTarget?.name}"? Users will be able to sign in again immediately.`}
+        confirmLabel="Activate Tenant"
+        onConfirm={handleActivate}
+        onCancel={() => setActivateTarget(null)}
+      />
+
+      {/* DASH-ELEC-133: Repair confirm — additive (creates missing DB tables
+          and re-issues a setup token if the tenant has zero users). Spell out
+          the side-effects so an operator doesn't trigger a token reissue
+          accidentally. */}
+      <ConfirmDialog
+        open={repairTarget !== null}
+        title="Repair Tenant"
+        message={
+          `Repair "${repairTarget?.name}" (${repairTarget?.slug})?\n\n` +
+          `This is additive — nothing is deleted. It re-creates any missing ` +
+          `database tables, and if the tenant has zero users it re-generates ` +
+          `the one-time setup URL (the previous URL becomes invalid).`
+        }
+        confirmLabel="Repair Tenant"
+        onConfirm={async () => {
+          if (!repairTarget) return;
+          const slug = repairTarget.slug;
+          setRepairTarget(null);
+          await handleRepair(slug);
+        }}
+        onCancel={() => setRepairTarget(null)}
+      />
+    </div>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded border border-surface-800 bg-surface-950/60 px-2.5 py-1.5">
+      <div className="text-[10px] text-surface-500 uppercase tracking-wider">{label}</div>
+      <div className="text-sm font-bold text-surface-100 mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+/**
+ * DASH-ELEC-120 + DASH-ELEC-166 (Fixer-B27 2026-04-25): the Create-Tenant
+ * modal extracted into its own component so Escape / focus-trap effects can
+ * be attached unconditionally — the parent renders this only when
+ * `showCreate` is true, so mount === open and a single useEffect owns the
+ * keydown listener for the dialog's lifetime.
+ */
+interface CreateTenantModalProps {
+  newSlug: string;
+  newName: string;
+  newEmail: string;
+  newPlan: TenantPlan;
+  creating: boolean;
+  setNewSlug: (v: string) => void;
+  setNewName: (v: string) => void;
+  setNewEmail: (v: string) => void;
+  setNewPlan: (v: TenantPlan) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}
+
+function CreateTenantModal({
+  newSlug, newName, newEmail, newPlan, creating,
+  setNewSlug, setNewName, setNewEmail, setNewPlan,
+  onSubmit, onCancel,
+}: CreateTenantModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Focus the first focusable element on open + Escape-to-cancel listener.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const first = el.querySelector<HTMLElement>(
+      'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])'
+    );
+    first?.focus();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancel();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const el = containerRef.current;
+      if (!el) return;
+      const focusable = Array.from(
+        el.querySelectorAll<HTMLElement>(
+          'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((n) => !n.hasAttribute('disabled'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-tenant-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="w-[min(420px,calc(100vw-2rem))] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
+      >
+        <h3 id="create-tenant-title" className="text-sm font-semibold text-surface-100 mb-4">Create New Tenant</h3>
+        {/* DASH-ELEC-166: real <form> wrapper so Enter from any input submits. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()) return;
+            onSubmit();
+          }}
+        >
+          <div className="space-y-3 mb-5">
+            {/* DASH-ELEC-236: cap slug input at 30 chars to match handleCreate's
+                client-side validation (the IPC schema accepts 64 but we reject
+                anything over 30 with a toast — let the input prevent it). */}
+            {/* DASH-ELEC-167: aria-label per input so SR users hear field names instead of placeholders only.
+                DASH-ELEC-135: typing the shop name auto-populates slug while it's still untouched. */}
+            <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="Slug (e.g. my-shop)"
+              maxLength={30}
+              aria-label="Tenant slug (URL identifier, lowercase letters, digits, hyphens)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <input type="text" value={newName} onChange={(e) => {
+              const next = e.target.value;
+              setNewName(next);
+              if (!newSlug.trim()) {
+                setNewSlug(next.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30));
+              }
+            }} placeholder="Shop name"
+              aria-label="Shop name (display name shown to staff and customers)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (required)"
+              aria-label="Admin email address (recipient of initial credentials)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <select value={newPlan} onChange={(e) => setNewPlan(e.target.value as TenantPlan)}
+              aria-label="Subscription plan"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none">
+              {PLAN_OPTIONS.map((plan) => (
+                <option key={plan.name} value={plan.name}>{plan.displayName}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
+            <button type="submit" disabled={creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()}
+              className="px-4 py-2 text-sm font-semibold bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-40">
+              {creating ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

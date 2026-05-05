@@ -1,0 +1,16 @@
+{
+  "id": 101,
+  "number": "TK-0101",
+  "title": "Screen cracked — iPhone 14 Pro",
+  "status": "open",
+  "priority": "high",
+  "customerId": 1,
+  "assignedToId": 3,
+  "deviceLabel": "iPhone 14 Pro",
+  "imei": "357618109684700",
+  "notes": "Customer dropped device; front panel replacement required.",
+  "laborCents": 4500,
+  "estimatedReadyAt": "2024-03-20T14:00:00.000Z",
+  "createdAt": "2024-03-18T09:15:00.000Z",
+  "updatedAt": "2024-03-18T09:15:00.000Z"
+}

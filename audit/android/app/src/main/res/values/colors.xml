@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon background: brand purple (was Material blue #2563EB) -->
+    <color name="ic_launcher_background">#8B5CF6</color>
+    <color name="ic_launcher_foreground">#FFFFFF</color>
+</resources>

@@ -1,0 +1,51 @@
+package com.bizarreelectronics.crm.data.local.db.entities
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
+
+/**
+ * Expense row. `amount` is stored as **Long cents**.
+ *
+ * `approvalStatus` mirrors the server `status` column added in server migration 120
+ * (pending | approved | denied). Added to the Android schema in DB version 12.
+ */
+@Entity(tableName = "expenses", indices = [Index("category"), Index("date"), Index("user_id"), Index("approval_status")])
+@Immutable
+data class ExpenseEntity(
+    @PrimaryKey
+    val id: Long,
+
+    val category: String,
+
+    /** Cents. 1234 = $12.34. */
+    val amount: Long = 0L,
+
+    val description: String? = null,
+
+    val date: String,
+
+    @ColumnInfo(name = "user_name")
+    val userName: String? = null,
+
+    @ColumnInfo(name = "user_id")
+    val userId: Long? = null,
+
+    @ColumnInfo(name = "created_at")
+    val createdAt: String,
+
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: String,
+
+    @ColumnInfo(name = "locally_modified")
+    val locallyModified: Boolean = false,
+
+    /**
+     * Approval workflow status from the server. Values: `pending`, `approved`, `denied`.
+     * Defaults to `pending` for new rows and for rows cached before v12 migration.
+     */
+    @ColumnInfo(name = "approval_status")
+    val approvalStatus: String = "pending",
+)

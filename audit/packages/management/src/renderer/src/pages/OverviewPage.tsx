@@ -1,0 +1,877 @@
+import { useRef, useEffect, useState, useCallback, useReducer } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Cpu,
+  HardDrive,
+  Clock,
+  Zap,
+  Database,
+  Wifi,
+  AlertTriangle,
+  ChevronRight,
+  TrendingUp,
+  Activity,
+} from 'lucide-react';
+import { cn } from '@/utils/cn';
+import { useServerStore } from '@/stores/serverStore';
+import { formatUptime, formatDecimal, formatNumber } from '@/utils/format';
+import { getAPI } from '@/api/bridge';
+import type { MetricsDataPoint } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
+import { Sparkline } from '@/components/Sparkline';
+import { SetupChecklist } from '@/components/SetupChecklist';
+import { RecentActivityWidget } from '@/components/RecentActivityWidget';
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  unit?: string;
+  icon: React.ElementType;
+  iconColor?: string;
+  sublabel?: string;
+  /** Recent sample series for the inline sparkline. Hides chart when fewer than 2 samples. */
+  series?: readonly number[];
+}
+
+function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400', sublabel, series }: StatCardProps) {
+  return (
+    <div className="stat-card">
+      <div className="flex items-center justify-between mb-1.5 lg:mb-2">
+        <div className="min-w-0">
+          <span className="text-[10px] lg:text-[11px] font-medium text-surface-500 uppercase tracking-wider">
+            {label}
+          </span>
+          {sublabel && <span className="text-[9px] text-surface-400 ml-1">({sublabel})</span>}
+        </div>
+        <Icon className={cn('w-3.5 h-3.5 lg:w-4 lg:h-4 flex-shrink-0', iconColor)} />
+      </div>
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex items-baseline gap-1 min-w-0">
+          <span className="text-lg lg:text-2xl font-bold text-surface-100 truncate">{value}</span>
+          {unit && <span className="text-xs text-surface-500 flex-shrink-0">{unit}</span>}
+        </div>
+        {series && series.length >= 2 && (
+          <div className={cn('opacity-70 flex-shrink-0', iconColor)}>
+            <Sparkline data={series} width={52} height={18} fill />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SPARK_HISTORY_LEN = 30;
+function pushSpark(buf: readonly number[], next: number): number[] {
+  const updated = [...buf, next];
+  if (updated.length > SPARK_HISTORY_LEN) updated.splice(0, updated.length - SPARK_HISTORY_LEN);
+  return updated;
+}
+
+// ── Request Rate Graph (live + historical with time range selector) ────
+
+const LIVE_POINTS = 60;
+const LIVE_POLL_SEC = 5;
+const TIME_RANGES = ['Live', '1h', '6h', '1d', '1w', '1m', '6m'] as const;
+type TimeRange = (typeof TIME_RANGES)[number];
+
+interface DataPoint { value: number; time: number; }
+
+// ── AUDIT-MGT-012: drawGraph hoisted to module level ─────────────────────────
+// Previously `drawGraph` was a useCallback inside RequestRateGraph that
+// captured `current`, `avg`, `range`, `histData`, and `loading` from the
+// closure. Three effects with `[]` dependency arrays (seeded-history mount,
+// current-push, and ResizeObserver) all held references to the *initial*
+// drawGraph closure where avg=0, range='Live', etc. — meaning those effects
+// would always paint using stale values no matter what the live state was.
+//
+// Fix: move all canvas drawing logic to a module-level function that receives
+// every value it needs as explicit parameters. The component wraps it in a
+// "latest-ref" pattern (drawGraphRef) so all effects always call the current
+// version without needing to be in each effect's dep array.
+
+interface DrawGraphParams {
+  canvas: HTMLCanvasElement;
+  liveData: DataPoint[];
+  histData: MetricsDataPoint[] | null;
+  range: TimeRange;
+  loading: boolean;
+  current: number;
+  avg: number;
+  activeIdx: number | null;
+}
+
+// DASH-ELEC-073: resolve theme tokens at draw time so the canvas tracks the
+// active palette (light/custom/operator-overridden). We read the canvas's own
+// computed style once per draw and fall back to the dark-theme literals only
+// when a CSS var isn't defined (e.g. tokens still pending on first paint).
+function readToken(canvas: HTMLCanvasElement, name: string, fallback: string): string {
+  const v = getComputedStyle(canvas).getPropertyValue(name).trim();
+  return v.length > 0 ? v : fallback;
+}
+
+function drawGraphFn(params: DrawGraphParams): void {
+  const { canvas, liveData, histData, range, loading, current, avg, activeIdx } = params;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.width / dpr;
+  const h = canvas.height / dpr;
+  const pad = { top: 12, bottom: 28, left: 44, right: 12 };
+  const gW = w - pad.left - pad.right;
+  const gH = h - pad.top - pad.bottom;
+
+  // DASH-ELEC-073: cache token reads once per draw call (cheap but non-zero).
+  // DASH-ELEC-140 (Fixer-B26 2026-04-25): bump axis label contrast — Y was
+  // surface-500 (#71717a, ~3.1:1 on bg) and X was surface-600 (#52525b,
+  // ~2.2:1), both below WCAG AA non-text 3:1 against surface-950. Promote
+  // Y to surface-400 (#a1a1aa, ~6.4:1) and X to surface-500 (#71717a,
+  // ~3.1:1 — meets minimum). Same CSS-var indirection so dark/light token
+  // swaps still work.
+  const accent = readToken(canvas, '--color-accent-500', '#3b82f6');
+  const accentLight = readToken(canvas, '--color-accent-400', '#60a5fa');
+  const gridLine = readToken(canvas, '--color-surface-800', '#1e1e22');
+  const labelMuted = readToken(canvas, '--color-surface-400', '#a1a1aa');
+  const labelDim = readToken(canvas, '--color-surface-500', '#71717a');
+  const bgDeep = readToken(canvas, '--color-surface-950', '#09090b');
+  const danger = readToken(canvas, '--color-red-500', '#ef4444');
+
+  // Resolve data source
+  let points: { value: number; label: string }[];
+  if (range === 'Live') {
+    points = liveData.map(p => ({ value: p.value, label: '' }));
+  } else if (histData && histData.length > 0) {
+    points = histData.map(p => ({ value: p.rps_avg, label: p.timestamp }));
+  } else {
+    points = [];
+  }
+
+  const maxPoints = range === 'Live' ? LIVE_POINTS : points.length;
+  const max = (points.length > 0 ? Math.max(...points.map(p => p.value), 1) : 10) * 1.2;
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const toX = (i: number) => pad.left + (maxPoints > 1 ? (i / (maxPoints - 1)) * gW : gW / 2);
+  const toY = (v: number) => pad.top + gH - (v / max) * gH;
+
+  // Y-axis labels + grid
+  ctx.font = '10px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const val = max - (max * i) / 4;
+    const y = pad.top + (gH * i) / 4;
+    ctx.strokeStyle = gridLine;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    ctx.fillStyle = labelMuted;
+    ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = labelDim;
+  if (range === 'Live') {
+    // Previous implementation assumed every Live point was exactly 5s apart
+    // (LIVE_POINTS * LIVE_POLL_SEC = 5 minutes). That's true for values
+    // pushed by the current-stat poll, but the mount-time seed pulls from
+    // getStatsHistory('1h') which spaces samples every ~1 minute — so a
+    // freshly-opened dashboard would show "300s ago ... now" when the
+    // actual span was closer to 60 minutes. Derive labels from the actual
+    // point timestamps when the seed provided them, falling back to the
+    // poll-cadence formula only when we have no time metadata (shouldn't
+    // happen, but keeps the function defensive).
+    if (liveData.length >= 2) {
+      const nowMs = Date.now();
+      const startIdx = LIVE_POINTS - liveData.length;
+      const oldestMs = liveData[0].time;
+      const middleMs = liveData[Math.floor(liveData.length / 2)].time;
+      const labels = [
+        { idx: startIdx, text: formatRelativeAge(nowMs - oldestMs) + ' ago' },
+        { idx: Math.floor((startIdx + LIVE_POINTS - 1) / 2), text: formatRelativeAge(nowMs - middleMs) + ' ago' },
+        { idx: LIVE_POINTS - 1, text: 'now' },
+      ];
+      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    } else {
+      const labels = [
+        { idx: 0, text: `${LIVE_POINTS * LIVE_POLL_SEC}s ago` },
+        { idx: Math.floor(LIVE_POINTS / 2), text: `${Math.floor(LIVE_POINTS / 2) * LIVE_POLL_SEC}s ago` },
+        { idx: LIVE_POINTS - 1, text: 'now' },
+      ];
+      for (const { idx, text } of labels) ctx.fillText(text, toX(idx), h - pad.bottom + 8);
+    }
+  } else if (points.length > 2) {
+    const step = Math.max(1, Math.floor(points.length / 5));
+    for (let i = 0; i < points.length; i += step) {
+      ctx.fillText(formatTimeLabel(points[i].label, range), toX(i), h - pad.bottom + 8);
+    }
+    // Always label last point
+    if (points.length - 1 > step) {
+      ctx.fillText(formatTimeLabel(points[points.length - 1].label, range), toX(points.length - 1), h - pad.bottom + 8);
+    }
+  }
+
+  if (points.length === 0) {
+    ctx.fillStyle = labelDim;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '12px Inter, system-ui, sans-serif';
+    // DASH-ELEC-294: Unicode `…` matches the rest of the dashboard
+    // (RecentActivityWidget, AdminTools, NotificationsPanel, etc.).
+    ctx.fillText(loading ? 'Loading…' : 'No data for this range yet', w / 2, h / 2);
+    ctx.restore();
+    return;
+  }
+
+  // Single data point — draw as a dot on the right edge
+  if (points.length === 1) {
+    const x = toX(maxPoints - 1);
+    const y = toY(points[0].value);
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = accent; ctx.fill();
+    ctx.strokeStyle = bgDeep; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = readToken(canvas, '--color-surface-400', '#a1a1aa'); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.fillText(`${formatDecimal(points[0].value)} req/s`, x - 10, y - 8);
+    ctx.restore();
+    return;
+  }
+
+  // Data offset for live mode (right-align sparse data)
+  const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
+
+  // Downtime zones — yellow highlights where server had no data (gaps in timestamps)
+  if (range !== 'Live' && points.length > 1) {
+    const expectedGapMs = { '1h': 90_000, '6h': 90_000, '1d': 20 * 60_000, '1w': 90 * 60_000, '1m': 5 * 3600_000, '6m': 30 * 3600_000 }[range] ?? 120_000;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1].label;
+      const curr = points[i].label;
+      if (!prev || !curr) continue;
+      const prevMs = new Date(prev.includes(' ') ? prev.replace(' ', 'T') + 'Z' : prev).getTime();
+      const currMs = new Date(curr.includes(' ') ? curr.replace(' ', 'T') + 'Z' : curr).getTime();
+      if (currMs - prevMs > expectedGapMs * 2) {
+        const x1 = toX(startIdx + i - 1);
+        const x2 = toX(startIdx + i);
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.12)';
+        ctx.fillRect(x1, pad.top, x2 - x1, gH);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(234, 179, 8, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x1, pad.top, x2 - x1, gH);
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Area fill
+  const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.25)');
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+  ctx.beginPath();
+  ctx.moveTo(toX(startIdx), toY(0));
+  for (let i = 0; i < points.length; i++) ctx.lineTo(toX(startIdx + i), toY(points[i].value));
+  ctx.lineTo(toX(startIdx + points.length - 1), toY(0));
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < points.length; i++) {
+    const x = toX(startIdx + i), y = toY(points[i].value);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current dot (live only)
+  // DASH-ELEC-289: pair color with shape so red/blue colorblind users still
+  // pick up the spike signal — circle at baseline, upward triangle when
+  // current load is more than 2× the average. The aria-live summary in the
+  // page repeats the spike state in plain text.
+  if (range === 'Live' && points.length > 0) {
+    const lx = toX(startIdx + points.length - 1), ly = toY(points[points.length - 1].value);
+    const isSpike = current > avg * 2;
+    ctx.beginPath();
+    if (isSpike) {
+      const r = 5;
+      ctx.moveTo(lx, ly - r);
+      ctx.lineTo(lx + r, ly + r);
+      ctx.lineTo(lx - r, ly + r);
+      ctx.closePath();
+    } else {
+      ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = isSpike ? danger : accent;
+    ctx.fill(); ctx.strokeStyle = bgDeep; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Hover crosshair
+  if (activeIdx !== null && activeIdx >= 0 && activeIdx < points.length) {
+    const hx = toX(startIdx + activeIdx), hy = toY(points[activeIdx].value);
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = labelDim; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, h - pad.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = accentLight; ctx.fill();
+    ctx.strokeStyle = bgDeep; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/** Compact "ago" string — "3s", "14m", "2h 5m", "3d 4h". */
+function formatRelativeAge(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return 'now';
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+  const day = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return remHr > 0 ? `${day}d ${remHr}h` : `${day}d`;
+}
+
+// DASH-ELEC-109: always pass 'en-US' as first arg so axis labels are
+// locale-stable regardless of operator OS locale settings.
+function formatTimeLabel(ts: string | number, range: TimeRange): string {
+  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
+  if (range === 'Live') return '';
+  if (range === '1h' || range === '6h') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  if (range === '1d') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  if (range === '1w') return d.toLocaleDateString('en-US', { weekday: 'short', hour: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatHoverTime(ts: string | number, range: TimeRange): string {
+  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
+  // Previous Live branch only returned "{N}s ago" — fine for 5-minute-old
+  // live polls but useless for the 60-minute 1h-seed tail where the oldest
+  // point shows as "3500s ago". Always include the absolute wall-clock time
+  // so the operator can correlate the chart with log timestamps, and pick
+  // a human-friendly "ago" unit.
+  if (range === 'Live') {
+    const ms = Date.now() - d.getTime();
+    if (ms < 500) return 'Now';
+    const wall = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `${formatRelativeAge(ms)} ago · ${wall}`;
+  }
+  if (range === '1h' || range === '6h' || range === '1d') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
+  const [range, setRange] = useState<TimeRange>('Live');
+  const [histData, setHistData] = useState<MetricsDataPoint[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Live data tracking
+  const liveRef = useRef<DataPoint[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+
+  // AUDIT-MGT-012: stable ref to the latest draw params so that zero-dep
+  // effects (seeded history, ResizeObserver) always call drawGraphFn with
+  // current values — they update this ref and call via it, never capturing
+  // stale props/state in their own closure.
+  const drawParamsRef = useRef<Omit<DrawGraphParams, 'canvas' | 'activeIdx'>>({
+    liveData: liveRef.current,
+    histData: null,
+    range: 'Live',
+    loading: false,
+    current: 0,
+    avg: 0,
+  });
+
+  // Keep ref in sync every render so zero-dep effects see fresh values.
+  drawParamsRef.current = { liveData: liveRef.current, histData, range, loading, current, avg };
+
+  /** Convenience: draw with the latest params + a given hoverIdx. */
+  const draw = useCallback((activeIdx: number | null) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawGraphFn({ ...drawParamsRef.current, canvas, activeIdx });
+  }, []); // stable — drawParamsRef is a ref, never stale
+
+  // Seed live chart with recent history on mount (so it's not empty when dashboard opens).
+  // Tries progressively longer ranges — if 1h has fewer than 3 points (fresh
+  // boot with sparse history), fall back to 6h then 1d so the chart shows
+  // context even when the server just came online. We still cap the seed to
+  // LIVE_POINTS samples so the live tail is not swamped by historical
+  // coarse-grained rollups.
+  const seededRef = useRef(false);
+  const [seedOldestMs, setSeedOldestMs] = useState<number | null>(null);
+  useEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    const attemptRanges: TimeRange[] = ['1h', '6h', '1d'];
+    (async () => {
+      for (const attempt of attemptRanges) {
+        try {
+          const res = await getAPI().management.getStatsHistory(attempt);
+          if (handleApiResponse(res)) return;
+          const data = res.data ?? [];
+          if (data.length < 3 && attempt !== '1d') continue;
+          const recent = data.slice(-LIVE_POINTS);
+          const h = liveRef.current;
+          if (h.length === 0 && recent.length > 0) {
+            for (const p of recent) {
+              const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
+              h.push({ value: p.rps_avg, time: ts });
+            }
+            if (h[0]) setSeedOldestMs(h[0].time);
+            if (drawParamsRef.current.range === 'Live') draw(null);
+          }
+          return;
+        } catch (err) {
+          console.warn(`[OverviewPage] seed stats history fetch for ${attempt} failed`, err);
+        }
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Push live data point
+  useEffect(() => {
+    // @audit-fixed: previously this fired on every change to `current`,
+    // including the initial render where `current` is 0 because the server
+    // stats poll has not returned yet. Those leading zero points polluted
+    // the live graph with a fake "outage at start" tail every time the
+    // dashboard mounted. We now skip the very first push when current is 0,
+    // unless we have already accumulated real (non-zero) history from the
+    // 1h seed fetch — in which case the zero is genuinely the latest reading.
+    const h = liveRef.current;
+    if (current === 0 && h.length === 0) {
+      // No real data yet AND we have no seed history — skip the bogus zero.
+      return;
+    }
+    h.push({ value: current, time: Date.now() });
+    if (h.length > LIVE_POINTS) h.shift();
+    // AUDIT-MGT-012: draw() is stable and reads params via ref — no stale closure.
+    if (drawParamsRef.current.range === 'Live') draw(null);
+  }, [current, draw]);
+
+  // Fetch historical data when range changes
+  useEffect(() => {
+    if (range === 'Live') { setHistData(null); draw(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    getAPI().management.getStatsHistory(range).then(res => {
+      if (cancelled) return;
+      // MGT-023: detect auth expiry on authenticated IPC calls.
+      if (handleApiResponse(res)) { setLoading(false); return; }
+      setHistData(res.data ?? []);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) { setHistData([]); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [range, draw]);
+
+  // Redraw when data or hover changes
+  useEffect(() => { draw(hoverIdx); }, [hoverIdx, histData, range, draw]);
+
+  // Responsive sizing
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    const resizeCanvas = (width: number, height: number) => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      // DASH-ELEC-291: drawGraphFn calls setTransform itself — no pre-scale here.
+      // AUDIT-MGT-012: draw() reads live params via ref — no stale closure.
+      draw(null);
+    };
+
+    const obs = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      resizeCanvas(width, height);
+    });
+    obs.observe(container);
+
+    // DASH-ELEC-286: when the operator moves the window to a monitor with a
+    // different devicePixelRatio (e.g. from 1x laptop to 2x external, or
+    // undock from Retina dock), the ResizeObserver only fires if the CSS size
+    // also changes.  Listen to a matchMedia resolution query so a pure-dpr
+    // change (no layout change) still triggers a canvas rescale + redraw.
+    // We use a recursive re-subscribe pattern so the listener always tracks
+    // the CURRENT dpr value rather than the one baked in at mount.
+    let dprMql: MediaQueryList | null = null;
+    const handleDprChange = () => {
+      // Rescale with the current canvas CSS size.
+      const rect = container.getBoundingClientRect();
+      resizeCanvas(rect.width, rect.height);
+      // Re-subscribe at the new dpr so we catch the next change too.
+      if (dprMql) {
+        dprMql.removeEventListener('change', handleDprChange);
+      }
+      dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprMql.addEventListener('change', handleDprChange);
+    };
+    dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    dprMql.addEventListener('change', handleDprChange);
+
+    return () => {
+      obs.disconnect();
+      if (dprMql) dprMql.removeEventListener('change', handleDprChange);
+    };
+  }, [draw]); // draw is stable (empty dep useCallback)
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+
+    const points = range === 'Live' ? liveRef.current : (histData ?? []);
+    if (points.length < 1) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const pad = { left: 44, right: 12 };
+    const gW = w - pad.left - pad.right;
+    const maxPts = range === 'Live' ? LIVE_POINTS : points.length;
+    const startIdx = range === 'Live' ? LIVE_POINTS - points.length : 0;
+
+    let closest = -1, closestDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const x = pad.left + ((startIdx + i) / (maxPts - 1)) * gW;
+      const dist = Math.abs(x - mx);
+      if (dist < closestDist) { closestDist = dist; closest = i; }
+    }
+    if (closest >= 0 && closestDist < 20) {
+      setHoverIdx(closest);
+      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    } else {
+      setHoverIdx(null); setTooltipPos(null);
+    }
+  }, [range, histData]);
+
+  const handleMouseLeave = useCallback(() => { setHoverIdx(null); setTooltipPos(null); }, []);
+
+  // Resolve hovered point for tooltip
+  const hoveredValue = hoverIdx !== null
+    ? range === 'Live'
+      ? liveRef.current[hoverIdx]?.value ?? 0
+      : (histData?.[hoverIdx]?.rps_avg ?? 0)
+    : 0;
+  const hoveredTime = hoverIdx !== null
+    ? range === 'Live'
+      ? liveRef.current[hoverIdx]?.time ?? 0
+      : (histData?.[hoverIdx]?.timestamp ?? '')
+    : '';
+  const hoveredP95 = hoverIdx !== null && range !== 'Live' ? histData?.[hoverIdx]?.p95_response_ms : undefined;
+
+  return (
+    <div className="stat-card !p-3 lg:!p-4">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-accent-400" />
+          <span className="text-sm font-semibold text-surface-200">Request Rate</span>
+          {range === 'Live' && seedOldestMs && (
+            <span
+              className="text-[10px] text-surface-500 font-mono"
+              title={`Earliest point: ${new Date(seedOldestMs).toLocaleString()}`}
+            >
+              · tracking since {formatRelativeAge(Date.now() - seedOldestMs)} ago
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-x-3 gap-y-1 text-[11px] flex-wrap justify-end">
+          {range === 'Live' && (
+            <>
+              <span className="text-surface-500">Now <span className="font-bold text-surface-100">{formatNumber(current)}</span>/s</span>
+              <span className="text-surface-500">Avg <span className="font-medium text-surface-300">{formatDecimal(avg)}</span>/s</span>
+              <span className="text-surface-500">Peak <span className="font-medium text-amber-400">{formatNumber(peak)}</span>/s</span>
+              <span className="text-surface-500">RPM <span className="font-medium text-surface-300">{formatNumber(rpm)}</span></span>
+              <span className="text-surface-500">Avg <span className={cn('font-medium', avgMs > 100 ? 'text-amber-400' : 'text-surface-300')}>{avgMs.toFixed(1)}ms</span></span>
+              <span className="text-surface-500">P95 <span className={cn('font-medium', p95Ms > 500 ? 'text-red-400' : 'text-surface-300')}>{p95Ms.toFixed(0)}ms</span></span>
+            </>
+          )}
+          {range !== 'Live' && histData && histData.length > 0 && (
+            <span className="text-surface-500">{histData.length} data points</span>
+          )}
+        </div>
+      </div>
+
+      {/* Time range selector */}
+      <div className="flex items-center gap-1 mb-2">
+        {TIME_RANGES.map(r => (
+          <button
+            key={r}
+            onClick={() => { setRange(r); setHoverIdx(null); setTooltipPos(null); }}
+            className={cn(
+              'px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors',
+              range === r
+                ? 'bg-accent-600 text-white'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700 hover:text-surface-200'
+            )}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
+      <div ref={containerRef} className="relative w-full h-[170px]">
+        {/* DASH-ELEC-287: AT-visible label + live numeric summary so the
+            canvas isn't a black hole to screen readers. The sparkline-style
+            chart's headline current/avg numbers are repeated as a sr-only
+            paragraph that updates as new samples land. */}
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full cursor-crosshair"
+          role="img"
+          aria-label="Request rate over time"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
+        <p className="sr-only" aria-live="polite">
+          {(() => {
+            const sampleCount = range === 'Live' ? liveRef.current.length : (histData?.length ?? 0);
+            if (sampleCount === 0) return loading ? 'Loading request rate' : 'No request data yet for the selected range';
+            return `Current ${formatDecimal(current)} requests per second, average ${formatDecimal(avg)} requests per second over ${sampleCount} samples`;
+          })()}
+        </p>
+        {hoverIdx !== null && tooltipPos && hoveredTime && (
+          <div
+            ref={tooltipRef}
+            className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"
+            style={(() => {
+              // DASH-ELEC-290: clamp both axes against the actual rendered
+              // tooltip size (measured via ref) so it never overflows top or
+              // bottom of the chart container. First-frame fallback uses the
+              // old 60px estimate before the ref attaches.
+              const tipW = tooltipRef.current?.offsetWidth ?? 160;
+              const tipH = tooltipRef.current?.offsetHeight ?? 60;
+              const containerW = containerRef.current?.clientWidth ?? 300;
+              const containerH = containerRef.current?.clientHeight ?? 170;
+              const left = Math.max(0, Math.min(tooltipPos.x + 12, containerW - tipW));
+              const top = Math.max(0, Math.min(tooltipPos.y - tipH - 4, containerH - tipH));
+              return { left, top };
+            })()}
+          >
+            <div className="text-surface-400 mb-1">{formatHoverTime(hoveredTime, range)}</div>
+            <div className="text-surface-100 font-bold text-sm">{formatDecimal(hoveredValue)} <span className="text-surface-500 font-normal">req/s</span></div>
+            {hoveredP95 !== undefined && (
+              <div className="text-surface-400 mt-0.5">P95: <span className="text-surface-300">{hoveredP95.toFixed(1)}ms</span></div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────
+
+export function OverviewPage() {
+  const stats = useServerStore((s) => s.stats);
+  const isOnline = useServerStore((s) => s.isOnline);
+  const lastError = useServerStore((s) => s.lastError);
+
+  // DASH-ELEC-040: Consolidate 6 sparkline series into a single state object
+  // so a stats poll triggers exactly one state update → one re-render.
+  // Under React 18 auto-batching the six separate setState calls are safe,
+  // but any `await` before the chain (e.g. a future async metrics fetch)
+  // would break batching and cause 6 intermediate renders.
+  interface SeriesMap {
+    mem: number[];
+    db: number[];
+    rps: number[];
+    conn: number[];
+    uploads: number[];
+    p95: number[];
+  }
+  const emptySeries: SeriesMap = { mem: [], db: [], rps: [], conn: [], uploads: [], p95: [] };
+
+  // DASH-ELEC-186: reducer accepts either a plain partial update or a functional
+  // updater so the sparkline effect can pass (prev) => ... without capturing a
+  // stale series closure.
+  type SeriesAction = Partial<SeriesMap> | ((prev: SeriesMap) => Partial<SeriesMap>);
+  const [series, dispatchSeries] = useReducer(
+    (prev: SeriesMap, action: SeriesAction): SeriesMap =>
+      ({ ...prev, ...(typeof action === 'function' ? action(prev) : action) }),
+    emptySeries,
+  );
+
+  useEffect(() => {
+    if (!stats) return;
+    // DASH-ELEC-186: Use a functional-form callback so pushSpark reads the
+    // *current* series snapshot from the reducer rather than the stale closure
+    // captured at effect registration time.  The eslint-disable can now be
+    // removed because `series` is no longer referenced in the effect body.
+    dispatchSeries((prev) => ({
+      mem: pushSpark(prev.mem, stats.memory?.rss ?? 0),
+      db: pushSpark(prev.db, stats.dbSizeMB ?? 0),
+      rps: pushSpark(prev.rps, stats.requestsPerSecondAvg ?? 0),
+      conn: pushSpark(prev.conn, stats.activeConnections ?? 0),
+      uploads: pushSpark(prev.uploads, stats.uploadsSizeMB ?? 0),
+      p95: pushSpark(prev.p95, stats.p95ResponseMs ?? 0),
+    }));
+  }, [stats]);
+
+  return (
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
+      <h1 className="text-base lg:text-lg font-bold text-surface-100">Overview</h1>
+
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-950/30 border border-red-900/50">
+          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-red-300">Server Offline</p>
+            <p className="text-xs text-red-400">{lastError ?? 'Unable to reach the CRM server'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Security alerts banner — clicks through to /alerts page. */}
+      {isOnline && stats?.unacknowledgedSecurityAlerts !== undefined && stats.unacknowledgedSecurityAlerts > 0 && (
+        <Link
+          to="/activity?tab=alerts"
+          className="flex items-center justify-between p-4 rounded-lg bg-orange-950/30 border border-orange-900/50 hover:bg-orange-950/50 hover:border-orange-900/80 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-orange-300">
+                {stats.unacknowledgedSecurityAlerts} Unacknowledged Security Alert{stats.unacknowledgedSecurityAlerts > 1 ? 's' : ''}
+              </p>
+              <p className="text-xs text-orange-400">
+                Review recent security events before clearing alerts.
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-orange-400/70" />
+        </Link>
+      )}
+
+      {/* Setup checklist — first thing operator sees, fold-up when all OK. */}
+      <SetupChecklist />
+
+      {/* Stats grid — values + inline sparklines (last 30 polls, ~2.5min).
+          3 cols on narrow / remote sessions, 3 cols on desktop (unchanged),
+          4+ on large. grid-cols-2 on very tight widths so cards don't pinch. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3">
+        <StatCard
+          label="Memory (RSS)"
+          value={stats?.memory ? formatDecimal(stats.memory.rss) : '--'}
+          unit="MB"
+          icon={Cpu}
+          iconColor="text-purple-400"
+          series={series.mem}
+        />
+        <StatCard
+          label="Uptime"
+          value={stats?.uptime !== undefined ? formatUptime(stats.uptime) : '--'}
+          icon={Clock}
+          iconColor="text-green-400"
+        />
+        <StatCard
+          label="Requests/sec"
+          sublabel="60s avg"
+          value={stats?.requestsPerSecondAvg !== undefined ? formatDecimal(stats.requestsPerSecondAvg) : '--'}
+          icon={Zap}
+          iconColor="text-amber-400"
+          series={series.rps}
+        />
+        <StatCard
+          label="Database"
+          value={stats?.dbSizeMB !== undefined ? formatDecimal(stats.dbSizeMB) : '--'}
+          unit="MB"
+          icon={Database}
+          iconColor="text-accent-400"
+          series={series.db}
+        />
+        <StatCard
+          label="Uploads"
+          value={stats?.uploadsSizeMB !== undefined ? formatDecimal(stats.uploadsSizeMB) : '--'}
+          unit="MB"
+          icon={HardDrive}
+          iconColor="text-cyan-400"
+          series={series.uploads}
+        />
+        <StatCard
+          label="Connections"
+          value={stats?.activeConnections !== undefined ? String(stats.activeConnections) : '--'}
+          icon={Wifi}
+          iconColor="text-emerald-400"
+          series={series.conn}
+        />
+        <StatCard
+          label="P95 response"
+          sublabel="ms"
+          value={stats?.p95ResponseMs !== undefined ? formatDecimal(stats.p95ResponseMs) : '--'}
+          unit="ms"
+          icon={Activity}
+          iconColor="text-pink-400"
+          series={series.p95}
+        />
+        <StatCard
+          label="Avg response"
+          sublabel="ms"
+          value={stats?.avgResponseMs !== undefined ? formatDecimal(stats.avgResponseMs) : '--'}
+          unit="ms"
+          icon={TrendingUp}
+          iconColor="text-sky-400"
+        />
+        <StatCard
+          label="Req / minute"
+          value={stats?.requestsPerMinute !== undefined ? formatNumber(stats.requestsPerMinute) : '--'}
+          icon={Zap}
+          iconColor="text-yellow-400"
+        />
+      </div>
+
+      {/* Request Rate Graph (live + historical) */}
+      <RequestRateGraph
+        current={stats?.requestsPerSecond ?? 0}
+        avg={stats?.requestsPerSecondAvg ?? 0}
+        peak={stats?.requestsPerSecondPeak ?? 0}
+        rpm={stats?.requestsPerMinute ?? 0}
+        avgMs={stats?.avgResponseMs ?? 0}
+        p95Ms={stats?.p95ResponseMs ?? 0}
+      />
+
+      {/* Recent activity — compact audit + alerts preview. Multi-tenant only. */}
+      <RecentActivityWidget />
+
+      {/* System info — includes build SHA + boot timestamp so operators can
+          verify "did my git pull land on the running process?" without SSH. */}
+      {stats && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500">
+          <span>Node {stats.nodeVersion}</span>
+          <span>{stats.platform}</span>
+          <span>{stats.hostname}</span>
+          {stats.gitSha && stats.gitSha !== 'unknown' && (
+            <span title={stats.gitSha}>
+              build <code className="font-mono text-surface-400">{stats.gitSha.slice(0, 8)}</code>
+            </span>
+          )}
+          {stats.startedAt && (
+            <span title={`Server process started at ${stats.startedAt}`}>
+              started {new Date(stats.startedAt).toLocaleString()}
+            </span>
+          )}
+          {stats.multiTenant && (
+            <span className="text-accent-400 font-medium">Multi-tenant</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

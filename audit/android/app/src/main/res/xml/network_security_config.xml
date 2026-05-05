@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    @audit-fixed: Section 33 / D10 — the previous config trusted user-installed
+    CA certificates in BOTH debug and release. That meant any rooted attacker (or
+    malware that smuggled in a root CA via Settings) could MITM the production
+    production traffic with a self-signed cert and we'd accept it without
+    complaint. The fix splits the policy:
+
+    - <base-config>      Production. cleartext OFF, system CAs only. NO user CAs.
+    - <debug-overrides>  Debug builds only — trusts user-installed CAs so devs
+                         can hand-install a self-signed root for the LAN test
+                         server. The Android build system substitutes this block
+                         in *only* when the APK is built with debuggable=true.
+
+    Cleartext (HTTP) traffic remains forbidden in BOTH configs because the LAN
+    dev path uses HTTPS with a hand-installed cert too. If you ever genuinely
+    need plain HTTP for an internal tool, add a tightly-scoped <domain-config>
+    rather than re-enabling cleartextTrafficPermitted globally.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

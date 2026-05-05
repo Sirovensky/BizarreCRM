@@ -1,0 +1,56 @@
+<resources>
+    <!--
+        Parent changed from android:Theme.Material.Light.NoActionBar (causes white
+        flash before Compose mounts) to Theme.AppCompat.DayNight.NoActionBar.
+        This is the standard parent for Compose-only apps — it provides DayNight
+        support without inflating any view-based Material chrome.
+        windowBackground is set to the warm near-black brand dark bg (#121017) so
+        the launch frame is on-brand instead of a white flash.
+    -->
+    <style name="Theme.BizarreCRM" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#121017</item>
+    </style>
+
+    <!--
+        §71.1 — Android 12+ SplashScreen API theme.
+
+        Declared separately from Theme.BizarreCRM so the splash screen style
+        can be applied only to MainActivity (via android:theme on the <activity>
+        tag) while the application-level theme remains Theme.BizarreCRM for all
+        other activities (WidgetConfigActivity, CallInProgressActivity, etc.).
+
+        Parent: Theme.SplashScreen (from androidx.core:core-splashscreen).
+        postSplashScreenTheme: MainActivity switches to Theme.BizarreCRM after
+        the splash animation completes by calling
+        installSplashScreen().setOnExitAnimationListener (§71.1 exit animation
+        is wired in MainActivity — see NOTE-defer on that sub-item).
+
+        windowSplashScreenBackground:
+          Dark near-black (#121017) matches windowBackground in Theme.BizarreCRM
+          so there is zero colour flash when the splash exits into the app.
+
+        windowSplashScreenAnimatedIcon:
+          Points to the 432×432 brand monogram drawable (res/drawable/splash_logo.xml).
+          The OS clips this to a 2/3-viewport circle per the adaptive-icon spec,
+          so the effective visible area is ~288×288 dp out of 432×432. The
+          rounded-rect shape in the drawable already accounts for this.
+
+        windowSplashScreenIconBackgroundColor:
+          Transparent — the icon drawable includes its own cream pill background
+          (#FDEED0) so no extra background layer is needed. Leaving this
+          transparent avoids a double-background artifact.
+
+        windowSplashScreenAnimationDuration:
+          300 ms — matches the §71.1 exit animation budget. The OS ignores
+          values > 1000 ms; 300 ms keeps the launch feel snappy.
+    -->
+    <style name="Theme.BizarreCRM.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#121017</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="windowSplashScreenAnimationDuration">300</item>
+        <item name="postSplashScreenTheme">@style/Theme.BizarreCRM</item>
+    </style>
+</resources>

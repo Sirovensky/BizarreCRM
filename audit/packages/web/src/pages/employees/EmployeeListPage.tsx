@@ -1,0 +1,680 @@
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { employeeApi } from '@/api/endpoints';
+import { cn } from '@/utils/cn';
+import { formatCurrency, formatTime } from '@/utils/format';
+
+// ─── Types ──────────────────────────────────────────────────────────
+interface Employee {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  avatar_url?: string;
+  is_active: number;
+  has_pin: number;
+  permissions?: string;
+  created_at: string;
+  updated_at: string;
+  // WEB-S6-033: list endpoint now includes these fields so no per-row fetch needed
+  is_clocked_in?: number | boolean;
+  weekly_hours?: number;
+}
+
+interface EmployeeDetail extends Employee {
+  clock_entries: ClockEntry[];
+  commissions: Commission[];
+  is_clocked_in: boolean;
+  current_clock_entry: ClockEntry | null;
+}
+
+interface ClockEntry {
+  id: number;
+  user_id: number;
+  clock_in: string;
+  clock_out: string | null;
+  total_hours: number | null;
+  notes?: string;
+}
+
+interface Commission {
+  id: number;
+  user_id: number;
+  amount: number;
+  ticket_id?: number;
+  invoice_id?: number;
+  ticket_order_id?: string;
+  invoice_order_id?: string;
+  description?: string;
+  created_at: string;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────
+// @audit-fixed (WEB-FM-008 / Fixer-B22 2026-04-25): dropped the hardcoded
+// `'en-US'` locale on these three helpers. The shared `utils/format.ts`
+// helpers all derive the active locale from `initCurrencyFromSettings`
+// (defaults to navigator.language) so `formatShortDateTime` already
+// formats clock-in entries in the visitor's locale. Recent-commission
+// rows still need a *short* date (month+day, no year) which the shared
+// helper doesn't expose, so we keep tiny local helpers but read the
+// browser locale at format-time instead of pinning to en-US.
+const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString(_employeeLocale, {
+    month: 'short', day: 'numeric',
+  });
+}
+
+function formatDateTime(iso: string) {
+  return `${formatDate(iso)} ${formatTime(iso)}`;
+}
+
+function formatHours(hours: number) {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function getWeekRange() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  return {
+    from_date: monday.toISOString(),
+    to_date: new Date().toISOString(),
+  };
+}
+
+function getMonthRange() {
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  return {
+    from_date: firstOfMonth.toISOString(),
+    to_date: new Date().toISOString(),
+  };
+}
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  technician: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  manager: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  cashier: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
+
+// ─── PIN Entry Modal ────────────────────────────────────────────────
+function PinModal({ employee, action, onClose, onSubmit, isPending }: {
+  employee: Employee;
+  action: 'clock-in' | 'clock-out';
+  onClose: () => void;
+  onSubmit: (pin: string) => void;
+  isPending: boolean;
+}) {
+  const [pin, setPin] = useState('');
+
+  // WEB-FG-012 fix: kiosk-cashiers were losing in-progress PINs when their hand
+  // grazed the dim outside the inner card — backdrop-click closed the modal
+  // mid-typing. Close on Escape only; the explicit Cancel/Close button and the
+  // header X icon already cover the dismiss path. Also adds a11y-correct
+  // role + aria-modal + aria-labelledby (modal previously had no semantic
+  // dialog role, screen readers announced it as plain-text content).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pin-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    >
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+        <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+          <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+            {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
+          </h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
+            <X className="h-5 w-5 text-surface-500" />
+          </button>
+        </div>
+        <div className="p-6">
+          {/* WEB-FG-004 fix: when the employee has no PIN configured, the
+              modal previously accepted ANY value — meaning a walk-up bystander
+              on an unattended kiosk could clock in/out a pin-less employee
+              and falsify timesheets/commissions. We now hard-block the form:
+              the input is disabled, Submit is disabled, and the operator is
+              told to set a PIN in Edit Employee first. The server is the
+              source of truth; this client gate just removes the trivial
+              walk-up attack. */}
+          {!employee.has_pin ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+              <p className="font-semibold">PIN required to clock in/out.</p>
+              <p className="mt-1">
+                {employee.first_name} {employee.last_name} has no PIN configured. Open Edit Employee
+                and set a 4–6 digit PIN before recording time.
+              </p>
+            </div>
+          ) : (
+            <>
+              <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                Enter PIN
+              </label>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
+                  }}
+                  placeholder="4-6 digit PIN"
+                  autoFocus
+                  className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
+          <button type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+          >
+            {employee.has_pin ? 'Cancel' : 'Close'}
+          </button>
+          <button type="button"
+            onClick={() => onSubmit(pin)}
+            disabled={!employee.has_pin || pin.length < 4 || isPending}
+            className={cn(
+              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              action === 'clock-in'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-red-600 hover:bg-red-700',
+            )}
+            title={!employee.has_pin ? 'Set a PIN before clocking in/out' : undefined}
+          >
+            {isPending ? (
+              <span className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Processing...
+              </span>
+            ) : (
+              action === 'clock-in' ? 'Clock In' : 'Clock Out'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pay Rate inline editor (WEB-S6-014) ─────────────────────────
+function PayRateEditor({ employeeId, currentRate }: { employeeId: number; currentRate: number | null }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (rate: number | null) => employeeApi.updatePayRate(employeeId, rate),
+    onSuccess: () => {
+      toast.success('Pay rate updated');
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['employee-detail', employeeId] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to update pay rate');
+    },
+  });
+
+  function startEdit() {
+    setDraft(currentRate != null ? String(currentRate) : '');
+    setEditing(true);
+  }
+
+  function commit() {
+    const trimmed = draft.trim();
+    const rate = trimmed === '' ? null : parseFloat(trimmed);
+    if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
+      toast.error('Pay rate must be a number between 0 and 9999.99');
+      return;
+    }
+    mutation.mutate(rate);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-surface-500">$/hr</span>
+        <input
+          type="number"
+          min="0"
+          max="9999.99"
+          step="0.01"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          autoFocus
+          placeholder="e.g. 18.50"
+          className="w-24 rounded-lg border border-surface-300 px-2 py-1 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          disabled={mutation.isPending}
+          aria-label="Save pay rate"
+          className="rounded-lg p-1 text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          aria-label="Cancel"
+          className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
+        {currentRate != null ? `${formatCurrency(currentRate)}/hr` : <span className="italic text-surface-400">Not set</span>}
+      </span>
+      <button
+        type="button"
+        onClick={startEdit}
+        aria-label="Edit pay rate"
+        className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Expanded Row Detail ────────────────────────────────────────────
+function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
+  const weekRange = getWeekRange();
+  const monthRange = getMonthRange();
+
+  const { data: hoursData } = useQuery({
+    queryKey: ['employee-hours', employeeId, weekRange.from_date],
+    queryFn: () => employeeApi.hours(employeeId, weekRange),
+  });
+
+  const { data: commissionsData } = useQuery({
+    queryKey: ['employee-commissions', employeeId, monthRange.from_date],
+    queryFn: () => employeeApi.commissions(employeeId, monthRange),
+  });
+
+  const { data: detailData } = useQuery({
+    queryKey: ['employee-detail', employeeId],
+    queryFn: () => employeeApi.get(employeeId),
+  });
+
+  const hoursResult = (hoursData?.data as any)?.data;
+  const commissionsResult = (commissionsData?.data as any)?.data;
+  const detail = (detailData?.data as any)?.data as EmployeeDetail | undefined;
+
+  const recentClock = detail?.clock_entries?.slice(0, 5) ?? [];
+  const recentCommissions = detail?.commissions?.slice(0, 5) ?? [];
+
+  return (
+    <tr>
+      <td colSpan={6} className="bg-surface-50/50 px-4 py-4 dark:bg-surface-800/50">
+        {/* WEB-S6-014: Pay Rate row */}
+        <div className="mb-4 flex items-center gap-4 rounded-lg border border-surface-200 bg-white px-4 py-3 shadow-sm dark:border-surface-700 dark:bg-surface-700">
+          <DollarSign className="h-4 w-4 shrink-0 text-surface-400" />
+          <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Hourly Pay Rate</span>
+          <div className="ml-auto">
+            <PayRateEditor
+              employeeId={employeeId}
+              currentRate={(detail as any)?.pay_rate ?? null}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Recent Clock Entries */}
+          <div>
+            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-700 dark:text-surface-300">
+              <Clock className="h-4 w-4" />
+              Recent Clock Entries
+              {hoursResult && (
+                <span className="ml-auto text-xs font-normal text-surface-500">
+                  This week: {formatHours(hoursResult.total_hours ?? 0)}
+                </span>
+              )}
+            </h4>
+            {recentClock.length === 0 ? (
+              <p className="text-sm text-surface-400">No clock entries yet. Use the clock in/out buttons above.</p>
+            ) : (
+              <div className="space-y-1">
+                {recentClock.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-sm dark:bg-surface-700"
+                  >
+                    <span className="text-surface-600 dark:text-surface-300">
+                      {formatDateTime(entry.clock_in)}
+                    </span>
+                    <span className="text-surface-500">
+                      {entry.clock_out ? (
+                        <>to {formatTime(entry.clock_out)} ({formatHours(entry.total_hours ?? 0)})</>
+                      ) : (
+                        <span className="text-green-600 dark:text-green-400">Active</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Commissions */}
+          <div>
+            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-700 dark:text-surface-300">
+              <DollarSign className="h-4 w-4" />
+              Recent Commissions
+              {commissionsResult && (
+                <span className="ml-auto text-xs font-normal text-surface-500">
+                  This month: {formatCurrency(commissionsResult.total_amount ?? 0)}
+                </span>
+              )}
+            </h4>
+            {recentCommissions.length === 0 ? (
+              <p className="text-sm text-surface-400">No commissions recorded yet. Commissions are tracked per ticket or invoice.</p>
+            ) : (
+              <div className="space-y-1">
+                {recentCommissions.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-sm dark:bg-surface-700"
+                  >
+                    <span className="text-surface-600 dark:text-surface-300">
+                      {c.ticket_order_id && `T-${c.ticket_order_id}`}
+                      {c.invoice_order_id && `INV-${c.invoice_order_id}`}
+                      {!c.ticket_order_id && !c.invoice_order_id && (c.description || 'Commission')}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-surface-400">{formatDate(c.created_at)}</span>
+                      <span className="font-medium text-green-600 dark:text-green-400">
+                        {formatCurrency(c.amount)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ─── Skeleton Row ───────────────────────────────────────────────────
+function SkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-4 py-3"><div className="h-4 w-4 rounded bg-surface-200 dark:bg-surface-700" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-32 rounded bg-surface-200 dark:bg-surface-700" /></td>
+      <td className="px-4 py-3"><div className="h-5 w-20 rounded-full bg-surface-200 dark:bg-surface-700" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-surface-200 dark:bg-surface-700" /></td>
+      <td className="px-4 py-3"><div className="h-4 w-12 rounded bg-surface-200 dark:bg-surface-700" /></td>
+      <td className="px-4 py-3"><div className="h-8 w-24 rounded bg-surface-200 dark:bg-surface-700" /></td>
+    </tr>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────
+export function EmployeeListPage() {
+  const queryClient = useQueryClient();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [pinModal, setPinModal] = useState<{ employee: Employee; action: 'clock-in' | 'clock-out' } | null>(null);
+
+  // Fetch employee list
+  const { data: listData, isLoading } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeeApi.list(),
+  });
+  const employees: Employee[] = (listData?.data as any)?.data ?? [];
+
+  // WEB-S6-033: is_clocked_in + weekly_hours are now included in the list
+  // response — no per-row detail queries needed.
+
+  // Clock in mutation
+  const clockInMutation = useMutation({
+    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockIn(id, pin),
+    onSuccess: () => {
+      toast.success('Clocked in successfully');
+      setPinModal(null);
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to clock in');
+    },
+  });
+
+  // Clock out mutation
+  const clockOutMutation = useMutation({
+    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockOut(id, pin),
+    onSuccess: () => {
+      toast.success('Clocked out successfully');
+      setPinModal(null);
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to clock out');
+    },
+  });
+
+  const handlePinSubmit = (pin: string) => {
+    if (!pinModal) return;
+    if (pinModal.action === 'clock-in') {
+      clockInMutation.mutate({ id: pinModal.employee.id, pin });
+    } else {
+      clockOutMutation.mutate({ id: pinModal.employee.id, pin });
+    }
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Employees</h1>
+          <p className="text-surface-500 dark:text-surface-400">Manage technicians and staff</p>
+        </div>
+        <a
+          href="/settings/users"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+        >
+          <UserCog className="h-4 w-4" />
+          Add Employee
+        </a>
+      </div>
+
+      {/* Helpful hint when only 1 employee */}
+      {!isLoading && employees.length === 1 && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
+          You only have one employee. Add more team members in <a href="/settings/users" className="font-medium underline">Settings &rarr; Users</a> to track hours and commissions for your staff.
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
+                <th className="w-8 px-4 py-3" />
+                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Name</th>
+                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Role</th>
+                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Status</th>
+                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Hours This Week</th>
+                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+              {isLoading ? (
+                Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
+              ) : employees.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    <UserCog className="mx-auto mb-3 h-12 w-12 text-surface-300 dark:text-surface-600" />
+                    <p className="text-sm font-medium text-surface-500 dark:text-surface-400">No employees found</p>
+                    <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">Add employees to manage time tracking and commissions.</p>
+                  </td>
+                </tr>
+              ) : (
+                employees.map((emp) => (
+                  <EmployeeRow
+                    key={emp.id}
+                    employee={emp}
+                    isExpanded={expandedId === emp.id}
+                    onToggle={() => setExpandedId(expandedId === emp.id ? null : emp.id)}
+                    onClockAction={(action) => setPinModal({ employee: emp, action })}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* PIN Modal */}
+      {pinModal && (
+        <PinModal
+          employee={pinModal.employee}
+          action={pinModal.action}
+          onClose={() => setPinModal(null)}
+          onSubmit={handlePinSubmit}
+          isPending={clockInMutation.isPending || clockOutMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Employee Row ────────────────────────────────────────────────────
+// WEB-S6-033: clock status + weekly hours are now served by the list endpoint.
+// The per-row detail + hours queries are removed to eliminate the N+1 pattern.
+// The expanded detail panel (commissions, clock history) still fires a single
+// query when the row is expanded — that's intentional: only one employee is
+// expanded at a time and it needs the full payload.
+function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
+  employee: Employee;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onClockAction: (action: 'clock-in' | 'clock-out') => void;
+}) {
+  // WEB-S6-033: use list-level fields; only fetch detail when expanded.
+  const isClockedIn = !!(employee.is_clocked_in);
+  const weeklyHours = Number(employee.weekly_hours ?? 0);
+
+  // Detail query fires only when the row is expanded (single call per user).
+  const { data: detailData } = useQuery({
+    queryKey: ['employee-detail', employee.id],
+    queryFn: () => employeeApi.get(employee.id),
+    enabled: isExpanded,
+    staleTime: 30000,
+  });
+
+  const roleClass = ROLE_COLORS[employee.role] ?? 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
+
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className="cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50"
+      >
+        <td className="px-4 py-3">
+          {isExpanded
+            ? <ChevronDown className="h-4 w-4 text-surface-400" />
+            : <ChevronRight className="h-4 w-4 text-surface-400" />}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
+              {employee.first_name?.[0]}{employee.last_name?.[0]}
+            </div>
+            <div>
+              <div className="font-medium text-surface-900 dark:text-surface-100">
+                {employee.first_name} {employee.last_name}
+              </div>
+              <div className="text-xs text-surface-500">{employee.email}</div>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize', roleClass)}>
+            {employee.role}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              'h-2.5 w-2.5 rounded-full',
+              isClockedIn ? 'bg-green-500' : 'bg-surface-300 dark:bg-surface-600',
+            )} />
+            <span className={cn(
+              'text-sm',
+              isClockedIn
+                ? 'font-medium text-green-700 dark:text-green-400'
+                : 'text-surface-500 dark:text-surface-400',
+            )}>
+              {isClockedIn ? 'Clocked In' : 'Clocked Out'}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
+          {formatHours(weeklyHours)}
+        </td>
+        <td className="px-4 py-3">
+          <button type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClockAction(isClockedIn ? 'clock-out' : 'clock-in');
+            }}
+            className={cn(
+              'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors',
+              isClockedIn
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-green-600 hover:bg-green-700',
+            )}
+          >
+            {isClockedIn ? 'Clock Out' : 'Clock In'}
+          </button>
+        </td>
+      </tr>
+      {isExpanded && <EmployeeExpandedRow employeeId={employee.id} />}
+    </>
+  );
+}

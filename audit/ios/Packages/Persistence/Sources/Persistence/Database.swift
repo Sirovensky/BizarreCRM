@@ -1,0 +1,94 @@
+import Foundation
+import GRDB
+import Core
+
+/// Lightweight holder for the shared GRDB pool. Call `open()` once at app
+/// launch; downstream code reads `pool()`. SQLCipher is wired up through
+/// the GRDB/SQLCipher subspec — swap in when we move past Phase 0 (the
+/// plain SQLite config lets dev proceed for now).
+public actor Database {
+    public static let shared = Database()
+
+    private var _pool: DatabasePool?
+
+    private init() {}
+
+    public func pool() -> DatabasePool? { _pool }
+
+    public func open() async throws {
+        guard _pool == nil else { return }
+
+        let fm = FileManager.default
+        let supportDir = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let dbURL = supportDir.appendingPathComponent("bizarrecrm.sqlite")
+        try await open(at: dbURL)
+    }
+
+    /// Test-friendly override: open a pool at a caller-supplied path.
+    /// Integration tests hand in a temp directory so they don't clobber
+    /// the user's on-device DB. Also used by `reopen(at:)` below.
+    public func open(at url: URL) async throws {
+        // §1.3 Fetch (or generate) the 256-bit passphrase from the Keychain.
+        // `DatabasePassphrase.loadOrCreate()` creates a new random hex key on
+        // first launch (via `SecRandomCopyBytes`) and returns the cached
+        // Keychain value on every subsequent launch. The Keychain item is
+        // gated by `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` so it
+        // survives lock-screen but never leaves the device via iCloud backup.
+        //
+        // Migration path for existing installs that ran without a passphrase:
+        // If GRDB opens an unencrypted file with `usePassphrase`, it will
+        // throw SQLITE_NOTADB. Callers that catch that error should call
+        // `reopen(at:)` after deleting or migrating the DB file. The
+        // schema-version table (`grdb_migrations`) survives a wipe because
+        // Migrator.register re-creates it from scratch; only local offline
+        // data is lost, which is also what would happen on a re-install.
+        //
+        // GRDB.SQLCipher dep addition pending — for now we rely on iOS Data
+        // Protection (FileProtectionType.complete on the SQLite file). When
+        // SQLCipher lands, swap to `config.prepareDatabase { db in try
+        // db.usePassphrase("x'\(hex)'") }` (the hex form sidesteps SQL string
+        // escaping for the random key bytes).
+        // TODO: add `grdb-sqlcipher` SPM dep and re-enable `db.usePassphrase(_:)`.
+        _ = try DatabasePassphrase.loadOrCreate()
+
+        var config = Configuration()
+        config.label = "bizarrecrm"
+        config.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+
+        let pool = try DatabasePool(path: url.path, configuration: config)
+
+        // §1.6 Forward-only migration guard: detect if on-disk DB is ahead of
+        // this binary. Throws `DatabaseVersionError.databaseNewerThanApp` which
+        // `SessionBootstrapper` catches and shows an upgrade-required alert.
+        try DatabaseVersionGuard.checkCompatibility(pool: pool, appVersion: Migrator.schemaVersion)
+
+        try Migrator.register(on: pool)
+
+        // §1.6 Migration integrity guard — verifies every known SQL migration
+        // was applied. Throws `MigrationIntegrityError.missingMigrations` if
+        // any bundle SQL file is absent from `grdb_migrations`.
+        try MigrationIntegrityGuard.verify(pool: pool)
+
+        self._pool = pool
+
+        AppLog.persistence.info("GRDB opened at \(url.path, privacy: .public)")
+    }
+
+    /// Close + reopen at a new path. Tests call this to swap the shared
+    /// pool for a throwaway one inside setUp, then `close()` in tearDown.
+    public func reopen(at url: URL) async throws {
+        _pool = nil
+        try await open(at: url)
+    }
+
+    public func close() {
+        _pool = nil
+    }
+}

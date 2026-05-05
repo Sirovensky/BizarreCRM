@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher shortcut icon — §24.3 New Customer.
+
+    Person silhouette + plus badge.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="M54,12 A42,42 0 1,1 54,96 A42,42 0 1,1 54,12 Z" />
+
+    <!-- Head circle -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M54,30 A10,10 0 1,1 54,50 A10,10 0 1,1 54,30 Z" />
+
+    <!-- Shoulders arc (body) -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="
+            M36,74
+            Q36,58 54,58
+            Q72,58 72,74
+            L68,74
+            Q68,62 54,62
+            Q40,62 40,74 Z" />
+
+    <!-- Plus badge (bottom-right) -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M68,62 L68,70 L76,70 L76,74 L68,74 L68,82 L64,82 L64,74 L56,74 L56,70 L64,70 L64,62 Z" />
+
+</vector>

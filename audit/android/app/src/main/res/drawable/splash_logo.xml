@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash screen brand icon — 432×432 dp viewport as required by the
+    Android 12+ SplashScreen API adaptive-icon spec (§71.1).
+
+    The icon renders "BC" (Bizarre CRM monogram) inside a rounded rectangle.
+    Tint is intentionally left unset here; windowSplashScreenIconBackgroundColor
+    in Theme.BizarreCRM.Splash drives the icon tint via the OS splash screen
+    renderer at runtime.
+
+    Path breakdown:
+      Outer frame  — rounded rect 432×432, r=108 (25 % of width = "squircle" corner)
+      Letter "B"   — two humps constructed from rects + arcs, left column
+      Letter "C"   — open arc, right column
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="432dp"
+    android:height="432dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+
+    <!-- Icon background pill — cream brand colour. Splash renderer overlays
+         this on windowSplashScreenIconBackgroundColor, so this path provides
+         the contrasting background visible when the icon layer is composited
+         above the window background. -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="
+            M108,24
+            L324,24
+            Q408,24 408,108
+            L408,324
+            Q408,408 324,408
+            L108,408
+            Q24,408 24,324
+            L24,108
+            Q24,24 108,24 Z" />
+
+    <!-- Stem of "B" — vertical bar -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="
+            M130,116
+            L158,116
+            L158,316
+            L130,316 Z" />
+
+    <!-- Upper hump of "B" -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="
+            M158,116
+            L200,116
+            Q240,116 240,152
+            Q240,188 200,188
+            L158,188 Z
+            M158,136
+            L158,168
+            L198,168
+            Q218,168 218,152
+            Q218,136 198,136 Z" />
+
+    <!-- Lower hump of "B" (slightly wider = classic B proportion) -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="
+            M158,188
+            L206,188
+            Q252,188 252,228
+            Q252,268 206,268
+            L158,268 Z
+            M158,208
+            L158,248
+            L204,248
+            Q230,248 230,228
+            Q230,208 204,208 Z" />
+
+    <!-- "C" open arc — drawn as a thick stroke arc via filled compound path -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="
+            M302,152
+            Q266,116 230,138
+            Q194,160 194,216
+            Q194,272 230,294
+            Q266,316 302,280
+            L288,264
+            Q262,292 238,276
+            Q214,260 214,216
+            Q214,172 238,156
+            Q262,140 288,168 Z" />
+
+</vector>

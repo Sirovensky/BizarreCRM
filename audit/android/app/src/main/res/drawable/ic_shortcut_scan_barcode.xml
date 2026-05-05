@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher shortcut icon — §24.3 Scan Barcode / IMEI.
+
+    Barcode scan frame with corner brackets.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="M54,12 A42,42 0 1,1 54,96 A42,42 0 1,1 54,12 Z" />
+
+    <!-- Corner bracket top-left -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M32,32 L32,44 L36,44 L36,36 L44,36 L44,32 Z" />
+
+    <!-- Corner bracket top-right -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M76,32 L64,32 L64,36 L72,36 L72,44 L76,44 Z" />
+
+    <!-- Corner bracket bottom-left -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M32,76 L32,64 L36,64 L36,72 L44,72 L44,76 Z" />
+
+    <!-- Corner bracket bottom-right -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M76,76 L64,76 L64,72 L72,72 L72,64 L76,64 Z" />
+
+    <!-- Barcode lines (3 vertical bars) -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M44,42 L46,42 L46,66 L44,66 Z
+                          M52,42 L55,42 L55,66 L52,66 Z
+                          M62,42 L64,42 L64,66 L62,66 Z" />
+
+    <!-- Scan line (horizontal, cream) -->
+    <path
+        android:fillColor="#FDEED0"
+        android:alpha="0.7"
+        android:pathData="M34,53 L74,53 L74,55 L34,55 Z" />
+
+</vector>

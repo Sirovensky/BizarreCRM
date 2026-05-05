@@ -1,0 +1,61 @@
+area: management
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/management.routes.ts
+    - packages/server/src/routes/super-admin.routes.ts
+    - packages/server/src/routes/admin.routes.ts
+  management_client: packages/management/src/renderer/src/api
+auth: super-admin-or-local-admin
+safety_notes:
+  - Management API is intended for local/server administration.
+  - Super-admin routes are platform-level and must never accept tenant JWTs.
+  - Do not document real server paths, secrets, tokens, or production tenant data.
+endpoints:
+  - method: GET
+    path: /api/v1/management/setup-status
+    purpose: Determine management dashboard setup state.
+    auth: localhost-public
+  - method: POST
+    path: /api/v1/management/setup
+    purpose: Create first super-admin for local management dashboard.
+    auth: localhost-public-before-setup
+    request:
+      username: string
+      password: string
+  - method: GET
+    path: /api/v1/management/stats
+    purpose: Server overview metrics for management dashboard.
+  - method: GET
+    path: /api/v1/management/stats/history
+    purpose: Server metrics history for management dashboard.
+  - method: GET
+    path: /api/v1/management/tenants
+    purpose: List tenants.
+  - method: POST
+    path: /api/v1/management/restart
+    purpose: Restart service/server.
+  - method: POST
+    path: /api/v1/management/stop
+    purpose: Stop service/server.
+  - method: GET
+    path: /api/v1/management/crashes
+    purpose: Read crash log/disabled route data.
+  - method: GET
+    path: /api/v1/management/disabled-routes
+    purpose: List crash-disabled routes.
+  - method: POST
+    path: /api/v1/admin/backup
+    purpose: Run backup from local admin panel.
+  - method: POST
+    path: /super-admin/api/login
+    purpose: Super-admin login.
+  - method: GET
+    path: /super-admin/api/tenants
+    purpose: Super-admin tenant list.
+  - method: POST
+    path: /super-admin/api/tenants
+    purpose: Super-admin tenant creation.
+  - method: PUT
+    path: /super-admin/api/tenants/{slug}
+    purpose: Super-admin tenant mutation.

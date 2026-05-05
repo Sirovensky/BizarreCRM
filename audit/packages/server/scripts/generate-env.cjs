@@ -1,0 +1,248 @@
+/**
+ * Generate or upgrade the .env file.
+ *
+ * Two modes:
+ *   1. FRESH INSTALL (no .env exists) — writes the full template with a
+ *      random JWT secret set, multi-tenant defaults, and empty placeholders
+ *      for optional features (Cloudflare DNS).
+ *
+ *   2. UPGRADE (.env already exists) — scans the existing file for each
+ *      known section and APPENDS any missing ones to the end. Never modifies
+ *      or regenerates values that are already present. This is how new env
+ *      vars introduced after the initial install reach a running server —
+ *      because `.env` is gitignored, `git pull` cannot deliver them.
+ *
+ * Safe to re-run any number of times. Nothing is ever deleted or overwritten.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const envPath = path.resolve(__dirname, '../../../.env');
+const domain = (process.argv[2] || 'localhost').trim().toLowerCase();
+
+// Each section has:
+//   name:     short label for log output
+//   detector: regex that matches if the section is already present in .env
+//   block():  returns the text to append (called only if missing)
+// Sections are appended in this order on fresh install. On upgrade, only the
+// missing ones are appended, at the end of the file, under a dated separator.
+const SECTIONS = [
+  {
+    name: 'server',
+    detector: /^PORT=/m,
+    block: () => `PORT=443
+HOST=0.0.0.0
+NODE_ENV=production
+
+`,
+  },
+  {
+    name: 'auth',
+    detector: /^JWT_SECRET=/m,
+    block: () => {
+      const jwtSecret = crypto.randomBytes(64).toString('hex');
+      const jwtRefreshSecret = crypto.randomBytes(64).toString('hex');
+      const superAdminSecret = crypto.randomBytes(32).toString('hex');
+      return `# Auth secrets (auto-generated, unique to this install)
+JWT_SECRET=${jwtSecret}
+JWT_REFRESH_SECRET=${jwtRefreshSecret}
+SUPER_ADMIN_SECRET=${superAdminSecret}
+
+`;
+    },
+  },
+  {
+    // SEC-H54: signed-URL HMAC secret for /uploads + portal/MMS public
+    // links. config.ts FATAL-exits in production if this is missing or
+    // shorter than 32 chars, so a fresh install without this section
+    // would pm2 restart-loop forever. Domain-separated from JWT_SECRET
+    // deliberately — if a JWT leak happens, signed-URL minting must not
+    // also fall to the attacker.
+    name: 'uploads',
+    detector: /^UPLOADS_SECRET=/m,
+    block: () => {
+      const uploadsSecret = crypto.randomBytes(32).toString('hex');
+      return `# Signed-URL HMAC secret for /uploads + portal/MMS public links (SEC-H54)
+UPLOADS_SECRET=${uploadsSecret}
+
+`;
+    },
+  },
+  {
+    // PROD54 / SEC-M49: backup encryption key. backup.ts throws in
+    // production when absent. Separate from JWT_SECRET so an auth leak
+    // doesn't also decrypt every stored backup.
+    name: 'backup',
+    detector: /^BACKUP_ENCRYPTION_KEY=/m,
+    block: () => {
+      const backupKey = crypto.randomBytes(32).toString('hex');
+      return `# Backup encryption key — AES-256-GCM over each .db.enc file (PROD54)
+BACKUP_ENCRYPTION_KEY=${backupKey}
+
+`;
+    },
+  },
+  {
+    // SEC-H103: config encryption key. AES-256 over BlockChyp / SMTP / SMS
+    // credentials stored in the tenant DB. config.ts FATAL-exits in
+    // production when this is absent, so without this section the server
+    // pm2 restart-loops forever after an upgrade that introduces the
+    // requirement. Domain-separated from JWT / UPLOADS / BACKUP so a leak
+    // in one secret does not cascade into payment or messaging creds.
+    name: 'config-encryption',
+    detector: /^CONFIG_ENCRYPTION_KEY=/m,
+    block: () => {
+      const configKey = crypto.randomBytes(32).toString('hex');
+      return `# Config encryption key — AES-256 over API creds (BlockChyp, SMTP, SMS) in DB (SEC-H103)
+CONFIG_ENCRYPTION_KEY=${configKey}
+
+`;
+    },
+  },
+  {
+    // SEC-M52 / PROD36: production CORS allowlist. Without this entry the
+    // server rejects every browser fetch from an origin that isn't
+    // `https://localhost:PORT` or a `BASE_DOMAIN` match — which includes
+    // self-hosters accessing the CRM via LAN IP or a custom domain.
+    // We emit a commented stub so the operator sees the shape and fills
+    // it in; leaving it empty keeps the default-deny posture safe.
+    name: 'cors',
+    detector: /^ALLOWED_ORIGINS=/m,
+    block: () => `# Production CORS allowlist — comma-separated absolute origins (SEC-M52 / PROD36)
+# Leave empty to use ONLY localhost + BASE_DOMAIN (strictest default).
+# Add your LAN/WAN access points here, e.g.:
+#   ALLOWED_ORIGINS=https://10.1.10.4,https://crm.myshop.com,https://bizarreelectronics.bizarrecrm.com
+# Production-mode rejects RFC1918/CGNAT LAN origins unless explicitly listed.
+ALLOWED_ORIGINS=
+
+`,
+  },
+  {
+    name: 'multi-tenant',
+    detector: /^MULTI_TENANT=/m,
+    // Default OFF on fresh install. A first-time self-host should boot
+    // straight to single-tenant single-shop mode without needing
+    // BASE_DOMAIN, SUPER_ADMIN_SECRET, hCaptcha, Cloudflare API tokens, or
+    // a wildcard DNS setup. Operators wanting subdomain-based multi-tenant
+    // SaaS flip MULTI_TENANT=true (and fill HCAPTCHA_SECRET +
+    // CLOUDFLARE_API_TOKEN below) via the Management Dashboard or by
+    // editing .env directly. config.ts:325 / :399 / :429 all fatal-exit
+    // when MULTI_TENANT=true with the supporting secrets unset, so the
+    // single-tenant default is what keeps a fresh install from
+    // pm2 restart-looping on first boot.
+    block: () => `# Multi-tenant mode (subdomain-based tenant routing)
+# Set to true ONLY when running BizarreCRM as a hosted SaaS with shop
+# subdomains. Single-shop self-hosters keep this false — the server
+# boots without BASE_DOMAIN, SUPER_ADMIN_SECRET, HCAPTCHA_SECRET, or
+# Cloudflare credentials.
+MULTI_TENANT=false
+BASE_DOMAIN=${domain}
+
+`,
+  },
+  {
+    // SEC-H94: hCaptcha bot protection for the tenant signup endpoint.
+    // In production multi-tenant mode the server refuses to boot when
+    // HCAPTCHA_SECRET is missing AND SIGNUP_CAPTCHA_REQUIRED is not set to
+    // false. Operators who front the server with an upstream bot filter
+    // (Cloudflare Turnstile, WAF) can flip SIGNUP_CAPTCHA_REQUIRED to false
+    // via the Management Dashboard "Require hCaptcha" toggle or by editing
+    // .env directly. Emitted as an empty-value stub on fresh install so the
+    // operator sees the shape and knows where to paste the secret later.
+    name: 'hcaptcha',
+    // Detect on either key so a user who pre-added SIGNUP_CAPTCHA_REQUIRED
+    // alone (without HCAPTCHA_SECRET) doesn't get the block appended a
+    // second time on next upgrade, which would duplicate the flag line.
+    detector: /^(HCAPTCHA_SECRET|SIGNUP_CAPTCHA_REQUIRED)\s*=/m,
+    // Fresh install defaults SIGNUP_CAPTCHA_REQUIRED=false so the server
+    // boots without hCaptcha credentials. The captcha gate is only
+    // meaningful in MULTI_TENANT=true SaaS mode (a single-shop self-host
+    // has no public /signup endpoint to protect). Operators turning on
+    // multi-tenant mode flip both MULTI_TENANT and SIGNUP_CAPTCHA_REQUIRED
+    // back to true (after pasting HCAPTCHA_SECRET) via the Management
+    // Dashboard "Require hCaptcha on signup" toggle.
+    block: () => `# hCaptcha signup bot protection (SEC-H94)
+# Register at https://www.hcaptcha.com/ → Dashboard → copy the Secret key.
+# In MULTI_TENANT=true mode SIGNUP_CAPTCHA_REQUIRED=true plus an empty
+# HCAPTCHA_SECRET makes the server refuse to boot — fail-closed so the
+# /signup endpoint never accepts unauthenticated tenant creation. Single-
+# tenant self-hosters keep SIGNUP_CAPTCHA_REQUIRED=false (no signup route
+# is exposed); multi-tenant operators paste HCAPTCHA_SECRET and flip
+# SIGNUP_CAPTCHA_REQUIRED back to true.
+HCAPTCHA_SECRET=
+SIGNUP_CAPTCHA_REQUIRED=false
+
+`,
+  },
+  {
+    name: 'cloudflare',
+    // Detect on the token line; zone id / public ip are grouped with it.
+    detector: /^CLOUDFLARE_API_TOKEN=/m,
+    block: () => `# Cloudflare DNS auto-provisioning — REQUIRED for tenant subdomain auto-creation
+# in multi-tenant mode. Without these three values, new shop signups succeed in
+# the master DB but no DNS record is created, so shop subdomains return
+# "Server Not Found" in the browser.
+#
+# Setup:
+#   1. Cloudflare dashboard > My Profile > API Tokens > Create Token > Custom token
+#      Permissions: Zone > DNS > Edit
+#      Zone Resources: Include > Specific zone > your domain
+#   2. Find Zone ID: Cloudflare dashboard > your domain > right sidebar > Zone ID
+#   3. SERVER_PUBLIC_IP is the same IP your apex A record points to.
+#
+# Leave empty to disable auto-DNS (you'll need to manage DNS manually via a
+# wildcard record — see README.md Self-Hosting section).
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+SERVER_PUBLIC_IP=
+
+`,
+  },
+];
+
+const HEADER = `# BizarreCRM Server Configuration
+# Generated by setup script on ${new Date().toISOString().slice(0, 10)}
+
+`;
+
+function freshInstall() {
+  const envContent = HEADER + SECTIONS.map((s) => s.block()).join('');
+  fs.writeFileSync(envPath, envContent, 'utf-8');
+  console.log(`[setup] .env created (domain: ${domain})`);
+  console.log('[setup] Mode: SINGLE-TENANT (MULTI_TENANT=false). Server will boot at');
+  console.log('[setup]   https://localhost without needing hCaptcha, Cloudflare, or BASE_DOMAIN.');
+  console.log('[setup] To switch to multi-tenant SaaS later: flip MULTI_TENANT=true in .env,');
+  console.log('[setup]   paste HCAPTCHA_SECRET, set SIGNUP_CAPTCHA_REQUIRED=true, and fill the');
+  console.log('[setup]   Cloudflare DNS section. The Management Dashboard exposes these toggles.');
+}
+
+function upgradeExisting() {
+  const existing = fs.readFileSync(envPath, 'utf-8');
+  const missing = SECTIONS.filter((s) => !s.detector.test(existing));
+
+  if (missing.length === 0) {
+    console.log('[setup] .env is up to date');
+    return;
+  }
+
+  // Make sure the existing file ends with a newline so the separator is on its own line.
+  let updated = existing.endsWith('\n') ? existing : existing + '\n';
+  updated += `\n# ── Added by setup script on ${new Date().toISOString().slice(0, 10)} (new sections since your install) ──\n\n`;
+  for (const section of missing) {
+    updated += section.block();
+  }
+
+  fs.writeFileSync(envPath, updated, 'utf-8');
+  console.log(`[setup] .env upgraded — appended missing sections: ${missing.map((s) => s.name).join(', ')}`);
+  if (missing.some((s) => s.name === 'cloudflare')) {
+    console.log('[setup] ACTION NEEDED: open .env and fill in CLOUDFLARE_API_TOKEN,');
+    console.log('[setup] CLOUDFLARE_ZONE_ID, and SERVER_PUBLIC_IP, then restart the server.');
+  }
+}
+
+if (fs.existsSync(envPath)) {
+  upgradeExisting();
+} else {
+  freshInstall();
+}

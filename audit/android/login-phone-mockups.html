@@ -1,0 +1,1957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre CRM — Android phone login flow (Material 3 Expressive α)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═════════════════════════════════════════════════════════════════════════
+   BIZARRE CRM — Android phone login mockups
+   Material 3 Expressive α (material3 1.5.0-alpha18 · MotionScheme.expressive())
+   Solid surfaces only — NO glassmorphism (Theme.kt §1.4 forbids RenderEffect blur).
+   Pixel 9 Pro compact frame, 412×916, 4px bezel, gesture nav 24px.
+   Two themes × 7 frames = 14 total devices.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   1. Page-level tokens (Dark scope is the default; light scope is overridden
+   on the .theme-light wrapper for the second section).
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Dark — DarkColorScheme from Theme.kt */
+  --primary: #FDEED0;
+  --on-primary: #2B1400;
+  --primary-container: #3D2C14;
+  --on-primary-container: #FDEED0;
+  --secondary: #4DB8C9;
+  --on-secondary: #003740;
+  --tertiary: #D94F9B;
+  --on-tertiary: #3D0028;
+  --tertiary-container: #5A1045;
+  --on-tertiary-container: #FFD8EC;
+  /* Surface ramp aligned with bizarrecrm.com web (Zinc neutral) for brand parity */
+  --bg: #09090B;
+  --surface: #18181B;
+  --surface-variant: #27272A;
+  --surface-container-high: #27272A;
+  --outline: #3F3F46;
+  --on-surface: #FAFAFA;
+  --on-surface-variant: #A1A1AA;
+  --success: #34C47E;
+  --error: #E2526C;
+  --warning: #E8A33D;
+  --brand-orange: #F58220;
+
+  /* Page chrome */
+  --page-bg-deep: #050507;
+  --page-text: #FAFAFA;
+  --page-muted: #A1A1AA;
+  --page-muted-2: #71717A;
+
+  /* Typography */
+  /* Brand fonts — Bebas Neue (display) + Futura Medium (body, Jost fallback for non-Mac) + JetBrains Mono.
+     Web prod ships wrong fonts (Fredoka One); needs swap. Mobile Theme.kt + BrandFonts.swift also wrong (Barlow Condensed). See TODO BRAND-FONTS-PARITY. */
+  --font-display: "Bebas Neue", "Saved By Zero", "Impact", sans-serif;
+  --font-text: "Futura", "Futura Medium", "Jost", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+.theme-light {
+  /* Light — LightColorScheme from Theme.kt */
+  --primary: #A66D1F;
+  --on-primary: #FFFFFF;
+  --primary-container: #FDEED0;
+  --on-primary-container: #2B1400;
+  --secondary: #0E7A8A;
+  --on-secondary: #FFFFFF;
+  --tertiary: #B01E7A;
+  --on-tertiary: #FFFFFF;
+  --tertiary-container: #FFD8EC;
+  --on-tertiary-container: #3D0028;
+  --bg: #FAFAFA;
+  --surface: #FFFFFF;
+  --surface-variant: #F4F4F5;
+  --surface-container-high: #F4F4F5;
+  --outline: #E4E4E7;
+  --on-surface: #18181B;
+  --on-surface-variant: #52525B;
+  --success: #0E7A3B;
+  --error: #BA1A2E;
+  --warning: #8B5F00;
+  --brand-orange: #F58220;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   2. Page scaffold — H1, intro, section labels
+   ───────────────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background:
+    radial-gradient(ellipse at 14% -10%, rgba(253,238,208,0.06), transparent 55%),
+    radial-gradient(ellipse at 110% 100%, rgba(217,79,155,0.04), transparent 60%),
+    var(--page-bg-deep);
+  color: var(--page-text);
+  font-family: var(--font-text);
+  font-size: 14px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  text-align: center;
+  padding: 36px 16px 6px; margin: 0;
+  font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+  font-family: var(--font-text);
+  background: linear-gradient(180deg, #fff, #c6c0d9);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.intro {
+  text-align: center; color: var(--page-muted);
+  padding: 0 24px 16px; font-size: 14px; line-height: 1.6;
+  max-width: 820px; margin: 0 auto;
+}
+.intro code {
+  background: rgba(253,238,208,0.07);
+  padding: 1px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 12px; color: #FDEED0;
+}
+.intro a {
+  color: #FDEED0; text-decoration: none;
+  border-bottom: 1px dashed rgba(253,238,208,0.4);
+}
+
+.section-label {
+  text-align: center; color: var(--page-muted-2);
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 36px 16px 14px;
+  font-weight: 600;
+}
+.section-label.light { color: #5b5474; }
+
+.frame-caption {
+  text-align: center; color: var(--page-muted);
+  font-size: 12.5px; padding-top: 14px; padding-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.theme-light .frame-caption { color: #5b5474; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 40px; padding: 12px 28px 56px;
+  max-width: 1900px; margin: 0 auto;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   3. Pixel 9 Pro compact device frame — 412×916, 4px bezel, 48px corners,
+      tiny circular punch-hole camera, 24px gesture nav
+   ───────────────────────────────────────────────────────────────────────── */
+.phone {
+  width: 412px; height: 916px; margin: 0 auto;
+  background: var(--bg);
+  border: 4px solid #050308;
+  border-radius: 48px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 0 0 1px rgba(255,255,255,0.05) inset,
+    0 30px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(253,238,208,0.04);
+}
+.theme-light .phone {
+  border-color: #1d1729;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.5) inset,
+    0 0 0 1px rgba(0,0,0,0.04) inset,
+    0 30px 80px rgba(40,30,80,0.18),
+    0 0 0 1px rgba(166,109,31,0.08);
+}
+.phone .punch {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  width: 8px; height: 8px; background: #000;
+  border-radius: 50%; z-index: 50;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+}
+.phone .gesture-bar {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 132px; height: 4px;
+  background: var(--on-surface);
+  opacity: 0.55;
+  border-radius: 2px; z-index: 45;
+}
+.theme-light .phone .gesture-bar { opacity: 0.4; }
+.phone-body {
+  width: 100%; height: 100%;
+  padding-top: 32px; /* status bar */
+  padding-bottom: 24px; /* gesture nav */
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   4. Status bar (32px tall, time + signal/battery glyphs)
+   ───────────────────────────────────────────────────────────────────────── */
+.status-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 32px; padding: 8px 26px 0;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--on-surface);
+  letter-spacing: 0.01em;
+  z-index: 30;
+}
+.status-bar .glyphs { display: flex; align-items: center; gap: 6px; }
+.status-bar svg { display: block; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   5. LargeFlexibleTopAppBar — 28sp emphasized title, bottom-anchored,
+      trailing IconButton row. Height ≈ 152dp (status + 120 hero).
+   ───────────────────────────────────────────────────────────────────────── */
+.topbar {
+  padding: 14px 20px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--outline);
+  position: relative;
+}
+.topbar-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 30px;
+}
+.topbar-back {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--on-surface);
+  background: transparent;
+  border: 0; cursor: pointer;
+  transition: background 200ms;
+}
+.topbar-back:hover { background: var(--surface-variant); }
+.topbar-actions { display: flex; gap: 4px; }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0;
+  color: var(--on-surface-variant); cursor: pointer;
+  transition: background 200ms;
+}
+.icon-btn:hover { background: var(--surface-variant); color: var(--on-surface); }
+.topbar-title {
+  font-family: var(--font-display);
+  font-size: 28px; line-height: 1.05;
+  font-weight: 600; letter-spacing: -0.015em;
+  color: var(--on-surface);
+}
+.topbar-title.with-mark {
+  display: flex; align-items: center; gap: 14px;
+}
+.topbar-title.with-mark .cookie-inline {
+  flex-shrink: 0;
+  animation: breathe 4s ease-in-out infinite;
+}
+.topbar-sub {
+  font-family: var(--font-text);
+  font-size: 13px; color: var(--on-surface-variant);
+  margin-top: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   6. Body content scroll region
+   ───────────────────────────────────────────────────────────────────────── */
+.body-scroll {
+  flex: 1; padding: 20px 20px 16px;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  position: relative;
+  background: var(--bg);
+}
+
+/* Hero block — 45sp Barlow Condensed welcome headline */
+.hero {
+  margin: 4px 0 18px;
+}
+.hero-cookie {
+  margin: 6px 0 18px;
+  display: flex; justify-content: center;
+}
+.cookie-svg {
+  animation: breathe 4s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1.0); }
+  50% { transform: scale(1.015); }
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-size: 45px; font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.0;
+  color: var(--on-surface);
+  margin: 0 0 8px;
+}
+.hero-sub {
+  font-family: var(--font-text);
+  font-size: 14px; line-height: 1.5;
+  color: var(--on-surface-variant);
+  margin: 0 0 20px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   7. M3 Text fields — outlined w/ floating label
+   ───────────────────────────────────────────────────────────────────────── */
+.tf {
+  position: relative;
+  margin-bottom: 14px;
+}
+.tf-outline {
+  display: flex; align-items: center; gap: 0;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 0 14px;
+  height: 56px;
+  position: relative;
+}
+.tf-outline.focused {
+  border-color: var(--primary);
+  border-width: 2px;
+  padding: 0 13px;
+}
+.tf-prefix {
+  font-family: var(--font-mono); font-size: 14px;
+  color: var(--on-surface-variant);
+  padding-right: 4px;
+  font-weight: 500;
+}
+.tf-suffix {
+  font-family: var(--font-mono); font-size: 14px;
+  color: var(--on-surface-variant);
+  padding-left: 4px;
+  font-weight: 500;
+}
+.tf-input {
+  flex: 1; min-width: 0;
+  font-family: var(--font-text); font-size: 16px;
+  color: var(--on-surface);
+  background: transparent; border: 0; outline: 0;
+  padding: 0;
+  height: 100%;
+  display: flex; align-items: center;
+  font-weight: 500;
+}
+.tf-input.placeholder { color: var(--on-surface-variant); font-weight: 400; }
+.tf-trailing {
+  display: flex; align-items: center;
+  color: var(--on-surface-variant);
+  font-size: 13px; font-weight: 500;
+  padding-left: 8px;
+  cursor: pointer;
+}
+.tf-label {
+  position: absolute;
+  top: -8px; left: 12px;
+  background: var(--bg);
+  padding: 0 6px;
+  font-size: 12px; font-weight: 500;
+  color: var(--on-surface-variant);
+  letter-spacing: 0.01em;
+}
+.tf-outline.focused + /* unused selector trick */ .tf-label { color: var(--primary); }
+.tf.focused .tf-label { color: var(--primary); }
+.tf-support {
+  font-size: 12px; color: var(--on-surface-variant);
+  padding: 4px 16px 0;
+}
+.tf-support.error { color: var(--error); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   8. Chips — Filter, Suggestion, Assist (M3 chips, height 32, radius 8)
+   ───────────────────────────────────────────────────────────────────────── */
+.chip-row {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 14px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--outline);
+  color: var(--on-surface);
+  font-size: 13px; font-weight: 500;
+  font-family: var(--font-text);
+  cursor: pointer;
+  transition: background 200ms, border-color 200ms;
+}
+.chip:hover { background: var(--surface-variant); }
+.chip.selected {
+  background: var(--primary-container);
+  border-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.chip.pill {
+  border-radius: 99px;
+  padding: 0 16px;
+  background: var(--surface-variant);
+  border-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   9. Buttons — primary / text / split / shape-morph
+   The morph state activates on :hover (idle is 28px, hover collapses to 16px
+   and y-scales). One frame uses the `idle-morph` animation continuously.
+   ───────────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 56px;
+  padding: 0 24px;
+  border-radius: 28px; /* idle */
+  border: 0; cursor: pointer;
+  font-family: var(--font-text);
+  font-size: 16px; font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--primary);
+  color: var(--on-primary);
+  transition: border-radius 280ms cubic-bezier(0.2, 0, 0, 1), transform 280ms cubic-bezier(0.2, 0, 0, 1), background 200ms;
+}
+.btn:hover {
+  border-radius: 16px;
+  transform: scaleY(0.97);
+}
+.btn.full { width: 100%; }
+.btn.text {
+  background: transparent;
+  color: var(--primary);
+  height: 40px;
+  padding: 0 12px;
+  font-weight: 500;
+  font-size: 14px;
+  border-radius: 20px;
+}
+.btn.text:hover { background: rgba(253,238,208,0.08); transform: none; }
+.theme-light .btn.text:hover { background: rgba(166,109,31,0.08); }
+.btn.tonal {
+  background: var(--secondary);
+  color: var(--on-secondary);
+}
+.btn.outlined {
+  background: transparent;
+  color: var(--on-surface);
+  border: 1px solid var(--outline);
+}
+.btn.outlined:hover { background: var(--surface-variant); }
+.btn.disabled {
+  background: var(--surface-variant);
+  color: var(--on-surface-variant);
+  pointer-events: none;
+}
+
+/* Idle-animated morph (one frame demos motion at rest) */
+.btn.morph-idle {
+  animation: morph-idle 3.6s ease-in-out infinite;
+}
+@keyframes morph-idle {
+  0%, 100% { border-radius: 28px; transform: scaleY(1.0); }
+  50% { border-radius: 16px; transform: scaleY(0.97); }
+}
+
+/* Split button — primary CTA + chevron square */
+.split {
+  display: flex; gap: 4px;
+}
+.split .main {
+  flex: 1;
+  border-radius: 28px;
+}
+.split .main:hover { border-radius: 16px; }
+.split .chev {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer;
+  transition: border-radius 280ms cubic-bezier(0.2, 0, 0, 1);
+}
+.split .chev:hover { border-radius: 8px; }
+.split.outlined .main, .split.outlined .chev {
+  background: transparent;
+  color: var(--on-surface);
+  border: 1px solid var(--outline);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   10. LinearWavyProgressIndicator — inline SVG sine wave, 8 cycles
+   ───────────────────────────────────────────────────────────────────────── */
+.wavy-wrap {
+  width: 100%;
+  margin: 4px 0 20px;
+  display: flex; align-items: center; gap: 12px;
+}
+.wavy-track {
+  flex: 1;
+  height: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.wavy-svg { width: 100%; height: 16px; display: block; }
+.wavy-fill {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.wavy-fill-anim {
+  animation: wave-amp 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes wave-amp {
+  0%, 100% { transform: scaleY(1.0); }
+  50% { transform: scaleY(0.55); }
+}
+.wavy-rest {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.wavy-pct {
+  font-family: var(--font-display);
+  font-size: 14px; font-weight: 600;
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   11. OTP segments — 6 cells, 48×56, 12px radius, JetBrains Mono 24px
+   ───────────────────────────────────────────────────────────────────────── */
+.otp {
+  display: flex; gap: 8px; justify-content: center;
+  margin: 6px 0 20px;
+}
+.otp-cell {
+  width: 48px; height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 24px; font-weight: 500;
+  color: var(--on-surface);
+}
+.otp-cell.filled { border-color: var(--primary); }
+.otp-cell.cursor {
+  border-color: var(--primary); border-width: 2px;
+  position: relative;
+}
+.otp-cell.cursor::after {
+  content: ""; position: absolute;
+  top: 14px; bottom: 14px;
+  left: 50%; width: 2px;
+  background: var(--primary);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   12. Password strength meter — 4 pill segments
+   ───────────────────────────────────────────────────────────────────────── */
+.strength {
+  margin: 4px 0 14px;
+}
+.strength-bars {
+  display: flex; gap: 6px;
+  height: 6px;
+  margin-bottom: 8px;
+}
+.strength-bar {
+  flex: 1; border-radius: 3px;
+  background: var(--surface-variant);
+}
+/* Strength uses LEVEL on parent, not bar position — all filled bars share one color matching the achieved strength */
+.strength-bars.s1 .strength-bar.fill { background: var(--error); }
+.strength-bars.s2 .strength-bar.fill { background: var(--warning); }
+.strength-bars.s3 .strength-bar.fill { background: var(--warning); }
+.strength-bars.s4 .strength-bar.fill { background: var(--success); }
+.strength-label {
+  font-size: 12px; font-weight: 600;
+  color: var(--on-surface-variant);
+  display: flex; justify-content: space-between;
+}
+.strength-label .grade { color: var(--warning); }
+.strength-label.s4 .grade { color: var(--success); }
+
+.rules {
+  list-style: none; padding: 0; margin: 6px 0 14px;
+  font-size: 13px; color: var(--on-surface-variant);
+}
+.rules li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0;
+}
+.rules li svg { flex-shrink: 0; }
+.rules li.ok { color: var(--success); }
+.rules li.miss { color: var(--on-surface-variant); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   13. FAB Menu — open menu shows 4 tertiary tiles stacked above main FAB
+   ───────────────────────────────────────────────────────────────────────── */
+.fab-menu {
+  position: absolute;
+  right: 24px; bottom: 36px;
+  display: flex; flex-direction: column-reverse;
+  gap: 12px; align-items: flex-end;
+  z-index: 20;
+}
+.fab-main {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.32), 0 2px 4px rgba(0,0,0,0.18);
+}
+.theme-light .fab-main {
+  box-shadow: 0 6px 14px rgba(166,109,31,0.20), 0 2px 4px rgba(0,0,0,0.06);
+}
+.fab-tile {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px 12px 16px;
+  border-radius: 18px;
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  font-size: 14px; font-weight: 600;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+}
+.theme-light .fab-tile {
+  box-shadow: 0 4px 10px rgba(176,30,122,0.12);
+}
+.fab-tile-icon {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+}
+.theme-light .fab-tile-icon {
+  background: rgba(176,30,122,0.10);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   14. Banners — top error/warning strip
+   ───────────────────────────────────────────────────────────────────────── */
+.banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--error) 20%, transparent),
+    color-mix(in srgb, var(--warning) 16%, transparent));
+  border: 1px solid color-mix(in srgb, var(--error) 40%, transparent);
+  margin-bottom: 18px;
+}
+.banner-icon {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--error) 30%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.banner-text {
+  flex: 1; font-size: 13px; line-height: 1.4;
+  color: var(--on-surface);
+}
+.banner-text strong {
+  display: block;
+  font-weight: 700; font-size: 14px;
+  margin-bottom: 2px;
+  color: var(--error);
+}
+.banner-timer {
+  font-family: var(--font-mono); font-weight: 500;
+  color: var(--warning);
+  letter-spacing: 0.04em;
+  animation: timer-blink 1s steps(2) infinite;
+}
+@keyframes timer-blink {
+  50% { opacity: 0.65; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   15. Misc utility — checkbox, divider, biometric hero
+   ───────────────────────────────────────────────────────────────────────── */
+.row {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 14px;
+}
+.row .spacer { flex: 1; }
+.cb {
+  width: 18px; height: 18px;
+  border: 2px solid var(--outline);
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+}
+.cb.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.cb-label {
+  font-size: 13px; color: var(--on-surface);
+}
+.divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 0;
+  color: var(--on-surface-variant);
+  font-size: 11px; font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--outline);
+}
+
+.bio-hero {
+  display: flex; flex-direction: column; align-items: center;
+  margin: 24px 0 28px;
+}
+.bio-cookie-bg {
+  width: 152px; height: 152px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+.opacity-half {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.disabled-form-overlay {
+  position: relative;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   16. Light-mode tweaks
+   ───────────────────────────────────────────────────────────────────────── */
+.theme-light body, .theme-light {
+  /* nothing — handled via CSS vars */
+}
+.theme-light .tf-label {
+  background: var(--bg);
+}
+.theme-light .topbar { border-bottom-color: var(--outline); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   17. Page two-section wrapper
+   ───────────────────────────────────────────────────────────────────────── */
+.theme-light-section {
+  background:
+    radial-gradient(ellipse at 14% 10%, rgba(166,109,31,0.06), transparent 55%),
+    radial-gradient(ellipse at 90% 100%, rgba(176,30,122,0.04), transparent 60%),
+    #ECE7FA;
+  padding: 4px 0 32px;
+  margin-top: 36px;
+}
+.theme-light-section h2 {
+  text-align: center;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 28px 16px 12px;
+  margin: 0;
+  color: #5b5474;
+}
+.theme-light-section .grid { padding-top: 8px; }
+
+/* small footer credit */
+.foot {
+  text-align: center;
+  color: var(--page-muted-2);
+  font-size: 11px;
+  padding: 24px 16px 36px;
+  letter-spacing: 0.04em;
+}
+.theme-light-section .foot { color: #5b5474; }
+</style>
+</head>
+<body>
+
+<h1>Bizarre CRM — Android phone login flow (Material 3 Expressive α)</h1>
+<p class="intro">
+  Pixel&nbsp;9&nbsp;Pro compact mockups (412×916) for the multi-step login flow.
+  Built on <code>material3 1.5.0-alpha18</code> with <code>MotionScheme.expressive()</code>:
+  <code>LargeFlexibleTopAppBar</code>, <code>LinearWavyProgressIndicator</code>, shape-morphing
+  buttons, <code>MaterialShapes</code> cookie hero, FAB&nbsp;Menu, Split&nbsp;Button.
+  Solid surfaces only — Android forbids backdrop-filter glassmorphism per
+  <code>Theme.kt §1.4</code>. iOS counterpart lives at
+  <a href="../ios/pos-iphone-mockups.html">ios/pos-iphone-mockups.html</a>.
+</p>
+
+<!-- ═════════════════════════════════════════════════════════════════════
+     DARK SECTION — DarkColorScheme
+     ═════════════════════════════════════════════════════════════════════ -->
+<div class="section-label">Dark — material3 1.5.0-alpha18 · MotionScheme.expressive()</div>
+
+<div class="grid">
+
+  <!-- ─── DARK 1: Server pick ──────────────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="topbar-actions">
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="topbar-title with-mark">
+            <svg class="cookie-inline" width="40" height="40" viewBox="-32 -32 64 64" aria-hidden="true">
+              <path fill="#FDEED0" d="M 0,-28 Q 6,-22 9.6,-26.5 Q 15.6,-22.7 14.0,-15.6 Q 22.4,-13.2 21.4,-5.6 Q 27.4,0 21.4,5.6 Q 22.4,13.2 14.0,15.6 Q 15.6,22.7 9.6,26.5 Q 6,22 0,28 Q -6,22 -9.6,26.5 Q -15.6,22.7 -14.0,15.6 Q -22.4,13.2 -21.4,5.6 Q -27.4,0 -21.4,-5.6 Q -22.4,-13.2 -14.0,-15.6 Q -15.6,-22.7 -9.6,-26.5 Q -6,-22 0,-28 Z"/>
+            </svg>
+            <span>Pick your shop.</span>
+          </div>
+          <div class="topbar-sub">Connect to a Bizarre Electronics workspace</div>
+        </div>
+
+        <div class="body-scroll">
+          <div class="tf focused">
+            <div class="tf-outline focused">
+              <span class="tf-prefix">https://</span>
+              <input class="tf-input" value="paradise-repair" readonly>
+              <span class="tf-suffix">.bizarrecrm.com</span>
+            </div>
+            <div class="tf-label" style="color:var(--primary);">Shop URL</div>
+          </div>
+          <div class="tf-support" style="margin-bottom:18px;">3–30 characters: letters, numbers, hyphens</div>
+
+          <div style="font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--on-surface-variant);margin-bottom:8px;">Recent shops</div>
+          <div class="chip-row">
+            <span class="chip selected">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              paradise-repair
+            </span>
+            <span class="chip">uptown-electronics</span>
+          </div>
+
+          <div class="chip-row" style="margin-bottom:18px;">
+            <span class="chip pill">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Use my own server
+            </span>
+          </div>
+
+          <div style="flex:1;"></div>
+
+          <button class="btn full">Continue
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">1 · Server pick · slug + recent shops</div>
+  </div>
+
+  <!-- ─── DARK 2: Credentials ──────────────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="topbar-actions">
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="topbar-title">Sign in to<br>Paradise&nbsp;Repair.</div>
+          <div class="topbar-sub">paradise-repair.bizarrecrm.com</div>
+        </div>
+
+        <div class="body-scroll">
+          <div class="tf">
+            <div class="tf-outline">
+              <input class="tf-input" value="serega" readonly>
+            </div>
+            <div class="tf-label">Username</div>
+          </div>
+
+          <div class="tf focused" style="margin-bottom:6px;">
+            <div class="tf-outline focused">
+              <input class="tf-input" type="text" value="••••••••••" readonly>
+              <span class="tf-trailing">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                <span style="margin-left:4px;">Show</span>
+              </span>
+            </div>
+            <div class="tf-label" style="color:var(--primary);">Password</div>
+          </div>
+
+          <div class="row" style="margin:0 0 18px;">
+            <div class="cb checked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#2B1400" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="cb-label">Remember me on this device</div>
+            <div class="spacer"></div>
+            <button class="btn text">Forgot password?</button>
+          </div>
+
+          <!-- Split Button: primary "Sign In" + chevron secondary -->
+          <div class="split">
+            <button class="btn main">Sign In</button>
+            <button class="chev" aria-label="Sign in to a different shop">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="tf-support" style="padding-left:6px;margin-top:6px;color:var(--on-surface-variant);">
+            ⌃ chevron: Sign in to a different shop
+          </div>
+
+          <div class="divider">or</div>
+
+          <button class="btn outlined full" style="height:48px;border-radius:14px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.6" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2"/></svg>
+            Use passkey
+          </button>
+
+          <div style="flex:1;"></div>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">2 · Credentials · Split Button + remember-me + passkey</div>
+  </div>
+
+  <!-- ─── DARK 3: 2FA verify ──────────────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="topbar-actions">
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="topbar-title">Enter your<br>6-digit code.</div>
+          <div class="topbar-sub">From your authenticator app · Two-Factor Authentication</div>
+        </div>
+
+        <div class="body-scroll">
+          <div style="margin: 12px 0 24px; text-align:center;">
+            <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:var(--surface-variant);color:var(--on-surface-variant);font-size:12px;font-weight:500;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.6" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2"/></svg>
+              Signed in as serega @ paradise-repair
+            </div>
+          </div>
+
+          <div class="otp">
+            <div class="otp-cell filled">A</div>
+            <div class="otp-cell filled">C</div>
+            <div class="otp-cell filled">9</div>
+            <div class="otp-cell filled">2</div>
+            <div class="otp-cell cursor"></div>
+            <div class="otp-cell"></div>
+          </div>
+
+          <div class="row" style="justify-content:center; margin: 4px 0 28px;">
+            <button class="btn text">Resend code</button>
+            <span style="color:var(--on-surface-variant);">·</span>
+            <button class="btn text">Use backup code</button>
+          </div>
+
+          <div class="row" style="margin:14px 0 16px;padding:12px 14px;border:1px solid var(--outline);border-radius:14px;background:var(--surface-variant);">
+            <div class="cb checked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#2B1400" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div class="cb-label" style="font-weight:600;">Trust this device for 90 days</div>
+              <div style="font-size:11.5px;color:var(--on-surface-variant);line-height:1.35;">Skip 2FA on this device. Sends <code style="font-family:var(--font-mono);font-size:10.5px;">trustDevice: true</code> to <code style="font-family:var(--font-mono);font-size:10.5px;">/auth/login/2fa-verify</code>.</div>
+            </div>
+          </div>
+
+          <button class="btn full">Verify
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+
+          <div style="flex:1;"></div>
+
+          <div style="text-align:center;font-size:12px;color:var(--on-surface-variant);padding:12px 0 6px;">
+            Trouble? <span style="color:var(--primary);font-weight:600;">Contact your shop admin</span>
+          </div>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">3 · 2FA verify · OTP + Trust this device (90d refresh, fingerprinted cookie)</div>
+  </div>
+
+  <!-- ─── DARK 4: Set new password ────────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="topbar-actions">
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="topbar-title">Your admin<br>requested a reset.</div>
+          <div class="topbar-sub">This is your first login. Please set a password.</div>
+        </div>
+
+        <div class="body-scroll">
+          <div class="tf focused" style="margin-top:8px;">
+            <div class="tf-outline focused">
+              <input class="tf-input" type="text" value="••••••••••••" readonly>
+              <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+            </div>
+            <div class="tf-label" style="color:var(--primary);">New Password</div>
+          </div>
+
+          <div class="strength">
+            <div class="strength-bars s3">
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar"></div>
+            </div>
+            <div class="strength-label">
+              <span>Strength</span>
+              <span class="grade">Good · 3/4</span>
+            </div>
+          </div>
+
+          <div class="tf">
+            <div class="tf-outline">
+              <input class="tf-input" type="text" value="••••••••••••" readonly>
+              <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+            </div>
+            <div class="tf-label">Confirm Password</div>
+          </div>
+
+          <ul class="rules">
+            <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> 8 or more characters</li>
+            <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> One uppercase letter</li>
+            <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> One digit</li>
+            <li class="miss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg> One symbol (!@#$&amp;)</li>
+          </ul>
+
+          <div style="flex:1;"></div>
+
+          <button class="btn full">Update password</button>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">4 · Set new password · 4-segment strength meter</div>
+  </div>
+
+  <!-- ─── DARK 5: Biometric offer ─────────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="topbar-title">Unlock faster<br>next time?</div>
+          <div class="topbar-sub">Auto-detects Face Unlock or fingerprint, whichever your device supports</div>
+        </div>
+
+        <div class="body-scroll">
+          <div class="bio-hero">
+            <div class="bio-cookie-bg">
+              <!-- larger cookie holding the fingerprint glyph -->
+              <svg width="152" height="152" viewBox="-32 -32 64 64">
+                <path fill="#3D2C14" d="
+                  M 0,-28
+                  Q 6,-22 9.6,-26.5
+                  Q 15.6,-22.7 14.0,-15.6
+                  Q 22.4,-13.2 21.4,-5.6
+                  Q 27.4,0 21.4,5.6
+                  Q 22.4,13.2 14.0,15.6
+                  Q 15.6,22.7 9.6,26.5
+                  Q 6,22 0,28
+                  Q -6,22 -9.6,26.5
+                  Q -15.6,22.7 -14.0,15.6
+                  Q -22.4,13.2 -21.4,5.6
+                  Q -27.4,0 -21.4,-5.6
+                  Q -22.4,-13.2 -14.0,-15.6
+                  Q -15.6,-22.7 -9.6,-26.5
+                  Q -6,-22 0,-28 Z"/>
+                <g transform="scale(0.86)">
+                  <!-- fingerprint glyph 96px design space -->
+                  <g fill="none" stroke="#FDEED0" stroke-width="1.8" stroke-linecap="round">
+                    <path d="M-12,-8 Q -12,-16 0,-16 Q 12,-16 12,-8"/>
+                    <path d="M-15,-2 Q -15,-12 0,-12 Q 15,-12 15,-2 Q 15,4 13,8"/>
+                    <path d="M-11,2 Q -11,-8 0,-8 Q 11,-8 11,2 Q 11,8 9,12"/>
+                    <path d="M-7,4 Q -7,-4 0,-4 Q 7,-4 7,4 Q 7,9 5,13"/>
+                    <path d="M-3,6 Q -3,0 0,0 Q 3,0 3,6"/>
+                    <path d="M-15,4 Q -14,9 -11,12"/>
+                  </g>
+                </g>
+              </svg>
+            </div>
+            <div style="text-align:center;font-size:14px;color:var(--on-surface-variant);max-width:280px;margin-top:8px;line-height:1.5;">
+              We'll store an encrypted token in your device's secure enclave. Disable any time in Settings.
+            </div>
+          </div>
+
+          <div style="flex:1;"></div>
+
+          <button class="btn full" style="margin-bottom:8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M12 2C6.5 2 2 6.5 2 12c0 5.5 4.5 10 10 10s10-4.5 10-10S17.5 2 12 2z" stroke="currentColor" stroke-width="2"/></svg>
+            Enable biometric unlock
+          </button>
+          <button class="btn text full" style="height:48px;">Not now</button>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">5 · Biometric offer · cookie hero, idle-morph CTA below</div>
+  </div>
+
+  <!-- ─── DARK 6: Register · Owner sub-step (50% wavy progress) ─── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div style="font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--on-surface-variant);">Step 2 of 4</div>
+            <button class="icon-btn" aria-label="close">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="topbar-title">Tell us about<br>the owner.</div>
+          <div class="topbar-sub">Register new shop · Owner contact</div>
+        </div>
+
+        <div class="body-scroll">
+          <!-- LinearWavyProgressIndicator @ 50% -->
+          <div class="wavy-wrap">
+            <div class="wavy-track">
+              <svg class="wavy-svg" viewBox="0 0 320 16" preserveAspectRatio="none">
+                <!-- Filled half (8 cycles over 320, so cycle = 40; half = 160) -->
+                <path class="wavy-fill wavy-fill-anim"
+                  d="M 2 8 Q 12 2 22 8 T 42 8 T 62 8 T 82 8 T 102 8 T 122 8 T 142 8 T 158 8" />
+                <!-- Rest track straight -->
+                <path class="wavy-rest" d="M 162 8 L 318 8" />
+              </svg>
+            </div>
+            <span class="wavy-pct">50%</span>
+          </div>
+
+          <div style="display:flex;gap:10px;margin-bottom:14px;">
+            <div class="tf" style="flex:1;margin-bottom:0;">
+              <div class="tf-outline">
+                <input class="tf-input" value="Sergei" readonly>
+              </div>
+              <div class="tf-label">First Name</div>
+            </div>
+            <div class="tf" style="flex:1;margin-bottom:0;">
+              <div class="tf-outline">
+                <input class="tf-input" value="Bizarre" readonly>
+              </div>
+              <div class="tf-label">Last Name</div>
+            </div>
+          </div>
+
+          <div class="tf">
+            <div class="tf-outline">
+              <input class="tf-input" value="serega@bizarrecrm.com" readonly>
+            </div>
+            <div class="tf-label">Email</div>
+          </div>
+
+          <div class="tf focused">
+            <div class="tf-outline focused">
+              <input class="tf-input" type="text" value="••••••••••" readonly>
+              <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+            </div>
+            <div class="tf-label" style="color:var(--primary);">Password</div>
+          </div>
+
+          <div class="strength" style="margin-bottom:6px;">
+            <div class="strength-bars s4">
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar fill"></div>
+              <div class="strength-bar fill"></div>
+            </div>
+            <div class="strength-label s4">
+              <span>Strength</span>
+              <span class="grade">Strong · 4/4</span>
+            </div>
+          </div>
+          <div class="tf-support" style="padding-left:0;">Minimum 8 characters</div>
+
+          <div style="flex:1;"></div>
+
+          <!-- Split: Back + Next -->
+          <div class="split outlined" style="margin-top:12px;">
+            <button class="btn outlined main">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Back
+            </button>
+            <button class="btn main" style="flex:1.6;">Next
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">6 · Register · Owner · LinearWavyProgressIndicator 50%</div>
+  </div>
+
+  <!-- ─── DARK 7: Rate-limit / error ──────────────────────────────── -->
+  <div>
+    <div class="phone">
+      <div class="punch"></div>
+      <div class="phone-body">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="glyphs">
+            <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+            <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+            <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+          </span>
+        </div>
+
+        <div class="topbar">
+          <div class="topbar-row">
+            <button class="topbar-back" aria-label="back">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="topbar-actions">
+              <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="topbar-title">Sign in to<br>Paradise&nbsp;Repair.</div>
+          <div class="topbar-sub">paradise-repair.bizarrecrm.com</div>
+        </div>
+
+        <div class="body-scroll">
+          <div class="banner">
+            <div class="banner-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--error)" stroke-width="2"/><path d="M12 7v5M12 16v0.5" stroke="var(--error)" stroke-width="2" stroke-linecap="round"/></svg>
+            </div>
+            <div class="banner-text">
+              <strong>Too many attempts.</strong>
+              Try again in <span class="banner-timer">02:14</span>. Account lockout after 10 failed attempts in 15 min.
+            </div>
+          </div>
+
+          <div class="opacity-half">
+            <div class="tf">
+              <div class="tf-outline">
+                <input class="tf-input" value="serega" readonly>
+              </div>
+              <div class="tf-label">Username</div>
+            </div>
+
+            <div class="tf">
+              <div class="tf-outline">
+                <input class="tf-input" type="text" value="••••••••" readonly>
+                <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+              </div>
+              <div class="tf-label">Password</div>
+            </div>
+
+            <div class="row" style="margin:0 0 18px;">
+              <div class="cb"></div>
+              <div class="cb-label">Remember me on this device</div>
+              <div class="spacer"></div>
+              <button class="btn text">Forgot password?</button>
+            </div>
+
+            <button class="btn disabled full">Sign In</button>
+          </div>
+
+          <div style="flex:1;"></div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--surface-variant);margin-bottom:6px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--on-surface-variant);"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <div style="flex:1;font-size:12.5px;color:var(--on-surface-variant);">
+              Locked until <span style="font-family:var(--font-mono);color:var(--on-surface);">9:43:14</span>
+            </div>
+            <button class="btn text" style="height:32px;">Retry now</button>
+          </div>
+        </div>
+
+        <div class="gesture-bar"></div>
+      </div>
+    </div>
+    <div class="frame-caption">7 · Rate-limit · disabled form @ 0.5 + countdown timer</div>
+  </div>
+
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════
+     LIGHT SECTION — LightColorScheme
+     ═════════════════════════════════════════════════════════════════════ -->
+<div class="theme-light theme-light-section">
+  <h2>Light — same frames, LightColorScheme</h2>
+
+  <div class="grid">
+
+    <!-- ─── LIGHT 1: Server pick ──────────────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="topbar-actions">
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="topbar-title with-mark">
+              <svg class="cookie-inline" width="40" height="40" viewBox="-32 -32 64 64" aria-hidden="true">
+                <path fill="#A66D1F" d="M 0,-28 Q 6,-22 9.6,-26.5 Q 15.6,-22.7 14.0,-15.6 Q 22.4,-13.2 21.4,-5.6 Q 27.4,0 21.4,5.6 Q 22.4,13.2 14.0,15.6 Q 15.6,22.7 9.6,26.5 Q 6,22 0,28 Q -6,22 -9.6,26.5 Q -15.6,22.7 -14.0,15.6 Q -22.4,13.2 -21.4,5.6 Q -27.4,0 -21.4,-5.6 Q -22.4,-13.2 -14.0,-15.6 Q -15.6,-22.7 -9.6,-26.5 Q -6,-22 0,-28 Z"/>
+              </svg>
+              <span>Pick your shop.</span>
+            </div>
+            <div class="topbar-sub">Connect to a Bizarre Electronics workspace</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="tf focused">
+              <div class="tf-outline focused">
+                <span class="tf-prefix">https://</span>
+                <input class="tf-input" value="paradise-repair" readonly>
+                <span class="tf-suffix">.bizarrecrm.com</span>
+              </div>
+              <div class="tf-label" style="color:var(--primary);">Shop URL</div>
+            </div>
+            <div class="tf-support" style="margin-bottom:18px;">3–30 characters: letters, numbers, hyphens</div>
+
+            <div style="font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--on-surface-variant);margin-bottom:8px;">Recent shops</div>
+            <div class="chip-row">
+              <span class="chip selected">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                paradise-repair
+              </span>
+              <span class="chip">uptown-electronics</span>
+            </div>
+
+            <div class="chip-row" style="margin-bottom:18px;">
+              <span class="chip pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                Use my own server
+              </span>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <button class="btn full">Continue
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">1 · Server pick · slug + recent shops</div>
+    </div>
+
+    <!-- ─── LIGHT 2: Credentials ──────────────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="topbar-actions">
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="topbar-title">Sign in to<br>Paradise&nbsp;Repair.</div>
+            <div class="topbar-sub">paradise-repair.bizarrecrm.com</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="tf">
+              <div class="tf-outline">
+                <input class="tf-input" value="serega" readonly>
+              </div>
+              <div class="tf-label">Username</div>
+            </div>
+
+            <div class="tf focused" style="margin-bottom:6px;">
+              <div class="tf-outline focused">
+                <input class="tf-input" type="text" value="••••••••••" readonly>
+                <span class="tf-trailing">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                  <span style="margin-left:4px;">Show</span>
+                </span>
+              </div>
+              <div class="tf-label" style="color:var(--primary);">Password</div>
+            </div>
+
+            <div class="row" style="margin:0 0 18px;">
+              <div class="cb checked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div class="cb-label">Remember me on this device</div>
+              <div class="spacer"></div>
+              <button class="btn text">Forgot password?</button>
+            </div>
+
+            <div class="split">
+              <button class="btn main">Sign In</button>
+              <button class="chev" aria-label="Sign in to a different shop">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="tf-support" style="padding-left:6px;margin-top:6px;color:var(--on-surface-variant);">
+              ⌃ chevron: Sign in to a different shop
+            </div>
+
+            <div class="divider">or</div>
+
+            <button class="btn outlined full" style="height:48px;border-radius:14px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.6" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2"/></svg>
+              Use passkey
+            </button>
+
+            <div style="flex:1;"></div>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">2 · Credentials · Split Button + remember-me + passkey</div>
+    </div>
+
+    <!-- ─── LIGHT 3: 2FA verify ──────────────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="topbar-actions">
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="topbar-title">Enter your<br>6-digit code.</div>
+            <div class="topbar-sub">From your authenticator app · Two-Factor Authentication</div>
+          </div>
+
+          <div class="body-scroll">
+            <div style="margin: 12px 0 24px; text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:var(--surface-variant);color:var(--on-surface-variant);font-size:12px;font-weight:500;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="1.6" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2"/></svg>
+                Signed in as serega @ paradise-repair
+              </div>
+            </div>
+
+            <div class="otp">
+              <div class="otp-cell filled">A</div>
+              <div class="otp-cell filled">C</div>
+              <div class="otp-cell filled">9</div>
+              <div class="otp-cell filled">2</div>
+              <div class="otp-cell cursor"></div>
+              <div class="otp-cell"></div>
+            </div>
+
+            <div class="row" style="justify-content:center; margin: 4px 0 14px;">
+              <button class="btn text">Resend code</button>
+              <span style="color:var(--on-surface-variant);">·</span>
+              <button class="btn text">Use backup code</button>
+            </div>
+
+            <div class="row" style="margin:0 0 16px;padding:12px 14px;border:1px solid var(--outline);border-radius:14px;background:var(--surface-variant);">
+              <div class="cb checked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <div class="cb-label" style="font-weight:600;">Trust this device for 90 days</div>
+                <div style="font-size:11.5px;color:var(--on-surface-variant);line-height:1.35;">Skip 2FA on this device. Sends <code style="font-family:var(--font-mono);font-size:10.5px;">trustDevice: true</code> to <code style="font-family:var(--font-mono);font-size:10.5px;">/auth/login/2fa-verify</code>.</div>
+              </div>
+            </div>
+
+            <button class="btn full">Verify
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+
+            <div style="flex:1;"></div>
+
+            <div style="text-align:center;font-size:12px;color:var(--on-surface-variant);padding:12px 0 6px;">
+              Trouble? <span style="color:var(--primary);font-weight:600;">Contact your shop admin</span>
+            </div>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">3 · 2FA verify · OTP + Trust this device (90d refresh, fingerprinted cookie)</div>
+    </div>
+
+    <!-- ─── LIGHT 4: Set new password ─────────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="topbar-actions">
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="topbar-title">Your admin<br>requested a reset.</div>
+            <div class="topbar-sub">This is your first login. Please set a password.</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="tf focused" style="margin-top:8px;">
+              <div class="tf-outline focused">
+                <input class="tf-input" type="text" value="••••••••••••" readonly>
+                <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+              </div>
+              <div class="tf-label" style="color:var(--primary);">New Password</div>
+            </div>
+
+            <div class="strength">
+              <div class="strength-bars s3">
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar"></div>
+              </div>
+              <div class="strength-label">
+                <span>Strength</span>
+                <span class="grade">Good · 3/4</span>
+              </div>
+            </div>
+
+            <div class="tf">
+              <div class="tf-outline">
+                <input class="tf-input" type="text" value="••••••••••••" readonly>
+                <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+              </div>
+              <div class="tf-label">Confirm Password</div>
+            </div>
+
+            <ul class="rules">
+              <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> 8 or more characters</li>
+              <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> One uppercase letter</li>
+              <li class="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> One digit</li>
+              <li class="miss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg> One symbol (!@#$&amp;)</li>
+            </ul>
+
+            <div style="flex:1;"></div>
+
+            <button class="btn full">Update password</button>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">4 · Set new password · 4-segment strength meter</div>
+    </div>
+
+    <!-- ─── LIGHT 5: Biometric offer ──────────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="topbar-title">Unlock faster<br>next time?</div>
+            <div class="topbar-sub">Auto-detects Face Unlock or fingerprint, whichever your device supports</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="bio-hero">
+              <div class="bio-cookie-bg">
+                <svg width="152" height="152" viewBox="-32 -32 64 64">
+                  <path fill="#FDEED0" d="
+                    M 0,-28
+                    Q 6,-22 9.6,-26.5
+                    Q 15.6,-22.7 14.0,-15.6
+                    Q 22.4,-13.2 21.4,-5.6
+                    Q 27.4,0 21.4,5.6
+                    Q 22.4,13.2 14.0,15.6
+                    Q 15.6,22.7 9.6,26.5
+                    Q 6,22 0,28
+                    Q -6,22 -9.6,26.5
+                    Q -15.6,22.7 -14.0,15.6
+                    Q -22.4,13.2 -21.4,5.6
+                    Q -27.4,0 -21.4,-5.6
+                    Q -22.4,-13.2 -14.0,-15.6
+                    Q -15.6,-22.7 -9.6,-26.5
+                    Q -6,-22 0,-28 Z"/>
+                  <g transform="scale(0.86)">
+                    <g fill="none" stroke="#A66D1F" stroke-width="1.8" stroke-linecap="round">
+                      <path d="M-12,-8 Q -12,-16 0,-16 Q 12,-16 12,-8"/>
+                      <path d="M-15,-2 Q -15,-12 0,-12 Q 15,-12 15,-2 Q 15,4 13,8"/>
+                      <path d="M-11,2 Q -11,-8 0,-8 Q 11,-8 11,2 Q 11,8 9,12"/>
+                      <path d="M-7,4 Q -7,-4 0,-4 Q 7,-4 7,4 Q 7,9 5,13"/>
+                      <path d="M-3,6 Q -3,0 0,0 Q 3,0 3,6"/>
+                      <path d="M-15,4 Q -14,9 -11,12"/>
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <div style="text-align:center;font-size:14px;color:var(--on-surface-variant);max-width:280px;margin-top:8px;line-height:1.5;">
+                We'll store an encrypted token in your device's secure enclave. Disable any time in Settings.
+              </div>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <!-- Idle-animated morph (showcase motion at rest, light theme) -->
+            <button class="btn morph-idle full" style="margin-bottom:8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M12 2C6.5 2 2 6.5 2 12c0 5.5 4.5 10 10 10s10-4.5 10-10S17.5 2 12 2z" stroke="currentColor" stroke-width="2"/></svg>
+              Enable biometric unlock
+            </button>
+            <button class="btn text full" style="height:48px;">Not now</button>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">5 · Biometric offer · cookie hero, idle-morph CTA in motion</div>
+    </div>
+
+    <!-- ─── LIGHT 6: Register · Owner sub-step ───────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div style="font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--on-surface-variant);">Step 2 of 4</div>
+              <button class="icon-btn" aria-label="close">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+            <div class="topbar-title">Tell us about<br>the owner.</div>
+            <div class="topbar-sub">Register new shop · Owner contact</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="wavy-wrap">
+              <div class="wavy-track">
+                <svg class="wavy-svg" viewBox="0 0 320 16" preserveAspectRatio="none">
+                  <path class="wavy-fill wavy-fill-anim"
+                    d="M 2 8 Q 12 2 22 8 T 42 8 T 62 8 T 82 8 T 102 8 T 122 8 T 142 8 T 158 8" />
+                  <path class="wavy-rest" d="M 162 8 L 318 8" />
+                </svg>
+              </div>
+              <span class="wavy-pct">50%</span>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-bottom:14px;">
+              <div class="tf" style="flex:1;margin-bottom:0;">
+                <div class="tf-outline">
+                  <input class="tf-input" value="Sergei" readonly>
+                </div>
+                <div class="tf-label">First Name</div>
+              </div>
+              <div class="tf" style="flex:1;margin-bottom:0;">
+                <div class="tf-outline">
+                  <input class="tf-input" value="Bizarre" readonly>
+                </div>
+                <div class="tf-label">Last Name</div>
+              </div>
+            </div>
+
+            <div class="tf">
+              <div class="tf-outline">
+                <input class="tf-input" value="serega@bizarrecrm.com" readonly>
+              </div>
+              <div class="tf-label">Email</div>
+            </div>
+
+            <div class="tf focused">
+              <div class="tf-outline focused">
+                <input class="tf-input" type="text" value="••••••••••" readonly>
+                <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+              </div>
+              <div class="tf-label" style="color:var(--primary);">Password</div>
+            </div>
+
+            <div class="strength" style="margin-bottom:6px;">
+              <div class="strength-bars s4">
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar fill"></div>
+                <div class="strength-bar fill"></div>
+              </div>
+              <div class="strength-label s4">
+                <span>Strength</span>
+                <span class="grade">Strong · 4/4</span>
+              </div>
+            </div>
+            <div class="tf-support" style="padding-left:0;">Minimum 8 characters</div>
+
+            <div style="flex:1;"></div>
+
+            <div class="split outlined" style="margin-top:12px;">
+              <button class="btn outlined main">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Back
+              </button>
+              <button class="btn main" style="flex:1.6;">Next
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">6 · Register · Owner · LinearWavyProgressIndicator 50%</div>
+    </div>
+
+    <!-- ─── LIGHT 7: Rate-limit / error ──────────────────────────── -->
+    <div>
+      <div class="phone">
+        <div class="punch"></div>
+        <div class="phone-body">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span class="glyphs">
+              <svg width="14" height="10" viewBox="0 0 14 10"><path fill="currentColor" d="M0 7 h2 v3 H0z M4 5 h2 v5 H4z M8 3 h2 v7 H8z M12 0 h2 v10 H12z"/></svg>
+              <svg width="13" height="10" viewBox="0 0 13 10"><path fill="currentColor" d="M6.5 1.4 a 6 6 0 0 1 4.6 2.1 l-1 0.9 a 4.6 4.6 0 0 0 -7.2 0 l-1-0.9 a 6 6 0 0 1 4.6-2.1 z M6.5 4.7 a 3 3 0 0 1 2.4 1.2 l -1 0.9 a 1.6 1.6 0 0 0 -2.8 0 l-1-0.9 a 3 3 0 0 1 2.4-1.2 z M6.5 7.6 a 0.9 0.9 0 1 0 0 1.8 a 0.9 0.9 0 0 0 0 -1.8 z"/></svg>
+              <svg width="22" height="10" viewBox="0 0 22 10"><rect x="0" y="1" width="19" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="20" y="3.5" width="1.4" height="3" rx="0.4" fill="currentColor"/><rect x="1.5" y="2.5" width="11" height="5" rx="0.6" fill="currentColor"/></svg>
+            </span>
+          </div>
+
+          <div class="topbar">
+            <div class="topbar-row">
+              <button class="topbar-back" aria-label="back">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="topbar-actions">
+                <button class="icon-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-0.7 0.4-1.2 1-1.2 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="topbar-title">Sign in to<br>Paradise&nbsp;Repair.</div>
+            <div class="topbar-sub">paradise-repair.bizarrecrm.com</div>
+          </div>
+
+          <div class="body-scroll">
+            <div class="banner">
+              <div class="banner-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--error)" stroke-width="2"/><path d="M12 7v5M12 16v0.5" stroke="var(--error)" stroke-width="2" stroke-linecap="round"/></svg>
+              </div>
+              <div class="banner-text">
+                <strong>Too many attempts.</strong>
+                Try again in <span class="banner-timer">02:14</span>. Account lockout after 10 failed attempts in 15 min.
+              </div>
+            </div>
+
+            <div class="opacity-half">
+              <div class="tf">
+                <div class="tf-outline">
+                  <input class="tf-input" value="serega" readonly>
+                </div>
+                <div class="tf-label">Username</div>
+              </div>
+
+              <div class="tf">
+                <div class="tf-outline">
+                  <input class="tf-input" type="text" value="••••••••" readonly>
+                  <span class="tf-trailing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>
+                </div>
+                <div class="tf-label">Password</div>
+              </div>
+
+              <div class="row" style="margin:0 0 18px;">
+                <div class="cb"></div>
+                <div class="cb-label">Remember me on this device</div>
+                <div class="spacer"></div>
+                <button class="btn text">Forgot password?</button>
+              </div>
+
+              <button class="btn disabled full">Sign In</button>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--surface-variant);margin-bottom:6px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--on-surface-variant);"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <div style="flex:1;font-size:12.5px;color:var(--on-surface-variant);">
+                Locked until <span style="font-family:var(--font-mono);color:var(--on-surface);">9:43:14</span>
+              </div>
+              <button class="btn text" style="height:32px;">Retry now</button>
+            </div>
+          </div>
+
+          <div class="gesture-bar"></div>
+        </div>
+      </div>
+      <div class="frame-caption">7 · Rate-limit · disabled form @ 0.5 + countdown timer</div>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    Bizarre CRM · Android phone login flow · material3 1.5.0-alpha18 · MotionScheme.expressive() · No glassmorphism (Theme.kt §1.4)
+  </div>
+</div>
+
+</body>
+</html>

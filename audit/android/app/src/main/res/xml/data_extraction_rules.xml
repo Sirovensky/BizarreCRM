@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    @audit-fixed: Section 33 / D12 — Android 12+ (API 31+) replaces the
+    `android:fullBackupContent` / `allowBackup` mechanism with explicit
+    "data extraction rules". Without this file the platform falls back to
+    its default behaviour, which on some OEMs still includes app data in
+    cloud backups even when allowBackup="false" is set.
+
+    For BizarreCRM the rule is simple: NOTHING leaves the device.
+
+    - <cloud-backup>          Used by Google Drive auto-backup. Empty <exclude>
+                              of `domain="root"` removes every file under the
+                              app's data directory.
+    - <device-transfer>       Used by the device-to-device transfer flow when
+                              the user sets up a new phone. Same wipe-everything
+                              policy because the SQLite database is plaintext
+                              today (see SQLCipher TODO in DatabaseModule.kt) —
+                              once SQLCipher is wired we can revisit allowing
+                              device transfer of the encrypted blob.
+
+    See: https://developer.android.com/about/versions/12/backup-restore
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

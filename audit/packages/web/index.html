@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- WEB-FE-017 (Fixer-AAA 2026-04-25): viewport-fit=cover so iOS Safari
+         renders into the notch/home-indicator safe areas; pair with
+         env(safe-area-inset-*) in CSS for /customer-portal + kiosk
+         surfaces previously clipped on iPhone. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- SEC-H61: no-referrer at the HTML level so a reset-password URL like
+         /reset-password/<token> never leaks to third-party origins (fonts,
+         analytics, image hosts, external links) via the Referer header. This
+         is a client-side belt to the server's strict-origin-when-cross-origin
+         Referrer-Policy header — the stricter of the two wins. -->
+    <meta name="referrer" content="no-referrer" />
+    <!-- WEB-FE-001: Security headers as <meta> tags so static-host fallbacks
+         (Vite preview, raw S3, file://) still get a baseline policy when no
+         server-side `helmet` middleware is in front of the bundle. The prod
+         server already sends a stricter CSP via response headers; the meta
+         CSP below stays compatible with that one (it only intersects, never
+         loosens, server policy). 'unsafe-inline' on style-src is required by
+         Tailwind dev and Google Fonts CSS; 'unsafe-eval' is intentionally
+         omitted — Vite's prod bundle does not need it. hCaptcha (signup
+         only — see WEB-FA-010) needs https://hcaptcha.com + js.hcaptcha.com
+         on script-src and frame-src. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.hcaptcha.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: https: https://*.hcaptcha.com; frame-src https://*.hcaptcha.com https://newassets.hcaptcha.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <!-- WEB-FJ-015 (Fixer-B18 2026-04-25): meta-tag belt to the server's
+         Cache-Control header so post-logout back-button on Safari/Firefox
+         BFCache cannot restore an authenticated DOM render with PII (customer
+         name/phone/last-4) for the ~1s before React reconciles. OWASP
+         "Sensitive Data Caching" baseline for authenticated pages. -->
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>BizarreCRM</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <!-- WEB-FE-004 (Fixer-UU 2026-04-25): aligned with manifest.json theme_color
+         + tailwind primary-200 brand cream (#fdeed0). Was #FBF3DB while manifest
+         had #bc398f magenta — three-way mismatch caused chrome address-bar to
+         flicker on PWA install. -->
+    <meta name="theme-color" content="#fdeed0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- WEB-FQ-001 / WEB-FE-003 (Fixer-Z 2026-04-25): canonical brand fonts per
+         §project_brand_fonts — Bebas Neue (display/headings), Jost (body, as
+         a free Google Fonts proxy for Futura Medium), JetBrains Mono (code).
+         Saved By Zero (logo) is a custom typeface and is NOT on Google Fonts;
+         it must be self-hosted via @font-face in styles/globals.css against
+         /fonts/SavedByZero.woff2 (TODO: ship the file — placeholder below). -->
+    <!-- TODO: self-host Saved By Zero — drop SavedByZero.woff2 into /public/fonts/
+         and add @font-face { font-family: 'Saved By Zero'; src: url('/fonts/SavedByZero.woff2') format('woff2'); } to globals.css -->
+    <!-- WEB-FE-018 (Fixer-SSS 2026-04-25): Google Fonts CSS loaded asynchronously
+         via the canonical preload+media=print swap pattern so the stylesheet
+         download no longer render-blocks first paint (was 200-400 ms cold-load
+         hit). The browser fetches the CSS at low priority, then onload swaps
+         media back to "all" so the rules apply. The <noscript> fallback keeps
+         text styled correctly when JS is disabled (the media=print swap is the
+         only thing that needed JS — preload itself does not). All three
+         font-family stacks already declare safe system fallbacks in
+         tailwind.config.* so the FOUT during the async fetch shows readable
+         text rather than invisible glyphs. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=League+Spartan:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" /></noscript>
+    <script>
+      // D4-8: apply dark class synchronously BEFORE the React render cycle so
+      // users on dark theme never see a bright-white flash on cold boot.
+      // Matches uiStore.ts which writes the flat 'theme' localStorage key
+      // (NOT a Zustand persist 'ui-storage' shape — that was a stale mismatch
+      // causing every user with theme=dark stored to still flash white on
+      // cold load before React mounted and re-resolved).
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            // Also paint the body background via inline style so the first
+            // frame before Tailwind's dark:bg-surface-950 CSS applies is
+            // already dark. This is the gap that kept the cold-boot flash
+            // visible even with the dark class on <html>.
+            document.documentElement.style.backgroundColor = '#1C1917';
+          }
+        } catch (_) { /* storage disabled — fall through to light */ }
+      })();
+    </script>
+  </head>
+  <body class="bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Unregister any previously installed service worker (was caching 500 errors)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.unregister(); });
+        });
+        // Clear all caches left behind by the old SW
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            names.forEach(function(n) { caches.delete(n); });
+          });
+        }
+      }
+    </script>
+  </body>
+</html>
