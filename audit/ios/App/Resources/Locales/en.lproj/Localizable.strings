@@ -1,0 +1,204 @@
+/* BizarreCRM — English (en) Localizable.strings
+   §27 i18n scaffold — source-of-truth for all user-facing copy.
+   Keys follow dot-notation: <domain>.<sub>.<variant>
+   DO NOT translate this file — add translations to locale-specific lproj dirs.
+*/
+
+// MARK: - Common actions
+"action.save"               = "Save";
+"action.cancel"             = "Cancel";
+"action.delete"             = "Delete";
+"action.edit"               = "Edit";
+"action.done"               = "Done";
+"action.add"                = "Add";
+"action.remove"             = "Remove";
+"action.close"              = "Close";
+"action.retry"              = "Retry";
+"action.refresh"            = "Refresh";
+"action.search"             = "Search";
+"action.filter"             = "Filter";
+"action.sort"               = "Sort";
+"action.share"              = "Share";
+"action.export"             = "Export";
+"action.import"             = "Import";
+"action.print"              = "Print";
+"action.scan"               = "Scan";
+"action.send"               = "Send";
+"action.submit"             = "Submit";
+"action.confirm"            = "Confirm";
+"action.archive"            = "Archive";
+"action.unarchive"          = "Unarchive";
+"action.duplicate"          = "Duplicate";
+"action.merge"              = "Merge";
+"action.convert"            = "Convert";
+"action.assign"             = "Assign";
+"action.signIn"             = "Sign In";
+"action.signOut"            = "Sign Out";
+"action.continue"           = "Continue";
+"action.back"               = "Back";
+"action.next"               = "Next";
+"action.previous"           = "Previous";
+"action.apply"              = "Apply";
+"action.reset"              = "Reset";
+
+// MARK: - Common status
+"status.loading"            = "Loading…";
+"status.empty"              = "No items";
+"status.error"              = "Something went wrong";
+"status.offline"            = "Offline";
+"status.online"             = "Online";
+"status.syncing"            = "Syncing…";
+"status.synced"             = "Synced";
+"status.pending"            = "Pending";
+"status.failed"             = "Failed";
+"status.success"            = "Success";
+"status.active"             = "Active";
+"status.inactive"           = "Inactive";
+"status.draft"              = "Draft";
+"status.archived"           = "Archived";
+
+// MARK: - Field labels
+"field.customer.name"       = "Customer name";
+"field.first.name"          = "First name";
+"field.last.name"           = "Last name";
+"field.company"             = "Company";
+"field.email"               = "Email address";
+"field.phone"               = "Phone number";
+"field.address"             = "Address";
+"field.city"                = "City";
+"field.state"               = "State";
+"field.zip"                 = "ZIP code";
+"field.country"             = "Country";
+"field.notes"               = "Notes";
+"field.description"         = "Description";
+"field.title"               = "Title";
+"field.amount"              = "Amount";
+"field.price"               = "Price";
+"field.quantity"            = "Quantity";
+"field.sku"                 = "SKU";
+"field.barcode"             = "Barcode";
+"field.serial.number"       = "Serial number";
+"field.date"                = "Date";
+"field.time"                = "Time";
+"field.due.date"            = "Due date";
+"field.password"            = "Password";
+"field.search"              = "Search";
+"field.tax"                 = "Tax";
+"field.discount"            = "Discount";
+"field.subtotal"            = "Subtotal";
+"field.total"               = "Total";
+
+// MARK: - Ticket status
+"ticket.status.intake"          = "Intake";
+"ticket.status.diagnosing"      = "Diagnosing";
+"ticket.status.waitingForParts" = "Waiting for parts";
+"ticket.status.inRepair"        = "In repair";
+"ticket.status.repairComplete"  = "Repair complete";
+"ticket.status.readyForPickup"  = "Ready for pickup";
+"ticket.status.pickedUp"        = "Picked up";
+"ticket.status.cancelled"       = "Cancelled";
+"ticket.status.unrepairable"    = "Unrepairable";
+
+// MARK: - Ticket labels
+"ticket.title"              = "Ticket";
+"ticket.list.title"         = "Tickets";
+"ticket.new"                = "New Ticket";
+"ticket.detail.title"       = "Ticket Details";
+"ticket.device"             = "Device";
+"ticket.technician"         = "Technician";
+"ticket.priority"           = "Priority";
+"ticket.priority.low"       = "Low";
+"ticket.priority.medium"    = "Medium";
+"ticket.priority.high"      = "High";
+"ticket.priority.urgent"    = "Urgent";
+
+// MARK: - Customer labels
+"customer.title"            = "Customer";
+"customer.list.title"       = "Customers";
+"customer.new"              = "New Customer";
+"customer.detail.title"     = "Customer Details";
+"customer.ltv"              = "Lifetime Value";
+"customer.since"            = "Customer since";
+
+// MARK: - Invoice labels
+"invoice.title"             = "Invoice";
+"invoice.list.title"        = "Invoices";
+"invoice.new"               = "New Invoice";
+"invoice.status.unpaid"     = "Unpaid";
+"invoice.status.paid"       = "Paid";
+"invoice.status.overdue"    = "Overdue";
+"invoice.status.voided"     = "Voided";
+"invoice.status.refunded"   = "Refunded";
+
+// MARK: - Inventory labels
+"inventory.title"           = "Inventory";
+"inventory.list.title"      = "Inventory";
+"inventory.new"             = "New Item";
+"inventory.inStock"         = "In stock";
+"inventory.outOfStock"      = "Out of stock";
+"inventory.lowStock"        = "Low stock";
+
+// MARK: - Expense labels
+"expense.title"             = "Expense";
+"expense.list.title"        = "Expenses";
+"expense.new"               = "New Expense";
+"expense.category"          = "Category";
+"expense.receipt"           = "Receipt";
+
+// MARK: - Appointment labels
+"appointment.title"         = "Appointment";
+"appointment.list.title"    = "Appointments";
+"appointment.new"           = "New Appointment";
+"appointment.status.scheduled"  = "Scheduled";
+"appointment.status.confirmed"  = "Confirmed";
+"appointment.status.cancelled"  = "Cancelled";
+"appointment.status.completed"  = "Completed";
+"appointment.status.noShow"     = "No show";
+
+// MARK: - Employee labels
+"employee.title"            = "Employee";
+"employee.list.title"       = "Employees";
+"employee.clockIn"          = "Clock In";
+"employee.clockOut"         = "Clock Out";
+"employee.clockedIn"        = "Clocked In";
+"employee.clockedOut"       = "Clocked Out";
+
+// MARK: - Dashboard
+"dashboard.title"           = "Dashboard";
+"dashboard.revenue.today"   = "Today's Revenue";
+"dashboard.tickets.open"    = "Open Tickets";
+"dashboard.recentActivity"  = "Recent Activity";
+
+// MARK: - Navigation / tabs
+"nav.dashboard"             = "Dashboard";
+"nav.tickets"               = "Tickets";
+"nav.customers"             = "Customers";
+"nav.inventory"             = "Inventory";
+"nav.invoices"              = "Invoices";
+"nav.expenses"              = "Expenses";
+"nav.appointments"          = "Appointments";
+"nav.reports"               = "Reports";
+"nav.settings"              = "Settings";
+"nav.pos"                   = "Point of Sale";
+
+// MARK: - Settings
+"settings.title"            = "Settings";
+"settings.account"          = "Account";
+"settings.notifications"    = "Notifications";
+"settings.appearance"       = "Appearance";
+"settings.language"         = "Language";
+"settings.security"         = "Security";
+"settings.help"             = "Help";
+"settings.about"            = "About";
+
+// MARK: - Errors / alerts
+"error.generic"             = "An unexpected error occurred. Please try again.";
+"error.network"             = "Network error. Check your connection and try again.";
+"error.notFound"            = "Item not found.";
+"error.unauthorized"        = "You are not authorized to perform this action.";
+"error.validation"          = "Please correct the highlighted fields.";
+"alert.deleteConfirm.title" = "Delete?";
+"alert.deleteConfirm.message" = "This action cannot be undone.";
+"alert.unsavedChanges.title" = "Unsaved Changes";
+"alert.unsavedChanges.message" = "You have unsaved changes. Discard them?";
+"alert.discard"             = "Discard";

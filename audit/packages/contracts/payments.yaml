@@ -1,0 +1,86 @@
+area: payments
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/blockchyp.routes.ts
+    - packages/server/src/routes/paymentLinks.routes.ts
+    - packages/server/src/routes/refunds.routes.ts
+    - packages/server/src/routes/giftCards.routes.ts
+    - packages/server/src/routes/membership.routes.ts
+    - packages/server/src/routes/billing.routes.ts
+    - packages/server/src/routes/deposits.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+auth: bearer
+notes:
+  - Payment state must be driven by provider confirmation, never by client-only success.
+  - Monetary writes should be idempotent and audited.
+endpoints:
+  - method: GET
+    path: /api/v1/blockchyp/status
+    purpose: Return BlockChyp terminal/payment status.
+  - method: POST
+    path: /api/v1/blockchyp/test-connection
+    purpose: Test terminal connection.
+    request:
+      terminalName: string optional
+  - method: POST
+    path: /api/v1/blockchyp/process-payment
+    purpose: Process terminal payment.
+    request:
+      invoice_id: number
+      tip: number optional
+  - method: GET
+    path: /api/v1/payment-links
+    purpose: List payment links.
+  - method: POST
+    path: /api/v1/payment-links
+    purpose: Create payment link/request.
+    request:
+      invoice_id: number optional
+      ticket_id: number optional
+      amount: number optional
+      customer_id: number optional
+  - method: POST
+    path: /api/v1/refunds
+    purpose: Create refund/store credit request.
+    request:
+      invoice_id: number
+      amount: number
+      reason: string
+      method: string optional
+  - method: GET
+    path: /api/v1/gift-cards
+    purpose: List/search gift cards.
+  - method: POST
+    path: /api/v1/gift-cards
+    purpose: Issue gift card.
+    request:
+      amount: number
+      customer_id: number optional
+  - method: POST
+    path: /api/v1/gift-cards/{id}/redeem
+    purpose: Redeem gift card.
+    params:
+      id: number
+    request:
+      amount: number
+  - method: GET
+    path: /api/v1/membership/tiers
+    purpose: List membership tiers.
+  - method: POST
+    path: /api/v1/membership/subscribe
+    purpose: Subscribe customer to membership.
+    request:
+      customer_id: number
+      tier_id: number
+      blockchyp_token: string optional
+  - method: POST
+    path: /api/v1/billing/checkout
+    purpose: Start platform billing checkout.
+  - method: POST
+    path: /api/v1/deposits
+    purpose: Create customer deposit.
+    request:
+      customer_id: number
+      amount: number
+      reason: string optional

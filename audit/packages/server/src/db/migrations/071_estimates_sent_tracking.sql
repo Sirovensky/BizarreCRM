@@ -1,0 +1,23 @@
+-- Estimate send + follow-up tracking columns.
+--
+-- These two columns were referenced by application code but NEVER created by
+-- any migration, causing every active tenant DB to crash with
+--   [forEachDbAsync] Error on {slug}: SqliteError: no such column: e.sent_at
+-- every hour when the estimate auto-follow-up cron at index.ts:1320 fires.
+-- Also referenced by the send endpoint at estimates.routes.ts:608.
+--
+-- sent_at: when the estimate was delivered to the customer (set by
+--   POST /estimates/:id/send). Used by the cron to find estimates older than
+--   `estimate_followup_days` that haven't been followed up yet.
+-- followup_sent_at: when the auto-follow-up SMS was sent for this estimate.
+--   Prevents duplicate follow-ups.
+--
+-- Both nullable TEXT (ISO timestamp). Existing rows get NULL and the cron
+-- skips them (WHERE sent_at IS NOT NULL AND followup_sent_at IS NULL).
+--
+-- Note: ALTER TABLE in SQLite doesn't support IF NOT EXISTS on ADD COLUMN,
+-- so wrap in individual statements. runMigrations() applies each migration
+-- in its own transaction, and the _migrations table tracks which files have
+-- been applied, so re-running is idempotent at the file level.
+ALTER TABLE estimates ADD COLUMN sent_at TEXT;
+ALTER TABLE estimates ADD COLUMN followup_sent_at TEXT;

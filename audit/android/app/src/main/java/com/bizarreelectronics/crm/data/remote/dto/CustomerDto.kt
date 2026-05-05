@@ -1,0 +1,278 @@
+package com.bizarreelectronics.crm.data.remote.dto
+
+import com.google.gson.annotations.SerializedName
+
+data class CustomerListItem(
+    val id: Long,
+    @SerializedName("first_name")
+    val firstName: String?,
+    @SerializedName("last_name")
+    val lastName: String?,
+    val email: String?,
+    val phone: String?,
+    val mobile: String?,
+    val organization: String?,
+    val city: String?,
+    val state: String?,
+    @SerializedName("customer_group_name")
+    val customerGroupName: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("ticket_count")
+    val ticketCount: Int?
+)
+
+data class CustomerDetail(
+    val id: Long,
+    @SerializedName("first_name")
+    val firstName: String?,
+    @SerializedName("last_name")
+    val lastName: String?,
+    val title: String?,
+    val email: String?,
+    @SerializedName("email_opt_in")
+    val emailOptIn: Int?,
+    @SerializedName("sms_opt_in")
+    val smsOptIn: Int?,
+    val phone: String?,
+    val mobile: String?,
+    val phones: List<CustomerPhone>?,
+    val emails: List<CustomerEmail>?,
+    val address1: String?,
+    val address2: String?,
+    val city: String?,
+    val state: String?,
+    val country: String?,
+    val postcode: String?,
+    val organization: String?,
+    @SerializedName("contact_person")
+    val contactPerson: String?,
+    @SerializedName("contact_person_relation")
+    val contactPersonRelation: String?,
+    val type: String?,
+    @SerializedName("customer_group_id")
+    val customerGroupId: Long?,
+    @SerializedName("customer_group_name")
+    val customerGroupName: String?,
+    @SerializedName("customer_tags")
+    val customerTags: String?,
+    val comments: String?,
+    val image: String?,
+    @SerializedName("tax_class_id")
+    val taxClassId: Long?,
+    @SerializedName("referred_by")
+    val referredBy: String?,
+    val source: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+    val tickets: List<TicketListItem>?,
+    val invoices: List<InvoiceListItem>?,
+    val assets: List<CustomerAsset>?
+)
+
+data class CustomerPhone(
+    val id: Long?,
+    val phone: String,
+    val label: String?
+)
+
+data class CustomerEmail(
+    val id: Long?,
+    val email: String,
+    val label: String?
+)
+
+data class CustomerAsset(
+    val id: Long,
+    val name: String?,
+    @SerializedName("device_model_id")
+    val deviceModelId: Long?,
+    val imei: String?,
+    val serial: String?,
+    val color: String?,
+    val notes: String?,
+    @SerializedName("created_at")
+    val createdAt: String?
+)
+
+/**
+ * CROSS50-header: customer lifetime analytics payload returned by
+ * `GET /api/v1/customers/:id/analytics`. Separate endpoint from the
+ * CustomerDetail fetch so the header quick-stats row can render without
+ * waiting on (or re-fetching) the full ticket/invoice lists.
+ */
+data class CustomerAnalytics(
+    @SerializedName("total_tickets")
+    val totalTickets: Int?,
+    @SerializedName("lifetime_value")
+    val lifetimeValue: Double?,
+    @SerializedName("avg_ticket_value")
+    val avgTicketValue: Double?,
+    @SerializedName("first_visit")
+    val firstVisit: String?,
+    @SerializedName("last_visit")
+    val lastVisit: String?,
+    @SerializedName("days_since_last_visit")
+    val daysSinceLastVisit: Int?,
+)
+
+data class CreateCustomerRequest(
+    @SerializedName("first_name")
+    val firstName: String,
+    @SerializedName("last_name")
+    val lastName: String?,
+    val email: String? = null,
+    val phone: String? = null,
+    val mobile: String? = null,
+    val address1: String? = null,
+    val address2: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val postcode: String? = null,
+    val organization: String? = null,
+    @SerializedName("contact_person")
+    val contactPerson: String? = null,
+    @SerializedName("contact_person_relation")
+    val contactPersonRelation: String? = null,
+    val type: String? = "individual",
+    @SerializedName("customer_group_id")
+    val customerGroupId: Long? = null,
+    @SerializedName("customer_tags")
+    val customerTags: String? = null,
+    val comments: String? = null,
+    @SerializedName("email_opt_in")
+    val emailOptIn: Int? = 1,
+    @SerializedName("sms_opt_in")
+    val smsOptIn: Int? = 1,
+    @SerializedName("referred_by")
+    val referredBy: String? = null,
+    val phones: List<CustomerPhone>? = null,
+    val emails: List<CustomerEmail>? = null,
+    /**
+     * Client-generated idempotency key (UUID). The server is expected to dedupe
+     * concurrent/retried creates by this value so that a retried POST after a
+     * transient failure does not produce duplicate customers. See AP5.
+     */
+    @SerializedName("client_request_id")
+    val clientRequestId: String? = null
+)
+
+data class UpdateCustomerRequest(
+    @SerializedName("first_name")
+    val firstName: String? = null,
+    @SerializedName("last_name")
+    val lastName: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    val mobile: String? = null,
+    val address1: String? = null,
+    val address2: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
+    val postcode: String? = null,
+    val organization: String? = null,
+    @SerializedName("contact_person")
+    val contactPerson: String? = null,
+    @SerializedName("contact_person_relation")
+    val contactPersonRelation: String? = null,
+    val type: String? = null,
+    @SerializedName("customer_group_id")
+    val customerGroupId: Long? = null,
+    @SerializedName("customer_tags")
+    val customerTags: String? = null,
+    val comments: String? = null,
+    @SerializedName("email_opt_in")
+    val emailOptIn: Int? = null,
+    @SerializedName("sms_opt_in")
+    val smsOptIn: Int? = null,
+    @SerializedName("referred_by")
+    val referredBy: String? = null,
+    val phones: List<CustomerPhone>? = null,
+    val emails: List<CustomerEmail>? = null
+)
+
+/**
+ * CROSS9b: a single customer note row from `GET /customers/:id/notes`.
+ * `authorUsername` is a convenience LEFT JOIN from users(id); null when the
+ * author row is gone (soft-delete) or when the note was ingested without
+ * a resolvable author.
+ */
+data class CustomerNote(
+    val id: Long,
+    @SerializedName("customer_id")
+    val customerId: Long,
+    @SerializedName("author_user_id")
+    val authorUserId: Long? = null,
+    @SerializedName("author_username")
+    val authorUsername: String? = null,
+    val body: String,
+    @SerializedName("created_at")
+    val createdAt: String,
+)
+
+/** CROSS9b: POST body for creating a note. */
+data class CreateCustomerNoteRequest(
+    val body: String,
+)
+
+// ─── 5.5 Merge ────────────────────────────────────────────────────────────────
+
+/**
+ * POST /customers/merge body.
+ * [keepId] is the customer record that survives; [mergeId] is absorbed.
+ */
+data class CustomerMergeRequest(
+    @SerializedName("keep_id")
+    val keepId: Long,
+    @SerializedName("merge_id")
+    val mergeId: Long,
+)
+
+// ─── 5.6 Bulk actions ─────────────────────────────────────────────────────────
+
+/** POST /customers/bulk-tag body. */
+data class BulkTagRequest(
+    val ids: List<Long>,
+    val tag: String,
+)
+
+/** POST /customers/bulk-delete body. */
+data class BulkDeleteRequest(
+    val ids: List<Long>,
+)
+
+/** POST /customers/bulk-restore body (undo after bulk-delete). */
+data class BulkRestoreRequest(
+    val ids: List<Long>,
+)
+
+// ─── 5.7 Asset tracking ───────────────────────────────────────────────────────
+
+/**
+ * POST /customers/:id/assets body.
+ * [templateId] is the device-model id from the catalog. All fields except
+ * [templateId] are optional; at least one of [serial] / [imei] is expected.
+ */
+data class AddCustomerAssetRequest(
+    @SerializedName("templateId")
+    val templateId: Long?,
+    val serial: String?,
+    val imei: String?,
+    val notes: String?,
+)
+
+/**
+ * POS-STORECREDIT-001: response shape for GET /customers/:id/store-credit.
+ * Server returns cents (integer) to avoid float precision loss when the
+ * Android POS entry Store-credit tile prints the balance.
+ */
+data class StoreCreditBalanceData(
+    @SerializedName("customer_id")
+    val customerId: Long,
+    @SerializedName("amount_cents")
+    val amountCents: Long,
+)

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    French (fr) plurals — ActionPlan §27.2.
+    French uses one (0 and 1) / other. CLDR rule: quantity="one" covers 0 and 1 in fr.
+    Keys must match values/plurals.xml.
+-->
+<resources>
+    <plurals name="plural_items">
+        <item quantity="one">%d article</item>
+        <item quantity="other">%d articles</item>
+    </plurals>
+
+    <plurals name="plural_tickets">
+        <item quantity="one">%d ticket</item>
+        <item quantity="other">%d tickets</item>
+    </plurals>
+
+    <plurals name="plural_open_tickets">
+        <item quantity="one">%d ticket ouvert</item>
+        <item quantity="other">%d tickets ouverts</item>
+    </plurals>
+
+    <plurals name="plural_pending_changes">
+        <item quantity="one">%d modification en attente de synchronisation</item>
+        <item quantity="other">%d modifications en attente de synchronisation</item>
+    </plurals>
+
+    <plurals name="plural_low_stock_items">
+        <item quantity="one">%d article en dessous du seuil de réapprovisionnement</item>
+        <item quantity="other">%d articles en dessous du seuil de réapprovisionnement</item>
+    </plurals>
+
+    <plurals name="plural_overdue_invoices">
+        <item quantity="one">%d facture en retard</item>
+        <item quantity="other">%d factures en retard</item>
+    </plurals>
+
+    <plurals name="plural_stocktake_items_counted">
+        <item quantity="one">%d article compté</item>
+        <item quantity="other">%d articles comptés</item>
+    </plurals>
+
+    <plurals name="plural_stocktake_variances">
+        <item quantity="one">%d écart</item>
+        <item quantity="other">%d écarts</item>
+    </plurals>
+
+    <plurals name="plural_customers">
+        <item quantity="one">%d client</item>
+        <item quantity="other">%d clients</item>
+    </plurals>
+
+    <plurals name="plural_employees">
+        <item quantity="one">%d employé</item>
+        <item quantity="other">%d employés</item>
+    </plurals>
+
+    <plurals name="plural_unread_messages">
+        <item quantity="one">%d message non lu</item>
+        <item quantity="other">%d messages non lus</item>
+    </plurals>
+
+    <plurals name="plural_days_remaining">
+        <item quantity="one">%d jour restant</item>
+        <item quantity="other">%d jours restants</item>
+    </plurals>
+
+    <plurals name="plural_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+</resources>

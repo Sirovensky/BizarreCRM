@@ -1,0 +1,185 @@
+import Foundation
+import Observation
+import Networking
+import Core
+
+/// §3.11 — View model for the Clock in/out Dashboard tile.
+///
+/// Owns the async state machine and elapsed-time formatter. Designed to be
+/// platform-agnostic (no SwiftUI imports) so unit tests run without a host app.
+///
+/// TODO(auth/me): `userId` defaults to `0` — a placeholder until the
+/// `/auth/me` endpoint is plumbed in iOS (pending §2.x). Replace with the
+/// real authenticated user ID once that route lands.
+@MainActor
+@Observable
+public final class ClockInOutViewModel {
+
+    // MARK: - State
+
+    public enum State: Sendable, Equatable {
+        case loading
+        case idle
+        case active(ClockEntry)
+        case failed(String)
+    }
+
+    public private(set) var state: State = .loading
+    /// Live elapsed seconds from clock-in; updated every 30 s (or on refresh).
+    public private(set) var runningElapsed: TimeInterval = 0
+
+    // MARK: - Dependencies
+
+    @ObservationIgnored private let api: APIClient
+    /// Resolves the current user's ID just before each clock API call.
+    /// Defaults to `{ 0 }` — a placeholder until `GET /auth/me` is wired
+    /// through `AppServices` (pending §2.x / post-phase-11).
+    /// Host (AppServices) should pass `{ TokenStore.shared.currentUserId ?? 0 }`
+    /// once `currentUserId` is exposed.
+    /// TODO (post-phase-11): Replace default with real currentUserId provider.
+    @ObservationIgnored public var userIdProvider: @Sendable () async -> Int64
+    /// Injectable clock for deterministic tests. Defaults to `Date.now`.
+    @ObservationIgnored var now: () -> Date
+
+    // MARK: - Init
+
+    public init(
+        api: APIClient,
+        userId: Int64 = 0, // TODO (post-phase-11): remove; kept for test backward compatibility
+        userIdProvider: (@Sendable () async -> Int64)? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.api = api
+        let fixedId = userId
+        self.userIdProvider = userIdProvider ?? { fixedId }
+        self.now = now
+    }
+
+    // MARK: - Public API
+
+    /// Fetch the current clock status from the server. Call from `.task { }`.
+    public func refresh() async {
+        let userId = await userIdProvider()
+        // Server requires `userId >= 1`. The placeholder `0` (used until
+        // `/auth/me` is plumbed into AppServices) makes the dashboard render a
+        // red error card on every cold start. Treat 0 as "not yet known" and
+        // present the tile in idle state without poking the server.
+        guard userId > 0 else {
+            state = .idle
+            runningElapsed = 0
+            return
+        }
+        do {
+            let status = try await api.getClockStatus(userId: userId)
+            if let status {
+                if status.isClockedIn, let entry = status.entry {
+                    state = .active(entry)
+                    updateElapsed(from: entry)
+                } else {
+                    state = .idle
+                    runningElapsed = 0
+                }
+            } else {
+                // nil → server returned 404; surface as idle so the tile
+                // stays usable while the endpoint is unavailable.
+                state = .idle
+            }
+        } catch {
+            AppLog.ui.error("Timeclock refresh failed: \(error.localizedDescription, privacy: .public)")
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Attempt to clock in with the provided PIN. When offline, enqueues the
+    /// event in `TimeclockOfflineQueue` and sets state optimistically.
+    public func clockIn(pin: String) async {
+        state = .loading
+        let userId = await userIdProvider()
+        do {
+            let entry = try await api.clockIn(userId: userId, pin: pin)
+            state = .active(entry)
+            updateElapsed(from: entry)
+        } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+            // Offline — queue the event and show optimistic state.
+            let event = PendingTimeclockEvent(userId: userId, action: .clockIn, pin: pin)
+            await TimeclockOfflineQueue.shared.enqueue(event)
+            // Build a synthetic ClockEntry so the UI shows "clocked in".
+            let synthetic = ClockEntry(
+                id: -1,
+                userId: userId,
+                clockIn: ISO8601DateFormatter().string(from: now())
+            )
+            state = .active(synthetic)
+            updateElapsed(from: synthetic)
+            AppLog.sync.info("Clock-in queued offline for userId=\(userId, privacy: .private)")
+        } catch {
+            AppLog.ui.error("Clock-in failed: \(error.localizedDescription, privacy: .public)")
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Attempt to clock out with the provided PIN. When offline, enqueues the
+    /// event and reverts to idle optimistically.
+    public func clockOut(pin: String) async {
+        state = .loading
+        let userId = await userIdProvider()
+        do {
+            _ = try await api.clockOut(userId: userId, pin: pin)
+            state = .idle
+            runningElapsed = 0
+        } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+            let event = PendingTimeclockEvent(userId: userId, action: .clockOut, pin: pin)
+            await TimeclockOfflineQueue.shared.enqueue(event)
+            state = .idle
+            runningElapsed = 0
+            AppLog.sync.info("Clock-out queued offline for userId=\(userId, privacy: .private)")
+        } catch {
+            AppLog.ui.error("Clock-out failed: \(error.localizedDescription, privacy: .public)")
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Recalculate elapsed from the active entry's `clockIn` string.
+    /// Called on 30-second timer ticks from the view layer.
+    public func tickElapsed() {
+        guard case let .active(entry) = state else { return }
+        updateElapsed(from: entry)
+    }
+
+    // MARK: - Elapsed formatting
+
+    /// Compact "1h 23m" form. Exposed `public` so tests exercise it directly.
+    ///
+    /// Buckets:
+    /// - < 60 s  → "< 1m"
+    /// - < 1 h   → "42m"
+    /// - < 24 h  → "1h 23m"
+    /// - ≥ 24 h  → "2d 3h"
+    public static func formatElapsed(_ seconds: TimeInterval) -> String {
+        let s = max(0, seconds)
+        if s < 60 {
+            return "< 1m"
+        } else if s < 3600 {
+            let m = Int(s) / 60
+            return "\(m)m"
+        } else if s < 86400 {
+            let h = Int(s) / 3600
+            let m = (Int(s) % 3600) / 60
+            return m > 0 ? "\(h)h \(m)m" : "\(h)h"
+        } else {
+            let d = Int(s) / 86400
+            let h = (Int(s) % 86400) / 3600
+            return h > 0 ? "\(d)d \(h)h" : "\(d)d"
+        }
+    }
+
+    // MARK: - Private
+
+    private func updateElapsed(from entry: ClockEntry) {
+        guard let date = ISO8601DateFormatter().date(from: entry.clockIn) else {
+            runningElapsed = 0
+            return
+        }
+        runningElapsed = now().timeIntervalSince(date)
+    }
+}

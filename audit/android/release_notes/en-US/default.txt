@@ -1,0 +1,6 @@
+Bug fixes and performance improvements.
+
+What's new:
+• [FILL IN before release — max 500 chars including bullet points]
+
+Full changelog: https://bizarrecrm.com/changelog

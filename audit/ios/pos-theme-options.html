@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS background options — pick one</title>
+<style>
+  /* Shared cream-primary tokens (stay the same across all options) */
+  :root {
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --on-primary: #2b1400;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #060608;
+    color: #f2eef9;
+    font-family: var(--font-text);
+    font-size: 13.5px;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 28px 16px 6px; margin: 0;
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #b9aacc);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: #9a9ba5;
+    padding: 0 24px 28px; font-size: 14px; line-height: 1.55;
+    max-width: 780px; margin: 0 auto;
+  }
+  .intro code { background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--primary); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+    gap: 28px;
+    padding: 8px 32px 56px;
+    max-width: 1800px; margin: 0 auto;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Option card — each sets its own CSS custom properties so the
+     nested sampler reads from that local scope.
+     ───────────────────────────────────────────────────────────── */
+  .option {
+    padding: 18px 20px 22px;
+    border-radius: 20px;
+    background: rgba(18,16,22,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+  }
+  .option-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 10px;
+  }
+  .option-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .option-hex  { font-family: monospace; font-size: 11.5px; color: #9a9ba5; }
+  .option-note { font-size: 12.5px; color: #9a9ba5; line-height: 1.5; padding-bottom: 14px; }
+
+  /* The sampler — a compact POS strip rendered under each option's theme */
+  .sampler {
+    position: relative;
+    padding: 16px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--sp-bg-base);
+    border: 1px solid var(--sp-outline);
+    min-height: 340px;
+  }
+  .sampler .radials {
+    position: absolute; inset: 0;
+    background: var(--sp-radials);
+    pointer-events: none;
+  }
+  .sampler > * { position: relative; z-index: 1; }
+
+  /* Nav / topbar */
+  .sp-nav {
+    padding: 10px 12px;
+    background: var(--sp-glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--sp-glass-border);
+    border-radius: 14px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: inset 0 1px 0 var(--sp-glass-hl);
+  }
+  .sp-title { font-weight: 700; font-size: 14px; color: var(--sp-on); }
+  .sp-meta { font-size: 11px; color: var(--sp-muted); }
+  .sp-search {
+    margin-left: auto;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: var(--sp-search-bg);
+    border: 1px solid var(--sp-outline);
+    font-size: 12px; color: var(--sp-muted);
+  }
+
+  .sp-row-strip {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--sp-surface-glass-soft);
+    backdrop-filter: blur(14px) saturate(160%);
+    border-radius: 12px;
+    border: 1px solid var(--sp-outline);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sp-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(160deg, #6ed4e3, #4db8c9);
+    color: #002d35; font-weight: 700; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sp-name { font-size: 12.5px; font-weight: 700; color: var(--sp-on); }
+  .sp-sub { font-size: 10.5px; color: var(--sp-muted); }
+  .sp-total {
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-size: 16px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    color: var(--sp-on);
+  }
+
+  /* Cart row (content, solid) */
+  .sp-cart-row {
+    margin-top: 10px;
+    padding: 10px 12px;
+    display: flex; gap: 10px; align-items: center;
+    background: var(--sp-surface-solid);
+    border: 1px solid var(--sp-outline);
+    border-radius: 10px;
+  }
+  .sp-cart-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--sp-surface-elev);
+    border: 1px solid var(--sp-outline);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .sp-cart-name { font-size: 12px; font-weight: 600; color: var(--sp-on); }
+  .sp-cart-sub { font-size: 10.5px; color: var(--sp-muted); }
+  .sp-cart-price {
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+  }
+
+  /* Method tiles (glass chrome) */
+  .sp-methods {
+    margin-top: 10px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .sp-method {
+    padding: 10px 6px;
+    border-radius: 12px;
+    background: var(--sp-glass-bg);
+    backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid var(--sp-glass-border);
+    text-align: center;
+    box-shadow: inset 0 1px 0 var(--sp-glass-hl);
+  }
+  .sp-method.selected {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 20px rgba(253,238,208,0.2);
+  }
+  .sp-method .mi { font-size: 16px; }
+  .sp-method .mn { font-size: 11px; font-weight: 700; margin-top: 3px; color: var(--sp-on); }
+  .sp-method.selected .mn { color: var(--on-primary); }
+
+  /* Primary CTA */
+  .sp-cta {
+    margin-top: 10px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    font-weight: 800; font-size: 13px;
+    text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 10px 24px var(--sp-cream-glow);
+  }
+
+  /* Recent avatar strip */
+  .sp-avatars {
+    margin-top: 10px;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .sp-avatar-big {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(160deg, #6ed4e3, #4db8c9);
+    color: #002d35; font-weight: 700; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2px var(--sp-ring);
+  }
+
+  .label-chip {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 99px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .recommend {
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(52,196,126,0.18);
+    border: 1px solid rgba(52,196,126,0.4);
+    color: var(--success);
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-left: 10px;
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════
+     OPTION THEMES — each sets --sp-* vars that drive the sampler
+     ═════════════════════════════════════════════════════════════════════ */
+
+  /* CURRENT — warm plum purple (what user dislikes) */
+  .theme-current {
+    --sp-on: #f2eef9;
+    --sp-muted: #b4adc5;
+    --sp-bg-base: #120c1a;
+    --sp-surface-solid: #1a1422;
+    --sp-surface-elev: #231a2e;
+    --sp-surface-glass-soft: rgba(36,31,46,0.35);
+    --sp-glass-bg: rgba(36,31,46,0.55);
+    --sp-glass-border: rgba(255,255,255,0.12);
+    --sp-glass-hl: rgba(255,255,255,0.08);
+    --sp-outline: rgba(255,255,255,0.08);
+    --sp-search-bg: rgba(255,255,255,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 15% -10%, rgba(253,238,208,0.07), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(77,184,201,0.10), transparent 60%);
+    --sp-ring: rgba(253,238,208,0.3);
+    --sp-cream-glow: rgba(253,238,208,0.2);
+  }
+
+  /* OPTION A — Warm graphite: near-black with subtle warm gray */
+  .theme-graphite {
+    --sp-on: #f0edea;
+    --sp-muted: #a8a4a0;
+    --sp-bg-base: #0f0e0d;
+    --sp-surface-solid: #1a1816;
+    --sp-surface-elev: #221f1c;
+    --sp-surface-glass-soft: rgba(30,28,26,0.4);
+    --sp-glass-bg: rgba(38,35,32,0.55);
+    --sp-glass-border: rgba(255,250,240,0.12);
+    --sp-glass-hl: rgba(255,250,240,0.06);
+    --sp-outline: rgba(255,250,240,0.08);
+    --sp-search-bg: rgba(255,250,240,0.04);
+    --sp-radials: none;
+    --sp-ring: rgba(253,238,208,0.3);
+    --sp-cream-glow: rgba(253,238,208,0.22);
+  }
+
+  /* OPTION B — Blueprint slate: cool tech-shop dark blue */
+  .theme-slate {
+    --sp-on: #e9eef5;
+    --sp-muted: #9aa5b2;
+    --sp-bg-base: #0b121a;
+    --sp-surface-solid: #141d28;
+    --sp-surface-elev: #1c2735;
+    --sp-surface-glass-soft: rgba(22,32,45,0.4);
+    --sp-glass-bg: rgba(32,42,55,0.55);
+    --sp-glass-border: rgba(200,220,255,0.14);
+    --sp-glass-hl: rgba(200,220,255,0.07);
+    --sp-outline: rgba(200,220,255,0.08);
+    --sp-search-bg: rgba(200,220,255,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 85% -10%, rgba(77,184,201,0.14), transparent 55%),
+      radial-gradient(ellipse at 10% 110%, rgba(253,238,208,0.05), transparent 60%);
+    --sp-ring: rgba(77,184,201,0.35);
+    --sp-cream-glow: rgba(253,238,208,0.2);
+  }
+
+  /* OPTION C — Forest: premium dark green */
+  .theme-forest {
+    --sp-on: #ecefe9;
+    --sp-muted: #9ea89a;
+    --sp-bg-base: #0a1310;
+    --sp-surface-solid: #121e18;
+    --sp-surface-elev: #1a2922;
+    --sp-surface-glass-soft: rgba(20,34,26,0.4);
+    --sp-glass-bg: rgba(28,46,36,0.55);
+    --sp-glass-border: rgba(210,240,220,0.14);
+    --sp-glass-hl: rgba(210,240,220,0.07);
+    --sp-outline: rgba(210,240,220,0.08);
+    --sp-search-bg: rgba(210,240,220,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 12% 8%, rgba(52,196,126,0.10), transparent 55%);
+    --sp-ring: rgba(253,238,208,0.3);
+    --sp-cream-glow: rgba(253,238,208,0.2);
+  }
+
+  /* OPTION D — Espresso: warm boutique brown */
+  .theme-espresso {
+    --sp-on: #f1ede8;
+    --sp-muted: #ab9f92;
+    --sp-bg-base: #120a06;
+    --sp-surface-solid: #1f1410;
+    --sp-surface-elev: #2b1d17;
+    --sp-surface-glass-soft: rgba(36,22,14,0.4);
+    --sp-glass-bg: rgba(52,32,22,0.55);
+    --sp-glass-border: rgba(255,230,200,0.14);
+    --sp-glass-hl: rgba(255,230,200,0.08);
+    --sp-outline: rgba(255,230,200,0.08);
+    --sp-search-bg: rgba(255,230,200,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 15% -10%, rgba(253,238,208,0.08), transparent 55%);
+    --sp-ring: rgba(253,238,208,0.4);
+    --sp-cream-glow: rgba(253,238,208,0.26);
+  }
+
+  /* OPTION E — OLED near-black: pure minimalism */
+  .theme-oled {
+    --sp-on: #f4f4f6;
+    --sp-muted: #9a9aa0;
+    --sp-bg-base: #050507;
+    --sp-surface-solid: #111113;
+    --sp-surface-elev: #1a1a1d;
+    --sp-surface-glass-soft: rgba(20,20,24,0.4);
+    --sp-glass-bg: rgba(28,28,32,0.55);
+    --sp-glass-border: rgba(255,255,255,0.12);
+    --sp-glass-hl: rgba(255,255,255,0.06);
+    --sp-outline: rgba(255,255,255,0.07);
+    --sp-search-bg: rgba(255,255,255,0.04);
+    --sp-radials: none;
+    --sp-ring: rgba(253,238,208,0.3);
+    --sp-cream-glow: rgba(253,238,208,0.2);
+  }
+
+  /* OPTION F — Warm cream-tinted dark: subtle cream wash in the blacks */
+  .theme-cream-dark {
+    --sp-on: #f4eee0;
+    --sp-muted: #b8ad95;
+    --sp-bg-base: #100d07;
+    --sp-surface-solid: #1c1812;
+    --sp-surface-elev: #272116;
+    --sp-surface-glass-soft: rgba(32,28,20,0.4);
+    --sp-glass-bg: rgba(46,40,28,0.5);
+    --sp-glass-border: rgba(255,240,200,0.14);
+    --sp-glass-hl: rgba(255,240,200,0.08);
+    --sp-outline: rgba(255,240,200,0.08);
+    --sp-search-bg: rgba(255,240,200,0.04);
+    --sp-radials: none;
+    --sp-ring: rgba(253,238,208,0.4);
+    --sp-cream-glow: rgba(253,238,208,0.28);
+  }
+
+  /* OPTION G — Warm graphite + cream radial only (closest to current but no purple) */
+  .theme-graphite-warm {
+    --sp-on: #f2efea;
+    --sp-muted: #a8a29a;
+    --sp-bg-base: #0b0a09;
+    --sp-surface-solid: #171613;
+    --sp-surface-elev: #201e1a;
+    --sp-surface-glass-soft: rgba(30,28,24,0.4);
+    --sp-glass-bg: rgba(40,36,30,0.55);
+    --sp-glass-border: rgba(255,245,225,0.14);
+    --sp-glass-hl: rgba(255,245,225,0.08);
+    --sp-outline: rgba(255,245,225,0.08);
+    --sp-search-bg: rgba(255,245,225,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.08), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.04), transparent 60%);
+    --sp-ring: rgba(253,238,208,0.35);
+    --sp-cream-glow: rgba(253,238,208,0.24);
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════
+     LIGHT THEME VARIANTS
+     ═════════════════════════════════════════════════════════════════════ */
+
+  /* LIGHT A — Light warm graphite */
+  .theme-light-graphite {
+    --sp-on: #1a1816;
+    --sp-muted: #5a5550;
+    --sp-bg-base: #faf8f5;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #f5f2ed;
+    --sp-surface-glass-soft: rgba(255,250,245,0.72);
+    --sp-glass-bg: rgba(255,250,245,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials: none;
+    --sp-ring: rgba(43,20,0,0.15);
+    --sp-cream-glow: rgba(253,238,208,0.35);
+  }
+
+  /* LIGHT B — Light warm graphite + cream radial */
+  .theme-light-graphite-cream {
+    --sp-on: #1a1816;
+    --sp-muted: #5a5550;
+    --sp-bg-base: #faf8f4;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #f5f0e8;
+    --sp-surface-glass-soft: rgba(255,248,238,0.75);
+    --sp-glass-bg: rgba(255,250,245,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.45), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.20), transparent 60%);
+    --sp-ring: rgba(43,20,0,0.15);
+    --sp-cream-glow: rgba(253,238,208,0.40);
+  }
+
+  /* LIGHT C — Light slate + cream radial */
+  .theme-light-slate-cream {
+    --sp-on: #1a2030;
+    --sp-muted: #5a6070;
+    --sp-bg-base: #f4f7fa;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #edf1f7;
+    --sp-surface-glass-soft: rgba(240,245,255,0.75);
+    --sp-glass-bg: rgba(240,245,255,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.35), transparent 55%);
+    --sp-ring: rgba(43,20,0,0.12);
+    --sp-cream-glow: rgba(253,238,208,0.35);
+  }
+
+  /* Light sampler surface overrides — text / borders need inversion */
+  .theme-light-graphite .sp-title,
+  .theme-light-graphite-cream .sp-title,
+  .theme-light-slate-cream .sp-title { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-cart-name,
+  .theme-light-graphite-cream .sp-cart-name,
+  .theme-light-slate-cream .sp-cart-name { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-name,
+  .theme-light-graphite-cream .sp-name,
+  .theme-light-slate-cream .sp-name { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-method .mn,
+  .theme-light-graphite-cream .sp-method .mn,
+  .theme-light-slate-cream .sp-method .mn { color: var(--sp-on); }
+
+  /* OPTION H — Slate + cream radial: cool base with cream warmth */
+  .theme-slate-cream {
+    --sp-on: #eceff4;
+    --sp-muted: #9fa5ae;
+    --sp-bg-base: #0a0e14;
+    --sp-surface-solid: #141821;
+    --sp-surface-elev: #1d2230;
+    --sp-surface-glass-soft: rgba(22,27,37,0.42);
+    --sp-glass-bg: rgba(30,36,50,0.55);
+    --sp-glass-border: rgba(240,240,255,0.14);
+    --sp-glass-hl: rgba(240,240,255,0.07);
+    --sp-outline: rgba(240,240,255,0.08);
+    --sp-search-bg: rgba(240,240,255,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.08), transparent 55%);
+    --sp-ring: rgba(253,238,208,0.35);
+    --sp-cream-glow: rgba(253,238,208,0.22);
+  }
+</style>
+</head>
+<body>
+
+<h1>POS background options</h1>
+<p class="intro">
+  Cream primary <code>#fdeed0</code> stays constant across every option. Only the base surface + glass tint + ambient radials change. Pick one and the full mockups adopt it. <code>theme-current</code> is the existing warm plum you asked to replace.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     LIGHT THEME — system toggle
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="text-align:center; padding:18px 24px 6px; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600;">Light theme (system toggle)</div>
+<p style="text-align:center; color:#9a9ba5; padding:0 24px 20px; font-size:13.5px; line-height:1.55; max-width:780px; margin:0 auto;">
+  Light mode uses inverted surface colors. Cream primary <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">#fdeed0</code> stays constant — it reads as a warm highlight against light backgrounds. Glass uses <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">rgba(255,250,245,0.82)</code> instead of dark tinted glass.
+</p>
+
+<div class="grid" style="margin-bottom:0; padding-bottom:20px;">
+
+  <!-- LIGHT A -->
+  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a1816;">LA · Light warm graphite</span><span class="recommend">Recommended</span></div>
+      <div class="option-hex">bg #faf8f5 · no radials</div>
+    </div>
+    <div class="option-note" style="color:#5a5550;">Clean warm-white surface. Cream primary reads as a warm highlight chip and CTA. Matches Apple's light material vocab. Ideal for well-lit retail counters.</div>
+    <div class="sampler theme-light-graphite" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- LIGHT B -->
+  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a1816;">LB · Light warm graphite + cream radial</span><span class="recommend">Strong pick</span></div>
+      <div class="option-hex">bg #faf8f4 · cream radials in corners</div>
+    </div>
+    <div class="option-note" style="color:#5a5550;">Same warm-white base but cream radials bloom in the corners, giving the screen a warm glow that mirrors the dark G option. Best if the brand identity relies on cream atmosphere.</div>
+    <div class="sampler theme-light-graphite-cream" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(253,238,208,0.30); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- LIGHT C -->
+  <div class="option" style="background:rgba(238,242,248,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a2030;">LC · Light slate + cream radial</span></div>
+      <div class="option-hex">bg #f4f7fa · cream top-left radial</div>
+    </div>
+    <div class="option-note" style="color:#5a6070;">Cool blue-white base — mirrors the dark H option. Cream radial adds warmth without going full warm-white. Good pairing if the dark mode uses H or B (slate family).</div>
+    <div class="sampler theme-light-slate-cream" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Divider -->
+<div style="max-width:900px; margin:24px auto 0; padding:0 32px;">
+  <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">
+    <div style="text-align:center; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600; margin-bottom:4px;">Dark theme (system toggle)</div>
+    <p style="text-align:center; color:#9a9ba5; font-size:13px; margin:0 0 20px;">The existing 9 dark options below. Option A is currently applied to the iPhone + iPad mockups.</p>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- OPTION Current (baseline) -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">Current · Warm plum</span></div>
+      <div class="option-hex">bg #120c1a · glass rgba(36,31,46,0.55)</div>
+    </div>
+    <div class="option-note">Current baseline. Warm purple plum base + cream + teal radial washes. You said this feels wrong — listed here for comparison.</div>
+    <div class="sampler theme-current">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION A -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">A · Warm graphite</span><span class="recommend">Recommended</span></div>
+      <div class="option-hex">bg #0f0e0d · no radials</div>
+    </div>
+    <div class="option-note">Near-black with a subtle warm-gray tint — zero hue competition with cream. Graphite feels premium, neutral, serves the product not the chrome. Matches Apple's own dark material vocabulary. No ambient radials — cleanest.</div>
+    <div class="sampler theme-graphite">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION B -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">B · Blueprint slate</span></div>
+      <div class="option-hex">bg #0b121a · teal + cream radials</div>
+    </div>
+    <div class="option-note">Cool dark blue. "Tech shop" identity — blueprint vibes, pairs with teal accent and cream naturally. Feels more service-industry than boutique. Leans into the repair-shop positioning.</div>
+    <div class="sampler theme-slate">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION C -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">C · Forest green</span></div>
+      <div class="option-hex">bg #0a1310 · success green radial</div>
+    </div>
+    <div class="option-note">Premium dark green. Uncommon, stands out in the POS category. Collides with the <code>success</code> semantic green — risks a sale looking "confirmed" when it isn't. Probably avoid unless you want strong brand-unique vibe.</div>
+    <div class="sampler theme-forest">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION D -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">D · Espresso</span></div>
+      <div class="option-hex">bg #120a06 · cream radial</div>
+    </div>
+    <div class="option-note">Warm espresso brown. Boutique-store feel — warm-coffee-shop identity. Cream feels native against it. Might be "too warm" if the store sells tech; leans café/apparel.</div>
+    <div class="sampler theme-espresso">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION E -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">E · OLED near-black</span></div>
+      <div class="option-hex">bg #050507 · no radials, no tint</div>
+    </div>
+    <div class="option-note">Pure minimalism. Battery-friendly on OLED devices (iPhone 16 Pro runs less power on near-black pixels). Every accent pops to maximum. Can feel clinical / humorless.</div>
+    <div class="sampler theme-oled">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION F -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">F · Cream-tint dark</span></div>
+      <div class="option-hex">bg #100d07 · no radials</div>
+    </div>
+    <div class="option-note">Near-black with a whisper of cream in the shadows — the blacks feel warm without committing to brown. Cream primary reads as part of the environment, not imposed on it. Subtle.</div>
+    <div class="sampler theme-cream-dark">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION G -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">G · Warm graphite + cream radial</span><span class="recommend">Strong pick</span></div>
+      <div class="option-hex">bg #0b0a09 · cream-only radials</div>
+    </div>
+    <div class="option-note">Closest feel to current but <b>without the purple</b>. Warm-gray base + soft cream radials in corners = the moody-yet-warm ambience, with zero hue conflict. Keeps the "premium atmosphere" vibe that flat graphite loses.</div>
+    <div class="sampler theme-graphite-warm">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- OPTION H -->
+  <div class="option">
+    <div class="option-head">
+      <div><span class="option-name">H · Slate + cream radial</span></div>
+      <div class="option-hex">bg #0a0e14 · cream top-left radial</div>
+    </div>
+    <div class="option-note">Blueprint slate but using cream (not teal) for the ambient radial. Combines "tech shop" coolness with cream warmth, without letting teal dominate. If cool base feels too industrial, this softens it.</div>
+    <div class="sampler theme-slate-cream">
+      <div class="radials"></div>
+      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
+      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
+      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
+      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+</div>
+
+<div style="max-width: 900px; margin: 0 auto; padding: 8px 32px 56px; color: #9a9ba5; font-size: 13px; line-height: 1.7;">
+  <h2 style="color: #f2eef9; font-size: 17px; font-weight: 700; margin: 0 0 10px;">Pick rubric — how to decide</h2>
+  <ul style="padding-left: 18px; margin: 0;">
+    <li><b style="color:#f2eef9;">Must not compete with cream.</b> Any hue too close to beige / yellow / orange makes cream invisible. Options A / G / H pass cleanly.</li>
+    <li><b style="color:#f2eef9;">Must not collide with semantic colors.</b> Option C (forest green) conflicts with <code style="color:var(--primary);">success</code>. Option D (espresso) borders on warning amber at high-saturation areas.</li>
+    <li><b style="color:#f2eef9;">Atmospheric vs. flat.</b> Options A / E / F are flat (no radials). Options G / H keep the ambient glow without purple. Flat = more Apple-like minimalism; radial = more boutique / premium-feel.</li>
+    <li><b style="color:#f2eef9;">Shop identity.</b> If the business is tech-repair-first = slate family (B / H). If it's retail-cream-bizarre brand = warm family (A / G / D). If minimal / modern = OLED or cream-dark (E / F).</li>
+  </ul>
+  <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); color: var(--primary); font-size: 13px;">
+    <b>Shortest answer: pick <span style="font-family: monospace;">G · Warm graphite + cream radial</span>.</b> It drops the purple (your complaint) while preserving the moody ambient feel that makes cream glow. Flat graphite (A) loses the atmosphere; slate (B) shifts the whole product identity.
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Repair Tracker</title>
+<style>
+  /* ---------- Reset & base ---------- */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+    color: #1e293b;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- Header ---------- */
+  .header {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 20px 16px;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .header h1 { font-size: 22px; font-weight: 700; color: #1e293b; }
+  .header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+  /* ---------- Main ---------- */
+  .main { flex: 1; max-width: 600px; width: 100%; margin: 0 auto; padding: 24px 16px; }
+
+  /* ---------- Card ---------- */
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  /* ---------- Toggle buttons ---------- */
+  .toggle-group { display: flex; gap: 8px; margin-bottom: 20px; }
+  .toggle-btn {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #f1f5f9;
+    color: #475569;
+  }
+  .toggle-btn.active {
+    background: #2563eb;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(37,99,235,0.3);
+  }
+
+  /* ---------- Form ---------- */
+  .search-form { display: flex; gap: 10px; }
+  .search-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+  }
+  .search-btn {
+    padding: 12px 20px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .search-btn:hover { background: #1d4ed8; }
+  .search-btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* ---------- Error ---------- */
+  .error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+
+  /* ---------- Loading ---------- */
+  .loading { text-align: center; padding: 40px 0; color: #64748b; font-size: 14px; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Ticket list ---------- */
+  .ticket-list { list-style: none; }
+  .ticket-list li {
+    padding: 14px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.1s;
+  }
+  .ticket-list li:hover { background: #f8fafc; }
+  .ticket-list li:last-child { border-bottom: none; }
+  .ticket-id { font-family: 'SFMono-Regular', 'Consolas', monospace; font-weight: 600; color: #1e293b; }
+  .ticket-devices { font-size: 13px; color: #64748b; margin-left: 10px; }
+
+  /* ---------- Status badge ---------- */
+  .status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  /* ---------- Detail view ---------- */
+  .back-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 18px;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    color: #2563eb;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .back-btn:hover { background: #eff6ff; }
+
+  .detail-header {
+    padding: 20px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .detail-order-id { font-size: 20px; font-weight: 700; font-family: 'SFMono-Regular', 'Consolas', monospace; }
+  .detail-customer { font-size: 13px; color: #64748b; margin-top: 3px; }
+
+  /* ---------- Progress ---------- */
+  .progress-section {
+    padding: 20px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
+  }
+  .progress-bar { display: flex; align-items: flex-start; justify-content: space-between; }
+  .progress-step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+  .progress-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    position: relative; z-index: 1;
+    background: #e2e8f0; color: #94a3b8;
+  }
+  .progress-dot.active { background: #2563eb; color: #fff; }
+  .progress-dot.current { background: #2563eb; color: #fff; box-shadow: 0 0 0 4px #dbeafe; }
+  .progress-label { margin-top: 8px; font-size: 11px; font-weight: 500; color: #94a3b8; text-align: center; }
+  .progress-label.active { color: #2563eb; }
+  .progress-line {
+    position: absolute;
+    top: 12px;
+    right: 50%;
+    width: 100%;
+    height: 2px;
+    background: #e2e8f0;
+    z-index: 0;
+  }
+  .progress-line.active { background: #2563eb; }
+
+  /* ---------- Info section ---------- */
+  .info-section { padding: 20px; }
+  .info-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .info-value { font-size: 14px; color: #334155; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .device-list { list-style: none; }
+  .device-list li { font-size: 14px; color: #334155; padding: 2px 0; }
+  .device-type { color: #94a3b8; font-size: 13px; }
+
+  /* ---------- Footer ---------- */
+  .footer {
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+    padding: 20px 16px;
+    text-align: center;
+    margin-top: auto;
+  }
+  .footer-name { font-size: 14px; font-weight: 500; color: #334155; }
+  .footer-info { font-size: 12px; color: #64748b; margin-top: 4px; }
+  .footer-powered { font-size: 11px; color: #94a3b8; margin-top: 10px; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 480px) {
+    .search-form { flex-direction: column; }
+    .search-btn { text-align: center; }
+    .info-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Repair Shop</h1>
+    <p>Repair Status Tracker</p>
+  </div>
+
+  <div class="main">
+    <!-- Search -->
+    <div class="card" id="searchCard">
+      <div class="toggle-group">
+        <button class="toggle-btn active" id="btnTicketMode" onclick="setMode('ticket')">Track by Ticket #</button>
+        <button class="toggle-btn" id="btnPhoneMode" onclick="setMode('phone')">Look up by Phone</button>
+      </div>
+      <form class="search-form" onsubmit="handleSubmit(event)">
+        <input class="search-input" id="searchInput" type="text" placeholder="e.g. T-0042 or 42" />
+        <button class="search-btn" type="submit" id="submitBtn">Track</button>
+      </form>
+    </div>
+
+    <!-- Error -->
+    <div class="error" id="errorBox" style="display:none"></div>
+
+    <!-- Loading -->
+    <div class="loading" id="loadingBox" style="display:none">
+      <div class="spinner"></div>
+      Looking up your repair...
+    </div>
+
+    <!-- Results -->
+    <div id="resultsContainer"></div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-name" id="footerName"></div>
+    <div class="footer-info" id="footerAddress"></div>
+    <div class="footer-info" id="footerPhone"></div>
+    <div class="footer-powered">Powered by BizarreCRM</div>
+  </div>
+
+<script>
+(function() {
+  // --- Configuration ---
+  // Detect API base from the script/iframe or default to same origin
+  var scriptTag = document.querySelector('script[data-crm-url]');
+  var API_BASE = (scriptTag && scriptTag.getAttribute('data-crm-url')) || '';
+  // If embedded via iframe, the HTML is served from the CRM itself, so '' works.
+  // If hosted elsewhere, set data-crm-url="http://YOUR_CRM_IP:443"
+
+  var mode = 'ticket';
+  var results = [];
+  var selectedTicket = null;
+
+  var STATUS_PROGRESS = {
+    'open': 0, 'in progress': 1, 'waiting for parts': 1, 'waiting on customer': 1,
+    'on hold': 1, 'parts arrived': 2, 'warranty repair': 1, 'closed': 3, 'cancelled': -1
+  };
+  var STEPS = ['Received', 'In Progress', 'Ready', 'Complete'];
+
+  // --- DOM refs ---
+  var searchInput = document.getElementById('searchInput');
+  var errorBox = document.getElementById('errorBox');
+  var loadingBox = document.getElementById('loadingBox');
+  var resultsContainer = document.getElementById('resultsContainer');
+  var btnTicket = document.getElementById('btnTicketMode');
+  var btnPhone = document.getElementById('btnPhoneMode');
+
+  // --- Mode toggle ---
+  window.setMode = function(m) {
+    mode = m;
+    results = [];
+    selectedTicket = null;
+    errorBox.style.display = 'none';
+    resultsContainer.innerHTML = '';
+    btnTicket.className = 'toggle-btn' + (m === 'ticket' ? ' active' : '');
+    btnPhone.className = 'toggle-btn' + (m === 'phone' ? ' active' : '');
+    searchInput.type = m === 'phone' ? 'tel' : 'text';
+    searchInput.placeholder = m === 'phone' ? 'Phone number or last 4 digits' : 'e.g. T-0042 or 42';
+    searchInput.value = '';
+    searchInput.focus();
+  };
+
+  // --- Submit ---
+  window.handleSubmit = function(e) {
+    e.preventDefault();
+    var val = searchInput.value.trim();
+    if (!val) return;
+    if (mode === 'ticket') {
+      lookupByOrderId(val);
+    } else {
+      if (val.replace(/\D/g, '').length < 4) return;
+      lookupByPhone(val);
+    }
+  };
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+
+  function hideError() { errorBox.style.display = 'none'; }
+
+  function showLoading() { loadingBox.style.display = 'block'; }
+  function hideLoading() { loadingBox.style.display = 'none'; }
+
+  function formatDate(iso) {
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch(e) { return iso; }
+  }
+
+  // --- API calls ---
+  function lookupByOrderId(id) {
+    hideError();
+    resultsContainer.innerHTML = '';
+    selectedTicket = null;
+    showLoading();
+    fetch(API_BASE + '/api/v1/track/' + encodeURIComponent(id))
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        hideLoading();
+        if (!res.ok || !res.data.success) {
+          showError('No ticket found with that ID. Please double-check and try again.');
+          return;
+        }
+        results = [res.data.data];
+        selectedTicket = res.data.data;
+        renderDetail(selectedTicket, false);
+      })
+      .catch(function() { hideLoading(); showError('Something went wrong. Please try again.'); });
+  }
+
+  function lookupByPhone(phone) {
+    hideError();
+    resultsContainer.innerHTML = '';
+    selectedTicket = null;
+    showLoading();
+    fetch(API_BASE + '/api/v1/track/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        hideLoading();
+        if (!res.success) { showError('Something went wrong.'); return; }
+        results = res.data;
+        if (results.length === 0) {
+          showError('No tickets found for that phone number.');
+        } else if (results.length === 1) {
+          selectedTicket = results[0];
+          renderDetail(selectedTicket, false);
+        } else {
+          renderList(results);
+        }
+      })
+      .catch(function() { hideLoading(); showError('Something went wrong. Please try again.'); });
+  }
+
+  // --- Render list ---
+  function renderList(tickets) {
+    var html = '<div class="card" style="padding:0;overflow:hidden;">';
+    html += '<div style="padding:12px 18px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">';
+    html += '<div style="font-size:13px;font-weight:600;color:#475569;">Found ' + tickets.length + ' ticket' + (tickets.length > 1 ? 's' : '') + '</div></div>';
+    html += '<ul class="ticket-list">';
+    tickets.forEach(function(t, i) {
+      var devNames = t.devices.map(function(d) { return d.name; }).join(', ') || 'Device';
+      html += '<li onclick="selectTicket(' + i + ')">';
+      html += '<div><span class="ticket-id">' + esc(t.order_id) + '</span>';
+      html += '<span class="ticket-devices">' + esc(devNames) + '</span></div>';
+      html += '<span class="status-badge" style="background:' + esc(t.status.color || '#6b7280') + '">' + esc(t.status.name) + '</span>';
+      html += '</li>';
+    });
+    html += '</ul></div>';
+    resultsContainer.innerHTML = html;
+  }
+
+  window.selectTicket = function(i) {
+    selectedTicket = results[i];
+    renderDetail(selectedTicket, results.length > 1);
+  };
+
+  window.backToList = function() {
+    selectedTicket = null;
+    renderList(results);
+  };
+
+  // --- Render detail ---
+  function renderDetail(t, showBack) {
+    var step = STATUS_PROGRESS[t.status.name.toLowerCase()];
+    if (step === undefined) step = 1;
+    var isCancelled = t.status.name.toLowerCase() === 'cancelled';
+
+    var html = '<div class="card" style="padding:0;overflow:hidden;">';
+
+    if (showBack) {
+      html += '<button class="back-btn" onclick="backToList()">&larr; Back to all tickets</button>';
+    }
+
+    // Header
+    html += '<div class="detail-header">';
+    html += '<div><div class="detail-order-id">' + esc(t.order_id) + '</div>';
+    if (t.customer_first_name) {
+      html += '<div class="detail-customer">Customer: ' + esc(t.customer_first_name) + '</div>';
+    }
+    html += '</div>';
+    html += '<span class="status-badge" style="background:' + esc(t.status.color || '#6b7280') + ';font-size:14px;padding:6px 14px;">' + esc(t.status.name) + '</span>';
+    html += '</div>';
+
+    // Progress
+    if (!isCancelled) {
+      html += '<div class="progress-section"><div class="progress-bar">';
+      STEPS.forEach(function(label, i) {
+        var isActive = i <= step;
+        var isCurrent = i === step;
+        html += '<div class="progress-step">';
+        if (i > 0) {
+          html += '<div class="progress-line' + (i <= step ? ' active' : '') + '"></div>';
+        }
+        var dotClass = 'progress-dot' + (isCurrent ? ' current' : isActive ? ' active' : '');
+        html += '<div class="' + dotClass + '">' + (isActive ? '&#10003;' : (i + 1)) + '</div>';
+        html += '<div class="progress-label' + (isActive ? ' active' : '') + '">' + label + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    // Info
+    html += '<div class="info-section">';
+    if (t.devices.length > 0) {
+      html += '<div class="info-label">Device(s)</div>';
+      html += '<ul class="device-list">';
+      t.devices.forEach(function(d) {
+        html += '<li>' + esc(d.name || 'Unknown device');
+        if (d.type) html += ' <span class="device-type">(' + esc(d.type) + ')</span>';
+        html += '</li>';
+      });
+      html += '</ul>';
+    }
+    html += '<div class="info-grid">';
+    html += '<div><div class="info-label">Checked In</div><div class="info-value">' + formatDate(t.created_at) + '</div></div>';
+    html += '<div><div class="info-label">Last Updated</div><div class="info-value">' + formatDate(t.updated_at) + '</div></div>';
+    html += '</div></div>';
+
+    html += '</div>';
+    resultsContainer.innerHTML = html;
+  }
+
+  // --- HTML escape ---
+  function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+  }
+
+  // --- Check URL params for auto-lookup ---
+  var params = new URLSearchParams(window.location.search);
+  var tokenParam = params.get('token');
+  var orderParam = params.get('order');
+  if (tokenParam) {
+    showLoading();
+    fetch(API_BASE + '/api/v1/track/token/' + encodeURIComponent(tokenParam))
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        hideLoading();
+        if (res.success) {
+          results = [res.data];
+          selectedTicket = res.data;
+          renderDetail(selectedTicket, false);
+        } else {
+          showError('Invalid or expired tracking link.');
+        }
+      })
+      .catch(function() { hideLoading(); showError('Something went wrong.'); });
+  } else if (orderParam) {
+    searchInput.value = orderParam;
+    lookupByOrderId(orderParam);
+  }
+})();
+</script>
+</body>
+</html>

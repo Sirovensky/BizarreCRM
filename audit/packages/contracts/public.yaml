@@ -1,0 +1,65 @@
+area: public
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/tracking.routes.ts
+    - packages/server/src/routes/portal.routes.ts
+    - packages/server/src/routes/paymentLinks.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+auth: public-or-token
+notes:
+  - Public routes must not leak unrelated tenant or customer data.
+  - Token/order lookup responses should be scoped to the requested public identifier only.
+  - Payment endpoints must not mark anything paid unless a real payment provider confirms success.
+endpoints:
+  - method: GET
+    path: /api/v1/track/{orderId}
+    purpose: Public repair status lookup by order id.
+    params:
+      orderId: string
+    response_data:
+      ticket: PublicTicketStatus
+      timeline: PublicStatusEvent[] optional
+  - method: POST
+    path: /api/v1/track/lookup
+    purpose: Public repair lookup using phone and optional order id.
+    request:
+      phone: string
+      order_id: string optional
+    response_data:
+      results: PublicTicketStatus[]
+  - method: GET
+    path: /api/v1/track/token/{token}
+    purpose: Public token-based repair lookup.
+    params:
+      token: string
+    response_data:
+      ticket: PublicTicketStatus
+  - method: GET
+    path: /api/v1/track/portal/{orderId}
+    purpose: Expanded customer portal view for one repair.
+    response_data:
+      ticket: PublicTicketStatus
+      invoice: PublicInvoice optional
+      store: PublicStoreInfo optional
+      timeline: PublicStatusEvent[]
+  - method: POST
+    path: /api/v1/track/portal/{orderId}/message
+    purpose: Add customer-visible message to a tracked repair.
+    request:
+      content: string
+    response_data:
+      message: PublicTicketMessage
+  - method: GET
+    path: /api/v1/public/payment-links/{token}
+    purpose: Show public payment request details.
+    response_data:
+      payment_link: PublicPaymentLink
+      invoice: PublicInvoice optional
+  - method: POST
+    path: /api/v1/public/payment-links/{token}/pay
+    purpose: Start hosted payment flow when provider checkout is wired.
+    current_contract:
+      success: false
+      status: 501
+    note: Must fail closed until provider checkout is implemented.

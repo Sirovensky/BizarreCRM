@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Material 3 version comparison — what you actually get</title>
+<style>
+  :root {
+    --bg: #0f0a14;
+    --surface: #1a1722;
+    --surface-2: #241f2e;
+    --outline: #332c3f;
+    --on: #ece9f3;
+    --muted: #a79fb8;
+    --primary: #fdeed0;
+    --on-primary: #2b1400;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #08060b; color: var(--on);
+    font-family: -apple-system, "SF Pro Text", Segoe UI, Roboto, Arial, sans-serif;
+    font-size: 14px;
+  }
+  h1 { text-align: center; padding: 18px 8px 4px; margin: 0; font-size: 22px; font-weight: 700; }
+  .intro { text-align: center; color: var(--muted); padding: 0 24px 18px; font-size: 13px; max-width: 1100px; margin: 0 auto; line-height: 1.55; }
+
+  .row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    max-width: 1280px;
+    margin: 0 auto 40px;
+    padding: 0 20px;
+  }
+  .col {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .col h2 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
+  .col h2 .tag { font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 8px; }
+  .col .subtitle { color: var(--muted); font-size: 12px; margin: 0; }
+
+  .tag.alpha { background: var(--teal); color: #002d35; }
+  .tag.stable { background: var(--warning); color: #2b1400; }
+  .tag.abort { background: var(--outline); color: var(--muted); }
+
+  .phone {
+    width: 100%; max-width: 320px; height: 640px;
+    margin: 0 auto;
+    background: var(--bg);
+    border: 7px solid #111;
+    border-radius: 34px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+  }
+  .notch {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 86px; height: 18px; background: #000;
+    border-radius: 0 0 12px 12px; z-index: 9;
+  }
+  .phone-body { width: 100%; height: 100%; padding-top: 24px; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--outline); display: flex; justify-content: space-between; align-items: center; }
+  .title { font-weight: 700; font-size: 14px; }
+  .chip { background: var(--surface-2); padding: 3px 9px; border-radius: 99px; font-size: 10px; color: var(--muted); }
+  .body { flex: 1; padding: 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  /* Tile variants */
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--outline);
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px;
+    min-height: 62px;
+  }
+  .tile .icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: var(--surface-2); font-size: 18px; }
+  .tile .main .name { font-size: 13px; font-weight: 700; }
+  .tile .main .sub { color: var(--muted); font-size: 11px; }
+  .tile .arrow { color: var(--muted); font-size: 14px; margin-left: auto; }
+
+  /* SHAPE variants per version */
+  .col.alpha .tile { border-radius: 0; clip-path: polygon(20% 0, 80% 0, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0 80%, 0 20%); } /* morph octagon */
+  .col.alpha .tile .icon { clip-path: polygon(50% 0%, 90% 25%, 90% 75%, 50% 100%, 10% 75%, 10% 25%); border-radius: 0; } /* hexagon cookie */
+  .col.alpha .tile.hero { clip-path: polygon(50% 2%, 98% 35%, 82% 98%, 18% 98%, 2% 35%); } /* pentagon hero */
+  .col.alpha .tile.hero .icon { clip-path: circle(45%); } /* clover-like for fab */
+
+  .col.stable .tile { border-radius: 12px; }
+  .col.stable .tile .icon { border-radius: 10px; }
+  .col.stable .tile.hero { border-radius: 14px; border-color: var(--success); background: rgba(52,196,126,0.08); }
+  .col.stable .tile.hero .icon { border-radius: 10px; background: var(--success); color: #002817; }
+
+  .col.abort .tile { border-radius: 12px; }
+  .col.abort .tile .icon { border-radius: 10px; }
+  .col.abort .tile.hero { border-radius: 14px; border-color: var(--success); background: rgba(52,196,126,0.08); }
+  .col.abort .tile.hero .icon { border-radius: 10px; background: var(--success); color: #002817; }
+
+  /* Search bar */
+  .searchbar {
+    margin: auto 0 10px;
+    background: var(--surface-2);
+    border: 1.5px solid var(--primary);
+    padding: 12px 14px; display: flex; gap: 8px; align-items: center;
+  }
+  .col.alpha .searchbar { border-radius: 26px 14px 26px 14px; } /* morph shape-shift */
+  .col.stable .searchbar { border-radius: 14px; }
+  .col.abort .searchbar { border-radius: 14px; }
+
+  /* Progress bars (for check-in phone row) */
+  .progress-track { height: 8px; background: var(--surface-2); position: relative; overflow: hidden; }
+  .col.alpha .progress-track { height: 10px; }
+  .col.alpha .progress-fill {
+    height: 100%; width: 50%;
+    background: var(--primary);
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'><path d='M0 5 Q 10 0 20 5 T 40 5 T 60 5 T 80 5 T 100 5 T 120 5 T 140 5 T 160 5 T 180 5 T 200 5 L 200 10 L 0 10 Z' fill='black'/></svg>") center/100% 100%;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'><path d='M0 5 Q 10 0 20 5 T 40 5 T 60 5 T 80 5 T 100 5 T 120 5 T 140 5 T 160 5 T 180 5 T 200 5 L 200 10 L 0 10 Z' fill='black'/></svg>") center/100% 100%;
+  }
+  .col.stable .progress-track { border-radius: 4px; }
+  .col.stable .progress-fill { height: 100%; width: 50%; background: var(--primary); border-radius: 4px; }
+  .col.abort .progress-track { border-radius: 4px; }
+  .col.abort .progress-fill { height: 100%; width: 50%; background: var(--primary); border-radius: 4px; }
+
+  /* Button grid / ButtonGroup */
+  .btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tender-btn { padding: 10px; text-align: center; background: var(--surface); border: 1px solid var(--outline); font-size: 11px; font-weight: 700; }
+  .col.alpha .btn-grid { gap: 0; display: flex; }
+  .col.alpha .tender-btn { flex: 1; border-radius: 0; border-right: 0; }
+  .col.alpha .tender-btn:first-child { border-radius: 99px 0 0 99px; }
+  .col.alpha .tender-btn:last-child { border-radius: 0 99px 99px 0; border-right: 1px solid var(--outline); }
+  .col.alpha .tender-btn.active { background: var(--primary); color: var(--on-primary); }
+  .col.stable .tender-btn { border-radius: 8px; }
+  .col.stable .tender-btn.active { border: 1.5px solid var(--primary); color: var(--primary); }
+  .col.abort .tender-btn { border-radius: 8px; }
+  .col.abort .tender-btn.active { border: 1.5px solid var(--primary); color: var(--primary); }
+
+  /* Loading indicator demo */
+  .loader-demo { display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .col.alpha .loader {
+    width: 28px; height: 28px;
+    background: var(--primary);
+    animation: morph 2s infinite ease-in-out;
+  }
+  @keyframes morph {
+    0%   { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); } /* diamond */
+    25%  { clip-path: polygon(50% 0%, 90% 25%, 90% 75%, 50% 100%, 10% 75%, 10% 25%); } /* hexagon */
+    50%  { clip-path: circle(50%); } /* circle */
+    75%  { clip-path: polygon(50% 5%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); } /* star */
+    100% { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+  }
+  .col.stable .loader, .col.abort .loader {
+    width: 26px; height: 26px; border: 3px solid var(--primary); border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .notes {
+    max-width: 1280px; margin: 0 auto 28px; padding: 0 20px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+  }
+  .note {
+    background: rgba(26,23,34,0.5);
+    border: 1px solid var(--outline);
+    padding: 14px 16px;
+    font-size: 12px; line-height: 1.55; color: var(--muted);
+  }
+  .note h3 { margin: 0 0 6px; color: var(--on); font-size: 13px; }
+  .note ul { margin: 6px 0 0 0; padding-left: 16px; }
+  .note li { margin: 2px 0; }
+  .note .pro { color: var(--success); }
+  .note .con { color: var(--error); }
+  .note .neutral { color: var(--warning); }
+  .sectionlabel { max-width: 1280px; margin: 0 auto 8px; padding: 0 24px; color: var(--muted); font-size: 11px; letter-spacing: 0.5px; }
+</style>
+</head>
+<body>
+
+<h1>Material 3 — what each version actually gives you</h1>
+<p class="intro">
+The Android compile gate surfaced a fact the public docs hid:
+<b>MaterialExpressiveTheme</b>, <b>MotionScheme</b>, and most expressive surface APIs in
+material3 <b>1.4.0 stable</b> (Sept 2025) are <code>internal</code>. They were promoted to
+<code>public</code> only in <b>1.5.0-alpha18</b> (April 2026). This page shows what each of the three
+decision paths actually renders on a phone, so you can pick based on what you see.
+</p>
+
+<!-- ROW 1 · POS ENTRY SCREEN -->
+<div class="sectionlabel">POS ENTRY — 3 path tiles + search bar</div>
+<div class="row">
+  <!-- ALPHA -->
+  <div class="col alpha">
+    <h2>1.5.0-alpha18 <span class="tag alpha">override alpha</span></h2>
+    <p class="subtitle">Full MaterialExpressiveTheme. Morph shapes on hero tiles, shape-shifting search bar, shape-morphing loader.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">POS</div><div class="chip">Store · Pavel</div></div>
+        <div class="body">
+          <div class="tile hero"><div class="icon">✓</div><div class="main"><div class="name">#4829 · Ready</div><div class="sub">iPhone 14 · $274</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">👤</div><div class="main"><div class="name">Search customer</div><div class="sub">Tap or search below</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">+</div><div class="main"><div class="name">Create new</div><div class="sub">First name required</div></div><div class="arrow">›</div></div>
+          <div class="searchbar"><span>🔍</span><span style="color: var(--muted); font-size: 12px; flex: 1;">Customer, part, ticket…</span><span>📷</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- STABLE -->
+  <div class="col stable">
+    <h2>1.4.0 stable, limited <span class="tag stable">stable only</span></h2>
+    <p class="subtitle">No MaterialExpressiveTheme access. Plain MaterialTheme keeps rounded shapes + cream palette from wave 1.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">POS</div><div class="chip">Store · Pavel</div></div>
+        <div class="body">
+          <div class="tile hero"><div class="icon">✓</div><div class="main"><div class="name">#4829 · Ready</div><div class="sub">iPhone 14 · $274</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">👤</div><div class="main"><div class="name">Search customer</div><div class="sub">Tap or search below</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">+</div><div class="main"><div class="name">Create new</div><div class="sub">First name required</div></div><div class="arrow">›</div></div>
+          <div class="searchbar"><span>🔍</span><span style="color: var(--muted); font-size: 12px; flex: 1;">Customer, part, ticket…</span><span>📷</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ABORT -->
+  <div class="col abort">
+    <h2>Abort migration <span class="tag abort">revert BOM</span></h2>
+    <p class="subtitle">Back to BOM 2025.03.00, material3 1.3.1. No new APIs. Identical to today's ship.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">POS</div><div class="chip">Store · Pavel</div></div>
+        <div class="body">
+          <div class="tile hero"><div class="icon">✓</div><div class="main"><div class="name">#4829 · Ready</div><div class="sub">iPhone 14 · $274</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">👤</div><div class="main"><div class="name">Search customer</div><div class="sub">Tap or search below</div></div><div class="arrow">›</div></div>
+          <div class="tile"><div class="icon">+</div><div class="main"><div class="name">Create new</div><div class="sub">First name required</div></div><div class="arrow">›</div></div>
+          <div class="searchbar"><span>🔍</span><span style="color: var(--muted); font-size: 12px; flex: 1;">Customer, part, ticket…</span><span>📷</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROW 2 · CHECK-IN PROGRESS BAR + LOADER -->
+<div class="sectionlabel">CHECK-IN PROGRESS BAR — 3 of 6 steps · button loader</div>
+<div class="row">
+  <!-- ALPHA -->
+  <div class="col alpha">
+    <h2>1.5.0-alpha18 <span class="tag alpha">override alpha</span></h2>
+    <p class="subtitle">WavyProgressIndicator + shape-morphing LoadingIndicator.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Step 3 · Damage</div><div class="chip">Draft · autosave</div></div>
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <div class="body">
+          <div class="tile"><div class="icon">📱</div><div class="main"><div class="name">Front</div><div class="sub">2 markers placed</div></div></div>
+          <div class="tile"><div class="icon">🔙</div><div class="main"><div class="name">Back</div><div class="sub">No markers</div></div></div>
+          <div class="loader-demo"><div class="loader"></div></div>
+          <div style="text-align: center; color: var(--muted); font-size: 11px;">Submitting…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- STABLE -->
+  <div class="col stable">
+    <h2>1.4.0 stable, limited <span class="tag stable">stable only</span></h2>
+    <p class="subtitle">LinearProgressIndicator (flat). CircularProgressIndicator (spinning circle).</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Step 3 · Damage</div><div class="chip">Draft · autosave</div></div>
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <div class="body">
+          <div class="tile"><div class="icon">📱</div><div class="main"><div class="name">Front</div><div class="sub">2 markers placed</div></div></div>
+          <div class="tile"><div class="icon">🔙</div><div class="main"><div class="name">Back</div><div class="sub">No markers</div></div></div>
+          <div class="loader-demo"><div class="loader"></div></div>
+          <div style="text-align: center; color: var(--muted); font-size: 11px;">Submitting…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ABORT -->
+  <div class="col abort">
+    <h2>Abort migration <span class="tag abort">revert BOM</span></h2>
+    <p class="subtitle">Same as stable — LinearProgressIndicator, CircularProgressIndicator.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Step 3 · Damage</div><div class="chip">Draft · autosave</div></div>
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <div class="body">
+          <div class="tile"><div class="icon">📱</div><div class="main"><div class="name">Front</div><div class="sub">2 markers placed</div></div></div>
+          <div class="tile"><div class="icon">🔙</div><div class="main"><div class="name">Back</div><div class="sub">No markers</div></div></div>
+          <div class="loader-demo"><div class="loader"></div></div>
+          <div style="text-align: center; color: var(--muted); font-size: 11px;">Submitting…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROW 3 · TENDER SEGMENTED BUTTONS / BUTTONGROUP -->
+<div class="sectionlabel">TENDER — discount chips · ButtonGroup vs separate chips</div>
+<div class="row">
+  <!-- ALPHA -->
+  <div class="col alpha">
+    <h2>1.5.0-alpha18 <span class="tag alpha">override alpha</span></h2>
+    <p class="subtitle">ButtonGroup segmented: visually connected, implicit single-select semantic.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Discount</div><div class="chip">USB-C 3ft</div></div>
+        <div class="body">
+          <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">PER-LINE DISCOUNT</div>
+          <div class="btn-grid">
+            <div class="tender-btn">5%</div>
+            <div class="tender-btn active">10%</div>
+            <div class="tender-btn">$</div>
+            <div class="tender-btn">Custom</div>
+          </div>
+          <div style="color: var(--muted); font-size: 11px; margin-top: 8px;">Discount applied: −$1.40</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- STABLE -->
+  <div class="col stable">
+    <h2>1.4.0 stable, limited <span class="tag stable">stable only</span></h2>
+    <p class="subtitle">FilterChip row (our current implementation). Visually separate chips, identical to today.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Discount</div><div class="chip">USB-C 3ft</div></div>
+        <div class="body">
+          <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">PER-LINE DISCOUNT</div>
+          <div class="btn-grid">
+            <div class="tender-btn">5%</div>
+            <div class="tender-btn active">10%</div>
+            <div class="tender-btn">$</div>
+            <div class="tender-btn">Custom</div>
+          </div>
+          <div style="color: var(--muted); font-size: 11px; margin-top: 8px;">Discount applied: −$1.40</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ABORT -->
+  <div class="col abort">
+    <h2>Abort migration <span class="tag abort">revert BOM</span></h2>
+    <p class="subtitle">Same as stable. FilterChip as shipped.</p>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="phone-body">
+        <div class="topbar"><div class="title">Discount</div><div class="chip">USB-C 3ft</div></div>
+        <div class="body">
+          <div style="color: var(--muted); font-size: 10px; letter-spacing: 0.5px;">PER-LINE DISCOUNT</div>
+          <div class="btn-grid">
+            <div class="tender-btn">5%</div>
+            <div class="tender-btn active">10%</div>
+            <div class="tender-btn">$</div>
+            <div class="tender-btn">Custom</div>
+          </div>
+          <div style="color: var(--muted); font-size: 11px; margin-top: 8px;">Discount applied: −$1.40</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Concrete notes per version -->
+<div class="notes">
+
+  <div class="note">
+    <h3 style="color: var(--teal);">1.5.0-alpha18 — override to alpha</h3>
+    <p class="pro">✓ What you get</p>
+    <ul>
+      <li>MaterialExpressiveTheme with cream palette</li>
+      <li>MotionScheme.expressive() — snappy springs everywhere automatically</li>
+      <li>MaterialShapes morph library (cookie / pentagon / clover / arch / softSquare)</li>
+      <li>LoadingIndicator + ContainedLoadingIndicator (shape-morphing) replacing CircularProgressIndicator in button spinners</li>
+      <li>WavyProgressIndicator for the 6-step check-in progress bar</li>
+      <li>ButtonGroup / ToggleButton / SplitButton segmented controls</li>
+      <li>HorizontalFloatingToolbar + DockedToolbar available for POS cart action rows</li>
+      <li>FilterChip with shape-morphing overloads</li>
+      <li>Modifier.animateBounds + SharedTransitionLayout for hero-to-detail flows</li>
+    </ul>
+    <p class="con" style="margin-top: 8px;">✗ What you pay</p>
+    <ul>
+      <li>material3 alpha: API can shift before 1.5.0 stable (historically alpha-to-stable diffs are minor)</li>
+      <li>@OptIn(ExperimentalMaterial3ExpressiveApi::class) required everywhere that uses the new surface</li>
+      <li>Regression risk isolated to material3 only — rest of Compose stays on stable BOM</li>
+      <li>Feature flag USE_EXPRESSIVE_THEME = true in debug; false in release until QA passes</li>
+    </ul>
+  </div>
+
+  <div class="note">
+    <h3 style="color: var(--warning);">1.4.0 stable, limited</h3>
+    <p class="neutral">~ What you get</p>
+    <ul>
+      <li>Cream palette already shipped — no visual change</li>
+      <li>PullToRefreshBox (already used in 26 screens) gains the 1.4 shape-morph behavior automatically</li>
+      <li>New FilterChip / ElevatedFilterChip overloads (stable but barely-visible differences)</li>
+      <li>Material Symbols recommended over deprecated Material Icons (lint-level nudge)</li>
+    </ul>
+    <p class="con" style="margin-top: 8px;">✗ What you don't get</p>
+    <ul>
+      <li>MaterialExpressiveTheme — internal, inaccessible to app code</li>
+      <li>MotionScheme.expressive() — internal</li>
+      <li>LoadingIndicator / WavyProgressIndicator — internal</li>
+      <li>ButtonGroup / SplitButton / ToggleButton — internal</li>
+      <li>FloatingToolbar / DockedToolbar — internal</li>
+      <li>MaterialShapes morph library — internal</li>
+      <li>99%% of the "Material 3 Expressive" surface stays locked until 1.5.0 stable ships</li>
+    </ul>
+    <p style="color: var(--muted); margin-top: 8px;"><b>Effective outcome:</b> visually identical to what we already shipped last wave. Calling this "M3 Expressive adoption" would be marketing, not engineering.</p>
+  </div>
+
+  <div class="note">
+    <h3 style="color: var(--muted);">Abort migration</h3>
+    <p class="neutral">~ What you get</p>
+    <ul>
+      <li>Zero visual change — wave 1 cream POS is final until material3 1.5.0 stable</li>
+      <li>Revert Phase 0 BOM bump + DragAndDropSupport.kt tweak (2-file revert)</li>
+      <li>Removes risk of any 1.4 BOM regression, no alpha exposure</li>
+      <li>Frees the next design sprint to plan against a stable target</li>
+    </ul>
+    <p class="con" style="margin-top: 8px;">✗ What you leave on the table</p>
+    <ul>
+      <li>The POS redesign stays on material3 1.3.x forever (until someone re-opens the ticket)</li>
+      <li>No WavyProgressIndicator on the check-in bar</li>
+      <li>No shape-morph on hero surfaces</li>
+      <li>Wave 2 (this M3 audit) was spent learning about the internal-API gotcha</li>
+    </ul>
+    <p style="color: var(--muted); margin-top: 8px;"><b>Effective outcome:</b> indistinguishable from today. The cream POS ships as is.</p>
+  </div>
+
+</div>
+
+<p class="intro" style="padding-top: 4px;">
+Compare column 1 (alpha) to columns 2/3 (stable / abort) side by side. Columns 2 and 3 are intentionally identical — that is the whole point. Without alpha, you cannot tell the difference between "limited adoption on stable" and "abort the migration entirely" from a phone screenshot.
+</p>
+
+</body>
+</html>

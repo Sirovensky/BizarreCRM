@@ -1,0 +1,65 @@
+# §29 — Baseline Profile rules for Bizarre Electronics CRM
+#
+# These rules are consumed by the ART ahead-of-time compiler (via
+# profileinstaller at install time or Play's cloud profile delivery) to
+# pre-compile the hot paths for the five top user flows, reducing
+# cold-start interpreter overhead.
+#
+# Rule format:
+#   H<class>               — hot class (load at startup)
+#   S<class>;-><method>    — startup method (compile to native)
+#   P<class>;-><method>    — post-startup hot method (compile to native)
+#
+# Generated from: manual static analysis of top-5 flows.
+# Re-generate with Macrobenchmark BaselineProfileGenerator once CI is wired.
+# See android/macrobenchmark/src/…/BaselineProfileGenerator.kt
+#
+# ── Flow 1: Cold start / Dashboard ─────────────────────────────────────────
+HSLcom/bizarreelectronics/crm/BizarreCrmApp;
+HSLcom/bizarreelectronics/crm/MainActivity;
+HSLcom/bizarreelectronics/crm/ui/screens/dashboard/DashboardScreen_Kt;
+SSLcom/bizarreelectronics/crm/ui/screens/dashboard/DashboardScreenKt;->DashboardScreen(Landroidx/compose/runtime/Composer;I)V
+SSLcom/bizarreelectronics/crm/ui/screens/dashboard/DashboardViewModel;-><init>(Lcom/bizarreelectronics/crm/data/remote/api/SettingsApi;Lcom/bizarreelectronics/crm/data/local/db/dao/NotificationDao;Lcom/bizarreelectronics/crm/data/local/db/dao/SyncQueueDao;Lcom/bizarreelectronics/crm/data/local/prefs/AuthPreferences;Lcom/bizarreelectronics/crm/data/repository/DashboardRepository;Lcom/bizarreelectronics/crm/data/sync/SyncManager;)V
+SSLcom/bizarreelectronics/crm/data/repository/DashboardRepository;->getDashboardKpis()Lkotlinx/coroutines/flow/Flow;
+
+# ── Flow 2: Ticket list scroll ──────────────────────────────────────────────
+HSLcom/bizarreelectronics/crm/ui/screens/tickets/TicketListScreen_Kt;
+SSLcom/bizarreelectronics/crm/ui/screens/tickets/TicketListScreenKt;->TicketListScreen(Landroidx/compose/animation/SharedTransitionScope;Landroidx/compose/animation/AnimatedContentScope;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lcom/bizarreelectronics/crm/ui/screens/tickets/TicketListViewModel;Lcom/bizarreelectronics/crm/util/NetworkMonitor;Landroidx/compose/runtime/Composer;II)V
+SSLcom/bizarreelectronics/crm/ui/screens/tickets/TicketListViewModel;->getTicketsPaged()Lkotlinx/coroutines/flow/Flow;
+PSLcom/bizarreelectronics/crm/data/local/db/dao/TicketDao;->getTicketsPaged(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Landroidx/paging/PagingSource;
+
+# ── Flow 3: Inventory list scroll ──────────────────────────────────────────
+HSLcom/bizarreelectronics/crm/ui/screens/inventory/InventoryListScreen_Kt;
+SSLcom/bizarreelectronics/crm/ui/screens/inventory/InventoryListScreenKt;->InventoryListScreen(Lkotlin/jvm/functions/Function1;Lcom/bizarreelectronics/crm/ui/screens/inventory/InventoryListViewModel;Landroidx/compose/runtime/Composer;II)V
+SSLcom/bizarreelectronics/crm/ui/screens/inventory/InventoryListViewModel;-><init>(Lcom/bizarreelectronics/crm/data/local/db/dao/InventoryDao;Lcom/bizarreelectronics/crm/data/remote/api/InventoryApi;)V
+PSLcom/bizarreelectronics/crm/data/local/db/dao/InventoryDao;->getInventoryItems(Ljava/lang/String;)Lkotlinx/coroutines/flow/Flow;
+
+# ── Flow 4: POS tender round-trip ──────────────────────────────────────────
+HSLcom/bizarreelectronics/crm/ui/screens/pos/PosTenderScreen_Kt;
+SSLcom/bizarreelectronics/crm/ui/screens/pos/PosTenderScreenKt;->PosTenderScreen(Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lcom/bizarreelectronics/crm/ui/screens/pos/PosTenderViewModel;Landroidx/compose/runtime/Composer;II)V
+SSLcom/bizarreelectronics/crm/ui/screens/pos/PosTenderViewModel;->tender(Ljava/lang/String;Ljava/lang/Object;)V
+PSLcom/bizarreelectronics/crm/data/remote/api/PosApi;->sale(Lcom/bizarreelectronics/crm/data/remote/dto/PosCartDto;)Lretrofit2/Call;
+
+# ── Flow 5: Customer list scroll ────────────────────────────────────────────
+HSLcom/bizarreelectronics/crm/ui/screens/customers/CustomerListScreen_Kt;
+SSLcom/bizarreelectronics/crm/ui/screens/customers/CustomerListScreenKt;->CustomerListScreen(Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lcom/bizarreelectronics/crm/ui/screens/customers/CustomerListViewModel;Landroidx/compose/runtime/Composer;II)V
+SSLcom/bizarreelectronics/crm/ui/screens/customers/CustomerListViewModel;-><init>(Lcom/bizarreelectronics/crm/data/local/db/dao/CustomerDao;Lcom/bizarreelectronics/crm/data/remote/api/CustomerApi;)V
+PSLcom/bizarreelectronics/crm/data/local/db/dao/CustomerDao;->getCustomersPaged(Ljava/lang/String;)Landroidx/paging/PagingSource;
+
+# ── Compose runtime hot paths (startup-critical) ───────────────────────────
+HSLandroidx/compose/runtime/ComposerImpl;
+HSLandroidx/compose/ui/platform/AndroidComposeView;
+SSLandroidx/compose/runtime/ComposerImpl;->recompose()Z
+SSLandroidx/compose/ui/platform/AndroidComposeView;->dispatchDraw(Landroid/graphics/Canvas;)V
+
+# ── Coil image loading hot paths ────────────────────────────────────────────
+PSLcoil3/compose/AsyncImagePainter;->onRemembered()V
+PSLcoil3/ImageLoader;->execute(Lcoil3/request/ImageRequest;)Lcoil3/request/ImageResult;
+
+# ── Room / SQLite hot paths (ticket + customer list) ───────────────────────
+PSLandroidx/room/RoomDatabase;->query(Landroidx/sqlite/db/SupportSQLiteQuery;)Landroid/database/Cursor;
+PSLnet/zetetic/database/sqlcipher/SQLiteDatabase;->query(ZLjava/lang/String;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+
+# ── OkHttp + Retrofit (first API call) ─────────────────────────────────────
+SSLokhttp3/OkHttpClient;->newCall(Lokhttp3/Request;)Lokhttp3/Call;
+SSLretrofit2/OkHttpCall;->execute()Lretrofit2/Response;

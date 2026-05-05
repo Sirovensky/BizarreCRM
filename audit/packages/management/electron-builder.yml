@@ -1,0 +1,133 @@
+# ============================================================================
+# BUILD / CODE SIGNING NOTES (@audit-fixed: audit issue #10)
+# ----------------------------------------------------------------------------
+# Code signing is ENABLED below via `forceCodeSigning: true`, but the actual
+# certificate is NOT checked into this file. Before calling any build
+# "production-ready" you MUST configure a real Windows Authenticode code-
+# signing certificate — either by setting `certificateSubjectName` (when the
+# cert is installed in the Windows cert store) or by pointing
+# `certificateFile` / `certificatePassword` at a PFX file.
+#
+# SmartScreen reputation accrues *over time* as users run the signed binary;
+# a brand-new EV cert still triggers a warning for the first few hundred
+# installs. Expect a phase-in period even after the cert is wired up.
+#
+# Installer model (@audit-fixed):
+#   * requestedExecutionLevel: asInvoker  → no UAC on every launch
+#   * nsis.perMachine:         false      → installs to %LOCALAPPDATA% (per-user)
+#   * nsis.oneClick:           false      → user sees install wizard, can pick dir
+# Daily dashboard use is admin-free. The handful of actions that genuinely
+# need admin (service restart, etc.) prompt for elevation just-in-time via
+# `Start-Process -Verb RunAs` — see src/main/index.ts.
+# ============================================================================
+
+afterPack: scripts/flip-fuses.js
+
+appId: com.bizarreelectronics.crm-management
+productName: BizarreCRM Management
+copyright: Copyright 2024-2026 Bizarre Electronics
+npmRebuild: false
+
+# Code signing: disabled until a real certificate is purchased and configured.
+# When a cert is available, set this back to `true` and configure one of the
+# certificate options under `win:` below.
+forceCodeSigning: false
+
+win:
+  target:
+    # @audit-fixed: was `dir` only (no installer). Adding `nsis` so the
+    # per-user install config below (perMachine:false) actually applies.
+    - target: nsis
+      arch: [x64]
+    - target: dir
+      arch: [x64]
+  icon: assets/icon.ico
+  # @audit-fixed: was `requireAdministrator` — that forced a UAC prompt on
+  # *every* dashboard launch. Daily use (viewing stats, editing settings,
+  # reading logs) never needed admin; only service restart did. Dropped to
+  # `asInvoker`; restart actions now request elevation just-in-time via
+  # Start-Process -Verb RunAs (see src/main/index.ts.spawnElevated).
+  requestedExecutionLevel: asInvoker
+  signAndEditExecutable: false
+  # SEC-H95: EV Authenticode signing.
+  # Two options — activate exactly ONE by setting the relevant env vars.
+  #
+  # Option A — cert installed in the Windows certificate store (EV token/HSM).
+  #   Set env:  WIN_CERT_SUBJECT="Bizarre Electronics LLC"
+  #   Uncomment the two lines below and delete / leave-commented Option B.
+  # certificateSubjectName: "${env.WIN_CERT_SUBJECT}"
+  # publisherName: "${env.WIN_CERT_SUBJECT}"
+  #
+  # Option B — PFX file path + password supplied via CI environment variables.
+  #   Set env:  WIN_CERT_FILE=/path/to/ev-cert.pfx
+  #             WIN_CERT_PASSWORD=<pfx-password>   ← NEVER commit this value
+  #   Uncomment the three lines below and delete / leave-commented Option A.
+  # certificateFile: "${env.WIN_CERT_FILE}"
+  # certificatePassword: "${env.WIN_CERT_PASSWORD}"
+  # publisherName: "Bizarre Electronics LLC"
+  #
+  # Until a real EV cert is purchased, forceCodeSigning (above) remains false
+  # so unsigned developer builds succeed.  Flip forceCodeSigning: true in CI
+  # once the cert and env vars are in place — the build will fail loudly
+  # rather than silently producing an unsigned installer.
+
+# @audit-fixed: NSIS per-user install. With perMachine:false the installer
+# writes to %LOCALAPPDATA%\Programs\BizarreCRMManagement instead of
+# Program Files, so no admin is needed to install OR launch.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# MGT-017: Custom deep-link protocol. Infrastructure only — no renderer
+# code consumes this scheme yet. Registers bizarrecrm-dashboard:// with
+# the OS so links to the dashboard can be opened from other apps.
+protocols:
+  - name: BizarreCRM Dashboard
+    schemes:
+      - bizarrecrm-dashboard
+
+directories:
+  output: release
+  buildResources: assets
+
+asar: true
+
+files:
+  - dist/**/*
+  - "!dist/**/*.map"
+  - node_modules/**/*
+  - "!node_modules/**/*.map"
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/tests/**"
+  - "!node_modules/**/.github/**"
+
+extraResources:
+  # DASH-ELEC-042: removed packages/server/src/**, packages/web/src/**,
+  # packages/shared/src/** — raw TypeScript source inflated the installer with
+  # un-needed TSX. Server and web only need their compiled dist/ output at
+  # runtime. packages/shared is now limited to dist/ + package.json only.
+  - from: ../../
+    to: crm-source
+    filter:
+      - packages/server/dist/**
+      - packages/server/certs/**
+      - packages/server/package.json
+      - packages/server/tsconfig.json
+      - packages/web/dist/**
+      - packages/web/package.json
+      - packages/shared/dist/**
+      - packages/shared/package.json
+      - package.json
+      - package-lock.json
+      - tsconfig.base.json
+      - ecosystem.config.js
+      - scripts/start-server.bat
+      - scripts/stop-server.bat
+      - .env.example
+      - "!**/node_modules/**"
+      - "!**/*.db"

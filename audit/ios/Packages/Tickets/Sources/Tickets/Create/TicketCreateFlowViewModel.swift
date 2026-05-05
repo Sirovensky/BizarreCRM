@@ -1,0 +1,360 @@
+import Foundation
+import Observation
+import Core
+import Networking
+import Customers
+
+// §4.3 — Full-fidelity multi-step ticket create view model.
+//
+// Steps: Customer → Devices → Pricing → Assignee/Due → Review
+//
+// Wired end-to-end:
+//   View ← TicketCreateFlowViewModel ← TicketRepository (create + status) ← APIClient
+//
+// Pricing model: subtotal = sum of device prices (each price = labor + parts
+// entered inline). Discount applied globally as absolute dollars.
+// Tax not collected in create path (line-level tax set server-side via tax_class).
+
+/// A device being added during ticket create.
+public struct DraftDevice: Identifiable, Sendable, Equatable {
+    public var id: UUID = UUID()
+    public var deviceName: String = ""
+    public var deviceType: String = ""
+    public var imei: String = ""
+    public var serial: String = ""
+    public var securityCode: String = ""
+    public var additionalNotes: String = ""
+    public var price: Double = 0
+    public var checklist: [ChecklistItem] = DraftDevice.defaultChecklist()
+    public var serviceId: Int64? = nil
+    public var serviceName: String = ""
+
+    // Returns the default pre-conditions checklist for new devices.
+    public static func defaultChecklist() -> [ChecklistItem] {
+        [
+            ChecklistItem(label: "Screen cracked", checked: false),
+            ChecklistItem(label: "Water damage", checked: false),
+            ChecklistItem(label: "Passcode provided", checked: false),
+            ChecklistItem(label: "Battery swollen", checked: false),
+            ChecklistItem(label: "SIM tray present", checked: false),
+            ChecklistItem(label: "Accessories included", checked: false),
+            ChecklistItem(label: "Backup completed", checked: false),
+            ChecklistItem(label: "Device powers on", checked: true),
+        ]
+    }
+}
+
+/// Steps in the create flow.
+public enum CreateFlowStep: Int, CaseIterable, Sendable {
+    case customer = 0
+    case devices  = 1
+    case pricing  = 2
+    case schedule = 3
+    case review   = 4
+
+    public var title: String {
+        switch self {
+        case .customer: return "Customer"
+        case .devices:  return "Devices"
+        case .pricing:  return "Pricing"
+        case .schedule: return "Assignee & Due Date"
+        case .review:   return "Review"
+        }
+    }
+}
+
+@MainActor
+@Observable
+public final class TicketCreateFlowViewModel {
+
+    // MARK: - Step navigation
+
+    public var currentStep: CreateFlowStep = .customer
+    public var canGoBack: Bool { currentStep != .customer }
+    public var canGoNext: Bool { stepValid }
+
+    // MARK: - Customer step
+
+    public var selectedCustomer: CustomerSummary?
+
+    // MARK: - Devices step
+
+    public var devices: [DraftDevice] = [DraftDevice()]
+
+    // MARK: - Pricing step
+
+    /// Global discount applied after summing per-device prices.
+    public var discountText: String = ""
+    public var discountReason: String = ""
+    public var discountMode: DiscountMode = .absolute
+
+    public enum DiscountMode: String, CaseIterable, Sendable {
+        case absolute  = "$"
+        case percent   = "%"
+    }
+
+    // Read-only computed totals
+    public var subtotal: Double {
+        devices.reduce(0) { $0 + $1.price }
+    }
+
+    public var discountAmount: Double {
+        guard let raw = Double(discountText.replacingOccurrences(of: ",", with: ".")),
+              raw > 0 else { return 0 }
+        switch discountMode {
+        case .absolute: return min(raw, subtotal)
+        case .percent:  return min(raw / 100.0 * subtotal, subtotal)
+        }
+    }
+
+    public var grandTotal: Double { max(0, subtotal - discountAmount) }
+
+    // MARK: - Assignee / due-date step
+
+    public var assignedEmployeeId: Int64?
+    public var assignedEmployeeName: String = ""
+    public var dueOn: String = ""   // YYYY-MM-DD
+    public var urgency: String = ""
+    public var source: String = ""
+    public var referralSource: String = ""
+    public var statusId: Int64?
+
+    // MARK: - §4.3 Service type + tags + source-ticket link
+
+    /// Service type: walk_in / mail_in / on_site / pick_up / drop_off.
+    public var serviceType: TicketServiceType? = nil
+    /// Multi-chip label tags applied to the ticket.
+    public var tags: [String] = []
+    /// Source ticket / estimate id — set when converting from an estimate.
+    public var sourceTicketId: Int64? = nil
+    /// Optional deposit amount in dollars.
+    public var depositAmount: Double? = nil
+
+    // MARK: - §4.3 Idempotency key
+
+    /// UUID generated once per create session. Reset after successful create.
+    public private(set) var idempotencyKey: String = UUID().uuidString
+
+    public func resetIdempotencyKey() {
+        idempotencyKey = UUID().uuidString
+    }
+
+    // MARK: - Submit state
+
+    public private(set) var isSubmitting: Bool = false
+    public private(set) var errorMessage: String?
+    public private(set) var createdTicketId: Int64?
+    public private(set) var queuedOffline: Bool = false
+    public private(set) var validationErrors: [String: String] = [:]
+
+    // MARK: - Dependencies
+
+    // §4.3 — Exposed so DevicesStepView can pass api to service picker sheet.
+    @ObservationIgnored public let api: APIClient
+
+    public init(api: APIClient, sourceTicketId: Int64? = nil) {
+        self.api = api
+        self.sourceTicketId = sourceTicketId
+    }
+
+    // MARK: - Navigation
+
+    /// §4.3: inline step validation error message (nil = no error).
+    public private(set) var stepValidationError: String?
+
+    /// Advances to the next step. If the current step is invalid, sets
+    /// `stepValidationError` for the view to render as a glass toast.
+    public func next() {
+        if stepValid {
+            stepValidationError = nil
+            guard let next = nextStep else { return }
+            currentStep = next
+        } else {
+            stepValidationError = validationMessage(for: currentStep)
+        }
+    }
+
+    public func back() {
+        stepValidationError = nil
+        guard let prev = prevStep else { return }
+        currentStep = prev
+    }
+
+    /// Human-readable validation message for the current step failure.
+    private func validationMessage(for step: CreateFlowStep) -> String {
+        switch step {
+        case .customer: return "Please select a customer before continuing."
+        case .devices:  return "Please enter a device name for every device."
+        case .pricing:
+            if let raw = Double(discountText.replacingOccurrences(of: ",", with: ".")) {
+                if raw < 0 { return "Discount cannot be negative." }
+                if discountMode == .percent && raw > 100 { return "Percentage discount cannot exceed 100%." }
+            }
+            return "Please enter a valid discount amount."
+        case .schedule: return nil ?? ""
+        case .review:   return nil ?? ""
+        }
+    }
+
+    // MARK: - Device management (immutable updates per §coding-style)
+
+    public func addDevice() {
+        devices = devices + [DraftDevice()]
+    }
+
+    public func removeDevice(at index: Int) {
+        guard devices.count > 1 else { return }
+        var updated = devices
+        updated.remove(at: index)
+        devices = updated
+    }
+
+    public func updateDevice(at index: Int, _ update: (inout DraftDevice) -> Void) {
+        guard index < devices.count else { return }
+        var updated = devices
+        update(&updated[index])
+        devices = updated
+    }
+
+    // MARK: - Checklist helpers
+
+    public func toggleChecklistItem(deviceIndex: Int, itemId: String) {
+        guard deviceIndex < devices.count else { return }
+        var updated = devices
+        let updatedItems = updated[deviceIndex].checklist.map { item -> ChecklistItem in
+            if item.id == itemId {
+                return ChecklistItem(id: item.id, label: item.label, checked: !item.checked)
+            }
+            return item
+        }
+        updated[deviceIndex].checklist = updatedItems
+        devices = updated
+    }
+
+    // MARK: - Submit
+
+    public func submit() async {
+        guard !isSubmitting, let customer = selectedCustomer else {
+            if selectedCustomer == nil { errorMessage = "Pick a customer first." }
+            return
+        }
+        isSubmitting = true
+        errorMessage = nil
+        queuedOffline = false
+        defer { isSubmitting = false }
+
+        // §4.3 — Build full request with idempotency key, service type, tags,
+        //         source-ticket link, and deposit.
+        let req = buildFullCreateRequest(customerId: customer.id)
+
+        do {
+            let created = try await api.createTicketFull(req)
+            createdTicketId = created.id
+            resetIdempotencyKey()  // New key for next create.
+        } catch {
+            let appError = AppError.from(error)
+            if case .offline = appError {
+                await enqueueOfflineFull(req)
+            } else if TicketOfflineQueue.isNetworkError(error) {
+                await enqueueOfflineFull(req)
+            } else {
+                AppLog.ui.error("Full ticket create failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = appError.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - Validation per step
+
+    public var stepValid: Bool {
+        stepValidationMessage == nil
+    }
+
+    /// §4.3 — Inline glass error toast text for the current step.
+    /// Returns nil when the step is valid (no toast shown).
+    public var stepValidationMessage: String? {
+        switch currentStep {
+        case .customer:
+            return selectedCustomer == nil ? "Please select or create a customer." : nil
+        case .devices:
+            if devices.isEmpty { return "Add at least one device." }
+            if devices.contains(where: { $0.deviceName.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                return "Each device needs a name."
+            }
+            return nil
+        case .pricing:
+            if !discountText.isEmpty {
+                if Double(discountText.replacingOccurrences(of: ",", with: ".")) == nil {
+                    return "Discount must be a number."
+                }
+                if discountMode == .percent,
+                   let v = Double(discountText.replacingOccurrences(of: ",", with: ".")),
+                   v > 100 {
+                    return "Percentage discount cannot exceed 100%."
+                }
+            }
+            return nil
+        case .schedule: return nil
+        case .review:   return nil
+        }
+    }
+
+    // MARK: - Private helpers
+
+    private var nextStep: CreateFlowStep? {
+        let all = CreateFlowStep.allCases
+        guard let idx = all.firstIndex(of: currentStep), idx + 1 < all.count else { return nil }
+        return all[idx + 1]
+    }
+
+    private var prevStep: CreateFlowStep? {
+        let all = CreateFlowStep.allCases
+        guard let idx = all.firstIndex(of: currentStep), idx > 0 else { return nil }
+        return all[idx - 1]
+    }
+
+    /// §4.3 — Build full-fidelity create request with all optional fields.
+    private func buildFullCreateRequest(customerId: Int64) -> CreateTicketFullRequest {
+        let newDevices = devices.map { d in
+            CreateTicketRequest.NewDevice(
+                deviceName: d.deviceName.trimmingCharacters(in: .whitespaces),
+                imei: nilIfEmpty(d.imei),
+                serial: nilIfEmpty(d.serial),
+                additionalNotes: nilIfEmpty(d.additionalNotes),
+                price: d.price
+            )
+        }
+        return CreateTicketFullRequest(
+            customerId: customerId,
+            devices: newDevices,
+            statusId: statusId,
+            assignedTo: assignedEmployeeId,
+            serviceType: serviceType?.rawValue,
+            tags: tags.isEmpty ? nil : tags,
+            howDidUFindUs: nilIfEmpty(source),
+            referralSource: nilIfEmpty(referralSource),
+            dueOn: nilIfEmpty(dueOn),
+            deposit: depositAmount,
+            idempotencyKey: idempotencyKey,
+            sourceTicketId: sourceTicketId
+        )
+    }
+
+    private func enqueueOfflineFull(_ req: CreateTicketFullRequest) async {
+        do {
+            let payload = try TicketOfflineQueue.encode(req)
+            await TicketOfflineQueue.enqueue(op: "create_full", payload: payload)
+            createdTicketId = PendingSyncTicketId
+            queuedOffline = true
+            errorMessage = nil
+        } catch {
+            AppLog.sync.error("Offline enqueue encode failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func nilIfEmpty(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+}

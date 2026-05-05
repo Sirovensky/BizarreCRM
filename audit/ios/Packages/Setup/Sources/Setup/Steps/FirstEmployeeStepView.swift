@@ -1,0 +1,411 @@
+import SwiftUI
+import Observation
+import Core
+import DesignSystem
+import Networking
+
+// MARK: - FirstEmployeeStepView  (§36 — First Employee)
+//
+// Creates the first employee account (beyond the owner) via
+//   POST /api/v1/settings/users  (server: routes/settings.routes.ts l.863)
+//
+// The step is optional: leaving all fields blank skips user creation.
+// Fields: first name, last name, email (required when not skipping), role.
+//
+// Data is surfaced to the wizard via onNext(FirstEmployeePayload?) and
+// also written into wizardPayload for draft persistence.
+
+// MARK: - ViewModel
+
+@MainActor
+@Observable
+final class FirstEmployeeViewModel {
+
+    var firstName: String = ""
+    var lastName: String  = ""
+    var email: String     = ""
+    var role: FirstEmployeeRole = .technician
+    /// When true the invitation email also triggers an SMS to the employee.
+    var sendSMSInvite: Bool = false
+
+    var firstNameError: String? = nil
+    var lastNameError: String?  = nil
+    var emailError: String?     = nil
+
+    var hasAnyInput: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty ||
+        !lastName.trimmingCharacters(in: .whitespaces).isEmpty  ||
+        !email.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Step is valid when either fully blank (skip) or fully filled-in.
+    var isNextEnabled: Bool {
+        if !hasAnyInput { return true }
+        return validateFirstName(firstName).isValid &&
+               validateLastName(lastName).isValid &&
+               Step9Validator.validateEmail(email).isValid
+    }
+
+    func onFirstNameBlur() {
+        guard !firstName.isEmpty else { firstNameError = nil; return }
+        let r = validateFirstName(firstName)
+        firstNameError = r.isValid ? nil : r.errorMessage
+    }
+
+    func onLastNameBlur() {
+        guard !lastName.isEmpty else { lastNameError = nil; return }
+        let r = validateLastName(lastName)
+        lastNameError = r.isValid ? nil : r.errorMessage
+    }
+
+    func onEmailBlur() {
+        guard !email.isEmpty else { emailError = nil; return }
+        let r = Step9Validator.validateEmail(email)
+        emailError = r.isValid ? nil : r.errorMessage
+    }
+
+    /// Returns nil when the user left all fields blank (skip case).
+    var asPayload: FirstEmployeePayload? {
+        let fn = firstName.trimmingCharacters(in: .whitespaces)
+        let ln = lastName.trimmingCharacters(in: .whitespaces)
+        let em = email.trimmingCharacters(in: .whitespaces)
+        guard !fn.isEmpty || !ln.isEmpty || !em.isEmpty else { return nil }
+        return FirstEmployeePayload(firstName: fn, lastName: ln, email: em, role: role,
+                                    sendSMSInvite: sendSMSInvite)
+    }
+
+    // MARK: Private validators
+
+    private func validateFirstName(_ value: String) -> ValidationResult {
+        let t = value.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return .invalid("First name is required.") }
+        guard t.count <= 100 else { return .invalid("First name is too long.") }
+        return .valid
+    }
+
+    private func validateLastName(_ value: String) -> ValidationResult {
+        let t = value.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return .invalid("Last name is required.") }
+        guard t.count <= 100 else { return .invalid("Last name is too long.") }
+        return .valid
+    }
+}
+
+// MARK: - FirstEmployeeRole
+
+public enum FirstEmployeeRole: String, CaseIterable, Sendable, Equatable {
+    case manager    = "manager"
+    case technician = "technician"
+    case sales      = "sales"
+
+    public var displayName: String {
+        switch self {
+        case .manager:    return "Manager"
+        case .technician: return "Technician"
+        case .sales:      return "Sales"
+        }
+    }
+}
+
+// MARK: - Payload
+
+public struct FirstEmployeePayload: Sendable, Equatable {
+    public let firstName: String
+    public let lastName: String
+    public let email: String
+    public let role: FirstEmployeeRole
+    /// When true the server also sends an SMS invite (requires employee phone on server side).
+    public let sendSMSInvite: Bool
+
+    public init(
+        firstName: String,
+        lastName: String,
+        email: String,
+        role: FirstEmployeeRole,
+        sendSMSInvite: Bool = false
+    ) {
+        self.firstName    = firstName
+        self.lastName     = lastName
+        self.email        = email
+        self.role         = role
+        self.sendSMSInvite = sendSMSInvite
+    }
+}
+
+// MARK: - View
+
+public struct FirstEmployeeStepView: View {
+
+    let onValidityChanged: (Bool) -> Void
+    let onNext: (FirstEmployeePayload?) -> Void
+
+    @State private var vm = FirstEmployeeViewModel()
+    @FocusState private var focus: FocusField?
+
+    enum FocusField: Hashable { case firstName, lastName, email }
+
+    public init(
+        onValidityChanged: @escaping (Bool) -> Void,
+        onNext: @escaping (FirstEmployeePayload?) -> Void
+    ) {
+        self.onValidityChanged = onValidityChanged
+        self.onNext = onNext
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                headerSection
+                firstNameField
+                lastNameField
+                emailField
+                rolePicker
+                // SMS invite toggle — only shown when the user has entered data.
+                if vm.hasAnyInput {
+                    smsInviteToggle
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                skipHint
+                Spacer(minLength: BrandSpacing.xxl)
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, BrandSpacing.lg)
+            .padding(.bottom, BrandSpacing.xxl)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .animation(.easeInOut(duration: 0.15), value: vm.hasAnyInput)
+        .onChange(of: vm.isNextEnabled) { _, valid in
+            onValidityChanged(valid)
+        }
+        .onAppear {
+            onValidityChanged(vm.isNextEnabled)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("First Employee")
+                .font(.brandHeadlineMedium())
+                .foregroundStyle(Color.bizarreOnSurface)
+                .accessibilityAddTraits(.isHeader)
+            Text("Add your first team member. Leave blank to skip — you can add more from Employees later.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+        }
+    }
+
+    // MARK: - First Name
+
+    private var firstNameField: some View {
+        fieldStack(label: "First Name", hint: "Required", error: vm.firstNameError) {
+            TextField("First name", text: $vm.firstName)
+                .font(.brandBodyLarge())
+                .focused($focus, equals: .firstName)
+                .submitLabel(.next)
+                .onSubmit { focus = .lastName }
+                .onChange(of: focus) { old, new in
+                    if old == .firstName && new != .firstName { vm.onFirstNameBlur() }
+                }
+                #if canImport(UIKit)
+                .textContentType(.givenName)
+                .autocorrectionDisabled()
+                #endif
+                .accessibilityLabel("Employee first name")
+        }
+    }
+
+    // MARK: - Last Name
+
+    private var lastNameField: some View {
+        fieldStack(label: "Last Name", hint: "Required", error: vm.lastNameError) {
+            TextField("Last name", text: $vm.lastName)
+                .font(.brandBodyLarge())
+                .focused($focus, equals: .lastName)
+                .submitLabel(.next)
+                .onSubmit { focus = .email }
+                .onChange(of: focus) { old, new in
+                    if old == .lastName && new != .lastName { vm.onLastNameBlur() }
+                }
+                #if canImport(UIKit)
+                .textContentType(.familyName)
+                .autocorrectionDisabled()
+                #endif
+                .accessibilityLabel("Employee last name")
+        }
+    }
+
+    // MARK: - Email
+
+    private var emailField: some View {
+        fieldStack(label: "Email", hint: "Required — employee@example.com", error: vm.emailError) {
+            TextField("Email address", text: $vm.email)
+                .font(.brandBodyLarge())
+                .focused($focus, equals: .email)
+                .submitLabel(.done)
+                .onSubmit {
+                    focus = nil
+                    if vm.isNextEnabled { onNext(vm.asPayload) }
+                }
+                .onChange(of: focus) { old, new in
+                    if old == .email && new != .email { vm.onEmailBlur() }
+                }
+                #if canImport(UIKit)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                #endif
+                .accessibilityLabel("Employee email address")
+                .accessibilityHint("employee@example.com")
+        }
+    }
+
+    // MARK: - Role picker (chip row)
+    // §36 role-pick — use branded chips instead of a segmented control so
+    // that each role button can carry an icon, an a11y trait, and a hint.
+
+    private var rolePicker: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text("Role")
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(FirstEmployeeRole.allCases, id: \.self) { role in
+                    roleChip(role)
+                }
+            }
+            .accessibilityLabel("Employee role")
+            .accessibilityValue(vm.role.displayName)
+        }
+    }
+
+    @ViewBuilder
+    private func roleChip(_ role: FirstEmployeeRole) -> some View {
+        let isSelected = vm.role == role
+        Button {
+            vm.role = role
+        } label: {
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: roleIcon(role))
+                    .font(.system(size: 13, weight: .medium))
+                    .accessibilityHidden(true)
+                Text(role.displayName)
+                    .font(.brandLabelLarge())
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(isSelected ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
+            .background(
+                isSelected ? Color.bizarreOrange.opacity(0.18) : Color.bizarreSurface1.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(role.displayName)
+        .accessibilityHint(roleHint(role))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    private func roleIcon(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "person.badge.key.fill"
+        case .technician: return "wrench.and.screwdriver.fill"
+        case .sales:      return "cart.fill"
+        }
+    }
+
+    private func roleHint(_ role: FirstEmployeeRole) -> String {
+        switch role {
+        case .manager:    return "Full access including settings and staff management"
+        case .technician: return "Access to tickets and repairs"
+        case .sales:      return "Access to POS and customer records"
+        }
+    }
+
+    // MARK: - SMS invite toggle
+
+    /// Shown once the user starts filling in the form. Lets the admin also
+    /// send an SMS invite on top of the email invite (server combines both).
+    private var smsInviteToggle: some View {
+        Toggle(isOn: $vm.sendSMSInvite) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Also send SMS invite")
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(Color.bizarreOnSurface)
+                Text("A text message with a sign-up link will be sent to the employee's phone.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(.bizarreOrange)
+        .padding(BrandSpacing.md)
+        .background(
+            Color.bizarreSurface1.opacity(0.5),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .accessibilityLabel("Also send SMS invite")
+        .accessibilityHint("A text message sign-up link will be sent to the employee's phone")
+        .accessibilityValue(vm.sendSMSInvite ? "On" : "Off")
+    }
+
+    // MARK: - Skip hint
+
+    private var skipHint: some View {
+        Text("Leave all fields blank to skip this step.")
+            .font(.brandBodyMedium())
+            .foregroundStyle(Color.bizarreOnSurfaceMuted.opacity(0.65))
+    }
+
+    // MARK: - Field builder
+
+    @ViewBuilder
+    private func fieldStack<Content: View>(
+        label: String,
+        hint: String,
+        error: String?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+
+            content()
+                .padding(BrandSpacing.md)
+                .background(
+                    Color.bizarreSurface1.opacity(0.7),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            error != nil ? Color.bizarreError : Color.bizarreOutline.opacity(0.5),
+                            lineWidth: 1
+                        )
+                )
+                .accessibilityHint(hint)
+
+            if let error {
+                Text(error)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(Color.bizarreError)
+                    .accessibilityLabel("Error: \(error)")
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: error)
+    }
+}

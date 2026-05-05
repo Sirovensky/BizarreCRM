@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --sidebar-width: 208px;
+    --sidebar-collapsed-width: 52px;
+    --header-height: 44px;
+  }
+
+  /* 800x600 and narrower (remote-access sessions) — shrink the expanded
+     sidebar slightly further so content width is not pinched. The
+     auto-collapse kicks in at <900 via uiStore, but the operator can
+     still expand manually; when they do, this gives them a narrower
+     label column. */
+  @media (max-width: 900px) {
+    :root {
+      --sidebar-width: 180px;
+      --header-height: 40px;
+    }
+  }
+
+  html {
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Custom scrollbar — dark-mode optimized */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    /* DASH-ELEC-147: use theme tokens instead of hardcoded hex */
+    background-color: theme('colors.surface.700');
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.surface.600');
+  }
+
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Focus ring — DASH-ELEC-148: use theme token instead of hardcoded hex */
+  *:focus-visible {
+    outline: 2px solid theme('colors.accent.500');
+    outline-offset: 2px;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+}
+
+@layer components {
+  /* Stat card glow effect — denser padding at small widths (800x600 RDP
+     sessions) so the 3-column grid actually fits without overflow. */
+  .stat-card {
+    @apply relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700;
+  }
+
+  /* Compact mode — operator opt-in. Ratchets stat-card and table padding
+     tighter still for shops that want more rows visible at once on RDP
+     or small windows. Applied via data-density="compact" on <html>. */
+  [data-density='compact'] .stat-card {
+    @apply p-2 lg:p-2.5;
+  }
+  [data-density='compact'] table td {
+    @apply py-1 px-1.5;
+  }
+  [data-density='compact'] table th {
+    @apply py-1 px-1.5;
+  }
+
+  /* Status dot animation */
+  .status-dot-online {
+    @apply relative h-2.5 w-2.5 rounded-full bg-green-500;
+  }
+  .status-dot-online::before {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-green-500 animate-ping;
+  }
+
+  .status-dot-offline {
+    @apply h-2.5 w-2.5 rounded-full bg-red-500;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

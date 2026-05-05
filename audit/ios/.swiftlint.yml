@@ -1,0 +1,153 @@
+# SwiftLint config for iOS BizarreCRM app.
+# Enforces the sovereignty + Phase-0 rules from ios/ActionPlan.md §1/§32/§80
+# plus agent-ownership.md "Independence rules".
+#
+# To install locally:  brew install swiftlint
+# CI runs `swiftlint --config ios/.swiftlint.yml --strict`.
+
+included:
+  - Packages
+  - App
+
+excluded:
+  - Packages/**/Tests
+  - Tests
+  - .build
+  - DerivedData
+
+disabled_rules:
+  - trailing_whitespace        # auto-handled by formatter
+  - line_length                # deliberately flexible for long SwiftUI view code
+  - todo                       # TODO comments are OK — tracked separately
+  - identifier_name            # SwiftUI closures / single-letter geom is fine
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - closure_spacing
+  - redundant_nil_coalescing
+  - unneeded_parentheses_in_closure_argument
+
+custom_rules:
+
+  # §32 data-sovereignty: ban every third-party analytics / crash / AI SDK import.
+  banned_sdks:
+    name: "Banned SDK import (sovereignty violation)"
+    regex: '^import\s+(Sentry|FirebaseCore|FirebaseCrashlytics|FirebaseAnalytics|Mixpanel|Amplitude|Bugsnag|Crashlytics|Datadog|NewRelic|FullStory|Segment|OpenAI|Anthropic|GoogleGenerativeAI|HuggingFace|Replicate|Cohere|LangChain|LangGraph|Langfuse)\b'
+    message: "Third-party SDK import detected. See §32 — single egress = APIClient.baseURL. Do not add this dependency."
+    severity: error
+
+  # §1 data-layer rule: only `Core/Networking/` may instantiate URLSession.
+  # Everything else goes through APIClient.
+  raw_urlsession_outside_networking:
+    name: "Raw URLSession outside Networking"
+    regex: 'URLSession\s*\(configuration:'
+    match_kinds: [identifier]
+    message: "Instantiating URLSession is restricted to `Packages/Networking/`. Call APIClient instead."
+    severity: error
+    included:
+      - Packages/App
+      - Packages/Appointments
+      - Packages/Auth
+      - Packages/Camera
+      - Packages/Communications
+      - Packages/Customers
+      - Packages/Dashboard
+      - Packages/DesignSystem
+      - Packages/Employees
+      - Packages/Estimates
+      - Packages/Expenses
+      - Packages/Hardware
+      - Packages/Inventory
+      - Packages/Invoices
+      - Packages/Leads
+      - Packages/Notifications
+      - Packages/Persistence
+      - Packages/Pos
+      - Packages/Reports
+      - Packages/Search
+      - Packages/Settings
+      - Packages/Sync
+      - Packages/Tickets
+
+  # §80 token discipline: no raw hex colors in views.
+  raw_hex_color:
+    name: "Raw hex Color literal"
+    regex: 'Color\s*\(\s*(?:red|hex):'
+    message: "Use tokens from `DesignTokens` / `BrandColors`. No inline hex (§80)."
+    severity: warning
+
+  # §80: no inline `RoundedRectangle(cornerRadius: 12)` — use `DesignTokens.Radius.md`.
+  raw_corner_radius:
+    name: "Raw corner radius literal"
+    regex: 'RoundedRectangle\s*\(\s*cornerRadius:\s*\d'
+    message: "Use DesignTokens.Radius.* (§80). Raw radii drift from brand."
+    severity: warning
+
+  # §2.13 / §28.7: `os_log` / `Logger` should redact dynamic privacy-sensitive
+  # fields with `privacy: .private`. Flag missing privacy annotations on
+  # dynamic interpolations.
+  #
+  # This is a best-effort heuristic — if the interpolation is definitely a
+  # string or user-derived, annotate. False positives are OK; silence them
+  # per-line with `// swiftlint:disable:next`.
+  logger_missing_privacy:
+    name: "Logger interpolation missing privacy annotation"
+    regex: 'Logger[^{]*\{[^}]*\\\([^,)]+\)'
+    message: "Add `privacy: .private` (PII) or `.public` (IDs/enums) to Logger interpolations (§28.7 / §32.6)."
+    severity: warning
+
+  # §31 / §26.7: `onTapGesture` without `accessibilityLabel` on ad-hoc views
+  # creates invisible-to-VoiceOver hotspots. Prefer `Button`.
+  bare_on_tap_gesture:
+    name: "Bare .onTapGesture without a11y wrapper"
+    regex: '\.onTapGesture\s*\{'
+    message: "Wrap in `Button` or add `.accessibilityAddTraits(.isButton)` + `.accessibilityLabel` (§26 + §31)."
+    severity: warning
+
+  # §28.5 Credit-card autofill content types: ban textContentType(.creditCardNumber)
+  # and related card-autofill content types. These surface iOS QuickType card
+  # suggestions and the "Scan Card" camera prompt — never desired on our forms.
+  # The ONE exception is textContentType(.oneTimeCode) on OTP fields, which is
+  # intentional and documented in §28.5.
+  forbidden_credit_card_content_type:
+    name: "Forbidden credit card textContentType (§28.5)"
+    regex: '\.textContentType\s*\(\s*\.(creditCardNumber|creditCardExpiration|creditCardExpirationMonth|creditCardExpirationYear|creditCardSecurityCode|creditCardType|creditCardName|creditCardGivenName|creditCardMiddleName|creditCardFamilyName)\s*\)'
+    message: "Do not use credit-card textContentType. iOS will surface card autofill + Scan Card on this field. See §28.5 — BlockChyp handles PAN entry. Use .none or .name/.postalCode for contact fields."
+    severity: error
+
+  # §28.5 Autocorrect/autocapitalization on IMEI/coupon/order-number fields.
+  # Fields near POS / payment that might attract card-shaped QuickType
+  # suggestions should be explicitly silenced with .autocorrectionDisabled.
+  # (Advisory-only rule: human review decides if the regex match is a payment field.)
+  credit_field_missing_autocorrect_disable:
+    name: "IMEI / coupon field possibly missing autocorrectionDisabled (§28.5)"
+    regex: '\.textContentType\s*\(\s*\.(username|none)\s*\).*\.keyboardType\s*\(\s*\.numberPad\s*\)'
+    message: "Add .autocorrectionDisabled(true) + .textInputAutocapitalization(.never) to numeric fields near payment flows (§28.5)."
+    severity: warning
+
+  # §29.3 / §26.6 Inline animation duration literals.
+  # No raw millisecond numbers in withAnimation calls — use MotionCatalog tokens.
+  inline_animation_duration:
+    name: "Inline animation duration literal (§30.6 / §67)"
+    regex: 'withAnimation\s*\(\s*\.easeInOut\s*\(\s*duration:\s*[0-9]'
+    message: "Use MotionCatalog tokens (BrandMotion.fab/banner/sheet/tab/chip) instead of raw duration literals (§30.6/§67)."
+    severity: warning
+
+  # §1.4 / §29.5 Glass budget lint — flag files with 7+ .brandGlass call sites.
+  # The debug-build GlassBudgetMonitor fires at runtime (per screen); this
+  # rule catches structural over-use at code-review time. Files containing
+  # ≥ 7 `.brandGlass` calls almost certainly display too many glass surfaces.
+  # False positives (e.g. GlassKit.swift itself) silence with:
+  #   // swiftlint:disable:file glass_budget_per_file
+  # Note: SwiftLint `custom_rules` match once per *line*, not per *file*.
+  # This rule fires when a single line repeats `.brandGlass` 7+ times,
+  # which is practically impossible; real over-use is caught by the runtime
+  # GlassBudgetMonitor assert.  The rule is retained as documentation of
+  # the budget and to catch generator-produced code that might inline many
+  # `.brandGlass` chains on one line.
+  glass_budget_per_file:
+    name: "Glass budget: too many .brandGlass calls on one line"
+    regex: '(\.brandGlass[^;]*){7,}'
+    message: "≥7 .brandGlass calls on one line — split views or wrap in BrandGlassContainer (§1.4/§29.5/§30). Max 6 visible per screen."
+    severity: warning

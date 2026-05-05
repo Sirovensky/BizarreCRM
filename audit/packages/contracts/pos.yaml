@@ -1,0 +1,64 @@
+area: pos
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/pos.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+  android: none currently documented
+auth: bearer
+notes:
+  - POS checkout touches invoices, inventory, payments, cash register, and tickets.
+  - Checkout endpoints should be treated as transactional and idempotency-aware.
+endpoints:
+  - method: GET
+    path: /api/v1/pos/products
+    purpose: Search POS-saleable inventory products/services.
+    query:
+      keyword: string optional
+      category: string optional
+      item_type: string optional
+  - method: GET
+    path: /api/v1/pos/register
+    purpose: Return register summary/current cash state.
+  - method: POST
+    path: /api/v1/pos/cash-in
+    purpose: Add cash to register.
+    request:
+      amount: number
+      reason: string optional
+  - method: POST
+    path: /api/v1/pos/cash-out
+    purpose: Remove cash from register.
+    request:
+      amount: number
+      reason: string optional
+  - method: POST
+    path: /api/v1/pos/transaction
+    purpose: Complete a POS sale transaction.
+    request:
+      customer_id: number optional
+      items: PosCartItem[]
+      payments: PosPaymentInput[] optional
+      discount: number optional
+      notes: string optional
+  - method: GET
+    path: /api/v1/pos/transactions
+    purpose: List POS transactions.
+    query:
+      page: number optional
+      pagesize: number optional
+      from_date: string optional
+      to_date: string optional
+  - method: POST
+    path: /api/v1/pos/checkout-with-ticket
+    purpose: Create ticket and/or checkout cart in one flow.
+    request:
+      customer_id: number optional
+      ticket_id: number optional
+      cart_items: PosCartItem[]
+      payments: PosPaymentInput[] optional
+  - method: POST
+    path: /api/v1/pos/open-drawer
+    purpose: Request cash drawer open event.
+    request:
+      reason: string optional

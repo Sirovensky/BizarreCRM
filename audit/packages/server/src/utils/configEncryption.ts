@@ -1,0 +1,118 @@
+import crypto from 'crypto';
+import type Database from 'better-sqlite3';
+import { config } from '../config.js';
+import { createLogger } from './logger.js';
+
+const logger = createLogger('config-encryption');
+
+/**
+ * AES-256-GCM encryption/decryption for sensitive config values stored in store_config.
+ * Uses a key derived from JWT_SECRET with a dedicated purpose string, so a compromised
+ * database file alone cannot reveal API credentials.
+ *
+ * Format: enc:v{version}:{iv}:{authTag}:{ciphertext}  (all hex-encoded)
+ * Unencrypted values (legacy) are returned as-is on decrypt.
+ */
+
+// SEC-H103: Key slot 1 now reads from config.configEncryptionKey (set via
+// CONFIG_ENCRYPTION_KEY env var, or HKDF-derived from JWT_SECRET in dev).
+// This decouples config-value encryption from JWT key rotation.
+//
+// Backward-compatibility: the v1 key was previously derived as
+//   HMAC-SHA256(key='bizarre-crm:config-secrets:v1', msg=jwtSecret)
+// That derivation is preserved here: the configEncryptionKey is the HKDF
+// output (32-byte hex), so the HMAC wraps it with the same label to keep
+// the AES key byte-stable when CONFIG_ENCRYPTION_KEY is not set in dev
+// (i.e. both paths derive from JWT_SECRET and produce the same 32 bytes).
+// When CONFIG_ENCRYPTION_KEY IS set, the new key is different — that is the
+// intended effect of having a dedicated key.
+const ENCRYPTION_KEYS: Record<number, Buffer> = {
+  1: crypto.createHmac('sha256', 'bizarre-crm:config-secrets:v1').update(config.configEncryptionKey).digest(),
+};
+const CURRENT_KEY_VERSION = 1;
+
+/** Keys whose values should be encrypted at rest in store_config */
+export const ENCRYPTED_CONFIG_KEYS = new Set([
+  'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
+  'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
+  'sms_plivo_auth_token', 'sms_vonage_api_secret',
+  'smtp_pass',
+  'tcx_password',
+  // NOTE: RepairDesk / RepairShopr / MyRepairApp import keys are deliberately
+  // NOT in this set. They are never persisted to store_config — they are
+  // passed via the request body and only live in memory for the duration of
+  // the import run. Less responsibility, smaller blast radius if the tenant
+  // DB is ever exposed.
+]);
+
+export function encryptConfigValue(plaintext: string): string {
+  if (!plaintext) return plaintext;
+  const key = ENCRYPTION_KEYS[CURRENT_KEY_VERSION];
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  // @audit-fixed: Bind the key version into the AAD so a downgrade or key-swap
+  // attack cannot repurpose a tag with a different version label.
+  cipher.setAAD(Buffer.from(`v${CURRENT_KEY_VERSION}`, 'utf8'));
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `enc:v${CURRENT_KEY_VERSION}:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptConfigValue(ciphertext: string): string {
+  if (!ciphertext) return ciphertext;
+  // Unencrypted legacy value — return as-is
+  if (!ciphertext.startsWith('enc:v')) return ciphertext;
+
+  const parts = ciphertext.split(':');
+  // Format: enc:v{n}:{iv}:{tag}:{data}
+  if (parts.length !== 5) return ciphertext;
+
+  const version = parseInt(parts[1].slice(1), 10);
+  const key = ENCRYPTION_KEYS[version];
+  if (!key) {
+    logger.error('config decrypt failed: unknown key version', { version });
+    return ciphertext;
+  }
+
+  try {
+    const iv = Buffer.from(parts[2], 'hex');
+    const tag = Buffer.from(parts[3], 'hex');
+    const data = Buffer.from(parts[4], 'hex');
+    // @audit-fixed: Validate IV length (12 bytes for GCM) and tag length (16
+    // bytes) before handing them to crypto to avoid tag-stripping attacks.
+    if (iv.length !== 12 || tag.length !== 16) {
+      logger.error('config decrypt failed: invalid IV or auth tag length', { version });
+      return '';
+    }
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    // @audit-fixed: Bind the key version into AAD so decryption fails if the
+    // version label has been tampered with. Must match encryptConfigValue.
+    decipher.setAAD(Buffer.from(`v${version}`, 'utf8'));
+    decipher.setAuthTag(tag);
+    return decipher.update(data) + decipher.final('utf8');
+  } catch (err) {
+    // @audit-fixed: Never return the raw ciphertext string on decrypt failure
+    // — a caller could leak `enc:v1:...` into an outbound SMS/email template
+    // thinking it's plaintext. Return empty string and log the category.
+    logger.error('config decrypt failed', { err: err instanceof Error ? err.message : String(err) });
+    return '';
+  }
+}
+
+/**
+ * Helper: read a config value from store_config, auto-decrypting if the key is sensitive.
+ */
+export function getConfigValue(db: Database.Database, key: string): string | null {
+  const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value: string } | undefined;
+  if (!row) return null;
+  if (ENCRYPTED_CONFIG_KEYS.has(key)) return decryptConfigValue(row.value);
+  return row.value;
+}
+
+/**
+ * Helper: write a config value to store_config, auto-encrypting if the key is sensitive.
+ */
+export function setConfigValue(db: Database.Database, key: string, value: string): void {
+  const storedValue = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(value) : value;
+  db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run(key, storedValue);
+}

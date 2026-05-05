@@ -1,0 +1,71 @@
+area: crm-marketing
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/crm.routes.ts
+    - packages/server/src/routes/campaigns.routes.ts
+    - packages/server/src/routes/automations.routes.ts
+    - packages/server/src/routes/dunning.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/crm/customers/{id}/health-score
+    purpose: Get customer health score.
+  - method: POST
+    path: /api/v1/crm/customers/{id}/health-score/recalculate
+    purpose: Recalculate customer health.
+  - method: GET
+    path: /api/v1/crm/customers/{id}/ltv-tier
+    purpose: Get customer lifetime-value tier.
+  - method: POST
+    path: /api/v1/crm/customers/{id}/referral-code
+    purpose: Mint referral code.
+  - method: GET
+    path: /api/v1/crm/segments
+    purpose: List customer segments.
+  - method: POST
+    path: /api/v1/crm/segments
+    purpose: Create segment.
+    request:
+      name: string
+      description: string optional
+      rule: object
+      is_auto: boolean optional
+  - method: POST
+    path: /api/v1/crm/segments/{id}/refresh
+    purpose: Refresh segment membership.
+  - method: GET
+    path: /api/v1/campaigns
+    purpose: List campaigns.
+  - method: POST
+    path: /api/v1/campaigns
+    purpose: Create campaign.
+    request:
+      name: string
+      type: string
+      segment_id: number optional
+      template_id: number optional
+  - method: POST
+    path: /api/v1/campaigns/{id}/preview
+    purpose: Preview campaign.
+  - method: POST
+    path: /api/v1/campaigns/{id}/run-now
+    purpose: Run campaign immediately.
+  - method: POST
+    path: /api/v1/campaigns/review-request/trigger
+    purpose: Trigger review request for ticket.
+    request:
+      ticket_id: number
+  - method: GET
+    path: /api/v1/automations
+    purpose: List automations.
+  - method: GET
+    path: /api/v1/dunning/sequences
+    purpose: List dunning/payment reminder sequences.
+  - method: GET
+    path: /api/v1/dunning/invoices/aging
+    purpose: List invoice aging data for dunning.
+  - method: POST
+    path: /api/v1/dunning/run-now
+    purpose: Manually trigger dunning processing.

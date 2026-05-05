@@ -1,0 +1,890 @@
+package com.bizarreelectronics.crm.ui.screens.invoices
+
+import android.app.DatePickerDialog
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.draft.DraftStore
+import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
+import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateLineItemDto
+import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceCatalogLineItemPicker
+import com.bizarreelectronics.crm.util.formatAsMoney
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.Calendar
+import javax.inject.Inject
+
+// ─── UiState ─────────────────────────────────────────────────────────────────
+
+data class LineItemRow(
+    val description: String = "",
+    val qty: String = "1",
+    val unitPrice: String = "",
+)
+
+data class InvoiceCreateUiState(
+    val customerSearchQuery: String = "",
+    val customerSearchResults: List<CustomerListItem> = emptyList(),
+    val selectedCustomer: CustomerListItem? = null,
+    val showCustomerDropdown: Boolean = false,
+    val lineItems: List<LineItemRow> = listOf(LineItemRow()),
+    val notes: String = "",
+    val dueDate: String = "",
+    val sendNow: Boolean = false,        // §7.3: "Send now" checkbox — email/SMS on create
+    val loading: Boolean = false,
+    val error: String? = null,
+    val created: Long? = null,           // non-null after successful creation
+    val draftRestoredBanner: Boolean = false, // true when a draft was loaded on screen entry
+    // §7.3 Catalog picker state
+    val catalogPickerLineIndex: Int? = null,  // which line row is requesting a catalog pick; null = sheet closed
+    val catalogQuery: String = "",
+    val catalogResults: List<InventoryListItem> = emptyList(),
+    val catalogLoading: Boolean = false,
+)
+
+private fun InvoiceCreateUiState.subtotalCents(): Long =
+    lineItems.sumOf { row ->
+        val qty = row.qty.toLongOrNull() ?: 0L
+        val cents = (row.unitPrice.toDoubleOrNull() ?: 0.0)
+            .let { d -> (d * 100).toLong() }
+        qty * cents
+    }
+
+private fun InvoiceCreateUiState.isSubmittable(): Boolean =
+    selectedCustomer != null &&
+        lineItems.any { it.description.isNotBlank() && (it.unitPrice.toDoubleOrNull() ?: 0.0) > 0 }
+
+// ─── ViewModel ───────────────────────────────────────────────────────────────
+
+@HiltViewModel
+class InvoiceCreateViewModel @Inject constructor(
+    private val invoiceApi: InvoiceApi,
+    private val customerApi: CustomerApi,
+    private val inventoryApi: InventoryApi,
+    private val draftStore: DraftStore,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(InvoiceCreateUiState())
+    val state = _state.asStateFlow()
+
+    private var searchJob: Job? = null
+    private var autosaveJob: Job? = null
+    private var catalogSearchJob: Job? = null
+
+    init {
+        restoreDraftIfAvailable()
+    }
+
+    // ── Draft autosave ────────────────────────────────────────────────────────
+
+    /**
+     * Schedules a debounced draft save 2 s after the last mutation.
+     * Called by every mutating function so the latest form state is captured.
+     */
+    private fun scheduleDraftSave() {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(2_000)
+            val s = _state.value
+            // Only save if there is something meaningful to preserve.
+            if (s.selectedCustomer != null || s.lineItems.any { it.description.isNotBlank() }) {
+                runCatching {
+                    val json = buildDraftJson(s)
+                    draftStore.save(DraftStore.DraftType.INVOICE, json)
+                }
+            }
+        }
+    }
+
+    private fun buildDraftJson(s: InvoiceCreateUiState): String {
+        // Minimal JSON — not using full serialisation to avoid Gson/Moshi dependency here.
+        val customerId = s.selectedCustomer?.id ?: 0L
+        val customerName = s.selectedCustomer?.let {
+            listOfNotNull(it.firstName, it.lastName).joinToString(" ").ifBlank { it.organization ?: "" }
+        } ?: ""
+        val linesJson = s.lineItems.joinToString(",") { row ->
+            """{"desc":"${row.description.replace("\"", "\\\"")}","qty":"${row.qty}","price":"${row.unitPrice}"}"""
+        }
+        return """{"customer_id":$customerId,"customer_name":"$customerName","lines":[$linesJson],"notes":"${s.notes.replace("\"", "\\\"")}","due_date":"${s.dueDate}"}"""
+    }
+
+    private fun restoreDraftIfAvailable() {
+        viewModelScope.launch {
+            runCatching {
+                val draft = draftStore.load(DraftStore.DraftType.INVOICE) ?: return@launch
+                // Simple heuristic: if the draft has a non-empty customer_id field, show the banner.
+                if (draft.payloadJson.contains("customer_id") && !draft.payloadJson.contains("\"customer_id\":0")) {
+                    _state.value = _state.value.copy(draftRestoredBanner = true)
+                }
+                // Full parse deferred — banner informs user a draft is available; they dismiss it to load.
+            }
+        }
+    }
+
+    fun dismissDraftBanner() {
+        _state.value = _state.value.copy(draftRestoredBanner = false)
+    }
+
+    fun discardDraft() {
+        viewModelScope.launch { runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) } }
+    }
+
+    // ── Catalog line-item picker (§7.3) ──────────────────────────────────────
+
+    /** Opens the catalog picker targeting [lineIndex]. */
+    fun openCatalogPicker(lineIndex: Int) {
+        _state.value = _state.value.copy(
+            catalogPickerLineIndex = lineIndex,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+    }
+
+    fun closeCatalogPicker() {
+        catalogSearchJob?.cancel()
+        _state.value = _state.value.copy(
+            catalogPickerLineIndex = null,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+    }
+
+    /** Debounced search against GET /inventory?keyword=. */
+    fun onCatalogQueryChanged(query: String) {
+        catalogSearchJob?.cancel()
+        _state.value = _state.value.copy(catalogQuery = query, catalogResults = emptyList())
+        if (query.isBlank()) {
+            _state.value = _state.value.copy(catalogLoading = false)
+            return
+        }
+        _state.value = _state.value.copy(catalogLoading = true)
+        catalogSearchJob = viewModelScope.launch {
+            delay(300)
+            runCatching {
+                inventoryApi.getItems(mapOf("keyword" to query, "limit" to "20"))
+            }.onSuccess { resp ->
+                _state.value = _state.value.copy(
+                    catalogResults = resp.data?.items ?: emptyList(),
+                    catalogLoading = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    catalogResults = emptyList(),
+                    catalogLoading = false,
+                )
+            }
+        }
+    }
+
+    /**
+     * Applies the selected inventory item to the line at [catalogPickerLineIndex],
+     * then closes the picker.
+     */
+    fun onCatalogItemSelected(item: InventoryListItem) {
+        val idx = _state.value.catalogPickerLineIndex ?: return
+        val name = item.name ?: item.sku ?: ""
+        val price = item.price ?: item.costPrice ?: 0.0
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                if (i == idx) {
+                    row.copy(
+                        description = name,
+                        unitPrice = if (price > 0) "%.2f".format(price) else row.unitPrice,
+                    )
+                } else row
+            },
+            catalogPickerLineIndex = null,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+        scheduleDraftSave()
+    }
+
+    fun onCustomerQueryChanged(query: String) {
+        _state.value = _state.value.copy(
+            customerSearchQuery = query,
+            selectedCustomer = null,
+            showCustomerDropdown = query.isNotBlank(),
+        )
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _state.value = _state.value.copy(customerSearchResults = emptyList())
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(300)
+            runCatching { customerApi.searchCustomers(query) }
+                .onSuccess { resp ->
+                    _state.value = _state.value.copy(
+                        customerSearchResults = resp.data ?: emptyList(),
+                        showCustomerDropdown = true,
+                    )
+                }
+                .onFailure {
+                    _state.value = _state.value.copy(customerSearchResults = emptyList())
+                }
+        }
+    }
+
+    fun onCustomerSelected(customer: CustomerListItem) {
+        _state.value = _state.value.copy(
+            selectedCustomer = customer,
+            customerSearchQuery = listOfNotNull(customer.firstName, customer.lastName)
+                .joinToString(" ").ifBlank { customer.organization ?: "" },
+            showCustomerDropdown = false,
+            customerSearchResults = emptyList(),
+        )
+        scheduleDraftSave()
+    }
+
+    fun onDismissDropdown() {
+        _state.value = _state.value.copy(showCustomerDropdown = false)
+    }
+
+    // ── Line items ────────────────────────────────────────────────────────────
+
+    fun onLineDescriptionChanged(index: Int, value: String) {
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                if (i == index) row.copy(description = value) else row
+            },
+        )
+        scheduleDraftSave()
+    }
+
+    fun onLineQtyChanged(index: Int, value: String) {
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                if (i == index) row.copy(qty = value) else row
+            },
+        )
+        scheduleDraftSave()
+    }
+
+    fun onLineUnitPriceChanged(index: Int, value: String) {
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                if (i == index) row.copy(unitPrice = value) else row
+            },
+        )
+        scheduleDraftSave()
+    }
+
+    fun addLineItem() {
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems + LineItemRow(),
+        )
+        scheduleDraftSave()
+    }
+
+    fun removeLineItem(index: Int) {
+        val updated = _state.value.lineItems.toMutableList().also { it.removeAt(index) }
+        _state.value = _state.value.copy(lineItems = updated.ifEmpty { listOf(LineItemRow()) })
+        scheduleDraftSave()
+    }
+
+    // ── Other fields ─────────────────────────────────────────────────────────
+
+    fun onNotesChanged(value: String) {
+        _state.value = _state.value.copy(notes = value)
+        scheduleDraftSave()
+    }
+
+    fun onDueDateChanged(value: String) {
+        _state.value = _state.value.copy(dueDate = value)
+        scheduleDraftSave()
+    }
+
+    /** §7.3: "Send now" — email/SMS the invoice immediately on create. */
+    fun onSendNowChanged(sendNow: Boolean) {
+        _state.value = _state.value.copy(sendNow = sendNow)
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(error = null)
+    }
+
+    // ── Submit ────────────────────────────────────────────────────────────────
+
+    fun createInvoice() {
+        val s = _state.value
+        if (!s.isSubmittable()) return
+        val customerId = s.selectedCustomer?.id ?: return
+
+        val lineItemDtos = s.lineItems
+            .filter { it.description.isNotBlank() }
+            .map { row ->
+                CreateLineItemDto(
+                    name = row.description,
+                    description = row.description,
+                    quantity = row.qty.toIntOrNull() ?: 1,
+                    unitPrice = row.unitPrice.toDoubleOrNull() ?: 0.0,
+                )
+            }
+
+        _state.value = _state.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            runCatching {
+                invoiceApi.createInvoice(
+                    CreateInvoiceRequest(
+                        customerId = customerId,
+                        lineItems = lineItemDtos,
+                        notes = s.notes.ifBlank { null },
+                        dueDate = s.dueDate.ifBlank { null },
+                    ),
+                )
+            }
+                .onSuccess { resp ->
+                    if (resp.success && resp.data != null) {
+                        // Draft successfully created — discard the autosave.
+                        runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) }
+                        _state.value = _state.value.copy(
+                            loading = false,
+                            created = resp.data.invoice.id,
+                        )
+                    } else {
+                        _state.value = _state.value.copy(
+                            loading = false,
+                            error = resp.message ?: "Failed to create invoice",
+                        )
+                    }
+                }
+                .onFailure { ex ->
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        error = ex.message ?: "Network error — please try again",
+                    )
+                }
+        }
+    }
+}
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InvoiceCreateScreen(
+    onBack: () -> Unit,
+    onCreated: (Long) -> Unit,
+    viewModel: InvoiceCreateViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Navigate out once creation succeeds
+    LaunchedEffect(state.created) {
+        state.created?.let { id ->
+            snackbarHostState.showSnackbar(
+                if (state.sendNow) "Invoice created — send via SMS or Email from the detail screen." else "Invoice created successfully",
+            )
+            onCreated(id)
+        }
+    }
+
+    // Show errors in snackbar
+    LaunchedEffect(state.error) {
+        state.error?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearError()
+        }
+    }
+
+    // §7.3 catalog picker sheet
+    if (state.catalogPickerLineIndex != null) {
+        InvoiceCatalogLineItemPicker(
+            query = state.catalogQuery,
+            results = state.catalogResults,
+            isLoading = state.catalogLoading,
+            onQueryChanged = viewModel::onCatalogQueryChanged,
+            onItemSelected = viewModel::onCatalogItemSelected,
+            onDismiss = viewModel::closeCatalogPicker,
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            BrandTopAppBar(
+                title = "New Invoice",
+                navigationIcon = {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics { contentDescription = "Navigate back" },
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // ── Customer picker ──────────────────────────────────────────────
+            item {
+                CustomerPickerSection(
+                    query = state.customerSearchQuery,
+                    results = state.customerSearchResults,
+                    selectedCustomer = state.selectedCustomer,
+                    showDropdown = state.showCustomerDropdown,
+                    onQueryChanged = viewModel::onCustomerQueryChanged,
+                    onCustomerSelected = viewModel::onCustomerSelected,
+                    onDismiss = viewModel::onDismissDropdown,
+                )
+            }
+
+            // ── Line items ───────────────────────────────────────────────────
+            item {
+                Text(
+                    "Line Items",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            itemsIndexed(state.lineItems, key = { index, _ -> index }) { index, row ->
+                LineItemRowCard(
+                    row = row,
+                    index = index,
+                    canDelete = state.lineItems.size > 1,
+                    onDescriptionChanged = { viewModel.onLineDescriptionChanged(index, it) },
+                    onQtyChanged = { viewModel.onLineQtyChanged(index, it) },
+                    onUnitPriceChanged = { viewModel.onLineUnitPriceChanged(index, it) },
+                    onDelete = { viewModel.removeLineItem(index) },
+                    onOpenCatalogPicker = { viewModel.openCatalogPicker(index) },
+                )
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = viewModel::addLineItem,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Add line item" },
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add line")
+                }
+            }
+
+            // ── Notes ────────────────────────────────────────────────────────
+            item {
+                OutlinedTextField(
+                    value = state.notes,
+                    onValueChange = viewModel::onNotesChanged,
+                    label = { Text("Notes (optional)") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Invoice notes" },
+                    minLines = 2,
+                    maxLines = 5,
+                )
+            }
+
+            // ── Due date ─────────────────────────────────────────────────────
+            item {
+                DueDateField(
+                    dueDate = state.dueDate,
+                    onDueDateChanged = viewModel::onDueDateChanged,
+                )
+            }
+
+            // ── Totals ───────────────────────────────────────────────────────
+            item {
+                InvoiceTotalsFooter(subtotalCents = state.subtotalCents())
+            }
+
+            // ── Draft-restored banner ─────────────────────────────────────
+            if (state.draftRestoredBanner) {
+                item {
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "A draft was saved from your last session.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { viewModel.dismissDraftBanner() }) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Send now checkbox ─────────────────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Send invoice to customer immediately after creation" },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = state.sendNow,
+                        onCheckedChange = { viewModel.onSendNowChanged(it) },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Send to customer now", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "You will be taken to the detail screen to choose SMS or email.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            // ── Submit ───────────────────────────────────────────────────────
+            item {
+                Button(
+                    onClick = viewModel::createInvoice,
+                    enabled = state.isSubmittable() && !state.loading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .semantics { contentDescription = "Create invoice" },
+                ) {
+                    if (state.loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Text("Create Invoice", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Customer Picker ─────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomerPickerSection(
+    query: String,
+    results: List<CustomerListItem>,
+    selectedCustomer: CustomerListItem?,
+    showDropdown: Boolean,
+    onQueryChanged: (String) -> Unit,
+    onCustomerSelected: (CustomerListItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Customer",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        ExposedDropdownMenuBox(
+            expanded = showDropdown && results.isNotEmpty(),
+            onExpandedChange = { if (!it) onDismiss() },
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChanged,
+                label = { Text("Search customer") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+                    .semantics { contentDescription = "Search for customer" },
+                singleLine = true,
+                isError = selectedCustomer == null && query.isNotBlank() && results.isEmpty(),
+                supportingText = if (selectedCustomer != null) {
+                    {
+                        Text(
+                            "Selected: ${selectedCustomer.email ?: selectedCustomer.phone ?: ""}",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                } else null,
+            )
+
+            if (results.isNotEmpty()) {
+                ExposedDropdownMenu(
+                    expanded = showDropdown,
+                    onDismissRequest = onDismiss,
+                ) {
+                    results.forEach { customer ->
+                        val displayName = listOfNotNull(customer.firstName, customer.lastName)
+                            .joinToString(" ").ifBlank { customer.organization ?: "Unknown" }
+                        val subtitle = customer.email ?: customer.phone ?: ""
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(displayName, style = MaterialTheme.typography.bodyMedium)
+                                    if (subtitle.isNotBlank()) {
+                                        Text(
+                                            subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = { onCustomerSelected(customer) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Select customer $displayName"
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Line Item Row ────────────────────────────────────────────────────────────
+
+@Composable
+private fun LineItemRowCard(
+    row: LineItemRow,
+    index: Int,
+    canDelete: Boolean,
+    onDescriptionChanged: (String) -> Unit,
+    onQtyChanged: (String) -> Unit,
+    onUnitPriceChanged: (String) -> Unit,
+    onDelete: () -> Unit,
+    onOpenCatalogPicker: () -> Unit,
+) {
+    val rowLabel = "Line item ${index + 1}"
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = rowLabel },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    rowLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                // §7.3 Catalog picker button
+                IconButton(
+                    onClick = onOpenCatalogPicker,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Search inventory catalog for $rowLabel"
+                    },
+                ) {
+                    Icon(
+                        Icons.Default.Inventory2,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (canDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Remove $rowLabel"
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = row.description,
+                onValueChange = onDescriptionChanged,
+                label = { Text("Description") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Description for $rowLabel" },
+                singleLine = true,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = row.qty,
+                    onValueChange = onQtyChanged,
+                    label = { Text("Qty") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Quantity for $rowLabel" },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                OutlinedTextField(
+                    value = row.unitPrice,
+                    onValueChange = onUnitPriceChanged,
+                    label = { Text("Unit price") },
+                    prefix = { Text("$") },
+                    modifier = Modifier
+                        .weight(2f)
+                        .semantics { contentDescription = "Unit price for $rowLabel" },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+            }
+        }
+    }
+}
+
+// ─── Due Date Field ───────────────────────────────────────────────────────────
+
+@Composable
+private fun DueDateField(
+    dueDate: String,
+    onDueDateChanged: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val calendar = remember { Calendar.getInstance() }
+
+    OutlinedTextField(
+        value = dueDate,
+        onValueChange = {},
+        label = { Text("Due date (optional)") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Select due date" },
+        readOnly = true,
+        trailingIcon = {
+            IconButton(
+                onClick = {
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, day ->
+                            val m = (month + 1).toString().padStart(2, '0')
+                            val d = day.toString().padStart(2, '0')
+                            onDueDateChanged("$year-$m-$d")
+                        },
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH),
+                        calendar.get(Calendar.DAY_OF_MONTH),
+                    ).show()
+                },
+                modifier = Modifier.semantics { contentDescription = "Open date picker" },
+            ) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = null)
+            }
+        },
+    )
+}
+
+// ─── Totals Footer ────────────────────────────────────────────────────────────
+
+@Composable
+private fun InvoiceTotalsFooter(subtotalCents: Long) {
+    // Tax calc is deferred — wave 7 scope is 0 tax.
+    val taxCents = 0L
+    val totalCents = subtotalCents + taxCents
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription = "Invoice totals: subtotal ${subtotalCents.formatAsMoney()}, " +
+                    "tax ${taxCents.formatAsMoney()}, total ${totalCents.formatAsMoney()}"
+            },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            TotalsRow("Subtotal", subtotalCents.formatAsMoney())
+            TotalsRow("Tax", taxCents.formatAsMoney())
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            TotalsRow(
+                label = "Total",
+                value = totalCents.formatAsMoney(),
+                bold = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TotalsRow(label: String, value: String, bold: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            label,
+            style = if (bold) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            style = if (bold) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            color = if (bold) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

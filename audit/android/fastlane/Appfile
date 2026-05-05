@@ -1,0 +1,7 @@
+# §33.11 — Fastlane Appfile: package name + Play Store credentials.
+#
+# PLAY_STORE_JSON_KEY_PATH or SUPPLY_JSON_KEY_DATA must be set in the environment
+# (see Fastfile header for full setup instructions).
+
+json_key_file(ENV["PLAY_STORE_JSON_KEY_PATH"] || "")
+package_name("com.bizarreelectronics.crm")

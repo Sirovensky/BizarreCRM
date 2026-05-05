@@ -1,0 +1,4159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, initial-scale=0.8">
+<title>Bizarre POS — iPad mockups (Liquid Glass, cream)</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     BIZARRE POS — iPad mockups
+     Built from docs/pos-redesign-plan.md §4 + 7 parallel research agents.
+     iPadOS native patterns (NOT a phone port, NOT a Mac port):
+       • Custom 64pt icon-only rail sidebar (no native SwiftUI rail mode)
+       • Persistent cart column right (420pt)
+       • Items area middle — NavigationSplitView(columnVisibility: .detailOnly)
+         to suppress default sidebar
+       • .inspector(isPresented:) for line-edit + device picker
+       • Side-panel tender (Shopify POS v11 idiom) — cart never hidden
+       • Scan primary in .toolbar(.primaryAction); Hold/Clear/Discount
+         auto-collapse into .secondaryAction ⋯ menu
+       • NO drag-drop catalog→cart (no production POS ships it; retail
+         reasons: gloves, speed)
+       • Context menus + preview on cart rows + customer card
+       • Keyboard shortcuts surfaced via Commands
+       • Post-sale: cart column collapses 420→0px, receipt expands to fill
+     ═════════════════════════════════════════════════════════════════════ */
+  :root {
+    --bg-deep: #080706;
+    --bg: #0F0E0C;
+    --surface-solid: #161513;
+    --surface-elev: #1E1C1A;
+    --surface-glass: rgba(28, 25, 22, 0.48);
+    --outline: rgba(255, 250, 240, 0.08);
+    --outline-bright: rgba(255, 250, 240, 0.14);
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --primary-soft: rgba(253, 238, 208, 0.14);
+    --on-primary: #2b1400;
+    --on: #f2eef9;
+    --muted: #a8a4a0;
+    --muted-2: #7e7a76;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.06), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.03), transparent 60%),
+      var(--bg-deep);
+    color: var(--on);
+    font-family: var(--font-text);
+    font-size: 13.5px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 32px 16px 6px; margin: 0;
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #d4cfc8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: var(--muted);
+    padding: 0 24px 16px; font-size: 14px; line-height: 1.55;
+    max-width: 920px; margin: 0 auto;
+  }
+  .intro code {
+    background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 12px; color: var(--primary);
+  }
+  .section-label {
+    text-align: center; color: var(--muted-2);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 28px 16px 10px;
+  }
+  .frame-caption {
+    text-align: center; color: var(--muted);
+    font-size: 12.5px; padding: 4px 24px 12px;
+    letter-spacing: 0.02em; max-width: 900px; margin: 0 auto;
+  }
+  .frame-caption code {
+    background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--primary);
+  }
+  .stage {
+    display: flex; flex-direction: column; gap: 44px;
+    padding: 12px 24px 56px;
+    align-items: center;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     iPad Pro 11" landscape frame (1194 × 834)
+     ───────────────────────────────────────────────────────────── */
+  .ipad {
+    position: relative;
+    width: 1194px; height: 834px;
+    background: var(--bg);
+    border: 12px solid #0a080d;
+    border-radius: 40px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 40px 100px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.04);
+  }
+  .ipad::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 8% -5%, rgba(253,238,208,0.06), transparent 55%),
+      radial-gradient(ellipse at 105% 110%, rgba(253,238,208,0.03), transparent 55%);
+    pointer-events: none;
+  }
+  .cam {
+    position: absolute;
+    top: -2px; left: 50%; transform: translate(-50%, -50%);
+    width: 9px; height: 9px; background: #050308; border-radius: 50%;
+    z-index: 100;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  }
+
+  .ipad-body {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 64px 1fr 420px;
+    grid-template-rows: 60px 1fr;
+    grid-template-areas:
+      "rail topbar topbar"
+      "rail items cart";
+    position: relative; overflow: hidden;
+  }
+  /* Cart-collapsed variant: 420 → 0px */
+  .ipad-body.cart-collapsed {
+    grid-template-columns: 64px 1fr 0px;
+  }
+  /* Inspector variant: cart 420 + inspector 360.
+     When inspector is active we treat the items area as the "one-level-back"
+     context and the cart as "adjacent-peer" context. Items get a stronger
+     Liquid-Glass blur + dim so the inspector visually owns the foreground;
+     cart dims slightly but stays readable because it's the referent being
+     edited. Pattern matches iOS 26 sheet/inspector stacking. */
+  .ipad-body.has-inspector {
+    grid-template-columns: 64px 1fr 420px 360px;
+    grid-template-areas:
+      "rail topbar topbar topbar"
+      "rail items cart inspector";
+  }
+  .ipad-body.has-inspector .items {
+    filter: blur(8px) saturate(0.75);
+    opacity: 0.42;
+    pointer-events: none;
+    transition: filter 180ms ease-out, opacity 180ms ease-out;
+  }
+  .ipad-body.has-inspector .items::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(12,11,9,0.35), rgba(12,11,9,0.55));
+    pointer-events: none;
+  }
+  .ipad-body.has-inspector .cart {
+    filter: blur(3px) saturate(0.8);
+    opacity: 0.65;
+    pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Rail sidebar — custom 64pt icon-only column (no native SwiftUI)
+     ───────────────────────────────────────────────────────────── */
+  .rail {
+    grid-area: rail;
+    background: rgba(20,18,15,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-right: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 12px 0 14px;
+    gap: 4px;
+    position: relative;
+  }
+  .rail::before {
+    content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.08) 80%, transparent);
+    pointer-events: none;
+  }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 12px;
+    background: linear-gradient(140deg, var(--primary-bright), var(--primary) 60%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.22), 0 6px 14px rgba(253,238,208,0.22);
+    color: var(--on-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .rail hr {
+    width: 32px; border: 0; border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 6px 0 2px;
+  }
+  .rail-item {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--muted);
+    position: relative;
+  }
+  .rail-item.active {
+    background: rgba(253,238,208,0.14);
+    color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .rail-item .dot {
+    position: absolute; top: 7px; right: 7px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 2px rgba(14,12,10,0.9);
+  }
+  .rail-spacer { flex: 1; }
+  .rail-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Topbar — translucent Liquid Glass nav chrome
+     ───────────────────────────────────────────────────────────── */
+  .topbar {
+    grid-area: topbar;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px;
+    background: rgba(20,18,15,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .topbar .t-title { font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
+  .topbar .t-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .topbar .t-left { display: flex; align-items: center; gap: 14px; }
+  .search {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    min-width: 420px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.09);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    font-size: 13px; color: var(--muted);
+  }
+  .search .s-kbd {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 2px 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+  }
+  .toolbar-row { display: flex; gap: 8px; align-items: center; }
+  .tb-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .tb-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 20px rgba(253,238,208,0.25);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .chip.success { background: rgba(52,196,126,0.14); border-color: rgba(52,196,126,0.38); color: var(--success); }
+  .chip.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+  .chip.warning { background: rgba(232,163,61,0.14); border-color: rgba(232,163,61,0.38); color: var(--warning); }
+
+  /* ─────────────────────────────────────────────────────────────
+     Items area (catalog + filters)
+     ───────────────────────────────────────────────────────────── */
+  .items {
+    grid-area: items;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: rgba(14, 12, 10, 0.4);
+  }
+  .items-filters {
+    display: flex; gap: 8px;
+    padding: 14px 20px 10px;
+    overflow-x: auto;
+  }
+  .items-filters::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    flex-shrink: 0;
+    padding: 7px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .filter-pill.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 6px 16px rgba(253,238,208,0.22);
+  }
+
+  .catalog {
+    flex: 1; overflow-y: auto;
+    padding: 8px 20px 20px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    align-content: start;
+  }
+  .catalog.wide { grid-template-columns: repeat(5, 1fr); }
+  .catalog::-webkit-scrollbar { display: none; }
+  .tile {
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 132px;
+    position: relative;
+  }
+  .tile:hover { border-color: rgba(253,238,208,0.28); }
+  .tile .t-icon { font-size: 22px; }
+  .tile .t-name { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+  .tile .t-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: auto;
+  }
+  .tile .t-price {
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+  .tile .t-stock { font-size: 10.5px; color: var(--success); }
+  .tile .t-stock.low { color: var(--warning); }
+  .tile .t-badge {
+    position: absolute; top: 9px; right: 9px;
+    background: var(--primary); color: var(--on-primary);
+    font-size: 10px; font-weight: 800;
+    padding: 3px 7px; border-radius: 99px;
+  }
+
+  /* Smart grid hero tile — dynamic (loyalty, ready-pickup, etc.) */
+  .smart-tile {
+    background:
+      linear-gradient(180deg, rgba(52,196,126,0.14), rgba(52,196,126,0.02)),
+      var(--surface-solid);
+    border: 1.5px solid rgba(52,196,126,0.45);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex; align-items: center; gap: 12px;
+    grid-column: span 2;
+    min-height: 90px;
+  }
+  .smart-tile.loyalty {
+    background:
+      linear-gradient(180deg, rgba(77,184,201,0.14), rgba(77,184,201,0.02)),
+      var(--surface-solid);
+    border-color: rgba(77,184,201,0.45);
+  }
+  .smart-tile .st-ico {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 900;
+    box-shadow: 0 6px 18px rgba(52,196,126,0.32);
+    flex-shrink: 0;
+  }
+  .smart-tile.loyalty .st-ico {
+    background: linear-gradient(180deg, #6ed4e3, #4db8c9);
+    color: #002d35;
+    box-shadow: 0 6px 18px rgba(77,184,201,0.3);
+  }
+  .smart-tile .st-name { font-size: 14px; font-weight: 700; }
+  .smart-tile .st-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  /* Home path picker (cold POS, 2 rows) */
+  .path-hero {
+    padding: 32px 32px 12px;
+    display: flex; justify-content: space-between; align-items: end;
+  }
+  .path-hero h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.015em; }
+  .path-hero .phm { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .path-grid {
+    padding: 10px 32px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .path-tile {
+    padding: 24px;
+    border-radius: 20px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; gap: 16px; align-items: center;
+    min-height: 110px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  }
+  .path-tile.primary {
+    border-color: rgba(253,238,208,0.5);
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.08), transparent 80%),
+      var(--surface-solid);
+    box-shadow: 0 12px 32px rgba(253,238,208,0.12);
+  }
+  .path-tile .pt-ico {
+    width: 58px; height: 58px; border-radius: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; flex-shrink: 0;
+  }
+  .path-tile.primary .pt-ico {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 22px rgba(253,238,208,0.3);
+  }
+  .path-tile .pt-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .path-tile .pt-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .path-tile .pt-chev {
+    color: var(--muted); font-size: 22px; font-weight: 300;
+    margin-left: auto;
+  }
+  .path-tile.primary .pt-chev { color: var(--primary); }
+
+  .sect-label {
+    color: var(--muted-2);
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 32px 4px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Cart column (right)
+     ───────────────────────────────────────────────────────────── */
+  .cart {
+    grid-area: cart;
+    background: rgba(20,18,15,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-left: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .cart-head {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; gap: 12px; align-items: center;
+  }
+  .cart-head .avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+  }
+  .cart-head .avatar.empty {
+    background: linear-gradient(160deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+    color: var(--muted); font-size: 20px; font-weight: 400;
+  }
+  .cart-head .ch-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .cart-head .ch-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .cart-body {
+    flex: 1; overflow-y: auto;
+    padding: 6px 0;
+  }
+  .cart-body::-webkit-scrollbar { display: none; }
+  .cart-row {
+    display: flex; gap: 12px; align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-row.editing {
+    background: rgba(253,238,208,0.06);
+    border-left: 3px solid var(--primary);
+  }
+  .cart-row .ci {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .cart-row .cn { font-size: 13.5px; font-weight: 600; }
+  .cart-row .cs { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .cart-row .cp {
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+
+  .cart-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 20px; gap: 10px;
+  }
+  .cart-empty .ce-big { font-size: 52px; opacity: 0.3; }
+  .cart-empty .ce-msg { font-size: 13px; color: var(--muted); text-align: center; max-width: 280px; line-height: 1.55; }
+
+  .totals {
+    padding: 14px 18px 6px;
+    display: flex; flex-direction: column; gap: 3px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .trow {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .ttotal {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 8px 0 4px;
+  }
+  .ttotal .tl {
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .ttotal .ta {
+    font-family: var(--font-display);
+    font-size: 32px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .tender-btn {
+    margin: 4px 18px 18px;
+    padding: 17px;
+    border-radius: 18px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.42), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 1px solid rgba(255,255,255,0.28);
+    font-weight: 800; font-size: 15px;
+    letter-spacing: -0.01em;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
+    min-height: 56px;
+  }
+  .tender-btn .tb-amount {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .tender-btn[disabled], .tender-btn.disabled { opacity: 0.42; box-shadow: none; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Inspector (right-most) — line-edit / device-pick
+     ───────────────────────────────────────────────────────────── */
+  .inspector {
+    grid-area: inspector;
+    background: rgba(26,22,18,0.85);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: inset 1px 0 0 rgba(255,255,255,0.05);
+  }
+  .inspector-head {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .inspector-head .ih-title { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .inspector-head .ih-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .inspector-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--muted); font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .inspector-body {
+    flex: 1; overflow-y: auto;
+    padding: 12px 0;
+  }
+  .inspector-body::-webkit-scrollbar { display: none; }
+  .inspector-row {
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .inspector-row .ir-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .inspector-row .ir-val { font-size: 14px; font-weight: 600; margin-top: 4px; }
+  .inspector-foot {
+    padding: 14px 18px 18px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    display: flex; gap: 10px;
+  }
+  .insp-btn {
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 13px; font-weight: 700;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--on);
+  }
+  .insp-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary); border-color: rgba(255,255,255,0.25);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    flex: 2;
+  }
+  .insp-btn.destructive {
+    background: rgba(226,82,108,0.12); color: var(--error);
+    border-color: rgba(226,82,108,0.35);
+    flex: 1;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Stepper
+     ───────────────────────────────────────────────────────────── */
+  .stepper {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .stepper button {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--on); font-size: 17px; font-weight: 700;
+  }
+  .stepper button.plus {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(253,238,208,0.22);
+  }
+  .stepper .val {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 24px; text-align: center;
+  }
+
+  /* Device picker rows (inspector content) */
+  .device-row {
+    display: flex; gap: 14px; align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .device-row.selected {
+    background: rgba(253,238,208,0.08);
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+  .device-row .di {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Side-panel tender — replaces items area, keeps cart visible
+     ───────────────────────────────────────────────────────────── */
+  .tender-panel {
+    grid-area: items;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: rgba(14,12,10,0.4);
+  }
+  .tender-hero {
+    padding: 18px 24px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .tender-hero .th-title { font-size: 16px; font-weight: 700; }
+  .tender-hero .th-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tender-hero .th-amount {
+    font-family: var(--font-display);
+    font-size: 34px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .tender-methods {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    padding: 10px 24px;
+  }
+  .method {
+    position: relative;
+    padding: 22px 14px 20px;
+    border-radius: 18px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025));
+    border: 1px solid rgba(255,255,255,0.11);
+    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    text-align: center;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.14),
+      inset 0 -1px 0 rgba(0,0,0,0.12),
+      0 10px 24px rgba(0,0,0,0.22);
+    overflow: hidden;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .method::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 45%, rgba(253,238,208,0.12) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .method.selected {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.55), transparent 65%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      inset 0 -2px 0 rgba(43,20,0,0.12),
+      0 6px 16px rgba(253,238,208,0.10),
+      0 0 0 1px rgba(253,238,208,0.40);
+  }
+  .method.selected::before { background: linear-gradient(140deg, rgba(255,255,255,0.60), rgba(253,238,208,0.30) 50%, rgba(255,255,255,0.40) 100%); }
+  /* Cream halo bloom behind selected — dimmed */
+  .method.selected::after {
+    content: ""; position: absolute; inset: -10px; border-radius: 28px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.08), transparent 70%);
+    pointer-events: none; z-index: -1;
+  }
+  .method .m-ico { font-size: 30px; margin-bottom: 7px; }
+  .method.selected .m-ico { color: var(--on-primary); }
+  .method .m-name { font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em; }
+  .method.selected .m-name { font-weight: 900; }
+  .method .m-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .method.selected .m-sub { color: rgba(43,20,0,0.72); }
+
+  .cash-panel-big {
+    margin: 14px 24px;
+    padding: 24px 28px;
+    border-radius: 20px;
+    background: rgba(32,29,26,0.65);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.13);
+    display: flex; justify-content: space-between; align-items: baseline;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.16),
+      0 12px 30px rgba(0,0,0,0.32);
+  }
+  .cash-panel-big::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.24), rgba(255,255,255,0.04) 40%, rgba(253,238,208,0.16) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .cash-panel-big::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.09), transparent);
+    pointer-events: none;
+  }
+  .cp-col { position: relative; z-index: 2; }
+  .cp-col .cp-label {
+    font-size: 12px; color: var(--muted);
+    letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+  }
+  .cp-col .cp-amount {
+    font-family: var(--font-display);
+    font-size: 52px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-top: 5px;
+  }
+  .cp-col.change .cp-amount { color: var(--success); font-size: 38px; }
+
+  .quick-amounts {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    padding: 8px 24px;
+  }
+  .quick-amount {
+    padding: 12px 6px;
+    border-radius: 99px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.11), transparent 65%),
+      rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.11);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09);
+  }
+  .quick-amount.selected {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.16), transparent 65%),
+      rgba(253,238,208,0.06);
+    border-color: rgba(253,238,208,0.40);
+    color: var(--primary);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      0 4px 14px rgba(253,238,208,0.07);
+  }
+
+  .numpad {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+    padding: 8px 24px 16px;
+  }
+  .numkey {
+    min-height: 54px;
+    padding: 14px;
+    border-radius: 14px;
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.05), transparent 60%),
+      rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.13);
+    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    color: var(--on);
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.18),
+      inset 0 -1px 0 rgba(0,0,0,0.16),
+      0 4px 10px rgba(0,0,0,0.18);
+    text-shadow: 0 0 16px rgba(253,238,208,0.10);
+  }
+  .numkey::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 50%);
+    pointer-events: none;
+  }
+  .numkey:active {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.20), transparent 60%),
+      rgba(253,238,208,0.08);
+    border-color: rgba(253,238,208,0.32);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      0 0 0 2px rgba(253,238,208,0.14);
+    color: var(--primary);
+  }
+  .numkey.backspace { color: var(--error); font-family: var(--font-text); font-size: 18px; }
+  .numkey.dot { color: var(--muted); }
+
+  .tender-footer {
+    padding: 0 24px 18px;
+    display: flex; gap: 10px;
+  }
+  .tender-footer .tf-aux {
+    flex: 1;
+    padding: 13px;
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.08), transparent 65%),
+      rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.11);
+    font-size: 13px; font-weight: 600;
+    color: var(--on);
+    text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09);
+  }
+  .tender-footer .tf-primary {
+    flex: 2;
+    padding: 13px;
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.42), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    font-size: 14px; font-weight: 800;
+    letter-spacing: -0.01em;
+    border: 1px solid rgba(255,255,255,0.28);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tender-footer .tf-primary .tb-amount {
+    font-family: var(--font-display);
+    font-size: 19px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Receipt (cart collapsed) — full items area
+     ───────────────────────────────────────────────────────────── */
+  .receipt-stage {
+    grid-area: items;
+    padding: 28px 40px 24px;
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 28px;
+    overflow: auto;
+  }
+  .receipt-stage::-webkit-scrollbar { display: none; }
+  .receipt-hero {
+    padding: 32px 32px 24px;
+    border-radius: 22px;
+    background: rgba(32,28,24,0.62);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.13);
+    text-align: center;
+    position: relative; overflow: hidden;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.14),
+      0 12px 32px rgba(0,0,0,0.30);
+  }
+  .receipt-hero::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.20), rgba(255,255,255,0.04) 40%, rgba(253,238,208,0.12) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .receipt-hero::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent);
+    pointer-events: none;
+  }
+  /* Success green radial glow behind checkmark */
+  .receipt-hero .rh-glow {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    width: 160px; height: 160px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(52,196,126,0.12) 0%, transparent 70%);
+    filter: blur(12px);
+    pointer-events: none;
+  }
+  .receipt-hero .rh-check {
+    width: 80px; height: 80px; margin: 0 auto 16px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; font-weight: 900;
+    box-shadow:
+      0 16px 42px rgba(52,196,126,0.45),
+      inset 0 1.5px 0 rgba(255,255,255,0.50);
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-label {
+    font-size: 12px; font-weight: 700;
+    color: var(--success);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 6px;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-amount {
+    font-family: var(--font-display);
+    font-size: 64px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-sub {
+    font-size: 13.5px; color: var(--muted); margin-top: 8px;
+    position: relative; z-index: 2;
+  }
+
+  /* Share tiles — glassy rounded rectangles */
+  .share-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-top: 20px;
+  }
+  .share-tile {
+    position: relative;
+    padding: 18px 10px 16px;
+    border-radius: 18px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    text-align: center;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 4px 12px rgba(0,0,0,0.16);
+    overflow: hidden;
+  }
+  .share-tile::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 50%, transparent);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .share-tile.primary {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.28);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.82),
+      0 0 32px rgba(253,238,208,0.20),
+      0 8px 22px rgba(253,238,208,0.28);
+  }
+  .share-tile.primary::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.52), rgba(253,238,208,0.22) 50%, transparent);
+  }
+  .share-tile .st-ico { font-size: 26px; position: relative; z-index: 2; }
+  .share-tile .st-label { font-size: 12px; font-weight: 700; position: relative; z-index: 2; }
+
+  /* Receipt list — monospace physical receipt feel */
+  .receipt-list {
+    padding: 0;
+    border-radius: 18px;
+    background: rgba(22, 16, 30, 0.85);
+    border: 1px solid rgba(255,255,255,0.09);
+    overflow: hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 8px 24px rgba(0,0,0,0.30);
+  }
+  .receipt-list .rl-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .receipt-list .rl-head .rl-title { font-size: 14px; font-weight: 700; }
+  .receipt-list .rl-head .rl-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
+  .receipt-list .rl-body { padding: 14px 22px; }
+  .receipt-list .rl-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+    color: var(--muted);
+  }
+  .receipt-list .rl-row.total {
+    color: var(--on); font-weight: 700; font-size: 14px;
+    font-family: var(--font-mono);
+    border-top: 1px dashed rgba(255,255,255,0.18);
+    margin-top: 8px; padding-top: 10px;
+  }
+  .receipt-list .rl-foot {
+    padding: 10px 22px 14px;
+    text-align: center; font-size: 11.5px; color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  /* Loyalty celebration row */
+  .loyalty-celebration {
+    margin-top: 16px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)),
+      var(--surface-solid);
+    border: 1px solid rgba(253,238,208,0.40);
+    display: flex; gap: 14px; align-items: center;
+    box-shadow: 0 6px 20px rgba(253,238,208,0.08);
+  }
+  .loyalty-celebration .lc-star {
+    font-size: 32px;
+    filter: drop-shadow(0 0 10px rgba(253,238,208,0.28));
+  }
+  .loyalty-celebration .lc-progress {
+    height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.10);
+    margin-top: 8px;
+    position: relative; overflow: hidden;
+  }
+  .loyalty-celebration .lc-progress::after {
+    content: ""; position: absolute; top: 0; left: 0;
+    height: 100%; width: 57%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-bright));
+    border-radius: 3px;
+    box-shadow: 0 0 10px rgba(253,238,208,0.25);
+  }
+
+  .receipt-actions {
+    display: flex; gap: 10px; margin-top: 16px;
+  }
+  .receipt-actions .btn-sec {
+    flex: 1; padding: 13px;
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.07), transparent 65%),
+      rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    font-size: 13px; font-weight: 600;
+    color: var(--on);
+    text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .receipt-actions .btn-destr {
+    flex: 1; padding: 13px;
+    border-radius: 14px;
+    background: rgba(226,82,108,0.12);
+    border: 1px solid rgba(226,82,108,0.35);
+    font-size: 13px; font-weight: 600;
+    color: var(--error);
+    text-align: center;
+  }
+
+  /* Dim backdrop + popover (not used on iPad; inspector is the idiom) */
+  .dim {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    z-index: 20;
+  }
+
+  @media (max-width: 1280px) {
+    .ipad { transform: scale(0.82); transform-origin: top center; margin-bottom: -180px; }
+  }
+  @media (max-width: 980px) {
+    .ipad { transform: scale(0.62); margin-bottom: -340px; }
+  }
+
+  .meta { text-align: center; color: var(--muted); font-size: 11px; padding: 20px 16px 40px; }
+  .meta code {
+    background: rgba(255,255,255,0.04); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--primary);
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════
+     LIGHT MODE SCOPE — tokens overridden inside .light-mode wrapper.
+     Cream primary (#fdeed0) constant; semantics darkened for WCAG AA.
+     ═════════════════════════════════════════════════════════════════════ */
+  .light-mode {
+    --bg-deep:        #faf8f5;
+    --bg:             #f5f2ed;
+    --surface-solid:  #ffffff;
+    --surface-elev:   #faf7f2;
+    --surface-glass:  rgba(255, 250, 245, 0.75);
+    --outline:        rgba(30, 24, 16, 0.10);
+    --outline-bright: rgba(30, 24, 16, 0.18);
+    --on:             #1a1816;
+    --muted:          #5a5550;
+    --muted-2:        #8a847c;
+    /* Light primary flips from cream to deep warm orange —
+       cream-on-cream is invisible. Cream stays dark-mode primary. */
+    --primary:        #c2410c;
+    --primary-bright: #e2600f;
+    --primary-soft:   rgba(194, 65, 12, 0.12);
+    --on-primary:     #ffffff;
+    --success:        #1a7c4d;
+    --warning:        #a15b00;
+    --error:          #b72a3e;
+    --teal:           #0b5260;
+  }
+  .light-mode .t-price,
+  .light-mode .cr-price,
+  .light-mode .cp,
+  .light-mode .sp-total,
+  .light-mode .total-line .tl-amount,
+  .light-mode .cash-panel .cp-amount,
+  .light-mode .cash-panel-big .cp-amount,
+  .light-mode .ttotal .ta,
+  .light-mode .tender-hero .th-amount,
+  .light-mode .rh-amount { color: #7a3a00 !important; }
+  .light-mode .tender-btn,
+  .light-mode .btn,
+  .light-mode .tf-primary,
+  .light-mode .insp-btn.primary,
+  .light-mode .chip.primary,
+  .light-mode .method.selected,
+  .light-mode .quick-amount.selected,
+  .light-mode .filter-pill.active,
+  .light-mode .c-pill.active,
+  .light-mode .share-tile.primary,
+  .light-mode .tb-btn.primary,
+  .light-mode .d-btn.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: #c2410c !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 16px rgba(194,65,12,0.18) !important;
+  }
+  .light-mode .tender-btn .tb-amount,
+  .light-mode .tf-primary .tb-amount { color: #ffffff !important; }
+  .light-mode .brand-mark {
+    background: linear-gradient(140deg, #e2600f, #c2410c 60%) !important;
+    color: #ffffff !important;
+  }
+  .light-mode .rail-item.active {
+    background: rgba(194,65,12,0.14) !important;
+    color: #c2410c !important;
+  }
+  .light-mode .path-tile.primary {
+    border-color: rgba(194,65,12,0.5) !important;
+    background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid) !important;
+  }
+  .light-mode .path-tile.primary .pt-ico {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: rgba(194,65,12,0.4) !important;
+  }
+  .light-mode .t-badge {
+    background: #c2410c !important;
+    color: #ffffff !important;
+  }
+  .light-mode .ipad {
+    border-color: #c8c4be;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.90) inset, 0 0 0 1px rgba(200,196,190,0.80) inset, 0 40px 100px rgba(0,0,0,0.18), 0 0 0 1px rgba(253,238,208,0.18);
+  }
+  .light-mode .ipad::before {
+    background: radial-gradient(ellipse at 8% -5%, rgba(253,238,208,0.28), transparent 55%), radial-gradient(ellipse at 105% 110%, rgba(42,122,134,0.08), transparent 55%);
+  }
+  .light-mode .rail {
+    background: rgba(245,242,237,0.88);
+    border-right-color: rgba(30,24,16,0.08);
+  }
+  .light-mode .rail::before {
+    background: linear-gradient(180deg, transparent, rgba(30,24,16,0.06) 20%, rgba(30,24,16,0.06) 80%, transparent);
+  }
+  .light-mode .rail hr { border-top-color: rgba(30,24,16,0.08); }
+  .light-mode .rail-item { color: var(--muted); }
+  .light-mode .rail-item.active { background: rgba(253,238,208,0.30); color: #A66D1F; }
+  .light-mode .rail-item .dot { box-shadow: 0 0 0 2px #f5f2ed; }
+  .light-mode .topbar {
+    background: rgba(245,242,237,0.88);
+    border-bottom-color: rgba(30,24,16,0.08);
+  }
+  .light-mode .search { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); }
+  .light-mode .tb-btn { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.09); color: var(--on); }
+  .light-mode .tb-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.70), 0 8px 20px rgba(253,238,208,0.30);
+  }
+  .light-mode .chip { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); color: var(--on); }
+  .light-mode .chip.success { background: rgba(26,124,77,0.10); border-color: rgba(26,124,77,0.30); color: var(--success); }
+  .light-mode .chip.primary { background: var(--primary); border-color: rgba(253,238,208,0.80); color: var(--on-primary); }
+  .light-mode .chip.warning { background: rgba(161,91,0,0.10); border-color: rgba(161,91,0,0.30); color: var(--warning); }
+  .light-mode .filter-pill { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.10); }
+  .light-mode .filter-pill.active { box-shadow: inset 0 1px 0 rgba(255,255,255,0.60), 0 6px 16px rgba(253,238,208,0.28); }
+  .light-mode .items { background: rgba(245,242,237,0.55); }
+  .light-mode .ipad-body.has-inspector .items::after {
+    background: linear-gradient(180deg, rgba(240,237,232,0.4), rgba(240,237,232,0.6));
+  }
+  .light-mode .tile { background: var(--surface-solid); border-color: rgba(30,24,16,0.08); box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+  .light-mode .tile .t-price { color: #A66D1F; }
+  .light-mode .tile .t-stock { color: var(--success); }
+  .light-mode .tile .t-stock.low { color: var(--warning); }
+  .light-mode .cart {
+    background: rgba(245,242,237,0.88);
+    border-left-color: rgba(30,24,16,0.08);
+  }
+  .light-mode .cart-head { border-bottom-color: rgba(30,24,16,0.08); }
+  .light-mode .cart-row { border-bottom-color: rgba(30,24,16,0.07); }
+  .light-mode .cart-row.editing { background: rgba(253,238,208,0.15); }
+  .light-mode .cart-row .ci { background: rgba(30,24,16,0.04); border-color: rgba(30,24,16,0.09); }
+  .light-mode .cart-row .cp { color: #A66D1F; }
+  .light-mode .totals { border-top-color: rgba(30,24,16,0.08); }
+  .light-mode .trow { color: var(--muted); }
+  .light-mode .tender-btn {
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.90), 0 0 40px rgba(253,238,208,0.35), 0 14px 32px rgba(253,238,208,0.35);
+  }
+  .light-mode .path-tile { background: var(--surface-solid); border-color: rgba(30,24,16,0.09); box-shadow: 0 6px 20px rgba(0,0,0,0.07); }
+  .light-mode .path-tile.primary { border-color: rgba(253,238,208,0.60); box-shadow: 0 12px 32px rgba(253,238,208,0.22); }
+  .light-mode .path-tile .pt-ico { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); }
+  .light-mode .inspector {
+    background: rgba(250,247,242,0.96);
+    border-left-color: rgba(30,24,16,0.10);
+    box-shadow: inset -1px 0 0 rgba(255,255,255,0.80);
+  }
+  .light-mode .inspector-head { border-bottom-color: rgba(30,24,16,0.08); }
+  .light-mode .inspector-row { border-bottom-color: rgba(30,24,16,0.07); }
+  .light-mode .inspector-close { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.12); color: var(--muted); }
+  .light-mode .inspector-foot { border-top-color: rgba(30,24,16,0.08); }
+  .light-mode .insp-btn { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.12); color: var(--on); }
+  .light-mode .insp-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.70);
+  }
+  .light-mode .insp-btn.destructive { background: rgba(183,42,62,0.08); color: var(--error); border-color: rgba(183,42,62,0.28); }
+  .light-mode .stepper button { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.14); color: var(--on); }
+  .light-mode .device-row { border-bottom-color: rgba(30,24,16,0.07); }
+  .light-mode .device-row.selected { background: rgba(253,238,208,0.15); box-shadow: inset 3px 0 0 var(--primary); }
+  .light-mode .device-row .di { background: rgba(30,24,16,0.05); border-color: rgba(30,24,16,0.10); }
+  .light-mode .tender-panel { background: rgba(245,242,237,0.55); }
+  .light-mode .method {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.70);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.80), inset 0 -1px 0 rgba(30,24,16,0.05), 0 10px 24px rgba(0,0,0,0.07);
+  }
+  .light-mode .method::before { background: linear-gradient(140deg, rgba(255,255,255,0.90), rgba(255,255,255,0.30) 45%, rgba(253,238,208,0.20) 100%); }
+  .light-mode .method .m-sub { color: var(--muted); }
+  .light-mode .cash-panel-big {
+    background: rgba(255,250,245,0.88);
+    border-color: rgba(30,24,16,0.12);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.90), 0 12px 30px rgba(0,0,0,0.07);
+  }
+  .light-mode .cash-panel-big::before { background: linear-gradient(140deg, rgba(255,255,255,0.80), rgba(255,255,255,0.20) 40%, rgba(253,238,208,0.30) 100%); }
+  .light-mode .cash-panel-big::after { background: linear-gradient(180deg, rgba(255,255,255,0.50), transparent); }
+  .light-mode .cp-col.change .cp-amount { color: var(--success); }
+  .light-mode .quick-amount {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.70);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
+    color: var(--on);
+  }
+  .light-mode .quick-amount.selected {
+    background: radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.50), transparent 65%), rgba(253,238,208,0.25);
+    border-color: rgba(253,238,208,0.70);
+    color: #A66D1F;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 4px 14px rgba(253,238,208,0.25);
+  }
+  .light-mode .numkey {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.95), transparent 60%), rgba(255,255,255,0.80);
+    border-color: rgba(30,24,16,0.12);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(30,24,16,0.08), 0 4px 10px rgba(0,0,0,0.07);
+    text-shadow: none;
+    color: var(--on);
+  }
+  .light-mode .numkey::after { background: linear-gradient(180deg, rgba(255,255,255,0.40), transparent 50%); }
+  .light-mode .numkey.backspace { color: var(--error); }
+  .light-mode .numkey.dot { color: var(--muted); }
+  .light-mode .tender-footer .tf-aux {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.80), transparent 65%), rgba(255,255,255,0.65);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
+    color: var(--on);
+  }
+  .light-mode .receipt-stage { background: transparent; }
+  .light-mode .receipt-hero {
+    background: rgba(255,250,245,0.92);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.90), 0 12px 32px rgba(0,0,0,0.08);
+  }
+  .light-mode .receipt-hero::before { background: linear-gradient(140deg, rgba(255,255,255,0.80), rgba(255,255,255,0.20) 40%, rgba(253,238,208,0.20) 100%); }
+  .light-mode .receipt-hero::after { background: linear-gradient(180deg, rgba(255,255,255,0.50), transparent); }
+  .light-mode .receipt-hero .rh-label { color: var(--success); }
+  .light-mode .receipt-hero .rh-sub { color: var(--muted); }
+  .light-mode .share-tile {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.90), transparent 65%), rgba(255,255,255,0.75);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 4px 12px rgba(0,0,0,0.07);
+  }
+  .light-mode .share-tile::before { background: linear-gradient(140deg, rgba(255,255,255,0.85), rgba(255,255,255,0.20) 50%, transparent); }
+  .light-mode .receipt-list {
+    background: var(--surface-solid);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 8px 24px rgba(0,0,0,0.06);
+  }
+  .light-mode .receipt-list .rl-head { border-bottom-color: rgba(30,24,16,0.08); }
+  .light-mode .receipt-list .rl-row { color: var(--muted); }
+  .light-mode .receipt-list .rl-row.total { color: var(--on); border-top-color: rgba(30,24,16,0.18); }
+  .light-mode .loyalty-celebration {
+    background: linear-gradient(180deg, rgba(253,238,208,0.30), rgba(253,238,208,0.05)), var(--surface-solid);
+    border-color: rgba(253,238,208,0.70);
+    box-shadow: 0 6px 20px rgba(253,238,208,0.18);
+  }
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08); }
+  .light-mode .receipt-actions .btn-sec {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.80), transparent 65%), rgba(255,255,255,0.65);
+    border-color: rgba(30,24,16,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
+    color: var(--on);
+  }
+  .light-mode .receipt-actions .btn-destr { background: rgba(183,42,62,0.08); border-color: rgba(183,42,62,0.28); color: var(--error); }
+  .light-mode .section-label { color: var(--muted-2); }
+  .light-mode .frame-caption { color: #5a5550 !important; }
+  .light-mode .sect-label { color: #5a5550 !important; }
+  .light-mode .intro code { background: rgba(30,24,16,0.06); color: #A66D1F; }
+  .light-mode .frame-caption code { background: rgba(30,24,16,0.05); color: #A66D1F; }
+  .light-mode .meta { color: var(--muted); }
+  .light-mode .meta code { background: rgba(30,24,16,0.05); color: #A66D1F; }
+
+  /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
+  .light-mode h1 {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: #1a1816 !important;
+  }
+  .light-mode .intro { color: #5a5550 !important; }
+  .light-mode .path-tile .pt-name { color: #1a1816 !important; }
+  .light-mode .path-hero h2 { color: #1a1816 !important; background: none !important; -webkit-background-clip: unset !important; background-clip: unset !important; }
+  .light-mode .topbar .t-title { color: #1a1816 !important; }
+  .light-mode .cart-head .ch-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cn { color: #1a1816 !important; }
+  .light-mode .cart-row .cp { color: #A66D1F !important; }
+  .light-mode .tile .t-name { color: #1a1816 !important; }
+  .light-mode .tile .t-price { color: #A66D1F !important; }
+  .light-mode .ttotal .ta { color: #1a1816 !important; }
+  .light-mode .tender-hero .th-amount { color: #1a1816 !important; }
+  .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
+  .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
+  .light-mode .sheet-title { color: #1a1816 !important; }
+  .light-mode .inspector-head .ih-title { color: #1a1816 !important; }
+  .light-mode .inspector-row .ir-val { color: #1a1816 !important; }
+  .light-mode .smart-tile .st-name { color: #1a1816 !important; }
+  .light-mode .chip.primary { color: #2b1400 !important; }
+
+  /* ─── Option C gate — light-mode overrides ────────────────────────────── */
+  .light-mode .gate-btn-create {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.14) !important;
+    color: #1a1816 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80) !important;
+  }
+  .light-mode .gate-btn-walkin {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.20) !important;
+    color: #5a5550 !important;
+  }
+
+  /* ─── Task 2: Tender step light-mode — method tile titles ─────────────── */
+  .light-mode .method .m-name { color: #1a1816 !important; }
+  .light-mode .method .m-sub { color: #5a5550 !important; }
+  .light-mode .method.selected .m-name { color: #ffffff !important; }
+  .light-mode .method.selected .m-sub { color: rgba(255,255,255,0.80) !important; }
+  .light-mode .sp-method .mn { color: #1a1816 !important; }
+
+  /* Disabled tender-btn readable in light mode */
+  .light-mode .tender-btn[disabled],
+  .light-mode .tender-btn.disabled {
+    background: #e8e3db !important;
+    color: #5a5550 !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+  }
+
+  /* tf-aux (Add tip / Skip deposit / Split tender) */
+  .light-mode .tender-footer .tf-aux {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+
+  /* Secondary / inspector buttons */
+  .light-mode .btn.secondary,
+  .light-mode .insp-btn {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+
+  /* ─── Task 3 audit — numpad digits, tender labels, inspector rows ─────── */
+  .light-mode .numkey { color: #1a1816 !important; }
+  .light-mode .tender-hero .th-label { color: #5a5550 !important; }
+  .light-mode .tender-footer { color: #1a1816 !important; }
+  .light-mode .inspector-row .ir-label { color: #5a5550 !important; }
+  .light-mode .inspector-row .ir-val { color: #1a1816 !important; }
+
+  /* ─── Round 2: comprehensive light-mode visibility sweep ────────────── */
+
+  /* Topbar sub-text */
+  .light-mode .t-meta { color: #5a5550 !important; }
+  .light-mode .t-title { color: #1a1816 !important; }
+
+  /* Rail items (inactive) */
+  .light-mode .rail-item { color: #5a5550 !important; }
+
+  /* Cart column text */
+  .light-mode .ch-name { color: #1a1816 !important; }
+  .light-mode .ch-sub { color: #5a5550 !important; }
+  .light-mode .cn { color: #1a1816 !important; }
+  .light-mode .cs { color: #5a5550 !important; }
+  .light-mode .cp { color: #7a3a00 !important; }
+  .light-mode .trow { color: #5a5550 !important; }
+  .light-mode .ttotal .tl { color: #5a5550 !important; }
+  .light-mode .ttotal .ta { color: #1a1816 !important; }
+
+  /* Inspector body text */
+  .light-mode .ih-title { color: #1a1816 !important; }
+  .light-mode .ih-sub { color: #5a5550 !important; }
+  .light-mode .inspector-close { color: #5a5550 !important; }
+
+  /* Tender hero labels */
+  .light-mode .th-title { color: #1a1816 !important; }
+  .light-mode .th-sub { color: #5a5550 !important; }
+  .light-mode .th-amount { color: #7a3a00 !important; }
+
+  /* Receipt panel */
+  .light-mode .rh-label { color: var(--success) !important; }
+  .light-mode .rh-sub { color: #5a5550 !important; }
+  .light-mode .rh-amount { color: #1a1816 !important; }
+  .light-mode .rl-title { color: #1a1816 !important; }
+  .light-mode .rl-meta { color: #5a5550 !important; }
+  .light-mode .rl-row { color: #5a5550 !important; }
+  .light-mode .rl-row.total { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.18) !important; }
+  .light-mode .rl-foot { color: #8a847c !important; }
+
+  /* Share tiles */
+  .light-mode .share-tile .st-label { color: #1a1816 !important; }
+  .light-mode .share-tile .st-ico { font-size: 20px; }
+  .light-mode .share-tile.primary .st-label { color: #ffffff !important; }
+
+  /* Tile icon bg */
+  .light-mode .tile .t-icon { background: rgba(30,24,16,0.05) !important; }
+
+  /* Filter pill text */
+  .light-mode .filter-pill { background: rgba(30,24,16,0.04) !important; border-color: rgba(30,24,16,0.10) !important; color: #1a1816 !important; }
+  .light-mode .filter-pill.active { color: #ffffff !important; }
+
+  /* Nav sub-text and back button */
+  .light-mode .nav-sub { color: #5a5550 !important; }
+
+  /* ce-msg empty state */
+  .light-mode .ce-msg { color: #5a5550 !important; }
+
+  /* Loyalty celebration */
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08) !important; }
+
+  /* Receipt actions */
+  .light-mode .receipt-actions .btn-sec { color: #1a1816 !important; }
+
+  /* Pencil signature banner text */
+  .light-mode .pencil-banner { color: #1a1816 !important; background: rgba(11,82,96,0.08) !important; border-color: rgba(11,82,96,0.25) !important; }
+</style>
+</head>
+<body>
+
+<h1>Bizarre POS — iPad mockups</h1>
+<p class="intro">
+  iPad Pro 11" landscape · iOS 26 Liquid Glass · cream primary <code>#fdeed0</code>. Native idioms: 64pt custom icon-only rail sidebar (no native SwiftUI rail mode), persistent cart column, <code>.inspector(isPresented:)</code> for line-edit / device-pick, side-panel tender (Shopify POS v11 pattern — cart never hidden), <code>.toolbar(.primaryAction)</code> Scan + <code>.secondaryAction</code> overflow <code>⋯</code> menu. No drag-drop catalog→cart (no production POS ships it; retail reasons).
+</p>
+
+<div class="section-label">Full flow · 6 iPad screens (tender split into 4a + 4b)</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     1 — Customer gate · walk-in / existing / new · the mandatory first step
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">1 · Customer gate · the mandatory first step · items area shows 3 choices, cart column shows "no customer" card — every sale starts here</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <!-- Rail -->
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item" title="Dashboard">🏠</div>
+      <div class="rail-item" title="Tickets">🧾<span class="dot"></span></div>
+      <div class="rail-item" title="Customers">👥</div>
+      <div class="rail-item active" title="POS">🛒</div>
+      <div class="rail-item" title="Inventory">📦</div>
+      <div class="rail-item" title="SMS">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item" title="Reports">📊</div>
+      <div class="rail-item" title="Settings">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">POS · new sale</div>
+          <div class="t-meta">Register open · Pavel I. · Store #1 · $312.00 float</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search by name, phone, email, loyalty #, or scan customer card</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">● Online</span>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <!-- Items area — customer gate (Option C) -->
+    <div class="items">
+      <div class="path-hero">
+        <div>
+          <h2>Who's this sale for?</h2>
+          <div class="phm">Every sale starts with a customer. Search below, or use the fallback options.</div>
+        </div>
+      </div>
+
+      <!-- Option C: 2 fallback buttons (hero search removed — topbar search above covers it) -->
+      <div style="display: flex; flex-direction: column; align-items: center; padding: 8px 32px 24px;">
+
+        <div style="font-size: 12px; color: var(--muted-2); margin: 12px 0 10px; text-align: center;">Search above, or:</div>
+
+        <div style="display: flex; gap: 14px; width: 100%; max-width: 680px;">
+          <button class="gate-btn-create" style="
+            flex: 1; padding: 22px 20px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 18px; color: var(--on); font-size: 16px; font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.09);
+            cursor: pointer; text-align: center; letter-spacing: -0.01em;
+            min-height: 72px;
+          ">＋ Create new customer
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); margin-left: 8px; padding: 2px 6px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;">⌘⇧N</span>
+          </button>
+          <button class="gate-btn-walkin" style="
+            flex: 1; padding: 22px 20px;
+            background: rgba(255,255,255,0.03); border: 1.5px dashed rgba(255,255,255,0.18);
+            border-radius: 18px; color: var(--muted); font-size: 16px; font-weight: 700;
+            cursor: pointer; text-align: center; letter-spacing: -0.01em;
+            min-height: 72px;
+          ">🚶 Walk-in · no record</button>
+        </div>
+
+        <!-- Ready-for-pickup strip — compact row + "View all" button opens a popup list -->
+        <div style="width: 100%; max-width: 680px; margin-top: 36px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 10px;">
+            <span style="font-size: 10.5px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Ready for pickup · 3</span>
+            <button style="
+              background: transparent; border: 0;
+              color: var(--teal); font-size: 11.5px; font-weight: 700;
+              letter-spacing: 0.04em; text-transform: uppercase;
+              cursor: pointer; padding: 4px 0;
+            ">View all →</button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: rgba(52,196,126,0.07); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(52,196,126,0.2); color: var(--success); border: 1px solid rgba(52,196,126,0.35); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700;">Sarah M.</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4829 · iPhone 14 screen</div>
+              </div>
+              <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$274</div>
+            </div>
+            <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.22); border-radius: 14px; padding: 10px 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.3); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700;">Marco D.</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4831 · Samsung S23 battery</div>
+              </div>
+              <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$142</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Recent customers removed — search bar above covers that -->
+    </div>
+
+    <!-- Cart column -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar empty">+</div>
+        <div style="flex: 1;">
+          <div class="ch-name">No customer</div>
+          <div class="ch-sub">Search or pick an option on the left →</div>
+        </div>
+      </div>
+
+      <div class="cart-empty" style="padding: 40px 20px 20px; flex: 0;">
+        <div style="font-size: 40px; opacity: 0.3;">👈</div>
+        <div class="ce-msg">Every sale needs a customer attached.</div>
+      </div>
+
+      <div class="cart-body" style="flex: 1;"></div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$0.00</span></div>
+        <div class="trow"><span>Tax</span><span>$0.00</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Attach customer first</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     REPAIR TICKET PATH · 4 steps (1b–1e)
+     On iPad: repair steps slide into the RIGHT inspector column (360pt).
+     Cart column shows "Creating ticket…" placeholder.
+     Rail + topbar unchanged across all repair steps.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section-label">Repair ticket path · 4 steps · 1b → 1e</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1b — Repair 1 · Pick device · inspector slides in
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">1b · Repair — Pick device · customer attached · inspector pane slides in with saved devices + add new + scan IMEI</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾<span class="dot"></span></div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">New repair · Sarah M.</div>
+          <div class="t-meta">Step 1 of 4 — pick device</div>
+        </div>
+      </div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row">
+        <span class="chip" style="color:var(--muted);">Creating ticket…</span>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <!-- Items area — dimmed "creating ticket" placeholder -->
+    <div class="items" style="align-items:center; justify-content:center;">
+      <div style="text-align:center; opacity:0.35; padding:40px 20px;">
+        <div style="font-size:56px; margin-bottom:12px;">🧾</div>
+        <div style="font-size:14px; font-weight:600; color:var(--on);">Creating repair ticket…</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">Complete the steps in the inspector →</div>
+      </div>
+    </div>
+
+    <!-- Cart column — placeholder while ticket is being created -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">Repair ticket — in progress</div>
+        </div>
+        <span class="chip warning">Draft</span>
+      </div>
+      <div class="cart-empty">
+        <div class="ce-big">🔧</div>
+        <div class="ce-msg">Complete device pick in the inspector to start adding parts.</div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>—</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Pick device first</button>
+    </div>
+
+    <!-- Inspector pane — device picker -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Pick device</div>
+          <div class="ih-sub">Step 1 / 4 · Sarah M.</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div style="padding: 6px 0 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 12px 18px 4px;">On file · 2</div>
+        <div class="device-row selected">
+          <div class="di">📱</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700;">iPhone 14 Pro</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">IMEI 359…8821 · Space Black</div>
+            <div style="font-size:10px; color:var(--success); margin-top:2px;">Warranty until 2026-08-14</div>
+          </div>
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;">✓</div>
+        </div>
+        <div class="device-row">
+          <div class="di">⌚</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700;">Apple Watch Series 8</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Serial FH7…921 · 45mm</div>
+          </div>
+          <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
+        </div>
+        <div style="padding: 12px 18px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;">Add new</div>
+        <div class="device-row" style="border-left: 3px dashed rgba(253,238,208,0.3);">
+          <div class="di" style="background: linear-gradient(180deg,var(--primary-bright),var(--primary)); color:var(--on-primary); border-color: transparent; font-size:22px; font-weight:900;">+</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700; color:var(--primary);">Add new device</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Scan IMEI or pick make / model</div>
+          </div>
+          <button style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--on);font-size:16px;" title="Scan IMEI">📷</button>
+          <span style="color:var(--primary);font-size:16px;">›</span>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">Cancel</button>
+        <button class="insp-btn primary">Continue → issue</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1c — Repair 2 · Describe issue
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">1c · Repair — Describe issue · symptom text · device condition · quick-pick chips</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">New repair · Sarah M.</div><div class="t-meta">Step 2 of 4 — describe issue · iPhone 14 Pro</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><span class="chip" style="color:var(--muted);">Creating ticket…</span><div class="tb-btn">⋯</div></div>
+    </div>
+
+    <div class="items" style="align-items:center; justify-content:center;">
+      <div style="text-align:center; opacity:0.35; padding:40px 20px;">
+        <div style="font-size:56px; margin-bottom:12px;">🧾</div>
+        <div style="font-size:14px; font-weight:600; color:var(--on);">Creating repair ticket…</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">iPhone 14 Pro · issue description →</div>
+      </div>
+    </div>
+
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · repair draft</div></div>
+        <span class="chip warning">Draft</span>
+      </div>
+      <div class="cart-empty">
+        <div class="ce-big">🔧</div>
+        <div class="ce-msg">Parts will appear here once the quote is built in step 3.</div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>—</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Describe issue first</button>
+    </div>
+
+    <!-- Inspector pane — issue form -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Describe issue</div>
+          <div class="ih-sub">Step 2 / 4 · iPhone 14 Pro</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div class="ir-label">What's the problem?</div>
+          <div style="margin-top:8px; border:1.5px solid rgba(253,238,208,0.35); border-radius:12px; padding:10px; background:rgba(255,255,255,0.03); font-size:13px; min-height:68px; line-height:1.5;">Dropped on sidewalk. Screen flickers on calls. Battery dies fast.<span style="color:var(--primary);">|</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px;"><span style="color:var(--teal); font-size:11px;">🎤 Dictate</span><span style="color:var(--muted); font-size:11px;">87/2000</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Device condition</div>
+          <div style="margin-top:8px; background:var(--surface-solid); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600;">Poor — visible damage<span style="color:var(--muted);">⌄</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Quick symptoms</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(253,238,208,0.14); border:1.5px solid rgba(253,238,208,0.45); color:var(--primary); font-size:11px; font-weight:700;">Screen cracked</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Won't charge</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Water damage</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(253,238,208,0.14); border:1.5px solid rgba(253,238,208,0.45); color:var(--primary); font-size:11px; font-weight:700;">Battery</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Other</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Internal notes (tech-only)</div>
+          <div style="margin-top:8px; border:1px dashed rgba(232,163,61,0.45); border-radius:10px; padding:9px 11px; background:rgba(232,163,61,0.04); font-size:12.5px; color:var(--muted);">Prior non-OEM repair visible.<span style="color:var(--warning);">|</span></div>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">← Back</button>
+        <button class="insp-btn primary">Next → quote</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1d — Repair 3 · Diagnostic + quote
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">1d · Repair — Diagnostic &amp; quote · suggested parts + labor pre-populated · running estimate · Save as quote vs Continue to deposit</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">Repair quote · Sarah M.</div><div class="t-meta">Step 3 of 4 — building quote · iPhone 14 Pro</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search parts…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><div class="tb-btn primary">📷 Scan</div><div class="tb-btn">⋯</div></div>
+    </div>
+
+    <!-- Items area — catalog stays visible so tech can add parts -->
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">Suggested · 3</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Batteries</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">All parts</div>
+      </div>
+      <div class="catalog" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">⚙️</div><div class="t-name">Labor · screen replace</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · battery</div><div class="t-row"><div class="t-price">$35</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+      </div>
+    </div>
+
+    <!-- Cart shows running quote -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · quote draft</div></div>
+        <span class="chip primary">3 items</span>
+      </div>
+      <div class="cart-body">
+        <div class="cart-row"><div class="ci">🔧</div><div style="flex:1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">OEM grade</div></div><div class="cp">$189.00</div></div>
+        <div class="cart-row"><div class="ci">⚙️</div><div style="flex:1;"><div class="cn">Labor · screen replace</div><div class="cs">~45 min</div></div><div class="cp">$60.00</div></div>
+        <div class="cart-row"><div class="ci">🔋</div><div style="flex:1;"><div class="cn">iPhone 14 Battery</div><div class="cs" style="color:var(--warning);">3 left</div></div><div class="cp">$79.00</div></div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Parts + labor</span><span>$328.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>est. $27.88</span></div>
+        <div class="ttotal"><span class="tl">Estimate</span><span class="ta" style="font-size:24px;">$327</span></div>
+      </div>
+      <button class="tender-btn disabled" style="opacity:0.55; font-size:13px;">
+        <span>Quote in progress…</span>
+      </button>
+    </div>
+
+    <!-- Inspector pane — diagnostic notes + action -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Diagnostic + quote</div>
+          <div class="ih-sub">Step 3 / 4 · iPhone 14 Pro</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div class="ir-label">Diagnostic notes</div>
+          <div style="margin-top:8px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:9px; background:rgba(255,255,255,0.03); font-size:12.5px; min-height:60px; color:var(--muted);">Screen flex faulty. Battery 61% health. OLED bleed top-left.<span style="color:var(--primary);">|</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">3 items in quote · estimate $327</div>
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="font-weight:600;">Screen</span><span style="color:var(--primary); font-weight:700;">$189</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="font-weight:600;">Labor</span><span style="color:var(--primary); font-weight:700;">$60</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0;"><span style="font-weight:600;">Battery</span><span style="color:var(--primary); font-weight:700;">$79</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="inspector-foot" style="flex-direction:column; gap:8px;">
+        <button class="insp-btn" style="flex:1; text-align:center;">Save as quote</button>
+        <button class="insp-btn primary" style="flex:1;">Continue → deposit</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1e — Repair 4 · Deposit tender
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">1e · Repair — Deposit tender · Cash selected · "Deposit · $50 of $327" · same numpad UI as full tender</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">Deposit · Sarah M.</div><div class="t-meta">Repair ticket #draft · $50 of $327 · Step 4 of 4</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><span class="chip warning">Tendering</span><div class="tb-btn">← Quote (esc)</div></div>
+    </div>
+
+    <!-- Tender panel reused for deposit -->
+    <div class="tender-panel">
+      <div class="tender-hero">
+        <div>
+          <div class="th-title" style="display:flex; align-items:center; gap:8px;">
+            <div style="width:30px;height:30px;border-radius:8px;background:linear-gradient(180deg,var(--primary-bright),var(--primary));color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            Deposit · Cash
+          </div>
+          <div class="th-sub" style="margin-top:4px;">$50 required · $277 balance due at pickup</div>
+        </div>
+        <div>
+          <div class="th-sub" style="text-align:right;">Deposit due</div>
+          <div class="th-amount">$50.00</div>
+        </div>
+      </div>
+
+      <div class="cash-panel-big">
+        <div class="cp-col"><div class="cp-label">Received</div><div class="cp-amount">$50<span style="color:var(--muted);font-weight:500;">.00</span></div></div>
+        <div class="cp-col change"><div class="cp-label">Change due</div><div class="cp-amount">$0.00</div></div>
+      </div>
+
+      <div style="padding:4px 24px 4px; font-size:11px; color:var(--muted-2); letter-spacing:0.14em; text-transform:uppercase; font-weight:600;">Quick amount</div>
+      <div class="quick-amounts">
+        <div class="quick-amount">Exact</div>
+        <div class="quick-amount selected">$50</div>
+        <div class="quick-amount">$60</div>
+        <div class="quick-amount">$75</div>
+        <div class="quick-amount">$100</div>
+      </div>
+
+      <div class="numpad">
+        <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+        <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+        <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+        <div class="numkey dot">.</div><div class="numkey">0</div><div class="numkey backspace">⌫</div>
+      </div>
+
+      <div class="tender-footer">
+        <div class="tf-aux">Skip deposit</div>
+        <div class="tf-primary">
+          <span>Confirm deposit</span>
+          <span class="tb-amount">$50.00</span>
+          <span style="font-size:14px;">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart shows repair ticket summary -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · repair ticket</div></div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity:0.82;">
+        <div class="cart-row"><div class="ci">🔧</div><div style="flex:1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">OEM grade</div></div><div class="cp">$189.00</div></div>
+        <div class="cart-row"><div class="ci">⚙️</div><div style="flex:1;"><div class="cn">Labor · screen</div><div class="cs">~45 min</div></div><div class="cp">$60.00</div></div>
+        <div class="cart-row"><div class="ci">🔋</div><div style="flex:1;"><div class="cn">iPhone 14 Battery</div></div><div class="cp">$79.00</div></div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>$328.00</span></div>
+        <div class="trow"><span>Deposit</span><span>$50.00</span></div>
+        <div class="trow" style="color:var(--warning);"><span>Balance at pickup</span><span>$277.00</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta" style="font-size:22px;">$327</span></div>
+      </div>
+      <button class="tender-btn disabled">Confirm deposit</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     2 — Active cart · customer attached · dynamic loyalty tile in Smart Grid
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">2 · Active cart · customer attached · catalog filtered · coupon + tender pinned</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾<span class="dot"></span></div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">New sale · Sarah M.</div>
+          <div class="t-meta">iPhone 14 Pro · 3 lines · autocreating ticket #draft</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">iPhone 14 Pro screen</span>
+        <span class="s-kbd">esc</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold (⌘H)</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">Matches · 4</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Batteries</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+        <div class="filter-pill">Services</div>
+        <div class="filter-pill">Warranty applied</div>
+      </div>
+
+      <div class="catalog">
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔧</div>
+          <div class="t-name">iPhone 14 Pro Screen</div>
+          <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">⚙️</div>
+          <div class="t-name">Labor · screen replace</div>
+          <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔌</div>
+          <div class="t-name">USB-C 3 ft cable</div>
+          <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+        </div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector Pro</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile"><div class="t-icon">🎧</div><div class="t-name">Earbuds · Pro 2</div><div class="t-row"><div class="t-price">$49</div><div class="t-stock">14</div></div></div>
+      </div>
+    </div>
+
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">(555) 214-8801 · 3 past tickets</div>
+        </div>
+        <span class="chip primary">3 lines</span>
+      </div>
+
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">IPH14P-S · Qty 1</div></div>
+          <div style="text-align: right;">
+            <div class="cp">$189.00</div>
+            <div class="cs" style="text-decoration: line-through;">$199</div>
+          </div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen replacement</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+
+        <!-- Coupon field pinned at bottom of cart body -->
+        <div style="padding: 4px 18px 14px;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(12px);">
+            <span style="color: var(--muted);">🏷️</span>
+            <span style="flex: 1; font-size: 12.5px; color: var(--muted);">Coupon code</span>
+            <span style="color: var(--teal); font-weight: 700; font-size: 12px;">APPLY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Charge</span>
+        <span class="tb-amount">$274.51</span>
+        <span style="font-size: 14px;">⌘ P</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     3 — Inspector line-edit · cart stays visible · items area intact
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">3 · Inspector · tap a cart line → inspector slides in right with qty / price / discount / remove · cart + items stay visible</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">New sale · Sarah M.</div><div class="t-meta">Editing line · USB-C 3 ft cable</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">All</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+      </div>
+      <div class="catalog" style="grid-template-columns: repeat(3, 1fr); opacity: 0.85;">
+        <div class="tile"><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · screen</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔌</div><div class="t-name">USB-C 3 ft cable</div><div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div></div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible; active line highlighted -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines</div>
+        </div>
+        <span class="chip">$274.51</span>
+      </div>
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row editing">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · <span style="color: var(--primary);">editing ›</span></div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn disabled">Save edit first</button>
+    </div>
+
+    <!-- Inspector pane -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">USB-C 3 ft cable</div>
+          <div class="ih-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Qty</div>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <div class="ir-label">Unit price</div>
+            <div style="font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;">$14.00</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Line discount</div>
+            <div style="color: var(--teal); font-size: 13px; font-weight: 700;">+ Apply</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Note</div>
+          <div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; color: var(--muted);">Add a note for the receipt…</div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Audit</div>
+          <div style="margin-top: 8px; font-size: 11.5px; color: var(--muted); line-height: 1.6;">
+            Added 12:04 PM by Pavel I.<br>
+            No prior edits.
+          </div>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">Remove</button>
+        <button class="insp-btn primary">Save · $14.00</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     4a — Tender Step 1 · method picker · due amount prominent · cart stays visible
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">4a · Tender — Step 1 · pick method · due amount hero · cart stays right · tap method to go to Step 2</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Tender · Sarah M.</div><div class="t-meta">iPhone 14 Pro · choose payment method</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip warning">Tendering</span>
+        <div class="tb-btn">← Cart (esc)</div>
+      </div>
+    </div>
+
+    <!-- Tender panel: Step 1 — method picker only -->
+    <div class="tender-panel">
+      <!-- Due amount hero — large, confident -->
+      <div style="padding: 28px 28px 8px; display: flex; align-items: flex-start; justify-content: space-between;">
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px;">Due now</div>
+          <div style="font-family: var(--font-display); font-size: 68px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
+          <div style="font-size: 12.5px; color: var(--muted); margin-top: 6px;">Sarah M. · 3 items</div>
+        </div>
+        <div style="text-align: right; padding-top: 4px;">
+          <div style="font-size: 11.5px; color: var(--muted); margin-bottom: 4px;">Split tender</div>
+          <div style="font-size: 12px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em;">⊕ Add method</div>
+        </div>
+      </div>
+
+      <!-- Member benefit banner -->
+      <div style="margin: 4px 24px 8px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(180deg, rgba(253,238,208,0.14), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.40); display: flex; gap: 14px; align-items: center; box-shadow: 0 6px 18px rgba(253,238,208,0.08);">
+        <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.65), 0 6px 16px rgba(253,238,208,0.30); flex-shrink: 0; filter: drop-shadow(0 0 8px rgba(253,238,208,0.30));">★</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">GOLD member · benefits applied</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">10% off auto · earning 55 pts · 230 pts to redeem ($11.50)</div>
+        </div>
+        <span class="chip" style="font-family: var(--font-display); font-size: 14px; padding: 4px 12px;">SAVED $10</span>
+        <span style="color: var(--teal); font-weight: 700; font-size: 11.5px; letter-spacing: 0.04em; white-space: nowrap;">REDEEM PTS</span>
+      </div>
+
+      <div style="padding: 8px 24px 4px; font-size: 11px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Choose payment method</div>
+
+      <!-- Method picker — 4-up, none selected yet, each shows as tappable -->
+      <div class="tender-methods">
+        <div class="method">
+          <div class="m-ico">💳</div>
+          <div class="m-name">Card</div>
+          <div class="m-sub">Tap to Pay · BlockChyp</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">💵</div>
+          <div class="m-name">Cash</div>
+          <div class="m-sub">Enter amount received</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">🎁</div>
+          <div class="m-name">Gift card</div>
+          <div class="m-sub">Scan / enter number</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">💸</div>
+          <div class="m-name">Store credit</div>
+          <div class="m-sub">$42.00 available</div>
+        </div>
+      </div>
+
+      <!-- Spacer + split tender hint -->
+      <div style="flex: 1;"></div>
+      <div style="margin: 0 24px 16px; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.025); border: 1px dashed rgba(255,255,255,0.10); display: flex; gap: 12px; align-items: center;">
+        <span style="color: var(--muted); font-size: 18px;">⊕</span>
+        <div style="font-size: 12px; color: var(--muted);">Split tender — pick one method, enter partial amount, then pick another for the remainder. Balances update automatically.</div>
+      </div>
+
+      <!-- Disabled confirm until method is picked -->
+      <div class="tender-footer">
+        <div class="tf-aux">Add tip</div>
+        <div class="tf-primary" style="opacity: 0.38; box-shadow: none; background: rgba(253,238,208,0.25);">
+          <span>Select a payment method</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible, locked -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines · locked</div>
+        </div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity: 0.82;">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn disabled">Select method first</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     4b — Tender Step 2 · Cash selected · cash panel + numpad · cart stays
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">4b · Tender — Step 2 · Cash · cash panel + quick-amounts + numpad · Confirm → receipt (or back for split tender on remaining balance)</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Tender · Cash · Sarah M.</div><div class="t-meta">iPhone 14 Pro · enter cash received</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip warning">Tendering</span>
+        <div class="tb-btn">← Method (esc)</div>
+      </div>
+    </div>
+
+    <!-- Tender panel: Step 2 — cash amount entry -->
+    <div class="tender-panel">
+      <div class="tender-hero">
+        <div>
+          <div class="th-title" style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            Cash payment
+          </div>
+          <div class="th-sub" style="margin-top: 4px;">Enter amount received from customer</div>
+        </div>
+        <div>
+          <div class="th-sub" style="text-align: right;">Due</div>
+          <div class="th-amount">$274.51</div>
+        </div>
+      </div>
+
+      <div class="cash-panel-big">
+        <div class="cp-col">
+          <div class="cp-label">Received</div>
+          <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+        </div>
+        <div class="cp-col change">
+          <div class="cp-label">Change due</div>
+          <div class="cp-amount">$25.49</div>
+        </div>
+      </div>
+
+      <div style="padding: 4px 24px 4px; font-size: 11px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Quick amount</div>
+
+      <div class="quick-amounts">
+        <div class="quick-amount">Exact</div>
+        <div class="quick-amount">$275</div>
+        <div class="quick-amount">$280</div>
+        <div class="quick-amount selected">$300</div>
+        <div class="quick-amount">$320</div>
+      </div>
+
+      <div class="numpad">
+        <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+        <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+        <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+        <div class="numkey dot">.</div><div class="numkey">0</div><div class="numkey backspace">⌫</div>
+      </div>
+
+      <div class="tender-footer">
+        <div class="tf-aux">+ Split tender</div>
+        <div class="tf-aux">Add tip</div>
+        <div class="tf-primary">
+          <span>Confirm cash</span>
+          <span class="tb-amount">$274.51</span>
+          <span style="font-size: 14px;">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible, locked -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines · locked</div>
+        </div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity: 0.82;">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Confirm cash</span>
+        <span class="tb-amount">$274.51</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     5 — Receipt · cart collapsed · celebration hero + share + loyalty + receipt
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">5 · Receipt · cart column collapses 420→0px · celebration hero (hero highest elevation) · glassy share tiles · loyalty progress bar · JetBrains Mono receipt preview (lower elevation) · Pencil signature banner · next-sale CTA in toolbar</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body cart-collapsed">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Sale complete</div><div class="t-meta">Order #28014 · Sarah M. · 3:12 PM · cash · paid</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">✓ Paid · $274.51</span>
+        <div class="tb-btn primary">Next sale (⌘ N)</div>
+      </div>
+    </div>
+
+    <!-- Items area expanded to fill — 2-column: left actions, right receipt preview -->
+    <div class="receipt-stage">
+      <!-- Left column: hero (highest elevation) → share tiles (mid) → loyalty + actions (lower) -->
+      <div style="display: flex; flex-direction: column; gap: 0;">
+
+        <!-- Celebration hero — highest visual elevation -->
+        <div class="receipt-hero">
+          <div class="rh-glow"></div>
+          <div class="rh-check">✓</div>
+          <div class="rh-label">Payment complete</div>
+          <div class="rh-amount">$274.51</div>
+          <div class="rh-sub">Cash · $300 received · $25.49 change · Pavel I. · 12 sec</div>
+        </div>
+
+        <!-- Share tiles — mid elevation, prominent -->
+        <div style="margin-top: 16px;">
+          <div style="font-size: 10.5px; font-weight: 600; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 8px;">Send receipt to Sarah M.</div>
+          <div class="share-grid">
+            <div class="share-tile primary"><div class="st-ico">💬</div><div class="st-label">Text</div></div>
+            <div class="share-tile"><div class="st-ico">✉️</div><div class="st-label">Email</div></div>
+            <div class="share-tile"><div class="st-ico">🖨</div><div class="st-label">Print</div></div>
+            <div class="share-tile"><div class="st-ico">📡</div><div class="st-label">AirDrop</div></div>
+          </div>
+        </div>
+
+        <!-- Loyalty celebration — lower, supportive -->
+        <div class="loyalty-celebration">
+          <div class="lc-star">★</div>
+          <div style="flex: 1;">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier maintained</div>
+            <div style="font-size: 11.5px; color: var(--muted); margin-top: 3px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b> (free diagnostic + 15% off)</div>
+            <div class="lc-progress"></div>
+            <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-2); margin-top: 4px;"><span>GOLD · 285 pts</span><span>PLATINUM · 500 pts</span></div>
+          </div>
+        </div>
+
+        <!-- Actions row -->
+        <div class="receipt-actions">
+          <div class="btn-sec">View ticket #4829</div>
+          <div class="btn-sec">Customer profile</div>
+          <div class="btn-destr">Start refund</div>
+        </div>
+
+        <!-- Pencil signature banner -->
+        <div style="margin-top: 10px; padding: 14px 16px; border-radius: 14px; background: rgba(77,184,201,0.08); border: 1px solid rgba(77,184,201,0.30); color: #9be0ea; font-size: 13px; display: flex; gap: 12px; align-items: center;">
+          <span style="font-size: 20px;">✍</span>
+          <div>
+            <div style="font-weight: 700;">Signature captured with Pencil</div>
+            <div style="font-size: 11.5px; margin-top: 3px; color: var(--muted);">Archived to ticket #4829 · PKCanvasView · PNG 142 KB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: receipt preview — lowest visual elevation, supporting context -->
+      <div class="receipt-list">
+        <div class="rl-head">
+          <div>
+            <div class="rl-title">Receipt · #28014</div>
+            <div class="rl-meta">2026-04-24 · 15:12 · Store #1 · Pavel I.</div>
+          </div>
+          <span class="chip success">Sent via SMS ✓</span>
+        </div>
+        <div class="rl-body">
+          <div class="rl-row"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+          <div class="rl-row"><span>Labor · screen replacement</span><span>$60.00</span></div>
+          <div class="rl-row"><span>USB-C 3 ft cable</span><span>$14.00</span></div>
+          <div class="rl-row" style="color: var(--primary);"><span>★ GOLD member · 10% off</span><span>−$10.00</span></div>
+          <div class="rl-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
+          <div class="rl-row" style="padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.10); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+          <div class="rl-row" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+        </div>
+        <div class="rl-foot">Thank you · 30-day returns with receipt</div>
+      </div>
+    </div>
+
+    <!-- Cart column collapsed to 0px -->
+
+  </div>
+</div>
+</div>
+
+
+<div class="section-label">Design principles · research-agent consensus</div>
+
+<div style="max-width: 1180px; margin: 0 auto; padding: 0 24px 60px;">
+  <div style="padding: 24px; border-radius: 22px; background: rgba(32,28,24,0.55); backdrop-filter: blur(22px) saturate(180%); border: 1px solid rgba(255,255,255,0.1); position: relative; overflow: hidden;">
+    <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%); pointer-events: none;"></div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; position: relative; z-index: 2;">
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Custom 64pt rail sidebar</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          SwiftUI has no native icon-only rail mode. Custom <code>HStack</code> of icon buttons + <code>NavigationSplitView(columnVisibility: .detailOnly)</code> suppresses the default sidebar. Rail width animates 64↔200pt on brand-mark tap. Active tab gets cream-tinted pill.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Inspector line-edit</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.inspector(isPresented:)</code> iOS 17+ with <code>.inspectorColumnWidth(min:280, ideal:320, max:400)</code>. Applied to detail view, not root. Auto-fall-back to sheet on compact. Cart never hidden during edit — inspector pushes detail, not overlay.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Side-panel tender</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Shopify POS v11 idiom. Items area swaps to tender UI; cart stays right, locked. Method grid + cash panel + quick-amounts + numpad, all inline scroll. Zero full-screen takeovers during a sale.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Cart collapses on paid</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Post-sale: <code>grid-template-columns: 64px 1fr 0</code>. Animate 420→0px (240ms spring, 150ms opacity with Reduce Motion). Receipt + share tiles + actions fill the canvas. Next-sale CTA triggers cart re-expand.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Toolbar placements</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Scan = <code>.toolbar(.primaryAction)</code>, <code>⌘F1</code>. Hold / Clear / Discount / Note / Misc = <code>.secondaryAction</code> — auto-collapse into trailing <code>⋯</code> menu on iPad. No bottom dock (Mac/Android pattern).
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Smart Grid dynamic tiles</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Catalog tiles respond to cart + customer state. Loyalty redeem tile when VIP customer attached. Ready-for-pickup shortcut surfaces her open ticket. Pattern from Shopify POS.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">No drag-drop catalog→cart</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          No production POS ships drag-from-catalog-to-cart. Retail reasons: gloves, wet hands, trained staff prefer tap. Drag is reserved for layout editing only. Tap on tile is the primary gesture.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Keyboard shortcuts</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Surfaced via <code>Commands</code>. <code>⌘N</code> new sale · <code>⌘⇧N</code> new ticket · <code>⌘K</code> search · <code>⌘P</code> pay · <code>⌘H</code> hold · <code>⌘⇧C</code> customer · <code>⌘⇧D</code> discount. Shown inline in menu labels.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Pencil + Scribble</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>PKCanvasView</code> for receipt signature + device photo annotation. Scribble free on every TextField (iPadOS 14+ automatic). <code>drawingPolicy = .anyInput</code> accepts finger + Pencil.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Hover + pointer</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.hoverEffect(.highlight)</code> on rail icons + toolbar buttons. <code>.hoverEffect(.lift)</code> on catalog tiles + customer card. <code>.pointerStyle(.grab)</code> only on layout-editor draggable tiles.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Multi-window</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>WindowGroup(id:for:)</code> opens parked carts as separate Stage Manager windows. Shared <code>@Observable</code> model; per-scene <code>@SceneStorage</code> for UI state. Keyboard <code>⌘T</code> = new window.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Compact fall-through</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          In Slide Over or 1/3 Split View (<code>horizontalSizeClass == .compact</code>) the iPad layout falls through to iPhone layout — rail hides, cart becomes a sheet. One SwiftUI view tree, two layouts.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="meta">
+  Self-contained preview · no JS · no network · tokens mirror <code>ios/Packages/DesignSystem/Sources/DesignSystem/BrandColors.swift</code> + <code>BrandFonts.swift</code>. Ports directly to SwiftUI.
+</div>
+
+
+
+<div style="background: #f5f2ed; padding: 40px 24px 56px; margin-top: 80px; border-top: 1px solid rgba(0,0,0,0.08);">
+  <h1 style="background: linear-gradient(180deg, #1a1816, #5a5550); -webkit-background-clip: text; background-clip: text; color: transparent; padding-top: 8px;">Light mode · same flow</h1>
+  <p class="intro" style="color: #5a5550;">
+    Exact same 10 iPad frames rendered under the light-theme token set. Cream primary <code style="background: rgba(30,24,16,0.06); color: #A66D1F;">#fdeed0</code> stays constant.
+    Rail, topbar, cart, and inspector backgrounds flip to near-white; semantic colours are darkened for
+    WCAG AA contrast on white-ish surfaces.
+  </p>
+
+  <div class="light-mode">
+
+<div class="section-label">Light · Customer gate</div>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     1 — Customer gate · walk-in / existing / new · the mandatory first step
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 1 · Customer gate · the mandatory first step · items area shows 3 choices, cart column shows "no customer" card — every sale starts here</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <!-- Rail -->
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item" title="Dashboard">🏠</div>
+      <div class="rail-item" title="Tickets">🧾<span class="dot"></span></div>
+      <div class="rail-item" title="Customers">👥</div>
+      <div class="rail-item active" title="POS">🛒</div>
+      <div class="rail-item" title="Inventory">📦</div>
+      <div class="rail-item" title="SMS">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item" title="Reports">📊</div>
+      <div class="rail-item" title="Settings">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">POS · new sale</div>
+          <div class="t-meta">Register open · Pavel I. · Store #1 · $312.00 float</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search by name, phone, email, loyalty #, or scan customer card</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">● Online</span>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <!-- Items area — customer gate (Option C) -->
+    <div class="items">
+      <div class="path-hero">
+        <div>
+          <h2>Who's this sale for?</h2>
+          <div class="phm">Every sale starts with a customer. Search below, or use the fallback options.</div>
+        </div>
+      </div>
+
+      <!-- Option C: 2 fallback buttons (hero search removed — topbar search above covers it) -->
+      <div style="display: flex; flex-direction: column; align-items: center; padding: 8px 32px 24px;">
+
+        <div style="font-size: 12px; color: var(--muted-2); margin: 12px 0 10px; text-align: center;">Search above, or:</div>
+
+        <div style="display: flex; gap: 14px; width: 100%; max-width: 680px;">
+          <button class="gate-btn-create" style="
+            flex: 1; padding: 22px 20px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 18px; color: var(--on); font-size: 16px; font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.09);
+            cursor: pointer; text-align: center; letter-spacing: -0.01em;
+            min-height: 72px;
+          ">＋ Create new customer
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); margin-left: 8px; padding: 2px 6px; border: 1px solid rgba(30,24,16,0.15); border-radius: 4px;">⌘⇧N</span>
+          </button>
+          <button class="gate-btn-walkin" style="
+            flex: 1; padding: 22px 20px;
+            background: rgba(255,255,255,0.03); border: 1.5px dashed rgba(255,255,255,0.18);
+            border-radius: 18px; color: var(--muted); font-size: 16px; font-weight: 700;
+            cursor: pointer; text-align: center; letter-spacing: -0.01em;
+            min-height: 72px;
+          ">🚶 Walk-in · no record</button>
+        </div>
+
+        <!-- Ready-for-pickup strip -->
+        <div style="width: 100%; max-width: 680px; margin-top: 36px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 10px;">
+            <span style="font-size: 10.5px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Ready for pickup · 3</span>
+            <button style="
+              background: transparent; border: 0;
+              color: var(--teal); font-size: 11.5px; font-weight: 700;
+              letter-spacing: 0.04em; text-transform: uppercase;
+              cursor: pointer; padding: 4px 0;
+            ">View all →</button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: rgba(52,196,126,0.07); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(52,196,126,0.2); color: var(--success); border: 1px solid rgba(52,196,126,0.35); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700;">Sarah M.</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4829 · iPhone 14 screen</div>
+              </div>
+              <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$274</div>
+            </div>
+            <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.22); border-radius: 14px; padding: 10px 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.3); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700;">Marco D.</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4831 · Samsung S23 battery</div>
+              </div>
+              <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--primary); flex-shrink: 0;">$142</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Cart column -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar empty">+</div>
+        <div style="flex: 1;">
+          <div class="ch-name">No customer</div>
+          <div class="ch-sub">Search or pick an option on the left →</div>
+        </div>
+      </div>
+
+      <div class="cart-empty" style="padding: 40px 20px 20px; flex: 0;">
+        <div style="font-size: 40px; opacity: 0.3;">👈</div>
+        <div class="ce-msg">Every sale needs a customer attached.</div>
+      </div>
+
+      <div class="cart-body" style="flex: 1;"></div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$0.00</span></div>
+        <div class="trow"><span>Tax</span><span>$0.00</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Attach customer first</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<div class="section-label">Light · Repair ticket path · 4 steps · 1b → 1e</div>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     REPAIR TICKET PATH · 4 steps (1b–1e)
+     On iPad: repair steps slide into the RIGHT inspector column (360pt).
+     Cart column shows "Creating ticket…" placeholder.
+     Rail + topbar unchanged across all repair steps.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section-label">Repair ticket path · 4 steps · 1b → 1e</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1b — Repair 1 · Pick device · inspector slides in
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">Light · 1b · Repair — Pick device · customer attached · inspector pane slides in with saved devices + add new + scan IMEI</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾<span class="dot"></span></div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">New repair · Sarah M.</div>
+          <div class="t-meta">Step 1 of 4 — pick device</div>
+        </div>
+      </div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row">
+        <span class="chip" style="color:var(--muted);">Creating ticket…</span>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <!-- Items area — dimmed "creating ticket" placeholder -->
+    <div class="items" style="align-items:center; justify-content:center;">
+      <div style="text-align:center; opacity:0.35; padding:40px 20px;">
+        <div style="font-size:56px; margin-bottom:12px;">🧾</div>
+        <div style="font-size:14px; font-weight:600; color:var(--on);">Creating repair ticket…</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">Complete the steps in the inspector →</div>
+      </div>
+    </div>
+
+    <!-- Cart column — placeholder while ticket is being created -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">Repair ticket — in progress</div>
+        </div>
+        <span class="chip warning">Draft</span>
+      </div>
+      <div class="cart-empty">
+        <div class="ce-big">🔧</div>
+        <div class="ce-msg">Complete device pick in the inspector to start adding parts.</div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>—</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Pick device first</button>
+    </div>
+
+    <!-- Inspector pane — device picker -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Pick device</div>
+          <div class="ih-sub">Step 1 / 4 · Sarah M.</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div style="padding: 12px 18px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;">On file · 2</div>
+        <div class="device-row selected">
+          <div class="di">📱</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700;">iPhone 14 Pro</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">IMEI 359…8821 · Space Black</div>
+            <div style="font-size:10px; color:var(--success); margin-top:2px;">Warranty until 2026-08-14</div>
+          </div>
+          <div style="width:20px;height:20px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;">✓</div>
+        </div>
+        <div class="device-row">
+          <div class="di">⌚</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700;">Apple Watch Series 8</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Serial FH7…921 · 45mm</div>
+          </div>
+          <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(30,24,16,0.22);flex-shrink:0;"></div>
+        </div>
+        <div style="padding: 12px 18px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;">Add new</div>
+        <div class="device-row" style="border-left: 3px dashed rgba(194,65,12,0.28);">
+          <div class="di" style="background: linear-gradient(180deg,var(--primary-bright),var(--primary)); color:var(--on-primary); border-color: transparent; font-size:22px; font-weight:900;">+</div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700; color:var(--primary);">Add new device</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Scan IMEI or pick make / model</div>
+          </div>
+          <button style="width:36px;height:36px;border-radius:10px;background:rgba(30,24,16,0.05);border:1px solid rgba(30,24,16,0.12);color:var(--on);font-size:16px;" title="Scan IMEI">📷</button>
+          <span style="color:var(--primary);font-size:16px;">›</span>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">Cancel</button>
+        <button class="insp-btn primary">Continue → issue</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1c — Repair 2 · Describe issue
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">Light · 1c · Repair — Describe issue · symptom text · device condition · quick-pick chips</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">New repair · Sarah M.</div><div class="t-meta">Step 2 of 4 — describe issue · iPhone 14 Pro</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><span class="chip" style="color:var(--muted);">Creating ticket…</span><div class="tb-btn">⋯</div></div>
+    </div>
+
+    <div class="items" style="align-items:center; justify-content:center;">
+      <div style="text-align:center; opacity:0.35; padding:40px 20px;">
+        <div style="font-size:56px; margin-bottom:12px;">🧾</div>
+        <div style="font-size:14px; font-weight:600; color:var(--on);">Creating repair ticket…</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">iPhone 14 Pro · issue description →</div>
+      </div>
+    </div>
+
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · repair draft</div></div>
+        <span class="chip warning">Draft</span>
+      </div>
+      <div class="cart-empty">
+        <div class="ce-big">🔧</div>
+        <div class="ce-msg">Parts will appear here once the quote is built in step 3.</div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>—</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Describe issue first</button>
+    </div>
+
+    <!-- Inspector pane — issue form -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Describe issue</div>
+          <div class="ih-sub">Step 2 / 4 · iPhone 14 Pro</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div class="ir-label">What's the problem?</div>
+          <div style="margin-top:8px; border:1.5px solid rgba(30,24,16,0.15); border-radius:12px; padding:10px; background:#ffffff; font-size:13px; min-height:68px; line-height:1.5; color:#1a1816;">Dropped on sidewalk. Screen flickers on calls. Battery dies fast.<span style="color:var(--primary);">|</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px;"><span style="color:var(--teal); font-size:11px;">🎤 Dictate</span><span style="color:var(--muted); font-size:11px;">87/2000</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Device condition</div>
+          <div style="margin-top:8px; background:#ffffff; border:1px solid rgba(30,24,16,0.12); border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; color:#1a1816;">Poor — visible damage<span style="color:var(--muted);">⌄</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Quick symptoms</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(194,65,12,0.10); border:1.5px solid rgba(194,65,12,0.30); color:var(--primary); font-size:11px; font-weight:700;">Screen cracked</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Won't charge</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Water damage</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(194,65,12,0.10); border:1.5px solid rgba(194,65,12,0.30); color:var(--primary); font-size:11px; font-weight:700;">Battery</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Other</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Internal notes (tech-only)</div>
+          <div style="margin-top:8px; border:1px dashed rgba(161,91,0,0.40); border-radius:10px; padding:9px 11px; background:rgba(161,91,0,0.06); font-size:12.5px; color:#5a5550;">Prior non-OEM repair visible.<span style="color:var(--warning);">|</span></div>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">← Back</button>
+        <button class="insp-btn primary">Next → quote</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1d — Repair 3 · Diagnostic + quote
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">Light · 1d · Repair — Diagnostic &amp; quote · suggested parts + labor pre-populated · running estimate · Save as quote vs Continue to deposit</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">Repair quote · Sarah M.</div><div class="t-meta">Step 3 of 4 — building quote · iPhone 14 Pro</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search parts…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><div class="tb-btn primary">📷 Scan</div><div class="tb-btn">⋯</div></div>
+    </div>
+
+    <!-- Items area — catalog stays visible so tech can add parts -->
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">Suggested · 3</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Batteries</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">All parts</div>
+      </div>
+      <div class="catalog" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">⚙️</div><div class="t-name">Labor · screen replace</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · battery</div><div class="t-row"><div class="t-price">$35</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+      </div>
+    </div>
+
+    <!-- Cart shows running quote -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · quote draft</div></div>
+        <span class="chip primary">3 items</span>
+      </div>
+      <div class="cart-body">
+        <div class="cart-row"><div class="ci">🔧</div><div style="flex:1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">OEM grade</div></div><div class="cp">$189.00</div></div>
+        <div class="cart-row"><div class="ci">⚙️</div><div style="flex:1;"><div class="cn">Labor · screen replace</div><div class="cs">~45 min</div></div><div class="cp">$60.00</div></div>
+        <div class="cart-row"><div class="ci">🔋</div><div style="flex:1;"><div class="cn">iPhone 14 Battery</div><div class="cs" style="color:var(--warning);">3 left</div></div><div class="cp">$79.00</div></div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Parts + labor</span><span>$328.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>est. $27.88</span></div>
+        <div class="ttotal"><span class="tl">Estimate</span><span class="ta" style="font-size:24px;">$327</span></div>
+      </div>
+      <button class="tender-btn disabled" style="opacity:0.55; font-size:13px;">
+        <span>Quote in progress…</span>
+      </button>
+    </div>
+
+    <!-- Inspector pane — diagnostic notes + action -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">Diagnostic + quote</div>
+          <div class="ih-sub">Step 3 / 4 · iPhone 14 Pro</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div class="ir-label">Diagnostic notes</div>
+          <div style="margin-top:8px; border:1px solid rgba(30,24,16,0.12); border-radius:10px; padding:9px; background:#ffffff; font-size:12.5px; min-height:60px; color:#5a5550;">Screen flex faulty. Battery 61% health. OLED bleed top-left.<span style="color:var(--primary);">|</span></div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">3 items in quote · estimate $327</div>
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(30,24,16,0.07);"><span style="font-weight:600; color:#1a1816;">Screen</span><span style="color:var(--primary); font-weight:700;">$189</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(30,24,16,0.07);"><span style="font-weight:600; color:#1a1816;">Labor</span><span style="color:var(--primary); font-weight:700;">$60</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0;"><span style="font-weight:600; color:#1a1816;">Battery</span><span style="color:var(--primary); font-weight:700;">$79</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="inspector-foot" style="flex-direction:column; gap:8px;">
+        <button class="insp-btn" style="flex:1; text-align:center;">Save as quote</button>
+        <button class="insp-btn primary" style="flex:1;">Continue → deposit</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1e — Repair 4 · Deposit tender
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="frame-caption">Light · 1e · Repair — Deposit tender · Cash selected · "Deposit · $50 of $327" · same numpad UI as full tender</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div><hr>
+      <div class="rail-item">🏠</div><div class="rail-item">🧾<span class="dot"></span></div><div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div><div class="rail-item">📦</div><div class="rail-item">💬</div><div class="rail-item">📊</div><div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div><div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left"><div><div class="t-title">Deposit · Sarah M.</div><div class="t-meta">Repair ticket #draft · $50 of $327 · Step 4 of 4</div></div></div>
+      <div class="search"><span>🔍</span><span style="flex:1;">Search…</span><span class="s-kbd">⌘ K</span></div>
+      <div class="toolbar-row"><span class="chip warning">Tendering</span><div class="tb-btn">← Quote (esc)</div></div>
+    </div>
+
+    <!-- Tender panel reused for deposit -->
+    <div class="tender-panel">
+      <div class="tender-hero">
+        <div>
+          <div class="th-title" style="display:flex; align-items:center; gap:8px;">
+            <div style="width:30px;height:30px;border-radius:8px;background:linear-gradient(180deg,var(--primary-bright),var(--primary));color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            Deposit · Cash
+          </div>
+          <div class="th-sub" style="margin-top:4px;">$50 required · $277 balance due at pickup</div>
+        </div>
+        <div>
+          <div class="th-sub" style="text-align:right;">Deposit due</div>
+          <div class="th-amount">$50.00</div>
+        </div>
+      </div>
+
+      <div class="cash-panel-big">
+        <div class="cp-col"><div class="cp-label">Received</div><div class="cp-amount">$50<span style="color:var(--muted);font-weight:500;">.00</span></div></div>
+        <div class="cp-col change"><div class="cp-label">Change due</div><div class="cp-amount">$0.00</div></div>
+      </div>
+
+      <div style="padding:4px 24px 4px; font-size:11px; color:var(--muted-2); letter-spacing:0.14em; text-transform:uppercase; font-weight:600;">Quick amount</div>
+      <div class="quick-amounts">
+        <div class="quick-amount">Exact</div>
+        <div class="quick-amount selected">$50</div>
+        <div class="quick-amount">$60</div>
+        <div class="quick-amount">$75</div>
+        <div class="quick-amount">$100</div>
+      </div>
+
+      <div class="numpad">
+        <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+        <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+        <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+        <div class="numkey dot">.</div><div class="numkey">0</div><div class="numkey backspace">⌫</div>
+      </div>
+
+      <div class="tender-footer">
+        <div class="tf-aux">Skip deposit</div>
+        <div class="tf-primary">
+          <span>Confirm deposit</span>
+          <span class="tb-amount">$50.00</span>
+          <span style="font-size:14px;">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart shows repair ticket summary -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex:1;"><div class="ch-name">Sarah M.</div><div class="ch-sub">iPhone 14 Pro · repair ticket</div></div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity:0.82;">
+        <div class="cart-row"><div class="ci">🔧</div><div style="flex:1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">OEM grade</div></div><div class="cp">$189.00</div></div>
+        <div class="cart-row"><div class="ci">⚙️</div><div style="flex:1;"><div class="cn">Labor · screen</div><div class="cs">~45 min</div></div><div class="cp">$60.00</div></div>
+        <div class="cart-row"><div class="ci">🔋</div><div style="flex:1;"><div class="cn">iPhone 14 Battery</div></div><div class="cp">$79.00</div></div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Estimate</span><span>$328.00</span></div>
+        <div class="trow"><span>Deposit</span><span>$50.00</span></div>
+        <div class="trow" style="color:var(--warning);"><span>Balance at pickup</span><span>$277.00</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta" style="font-size:22px;">$327</span></div>
+      </div>
+      <button class="tender-btn disabled">Confirm deposit</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<div class="section-label">Light · Main sale flow · frames 2 – 5</div>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     2 — Active cart · customer attached · dynamic loyalty tile in Smart Grid
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 2 · Active cart · customer attached · catalog filtered · coupon + tender pinned</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾<span class="dot"></span></div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">New sale · Sarah M.</div>
+          <div class="t-meta">iPhone 14 Pro · 3 lines · autocreating ticket #draft</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">iPhone 14 Pro screen</span>
+        <span class="s-kbd">esc</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold (⌘H)</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">Matches · 4</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Batteries</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+        <div class="filter-pill">Services</div>
+        <div class="filter-pill">Warranty applied</div>
+      </div>
+
+      <div class="catalog">
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔧</div>
+          <div class="t-name">iPhone 14 Pro Screen</div>
+          <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">⚙️</div>
+          <div class="t-name">Labor · screen replace</div>
+          <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔌</div>
+          <div class="t-name">USB-C 3 ft cable</div>
+          <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+        </div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector Pro</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile"><div class="t-icon">🎧</div><div class="t-name">Earbuds · Pro 2</div><div class="t-row"><div class="t-price">$49</div><div class="t-stock">14</div></div></div>
+      </div>
+    </div>
+
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">(555) 214-8801 · 3 past tickets</div>
+        </div>
+        <span class="chip primary">3 lines</span>
+      </div>
+
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">IPH14P-S · Qty 1</div></div>
+          <div style="text-align: right;">
+            <div class="cp">$189.00</div>
+            <div class="cs" style="text-decoration: line-through;">$199</div>
+          </div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen replacement</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+
+        <!-- Coupon field pinned at bottom of cart body -->
+        <div style="padding: 4px 18px 14px;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(30,24,16,0.03); border: 1px solid rgba(30,24,16,0.10); backdrop-filter: blur(12px);">
+            <span style="color: #5a5550;">🏷️</span>
+            <span style="flex: 1; font-size: 12.5px; color: #5a5550;">Coupon code</span>
+            <span style="color: var(--teal); font-weight: 700; font-size: 12px;">APPLY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Charge</span>
+        <span class="tb-amount">$274.51</span>
+        <span style="font-size: 14px;">⌘ P</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     3 — Inspector line-edit · cart stays visible · items area intact
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 3 · Inspector · tap a cart line → inspector slides in right with qty / price / discount / remove · cart + items stay visible</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">New sale · Sarah M.</div><div class="t-meta">Editing line · USB-C 3 ft cable</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">All</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+      </div>
+      <div class="catalog" style="grid-template-columns: repeat(3, 1fr); opacity: 0.85;">
+        <div class="tile"><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · screen</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔌</div><div class="t-name">USB-C 3 ft cable</div><div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div></div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible; active line highlighted -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines</div>
+        </div>
+        <span class="chip">$274.51</span>
+      </div>
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row editing">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · <span style="color: var(--primary);">editing ›</span></div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn disabled">Save edit first</button>
+    </div>
+
+    <!-- Inspector pane -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">USB-C 3 ft cable</div>
+          <div class="ih-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Qty</div>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <div class="ir-label">Unit price</div>
+            <div style="font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: #1a1816;">$14.00</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Line discount</div>
+            <div style="color: var(--teal); font-size: 13px; font-weight: 700;">+ Apply</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Note</div>
+          <div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(30,24,16,0.03); border: 1px solid rgba(30,24,16,0.10); font-size: 13px; color: #5a5550;">Add a note for the receipt…</div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Audit</div>
+          <div style="margin-top: 8px; font-size: 11.5px; color: #5a5550; line-height: 1.6;">
+            Added 12:04 PM by Pavel I.<br>
+            No prior edits.
+          </div>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">Remove</button>
+        <button class="insp-btn primary">Save · $14.00</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     4a — Tender Step 1 · method picker · due amount prominent · cart stays visible
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 4a · Tender — Step 1 · pick method · due amount hero · cart stays right · tap method to go to Step 2</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Tender · Sarah M.</div><div class="t-meta">iPhone 14 Pro · choose payment method</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip warning">Tendering</span>
+        <div class="tb-btn">← Cart (esc)</div>
+      </div>
+    </div>
+
+    <!-- Tender panel: Step 1 — method picker only -->
+    <div class="tender-panel">
+      <!-- Due amount hero — large, confident -->
+      <div style="padding: 28px 28px 8px; display: flex; align-items: flex-start; justify-content: space-between;">
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: #5a5550; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px;">Due now</div>
+          <div style="font-family: var(--font-display); font-size: 68px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: #1a1816;">$274.51</div>
+          <div style="font-size: 12.5px; color: #5a5550; margin-top: 6px;">Sarah M. · 3 items</div>
+        </div>
+        <div style="text-align: right; padding-top: 4px;">
+          <div style="font-size: 11.5px; color: #5a5550; margin-bottom: 4px;">Split tender</div>
+          <div style="font-size: 12px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em;">⊕ Add method</div>
+        </div>
+      </div>
+
+      <!-- Member benefit banner -->
+      <div style="margin: 4px 24px 8px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.01)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.28); display: flex; gap: 14px; align-items: center; box-shadow: 0 6px 18px rgba(194,65,12,0.06);">
+        <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.65), 0 6px 16px rgba(194,65,12,0.22); flex-shrink: 0; filter: drop-shadow(0 0 8px rgba(194,65,12,0.22));">★</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">GOLD member · benefits applied</div>
+          <div style="font-size: 11.5px; color: #5a5550; margin-top: 2px;">10% off auto · earning 55 pts · 230 pts to redeem ($11.50)</div>
+        </div>
+        <span class="chip" style="font-family: var(--font-display); font-size: 14px; padding: 4px 12px;">SAVED $10</span>
+        <span style="color: var(--teal); font-weight: 700; font-size: 11.5px; letter-spacing: 0.04em; white-space: nowrap;">REDEEM PTS</span>
+      </div>
+
+      <div style="padding: 8px 24px 4px; font-size: 11px; color: #8a847c; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Choose payment method</div>
+
+      <!-- Method picker — 4-up, none selected yet, each shows as tappable -->
+      <div class="tender-methods">
+        <div class="method">
+          <div class="m-ico">💳</div>
+          <div class="m-name">Card</div>
+          <div class="m-sub">Tap to Pay · BlockChyp</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">💵</div>
+          <div class="m-name">Cash</div>
+          <div class="m-sub">Enter amount received</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">🎁</div>
+          <div class="m-name">Gift card</div>
+          <div class="m-sub">Scan / enter number</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">💸</div>
+          <div class="m-name">Store credit</div>
+          <div class="m-sub">$42.00 available</div>
+        </div>
+      </div>
+
+      <!-- Spacer + split tender hint -->
+      <div style="flex: 1;"></div>
+      <div style="margin: 0 24px 16px; padding: 12px 16px; border-radius: 12px; background: rgba(30,24,16,0.025); border: 1px dashed rgba(30,24,16,0.12); display: flex; gap: 12px; align-items: center;">
+        <span style="color: #5a5550; font-size: 18px;">⊕</span>
+        <div style="font-size: 12px; color: #5a5550;">Split tender — pick one method, enter partial amount, then pick another for the remainder. Balances update automatically.</div>
+      </div>
+
+      <!-- Disabled confirm until method is picked -->
+      <div class="tender-footer">
+        <div class="tf-aux">Add tip</div>
+        <div class="tf-primary" style="opacity: 0.38; box-shadow: none; background: rgba(194,65,12,0.12);">
+          <span>Select a payment method</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible, locked -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines · locked</div>
+        </div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity: 0.82;">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn disabled">Select method first</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     4b — Tender Step 2 · Cash selected · cash panel + numpad · cart stays
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 4b · Tender — Step 2 · Cash · cash panel + quick-amounts + numpad · Confirm → receipt (or back for split tender on remaining balance)</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Tender · Cash · Sarah M.</div><div class="t-meta">iPhone 14 Pro · enter cash received</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip warning">Tendering</span>
+        <div class="tb-btn">← Method (esc)</div>
+      </div>
+    </div>
+
+    <!-- Tender panel: Step 2 — cash amount entry -->
+    <div class="tender-panel">
+      <div class="tender-hero">
+        <div>
+          <div class="th-title" style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            Cash payment
+          </div>
+          <div class="th-sub" style="margin-top: 4px;">Enter amount received from customer</div>
+        </div>
+        <div>
+          <div class="th-sub" style="text-align: right;">Due</div>
+          <div class="th-amount">$274.51</div>
+        </div>
+      </div>
+
+      <div class="cash-panel-big">
+        <div class="cp-col">
+          <div class="cp-label">Received</div>
+          <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+        </div>
+        <div class="cp-col change">
+          <div class="cp-label">Change due</div>
+          <div class="cp-amount">$25.49</div>
+        </div>
+      </div>
+
+      <div style="padding: 4px 24px 4px; font-size: 11px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Quick amount</div>
+
+      <div class="quick-amounts">
+        <div class="quick-amount">Exact</div>
+        <div class="quick-amount">$275</div>
+        <div class="quick-amount">$280</div>
+        <div class="quick-amount selected">$300</div>
+        <div class="quick-amount">$320</div>
+      </div>
+
+      <div class="numpad">
+        <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+        <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+        <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+        <div class="numkey dot">.</div><div class="numkey">0</div><div class="numkey backspace">⌫</div>
+      </div>
+
+      <div class="tender-footer">
+        <div class="tf-aux">+ Split tender</div>
+        <div class="tf-aux">Add tip</div>
+        <div class="tf-primary">
+          <span>Confirm cash</span>
+          <span class="tb-amount">$274.51</span>
+          <span style="font-size: 14px;">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible, locked -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines · locked</div>
+        </div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity: 0.82;">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Confirm cash</span>
+        <span class="tb-amount">$274.51</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     5 — Receipt · cart collapsed · celebration hero + share + loyalty + receipt
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">Light · 5 · Receipt · cart column collapses 420→0px · celebration hero (hero highest elevation) · glassy share tiles · loyalty progress bar · JetBrains Mono receipt preview (lower elevation) · Pencil signature banner · next-sale CTA in toolbar</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body cart-collapsed">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Sale complete</div><div class="t-meta">Order #28014 · Sarah M. · 3:12 PM · cash · paid</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">✓ Paid · $274.51</span>
+        <div class="tb-btn primary">Next sale (⌘ N)</div>
+      </div>
+    </div>
+
+    <!-- Items area expanded to fill — 2-column: left actions, right receipt preview -->
+    <div class="receipt-stage">
+      <!-- Left column: hero (highest elevation) → share tiles (mid) → loyalty + actions (lower) -->
+      <div style="display: flex; flex-direction: column; gap: 0;">
+
+        <!-- Celebration hero — highest visual elevation -->
+        <div class="receipt-hero">
+          <div class="rh-glow"></div>
+          <div class="rh-check">✓</div>
+          <div class="rh-label">Payment complete</div>
+          <div class="rh-amount">$274.51</div>
+          <div class="rh-sub">Cash · $300 received · $25.49 change · Pavel I. · 12 sec</div>
+        </div>
+
+        <!-- Share tiles — mid elevation, prominent -->
+        <div style="margin-top: 16px;">
+          <div style="font-size: 10.5px; font-weight: 600; color: #8a847c; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 8px;">Send receipt to Sarah M.</div>
+          <div class="share-grid">
+            <div class="share-tile primary"><div class="st-ico">💬</div><div class="st-label">Text</div></div>
+            <div class="share-tile"><div class="st-ico">✉️</div><div class="st-label">Email</div></div>
+            <div class="share-tile"><div class="st-ico">🖨</div><div class="st-label">Print</div></div>
+            <div class="share-tile"><div class="st-ico">📡</div><div class="st-label">AirDrop</div></div>
+          </div>
+        </div>
+
+        <!-- Loyalty celebration — lower, supportive -->
+        <div class="loyalty-celebration">
+          <div class="lc-star">★</div>
+          <div style="flex: 1;">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier maintained</div>
+            <div style="font-size: 11.5px; color: #5a5550; margin-top: 3px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b> (free diagnostic + 15% off)</div>
+            <div class="lc-progress"></div>
+            <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: #8a847c; margin-top: 4px;"><span>GOLD · 285 pts</span><span>PLATINUM · 500 pts</span></div>
+          </div>
+        </div>
+
+        <!-- Actions row -->
+        <div class="receipt-actions">
+          <div class="btn-sec">View ticket #4829</div>
+          <div class="btn-sec">Customer profile</div>
+          <div class="btn-destr">Start refund</div>
+        </div>
+
+        <!-- Pencil signature banner -->
+        <div style="margin-top: 10px; padding: 14px 16px; border-radius: 14px; background: rgba(11,82,96,0.06); border: 1px solid rgba(11,82,96,0.22); color: #0b5260; font-size: 13px; display: flex; gap: 12px; align-items: center;">
+          <span style="font-size: 20px;">✍</span>
+          <div>
+            <div style="font-weight: 700;">Signature captured with Pencil</div>
+            <div style="font-size: 11.5px; margin-top: 3px; color: #5a5550;">Archived to ticket #4829 · PKCanvasView · PNG 142 KB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: receipt preview — lowest visual elevation, supporting context -->
+      <div class="receipt-list">
+        <div class="rl-head">
+          <div>
+            <div class="rl-title">Receipt · #28014</div>
+            <div class="rl-meta">2026-04-24 · 15:12 · Store #1 · Pavel I.</div>
+          </div>
+          <span class="chip success">Sent via SMS ✓</span>
+        </div>
+        <div class="rl-body">
+          <div class="rl-row"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+          <div class="rl-row"><span>Labor · screen replacement</span><span>$60.00</span></div>
+          <div class="rl-row"><span>USB-C 3 ft cable</span><span>$14.00</span></div>
+          <div class="rl-row" style="color: var(--primary);"><span>★ GOLD member · 10% off</span><span>−$10.00</span></div>
+          <div class="rl-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
+          <div class="rl-row" style="padding-top: 10px; border-top: 1px dashed rgba(30,24,16,0.12); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+          <div class="rl-row" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+        </div>
+        <div class="rl-foot">Thank you · 30-day returns with receipt</div>
+      </div>
+    </div>
+
+    <!-- Cart column collapsed to 0px -->
+
+  </div>
+</div>
+</div>
+
+  </div><!-- /.light-mode -->
+</div><!-- /light section -->
+
+</body>
+</html>

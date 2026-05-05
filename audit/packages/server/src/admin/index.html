@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bizarre CRM - Server Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:2rem}
+h1{font-size:1.5rem;margin-bottom:.25rem}
+h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;font-weight:500}
+h3{font-size:.875rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:.75rem}
+.container{max-width:900px;margin:0 auto}
+.card{background:#1e293b;border-radius:.75rem;padding:1.25rem;margin-bottom:1rem;border:1px solid #334155}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.stat{text-align:center;padding:.75rem}
+.stat-val{font-size:1.5rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:.75rem;color:#94a3b8;margin-top:.25rem}
+label{display:block;font-size:.75rem;font-weight:600;color:#94a3b8;margin-bottom:.25rem}
+input,select{width:100%;padding:.5rem .75rem;background:#0f172a;border:1px solid #334155;border-radius:.5rem;color:#e2e8f0;font-size:.875rem;outline:none}
+input:focus,select:focus{border-color:#38bdf8}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.5rem;font-size:.875rem;font-weight:600;border:none;cursor:pointer;transition:background .15s}
+.btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
+.btn-success{background:#22c55e;color:#fff}.btn-success:hover{background:#16a34a}
+.btn-danger{background:#ef4444;color:#fff}.btn-danger:hover{background:#dc2626}
+.btn-ghost{background:transparent;color:#94a3b8;border:1px solid #334155}.btn-ghost:hover{background:#334155}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem}
+.flex-1{flex:1}
+.badge{display:inline-block;padding:.125rem .5rem;border-radius:1rem;font-size:.75rem;font-weight:600}
+.badge-ok{background:#166534;color:#4ade80}
+.badge-err{background:#7f1d1d;color:#fca5a5}
+.backup-item{display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid #1e293b}
+.backup-item:last-child{border:none}
+.folder-list{max-height:200px;overflow-y:auto;border:1px solid #334155;border-radius:.5rem;margin-top:.5rem}
+.folder-item{padding:.375rem .75rem;cursor:pointer;font-size:.875rem;display:flex;align-items:center;gap:.5rem}
+.folder-item:hover{background:#334155}
+.folder-item.active{background:#0ea5e9;color:#fff}
+.text-sm{font-size:.875rem}.text-xs{font-size:.75rem}.text-muted{color:#64748b}
+.mt-1{margin-top:.5rem}.mb-1{margin-bottom:.5rem}
+#status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4ade80;margin-right:.5rem}
+</style>
+</head>
+<body>
+<!-- Login Screen -->
+<div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <div class="card" style="width:360px;text-align:center">
+    <h1 style="margin-bottom:.25rem">Bizarre CRM</h1>
+    <p class="text-sm text-muted" style="margin-bottom:1.5rem">Server Admin Login</p>
+    <div style="text-align:left">
+      <label>Username</label>
+      <input id="login-user" type="text" placeholder="Admin Username" autocomplete="off" style="margin-bottom:.75rem">
+      <label>Password</label>
+      <input id="login-pass" type="password" placeholder="Password" autocomplete="off">
+      <div id="login-error" style="color:#f87171;font-size:.75rem;min-height:1.25rem;margin-top:.5rem"></div>
+      <button class="btn btn-primary" data-action="login" style="width:100%;margin-top:.5rem;justify-content:center">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Screen -->
+<div id="main-screen" style="display:none">
+<div id="dev-banner" style="display:none;background:#dc2626;color:white;text-align:center;padding:6px;font-size:12px;font-weight:700;letter-spacing:0.05em">
+  ⚠ DEVELOPMENT MODE — NOT SECURE FOR PRODUCTION
+</div>
+<div class="container">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <div>
+      <h1><span id="status-dot"></span>Bizarre CRM Server</h1>
+      <h2>Admin Panel</h2>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div class="text-xs text-muted" id="info"></div>
+      <button class="btn btn-ghost text-xs" data-action="logout">Logout</button>
+    </div>
+  </div>
+
+  <!-- Status cards -->
+  <div class="grid2">
+    <div class="card">
+      <div class="grid2">
+        <div class="stat"><div class="stat-val" id="db-size">—</div><div class="stat-label">Database Size</div></div>
+        <div class="stat"><div class="stat-val" id="uploads-size">—</div><div class="stat-label">Uploads Size</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="grid2">
+        <div class="stat"><div class="stat-val" id="uptime">—</div><div class="stat-label">Uptime</div></div>
+        <div class="stat"><div class="stat-val" id="last-backup">—</div><div class="stat-label">Last Backup</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup Settings -->
+  <div class="card">
+    <h3>Backup Settings</h3>
+    <div class="row">
+      <div class="flex-1">
+        <label>Backup Folder</label>
+        <div style="display:flex;gap:.5rem">
+          <input id="backup-path" placeholder="Browse or type path (e.g. Y:\Backups or \\server\share)">
+          <button class="btn btn-ghost" data-action="toggle-browser">Browse</button>
+        </div>
+      </div>
+    </div>
+    <!-- Folder browser -->
+    <div id="browser" style="display:none" class="mb-1">
+      <div class="row">
+        <label>Drives:</label>
+        <div id="drives" style="display:flex;gap:.25rem;flex-wrap:wrap"></div>
+      </div>
+      <div class="row"><button class="btn btn-ghost text-sm" data-action="browse-up">.. Parent</button> <span class="text-sm text-muted" id="browse-path"></span></div>
+      <div class="folder-list" id="folders"></div>
+      <div class="mt-1" style="display:flex;gap:.5rem">
+        <button class="btn btn-primary text-sm" data-action="select-folder">Use This Folder</button>
+        <button class="btn btn-ghost text-sm" data-action="new-folder">+ New Folder</button>
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <label>Schedule (cron)</label>
+        <select id="backup-schedule">
+          <option value="0 3 * * *">Daily at 3:00 AM</option>
+          <option value="0 0 * * *">Daily at Midnight</option>
+          <option value="0 */6 * * *">Every 6 Hours</option>
+          <option value="0 */12 * * *">Every 12 Hours</option>
+          <option value="0 3 * * 0">Weekly (Sunday 3 AM)</option>
+        </select>
+      </div>
+      <div>
+        <label>Keep Last N Backups</label>
+        <input id="backup-retention" type="number" min="1" max="365" value="30">
+      </div>
+    </div>
+    <div class="row mt-1">
+      <button class="btn btn-primary" data-action="save-settings">Save Settings</button>
+      <button class="btn btn-success" id="btn-backup" data-action="backup-now">Backup Now</button>
+    </div>
+  </div>
+
+  <!-- Backups List -->
+  <div class="card">
+    <h3>Recent Backups</h3>
+    <div id="backups"><span class="text-muted text-sm">Loading...</span></div>
+  </div>
+</div>
+</div><!-- /main-screen -->
+
+<script src="/admin/js/admin.js"></script>
+</body>
+</html>

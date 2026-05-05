@@ -1,0 +1,87 @@
+name: iOS A11y Audit
+
+# Phase 10 gate — §26 A11y / §29 Performance CI.
+# Runs a11y-audit.sh on every PR that touches ios/** or the script itself.
+#
+# Strategy:
+#   - ubuntu-latest (fast/cheap) for the shell-only audit.
+#   - Regression mode: fail only if violations increased vs committed baseline.
+#     This lets existing violations be tracked without blocking merges until
+#     the Phase 10 full-retrofit sprint completes.
+#
+# See ios/ActionPlan.md §26 and §29, ios/agent-ownership.md Phase 10.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-a11y.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-a11y.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  # ── A11y shell audit (ubuntu-latest — no Xcode needed) ───────────────────
+
+  a11y-audit:
+    name: A11y anti-pattern audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make audit script executable
+        run: chmod +x ios/scripts/a11y-audit.sh
+
+      - name: Run a11y-audit.sh (regression check)
+        id: audit
+        run: |
+          # If a baseline file exists, check for regressions (count must not increase).
+          # If no baseline exists (first run), write it and exit 0 so CI seeds the file.
+          if [ -f ios/.a11y-baseline.txt ]; then
+            bash ios/scripts/a11y-audit.sh --check-regressions --json-only | tee audit-report.json
+          else
+            echo "No baseline found — seeding baseline for future runs."
+            bash ios/scripts/a11y-audit.sh --baseline
+            echo '{"violations_total":0,"files_checked":0,"violations":[],"note":"baseline seeded"}' > audit-report.json
+          fi
+
+      - name: Upload audit JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-audit-report
+          path: audit-report.json
+          retention-days: 30
+
+      - name: Annotate PR with violation summary
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          TOTAL=$(python3 -c "import json,sys; d=json.load(open('audit-report.json')); print(d.get('violations_total',0))" 2>/dev/null || echo "?")
+          echo "::error::A11y audit failed — $TOTAL violations (count increased vs baseline). Run: bash ios/scripts/a11y-audit.sh to see details."
+
+  # ── SwiftPM unit tests for A11yLabels + TipCatalog (macOS only) ──────────
+  # Disabled until a self-hosted macOS runner is configured.
+  # Enable by removing `if: false` and ensuring the runner label is available.
+
+  # a11y-swift-tests:
+  #   name: A11y Swift unit tests
+  #   if: false  # enable when macOS runner available
+  #   runs-on: macos-14
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Test Core package (A11yLabels)
+  #       run: |
+  #         cd ios/Packages/Core
+  #         swift test --filter A11yLabelsTests
+  #
+  #     - name: Test DesignSystem package (TipCatalog)
+  #       run: |
+  #         cd ios/Packages/DesignSystem
+  #         swift test --filter TipCatalogTests

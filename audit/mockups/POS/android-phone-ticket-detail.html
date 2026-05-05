@@ -1,0 +1,777 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Android Phone Ticket Detail — M3 Expressive</title>
+<style>
+  :root{
+    /* Surface ramp from design-system.html (Option F warm-graphite). */
+    --bg:#0F0E0C;
+    --surface:#161513;
+    --surface2:#1E1C1A;
+    --surface3:#221F1B;
+    --on:#f4ece1; --on2:#a89b8a; --on3:#6f6557;
+    --cream:#fdeed0; --cream-on:#2B1400;
+    --good:#34c47e; --warn:#e8a33d; --err:#e2526c; --teal:#4db8c9;
+    --r:18px; --r-s:12px; --r-l:24px;
+    font-family:-apple-system,Roboto,Segoe UI,sans-serif;
+  }
+  body{margin:0;background:#000;color:var(--on);}
+  .stage{padding:24px;display:flex;flex-direction:column;gap:24px;align-items:center}
+  .label{color:var(--on2);font-size:13px;letter-spacing:.05em;text-transform:uppercase}
+
+  .annot{
+    width:412px;background:var(--surface2);border-radius:14px;padding:16px 18px;
+    color:var(--on2);font-size:13px;line-height:1.55
+  }
+  .annot h3{margin:0 0 8px;color:var(--on);font-size:15px}
+  .annot ul{margin:6px 0 0;padding-left:16px}
+  .annot code{background:#1a150e;padding:1px 5px;border-radius:3px;color:var(--cream);font-size:11px}
+
+  .row-frames{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+
+  /* Phone frame — Pixel 6 Pro ≈ 412 × 891 dp at 1× */
+  .frame{
+    width:412px;height:891px;background:var(--bg);
+    border-radius:32px;overflow:hidden;
+    box-shadow:0 8px 32px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;position:relative;
+    border:6px solid #2a2421;
+  }
+
+  /* Status bar (system) */
+  .sysbar{
+    height:30px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 16px;font-size:12px;color:var(--on2);flex-shrink:0;
+  }
+  .sysbar .ind{display:flex;gap:6px;align-items:center}
+
+  /* Top app bar */
+  .topbar{
+    height:56px;display:flex;align-items:center;gap:6px;
+    padding:0 6px 0 4px;flex-shrink:0;
+    border-bottom:1px solid var(--surface);
+  }
+  .topbar .icon{
+    width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+    color:var(--on2);cursor:pointer;border-radius:50%;
+  }
+  .topbar .icon:hover{background:var(--surface)}
+  .topbar .number{font-size:18px;font-weight:600;color:var(--on);margin-right:4px}
+  .topbar .grow{flex:1}
+  .topbar .status-cta{
+    height:36px;padding:0 14px;
+    border-radius:20px 8px 20px 8px;
+    background:var(--cream);color:var(--cream-on);
+    display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;
+    transition:border-radius .25s cubic-bezier(.34,1.56,.64,1);
+  }
+  .topbar .status-cta:hover{border-radius:20px 14px 20px 14px}
+  .topbar .status-cta svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Body — scrollable, fades behind compose bar */
+  .body{
+    flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;
+    padding-bottom:84px;
+  }
+
+  /* Cards */
+  .card{background:var(--surface);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
+  .card h4{margin:0;font-size:11px;color:var(--on2);font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+  .card .row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+  .card .pill{background:var(--surface2);padding:4px 9px;border-radius:999px;font-size:11px;color:var(--on2)}
+  .card .cream-pill{background:var(--cream);color:var(--cream-on);padding:4px 9px;border-radius:999px;font-size:11px}
+  .card .green-pill{background:#1d3826;color:var(--good);padding:4px 9px;border-radius:999px;font-size:11px}
+  .card .warn-pill{background:#3a2c1a;color:var(--warn);padding:4px 9px;border-radius:999px;font-size:11px}
+
+  .icon-btn{
+    width:36px;height:36px;border-radius:50%;background:var(--surface2);color:var(--on);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .icon-btn svg,.icon svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .icon-btn.expander svg{transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+  .icon-btn.expander:not(.open) svg{transform:rotate(-90deg)}
+
+  .card .expand-body{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .card.collapsed .expand-body{display:none}
+
+  /* Device */
+  .device .title{font-size:16px;font-weight:600}
+  .device .sub{color:var(--on2);font-size:13px}
+  .kv-rows{display:flex;flex-direction:column;gap:4px;margin-top:6px;padding-top:8px;border-top:1px solid var(--surface3)}
+  .kv{display:flex;justify-content:space-between;font-size:12px}
+  .kv .k{color:var(--on3)}
+  .kv .v{color:var(--on);font-variant-numeric:tabular-nums}
+
+  /* Customer */
+  .customer .avatar{
+    width:40px;height:40px;background:var(--cream);color:var(--cream-on);
+    display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;
+    clip-path:path('M20 0 C 26 0 33 4 35 9 C 40 11 40 29 35 31 C 33 36 26 40 20 40 C 14 40 7 36 5 31 C 0 29 0 11 5 9 C 7 4 14 0 20 0 Z');
+  }
+  .customer .name{font-size:15px;font-weight:600}
+  .customer .phone{color:var(--on2);font-size:12px}
+
+  /* Quote */
+  .quote-summary{display:flex;align-items:center;justify-content:space-between;padding:2px 0}
+  .quote-summary .total-num{font-size:22px;font-weight:600;color:var(--cream);font-variant-numeric:tabular-nums}
+  .card.quote:not(.collapsed) .quote-summary{display:none}
+
+  .qrows{display:flex;flex-direction:column;background:var(--surface2);border-radius:10px;overflow:hidden}
+  .qrow{
+    display:grid;grid-template-columns:32px 1fr 70px 22px;
+    align-items:center;gap:8px;padding:8px 10px;
+    border-bottom:1px solid var(--surface3);
+  }
+  .qrow:last-child{border-bottom:none}
+  .qrow .qty{
+    width:30px;height:22px;border-radius:5px;background:var(--bg);
+    color:var(--on2);font-size:11px;display:flex;align-items:center;justify-content:center;
+    font-variant-numeric:tabular-nums;
+  }
+  .qrow .nm{font-size:13px;color:var(--on);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qrow .meta{font-size:10px;color:var(--on3);font-family:ui-monospace,monospace}
+  .qrow .qprice{font-size:12px;font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+  .qrow .more{
+    width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+    color:var(--on3);border-radius:5px;cursor:pointer;
+  }
+
+  .qtotals{display:flex;flex-direction:column;gap:4px;padding:4px 4px 0}
+  .qt-row{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+  .qt-row .lbl{color:var(--on2)}
+  .qt-row .val{font-variant-numeric:tabular-nums;font-weight:500}
+  .qt-row .val.neg{color:var(--good)}
+  .qt-grand{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:4px;padding-top:8px;border-top:1px solid var(--surface3);
+  }
+  .qt-grand .lbl{font-size:14px;font-weight:600}
+  .qt-grand .val{font-size:20px;font-weight:700;color:var(--cream);font-variant-numeric:tabular-nums}
+  .qt-pay{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--surface2);border-radius:8px;padding:8px 10px;margin-top:4px;
+    font-size:12px;
+  }
+  .qt-pay .lbl{color:var(--on2)}
+  .qt-pay .val{font-variant-numeric:tabular-nums;font-weight:500}
+
+  .qt-checkout{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    margin-top:8px;height:44px;border-radius:14px;
+    background:var(--cream);color:var(--cream-on);
+    font-size:14px;font-weight:600;cursor:pointer;
+  }
+  .qt-checkout svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .qt-checkout .amount{opacity:.85;font-weight:500}
+
+  .qadd{
+    display:grid;grid-template-columns:1fr 80px 22px;
+    align-items:center;gap:8px;padding:8px 10px;
+    background:#1f1a14;border:1px dashed var(--cream);border-radius:10px;margin-top:6px;
+  }
+  .qadd .field{
+    background:var(--bg);border-radius:6px;padding:6px 9px;
+    color:var(--on3);font-size:12px;
+  }
+  .qadd .field .typed{color:var(--on)}
+  .qadd .ok{
+    width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+    background:var(--cream);color:var(--cream-on);border-radius:5px;cursor:pointer;
+  }
+  .qsuggest{margin-top:4px;background:var(--bg);border-radius:8px;border:1px solid var(--surface3);overflow:hidden}
+  .qsuggest .sug{
+    display:grid;grid-template-columns:42px 1fr 64px;gap:6px;align-items:center;
+    padding:6px 8px;border-bottom:1px solid var(--surface2);
+  }
+  .qsuggest .sug:last-child{border-bottom:none}
+  .qsuggest .sug.focused{background:var(--surface)}
+  .qsuggest .kind{
+    font-size:8px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+    padding:2px 5px;border-radius:3px;text-align:center;
+  }
+  .qsuggest .kind.part{background:#1e2c33;color:var(--teal)}
+  .qsuggest .kind.svc{background:#1d3826;color:var(--good)}
+  .qsuggest .kind.misc{background:#332a1a;color:var(--warn)}
+  .qsuggest .nm{font-size:11px;color:var(--on);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qsuggest .right{font-size:11px;color:var(--on);text-align:right;font-variant-numeric:tabular-nums}
+
+  /* Photos */
+  .photos .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .photos .ph{aspect-ratio:1;background:var(--surface2);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--on3)}
+  .photos .ph.add{border:1px dashed var(--on3);color:var(--cream);font-size:11px}
+
+  /* Bench Timer */
+  .timer{display:flex;align-items:center;gap:10px}
+  .timer .clock{font-size:22px;font-family:ui-monospace,monospace;font-weight:500}
+  .timer .ctl{
+    width:36px;height:36px;border-radius:50%;background:var(--cream);color:var(--cream-on);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;margin-left:auto;
+  }
+  .timer .ctl svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+
+  /* Activity feed — bumped prominence: bigger dots + body text, more
+     vertical breathing room, brand-accent header so it reads as the
+     main scrollable story rather than a sidebar afterthought. */
+  .activity-header{
+    margin-top:10px;display:flex;align-items:center;gap:8px;
+    font-size:14px;color:var(--on);font-weight:600;
+    padding:4px 6px 2px;
+  }
+  .activity-header .badge{
+    background:var(--surface2);color:var(--on2);
+    font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;
+  }
+  .feed{
+    display:flex;flex-direction:column;gap:0;position:relative;
+    background:var(--surface);border-radius:var(--r);padding:14px 14px 16px;
+    border-left:2px solid var(--cream);
+  }
+  .feed::before{
+    content:"";position:absolute;left:28px;top:24px;bottom:24px;
+    width:1px;background:var(--surface3);
+  }
+  .day-divider{
+    display:flex;align-items:center;gap:8px;padding:12px 0 6px 32px;font-size:10px;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--on3);font-weight:500;
+    position:relative;
+  }
+  .day-divider:first-child{padding-top:2px}
+  .day-divider .pulse{position:absolute;left:7px;width:10px;height:10px;border-radius:50%;background:var(--cream);box-shadow:0 0 0 2px var(--surface)}
+  .day-divider:not(.past) .pulse::after{
+    content:"";position:absolute;inset:-3px;border-radius:50%;
+    border:1px solid var(--cream);opacity:.6;
+    animation:tlPulse 1800ms cubic-bezier(.34,1.56,.64,1) infinite;
+  }
+  @keyframes tlPulse{
+    0%{transform:scale(.8);opacity:.7}
+    70%{transform:scale(1.6);opacity:0}
+    100%{transform:scale(1.6);opacity:0}
+  }
+  .day-divider.past .pulse{background:var(--surface3)}
+
+  .ev{display:flex;gap:12px;padding:10px 0;align-items:flex-start;position:relative}
+  .ev .dot{
+    width:32px;height:32px;border-radius:50%;background:var(--surface);
+    display:flex;align-items:center;justify-content:center;color:var(--on2);
+    flex-shrink:0;border:1px solid var(--surface3);
+    box-shadow:0 0 0 2px var(--surface);z-index:1;
+  }
+  .ev .dot svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .ev .body-content{flex:1;display:flex;flex-direction:column;gap:3px;padding-top:3px;min-width:0}
+  .ev .meta-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .ev .who{color:var(--on);font-size:12px;font-weight:600}
+  .ev .when{color:var(--on3);font-size:11px;font-variant-numeric:tabular-nums}
+  .ev .kind{color:var(--on3);font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:500}
+  .ev .text{font-size:14px;color:var(--on);line-height:1.45}
+  .ev.note .dot{color:var(--warn);border-color:#3a2c1a}
+  .ev.sms .dot{color:var(--teal);border-color:#1e2c33}
+  .ev.status .dot{color:var(--good);border-color:#1d3826}
+  .ev.payment .dot{color:var(--cream);border-color:#3a2a1a}
+  .ev.create .dot{color:var(--on2)}
+
+  /* Compose bar pinned at bottom — bumped for prominence + dropdown
+     kind picker (was 3-segment row, too tight on small phones). */
+  .compose-pinned{
+    position:absolute;left:8px;right:8px;bottom:8px;
+    background:var(--surface2);border-radius:18px;padding:10px 10px 10px 12px;
+    display:flex;align-items:center;gap:8px;
+    box-shadow:0 -10px 28px rgba(0,0,0,.5);
+    border:1px solid var(--surface3);
+  }
+  .compose-pinned .kind-chip{
+    height:36px;padding:0 10px 0 12px;
+    background:var(--bg);border-radius:999px;
+    display:flex;align-items:center;gap:6px;
+    font-size:12px;color:var(--on);font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;cursor:pointer;flex-shrink:0;
+  }
+  .compose-pinned .kind-chip .dot-color{
+    width:8px;height:8px;border-radius:50%;background:var(--warn);
+  }
+  .compose-pinned .kind-chip.sms .dot-color{background:var(--teal)}
+  .compose-pinned .kind-chip.diag .dot-color{background:var(--good)}
+  .compose-pinned .kind-chip svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+  .compose-pinned .input{
+    flex:1;color:var(--on2);font-size:14px;padding:0 6px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .compose-pinned .send{
+    width:40px;height:40px;border-radius:50%;background:var(--cream);color:var(--cream-on);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+  }
+  .compose-pinned .send svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Kind picker popup (anchored above the chip when expanded) */
+  .kind-popup{
+    position:absolute;left:8px;bottom:74px;
+    background:var(--surface);border-radius:14px;
+    border:1px solid var(--surface3);
+    padding:6px;display:none;flex-direction:column;gap:2px;
+    width:180px;box-shadow:0 8px 24px rgba(0,0,0,.5);
+    z-index:5;
+  }
+  .frame.with-kind-popup .kind-popup{display:flex}
+  .kind-popup .opt{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 10px;border-radius:8px;cursor:pointer;
+    font-size:13px;color:var(--on);
+  }
+  .kind-popup .opt:hover,.kind-popup .opt.current{background:var(--surface2)}
+  .kind-popup .opt .swatch{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .kind-popup .opt.note .swatch{background:var(--warn)}
+  .kind-popup .opt.diag .swatch{background:var(--good)}
+  .kind-popup .opt.sms .swatch{background:var(--teal)}
+  .kind-popup .opt .label{flex:1}
+  .kind-popup .opt .hint{color:var(--on3);font-size:10px}
+
+  .li-ico-sm{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+  /* Bottom-sheet picker overlay (Status pill tap → Option B per tablet decision) */
+  .frame.with-sheet .body,.frame.with-sheet .compose-pinned{filter:brightness(.55)}
+  .sheet-scrim{
+    position:absolute;inset:0;background:rgba(0,0,0,.4);
+    display:none;
+  }
+  .frame.with-sheet .sheet-scrim{display:block}
+  .picker-sheet{
+    position:absolute;left:0;right:0;bottom:0;background:var(--surface);
+    border-radius:18px 18px 0 0;padding:18px 14px 22px;
+    display:none;flex-direction:column;gap:6px;
+  }
+  .frame.with-sheet .picker-sheet{display:flex}
+  .picker-sheet .grabber{width:38px;height:4px;border-radius:2px;background:var(--surface3);margin:0 auto 10px}
+  .picker-sheet .h{font-size:13px;font-weight:600;color:var(--on);padding:0 4px 6px}
+  .picker-sheet .row{
+    display:grid;grid-template-columns:8px 1fr 60px;gap:10px;align-items:center;
+    padding:10px 10px;border-radius:8px;cursor:pointer;
+  }
+  .picker-sheet .row.current{background:var(--surface2)}
+  .picker-sheet .dot{width:8px;height:8px;border-radius:50%;background:var(--on3)}
+  .picker-sheet .row.current .dot{background:var(--cream)}
+  .picker-sheet .row .nm{font-size:13px;color:var(--on)}
+  .picker-sheet .row .meta{font-size:10px;color:var(--on3);text-align:right}
+</style>
+
+<div class="stage">
+
+  <div class="annot">
+    <h3>Android phone ticket detail — M3 Expressive</h3>
+    <ul>
+      <li>Single-column LazyColumn at <code>sw &lt; 600 dp</code>. Tablet 2-pane layout stays for sw &gt;= 600.</li>
+      <li>Same actions as tablet: <b>Status</b> = cream pill in top bar (asymmetric corners, <code>20/8/20/8</code>); tap → bottom-sheet picker (Option B from tablet decision); <b>Call / SMS</b> live on Customer card; <b>Note / Diagnostic / SMS</b> in compose bar segmented selector; <b>Print + Pin + Edit + Merge + Split + Sign-off + Delete</b> all under <code>⋮</code> overflow.</li>
+      <li>Quote card same collapse / expand model — collapsed shows <code>$XX.XX</code> only, expanded shows itemised rows + totals + Checkout CTA. Add-line typeahead with auto-classified Part / Svc / Misc suggestions sits at the bottom of expanded body.</li>
+      <li>Cookie-shape avatar (M3 Expressive <code>MaterialShapes.cookie</code>); breathing pulse on the "Today" day-divider; chevron rotation on collapse.</li>
+      <li>Compose bar pinned to the bottom edge (84 dp body padding so the last activity row isn't covered).</li>
+      <li>QR removed (lives only on the printed thermal label, same decision as tablet).</li>
+    </ul>
+  </div>
+
+  <div class="row-frames">
+
+    <!-- FRAME A — Default + kind popup open -->
+    <div>
+      <div class="label">A · Default · kind popup open</div>
+      <div class="frame with-kind-popup">
+        <!-- system status bar -->
+        <div class="sysbar">
+          <span>10:14</span>
+          <span class="ind">📶 LTE 78%</span>
+        </div>
+
+        <!-- top app bar -->
+        <div class="topbar">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 5l-7 7 7 7"/></svg>
+          </div>
+          <div class="number">T-1232</div>
+          <div class="grow"></div>
+          <div class="status-cta">
+            <svg viewBox="0 0 24 24"><path d="M3 7h13l-3-3"/><path d="M21 17H8l3 3"/></svg>
+            In Progress
+          </div>
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+          </div>
+        </div>
+
+        <!-- body -->
+        <div class="body">
+
+          <!-- Device collapsed -->
+          <div class="card device collapsed">
+            <h4>Device</h4>
+            <div class="row">
+              <div>
+                <div class="title">iPhone SE (2020)</div>
+                <div class="sub">Battery Replacement</div>
+              </div>
+              <div style="display:flex;gap:4px">
+                <div class="icon-btn">
+                  <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </div>
+                <div class="icon-btn expander">
+                  <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="expand-body"></div>
+          </div>
+
+          <!-- Customer -->
+          <div class="card customer">
+            <h4>Customer</h4>
+            <div class="row">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="avatar">PI</div>
+                <div>
+                  <div class="name">Pavel Ivanov</div>
+                  <div class="phone">+1 (555) 220-1144</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:5px">
+                <div class="icon-btn" title="Call">
+                  <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.36 1.85.59 2.81.72a2 2 0 0 1 1.72 2z"/></svg>
+                </div>
+                <div class="icon-btn" title="SMS">
+                  <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quote collapsed -->
+          <div class="card quote collapsed">
+            <div class="row">
+              <h4>Quote · 3 items</h4>
+              <div class="icon-btn expander">
+                <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="quote-summary">
+              <span class="total-num">$286.43</span>
+              <span class="meta" style="font-size:11px;color:var(--on3)">Due $236.43</span>
+            </div>
+            <div class="expand-body"></div>
+          </div>
+
+          <!-- Photos -->
+          <div class="card photos">
+            <div class="row"><h4>Photos</h4><span class="cream-pill">+ Add</span></div>
+            <div class="grid">
+              <div class="ph"><svg class="li-ico-sm" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4"/></svg></div>
+              <div class="ph"><svg class="li-ico-sm" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4"/></svg></div>
+              <div class="ph"><svg class="li-ico-sm" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4"/></svg></div>
+              <div class="ph add">+5</div>
+            </div>
+          </div>
+
+          <!-- Bench Timer -->
+          <div class="card">
+            <div class="row"><h4>Bench Timer</h4><span class="pill">Tech: A.K.</span></div>
+            <div class="timer">
+              <div class="clock">00:23:14</div>
+              <div class="ctl"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></div>
+            </div>
+          </div>
+
+          <!-- Activity feed -->
+          <div class="activity-header">Activity</div>
+          <div class="feed">
+            <div class="day-divider past"><span class="pulse"></span>Yesterday · Apr 28</div>
+
+            <div class="ev create">
+              <div class="dot"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
+              <div class="body-content">
+                <div class="meta-row"><span class="kind">Created</span><span class="who">P.I.</span><span class="when">17:02</span></div>
+                <span class="text">Ticket opened via Check-in flow.</span>
+              </div>
+            </div>
+
+            <div class="ev payment">
+              <div class="dot"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H6"/></svg></div>
+              <div class="body-content">
+                <div class="meta-row"><span class="kind">Payment</span><span class="who">P.I.</span><span class="when">17:14</span></div>
+                <span class="text">Deposit charged $50.00 · Visa ••8821</span>
+              </div>
+            </div>
+
+            <div class="day-divider"><span class="pulse"></span>Today · Apr 29</div>
+
+            <div class="ev note">
+              <div class="dot"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/></svg></div>
+              <div class="body-content">
+                <div class="meta-row"><span class="kind">Note · internal</span><span class="who">A.K.</span><span class="when">08:48</span></div>
+                <span class="text">Phone wet, LDI clean, battery 78% — swap approved.</span>
+              </div>
+            </div>
+
+            <div class="ev sms">
+              <div class="dot"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z"/></svg></div>
+              <div class="body-content">
+                <div class="meta-row"><span class="kind">SMS · sent</span><span class="who">System</span><span class="when">09:32</span></div>
+                <span class="text">"Battery replacement in progress, ETA 45 min."</span>
+              </div>
+            </div>
+
+            <div class="ev status">
+              <div class="dot"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 19v-5h5"/></svg></div>
+              <div class="body-content">
+                <div class="meta-row"><span class="kind">Status</span><span class="who">A.K.</span><span class="when">10:21 · 12 m ago</span></div>
+                <span class="text">Waiting → In Progress</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- compose pinned -->
+        <div class="compose-pinned">
+          <div class="kind-chip">
+            <span class="dot-color"></span>
+            <span>Int.</span>
+            <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <span class="input">Write a message…</span>
+          <span class="send"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg></span>
+        </div>
+
+        <!-- Kind picker popup (anchored above the kind chip) -->
+        <div class="kind-popup">
+          <div class="opt note current"><span class="swatch"></span><span class="label">Int.</span><span class="hint">internal · tech only</span></div>
+          <div class="opt diag"><span class="swatch"></span><span class="label">Diag</span><span class="hint">public diagnostic</span></div>
+          <div class="opt sms"><span class="swatch"></span><span class="label">sms</span><span class="hint">to customer</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FRAME B — Quote expanded + add-line typeahead -->
+    <div>
+      <div class="label">B · Quote expanded · adding line</div>
+      <div class="frame">
+        <div class="sysbar">
+          <span>10:14</span>
+          <span class="ind">📶 LTE 78%</span>
+        </div>
+        <div class="topbar">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 5l-7 7 7 7"/></svg>
+          </div>
+          <div class="number">T-1232</div>
+          <div class="grow"></div>
+          <div class="status-cta">
+            <svg viewBox="0 0 24 24"><path d="M3 7h13l-3-3"/><path d="M21 17H8l3 3"/></svg>
+            In Progress
+          </div>
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+          </div>
+        </div>
+        <div class="body">
+
+          <!-- Device collapsed (compact) -->
+          <div class="card device collapsed">
+            <h4>Device</h4>
+            <div class="row">
+              <div>
+                <div class="title">iPhone SE (2020)</div>
+                <div class="sub">Battery Replacement</div>
+              </div>
+              <div style="display:flex;gap:4px">
+                <div class="icon-btn">
+                  <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </div>
+                <div class="icon-btn expander">
+                  <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="expand-body"></div>
+          </div>
+
+          <!-- Quote expanded with add-line -->
+          <div class="card quote">
+            <div class="row">
+              <h4>Quote · 3 items</h4>
+              <div class="icon-btn expander open">
+                <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="quote-summary">
+              <span class="total-num">$286.43</span>
+            </div>
+            <div class="expand-body">
+              <div class="qrows">
+                <div class="qrow">
+                  <div class="qty">×1</div>
+                  <div>
+                    <div class="nm">iPhone 13 Pro Max OEM OLED</div>
+                    <div class="meta">PART-IP13PM-OLED-OEM</div>
+                  </div>
+                  <div class="qprice">$189.00</div>
+                  <div class="more"><svg class="li-ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+                </div>
+                <div class="qrow">
+                  <div class="qty">×1</div>
+                  <div>
+                    <div class="nm">Battery 3687 mAh</div>
+                    <div class="meta">PART-IP13PM-BATT</div>
+                  </div>
+                  <div class="qprice">$45.00</div>
+                  <div class="more"><svg class="li-ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+                </div>
+                <div class="qrow">
+                  <div class="qty">45m</div>
+                  <div>
+                    <div class="nm">Labor — Bench repair</div>
+                    <div class="meta">Tech A.K.</div>
+                  </div>
+                  <div class="qprice">$60.00</div>
+                  <div class="more"><svg class="li-ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+                </div>
+              </div>
+              <div class="qtotals">
+                <div class="qt-row"><span class="lbl">Subtotal</span><span class="val">$294.00</span></div>
+                <div class="qt-row"><span class="lbl">Discount · 10 % loyalty</span><span class="val neg">−$29.40</span></div>
+                <div class="qt-row"><span class="lbl">Tax · 8.25 %</span><span class="val">$21.83</span></div>
+                <div class="qt-grand"><span class="lbl">Total</span><span class="val">$286.43</span></div>
+              </div>
+              <div class="qt-pay"><span class="lbl">Deposit</span><span class="val"><span class="green-pill">$50 paid</span></span></div>
+              <div class="qt-pay"><span class="lbl">Due on pickup</span><span class="val">$236.43</span></div>
+
+              <!-- typeahead -->
+              <div class="qadd">
+                <div class="field"><span class="typed">batt</span></div>
+                <div class="field" style="text-align:right">$0.00</div>
+                <div class="ok"><svg class="li-ico-sm" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div>
+              </div>
+              <div class="qsuggest">
+                <div class="sug focused">
+                  <span class="kind part">PART</span>
+                  <div class="nm">Battery 3687 mAh — iPhone 13 Pro Max</div>
+                  <span class="right">$45.00</span>
+                </div>
+                <div class="sug">
+                  <span class="kind svc">SVC</span>
+                  <div class="nm">Battery health diagnostic</div>
+                  <span class="right">$25.00</span>
+                </div>
+                <div class="sug">
+                  <span class="kind misc">MISC</span>
+                  <div class="nm">+ Add "battery" as one-off</div>
+                  <span class="right">—</span>
+                </div>
+              </div>
+
+              <div class="qt-checkout">
+                <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 13.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L22 7H6"/></svg>
+                <span>Checkout</span>
+                <span class="amount">· $236.43</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="compose-pinned">
+          <div class="kind-chip">
+            <span class="dot-color"></span>
+            <span>Int.</span>
+            <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <span class="input">Write a message…</span>
+          <span class="send"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FRAME C — Status picker bottom sheet (Option B) -->
+    <div>
+      <div class="label">C · Status picker (tap pill)</div>
+      <div class="frame with-sheet">
+        <div class="sysbar">
+          <span>10:14</span>
+          <span class="ind">📶 LTE 78%</span>
+        </div>
+        <div class="topbar">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 5l-7 7 7 7"/></svg>
+          </div>
+          <div class="number">T-1232</div>
+          <div class="grow"></div>
+          <div class="status-cta">
+            <svg viewBox="0 0 24 24"><path d="M3 7h13l-3-3"/><path d="M21 17H8l3 3"/></svg>
+            In Progress
+          </div>
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+          </div>
+        </div>
+        <div class="body">
+          <div class="card device collapsed">
+            <h4>Device</h4>
+            <div class="row">
+              <div>
+                <div class="title">iPhone SE (2020)</div>
+                <div class="sub">Battery Replacement</div>
+              </div>
+              <div style="display:flex;gap:4px">
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+                <div class="icon-btn expander"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div>
+              </div>
+            </div>
+            <div class="expand-body"></div>
+          </div>
+          <div class="card quote collapsed">
+            <div class="row">
+              <h4>Quote · 3 items</h4>
+              <div class="icon-btn expander"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div>
+            </div>
+            <div class="quote-summary">
+              <span class="total-num">$286.43</span>
+            </div>
+            <div class="expand-body"></div>
+          </div>
+        </div>
+        <div class="compose-pinned">
+          <div class="kind-chip">
+            <span class="dot-color"></span>
+            <span>Int.</span>
+            <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <span class="input">Write a message…</span>
+          <span class="send"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg></span>
+        </div>
+
+        <!-- bottom sheet -->
+        <div class="sheet-scrim"></div>
+        <div class="picker-sheet">
+          <div class="grabber"></div>
+          <div class="h">Change status</div>
+          <div class="row current"><span class="dot"></span><span class="nm">In Progress</span><span class="meta">current</span></div>
+          <div class="row"><span class="dot"></span><span class="nm">Ready for pickup</span><span class="meta">→ SMS</span></div>
+          <div class="row"><span class="dot"></span><span class="nm">Waiting on parts</span><span class="meta">hold</span></div>
+          <div class="row"><span class="dot"></span><span class="nm">Closed — no charge</span><span class="meta">final</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="annot">
+    <h3>Parity check vs <code>android-tablet-ticket-detail.html</code></h3>
+    <ul>
+      <li><b>Status pill</b> — same cream + asymmetric corners. Tap = bottom sheet (Option B). ✓</li>
+      <li><b>Device card</b> — same collapsed/expanded with chevron, same kv rows in expanded (First seen / Last seen gated on prior tickets &gt; 0). ✓</li>
+      <li><b>Customer card</b> — cookie-shape avatar, inline Call / SMS, same dedup rule (no duplicate buttons in top bar). ✓</li>
+      <li><b>Quote card</b> — collapsed = total only; expanded = qrows + qtotals + Checkout. Add-line typeahead at the bottom with auto-classified PART / SVC / MISC suggestions. ✓</li>
+      <li><b>Photos</b> — 4-up grid (same as tablet — fits 412 dp comfortably). ✓</li>
+      <li><b>Bench Timer</b> — present, smaller clock font (22 vs 28). ✓</li>
+      <li><b>Activity feed</b> — continuous rail, day dividers, oldest top → newest bottom, breathing pulse on Today. ✓</li>
+      <li><b>Compose bar</b> — pinned bottom (vs tablet inline-with-timeline). Same Note / Diag / SMS segmented. Body padding 84 dp so last activity row stays visible above the bar. ✓</li>
+      <li><b>Print / Pin / Edit / Merge / Split / Sign-off / Delete</b> — all under <code>⋮</code> overflow on phone (vs tablet's icon row + ⋮). ✓</li>
+      <li><b>Surface ramp</b> — design-system Option F tokens (s-900 #0F0E0C → s-800 #161513 → s-700 #1E1C1A → #221F1B). ✓</li>
+      <li><b>Removed from tablet, also removed here</b>: QR card (lives only on print label).</li>
+      <li><b>Differences from tablet by design</b>: single column instead of 38/62 split; pill-row of inline icons (Print/Pin) collapses to <code>⋮</code> overflow; compose bar pinned to screen bottom rather than docked at the timeline pane bottom.</li>
+    </ul>
+  </div>
+
+</div>

@@ -1,0 +1,313 @@
+import Foundation
+
+/// Communications-module conveniences on `APIClient`.
+///
+/// Ground truth routes (packages/server/src/routes/sms.routes.ts):
+///   PATCH /sms/conversations/:phone/archive  → SmsConversationArchiveResult  (ENR-SMS7)
+///   POST  /sms/preview-template             → SmsTemplatePreviewResult
+///   POST  /inbox/:phone/assign              → InboxAssignResult  (§12.1 team inbox)
+///
+/// All other SMS/template endpoints live in their canonical endpoint files:
+///   SmsEndpoints.swift      — conversations list, flag, pin, read, archive, mark-read
+///   SmsThreadEndpoints.swift — thread fetch, send
+///   MessageTemplatesEndpoints.swift — templates CRUD
+///
+/// This extension is append-only per §12 ownership rules.
+public extension APIClient {
+
+    // MARK: - §12.10 Voice / calls
+
+    /// `POST /api/v1/voice/call` — initiate click-to-call.
+    /// Body: `{ to, customer_id? }`. Server: voice.routes.ts:76.
+    /// Returns the new call's server-assigned `id`.
+    @discardableResult
+    func initiateVoiceCall(to phoneNumber: String, customerId: Int64?) async throws -> Int64 {
+        let body = InitiateCallBody(to: phoneNumber, customerId: customerId)
+        let result = try await post("/api/v1/voice/call", body: body, as: InitiateCallResponse.self)
+        return result.callId
+    }
+
+    /// `POST /api/v1/voice/call/:id/hangup` — hang up an active call.
+    /// Server: voice.routes.ts:299.
+    func hangupVoiceCall(id: Int64) async throws {
+        _ = try await post("/api/v1/voice/call/\(id)/hangup", body: HangupBody(), as: HangupResponse.self)
+    }
+
+    // MARK: - Customer picker (SMS compose)
+
+    /// `GET /api/v1/customers` — minimal summaries for the SMS compose customer picker.
+    ///
+    /// Returns only fields needed by the picker (id, first_name, last_name, phone, mobile).
+    /// Full customer detail lives in `APIClient+Customers.swift`.
+    func listCustomerPickerItems() async throws -> [CustomerPickerItem] {
+        let raw = try await get("/api/v1/customers", as: [CustomerPickerItemRaw].self)
+        return raw.map { CustomerPickerItem(id: $0.id, firstName: $0.firstName, lastName: $0.lastName, phone: $0.phone ?? $0.mobile ?? "") }
+    }
+
+    // MARK: - SMS unread count
+
+    /// `GET /api/v1/sms/unread-count` — total unread conversation count for badge.
+    func smsUnreadCount() async throws -> SmsUnreadCountResponse {
+        try await get("/api/v1/sms/unread-count", as: SmsUnreadCountResponse.self)
+    }
+
+    // MARK: - Preview template
+
+    /// `POST /api/v1/sms/preview-template` — render a template with caller-supplied vars.
+    /// Server: sms.routes.ts:892.
+    /// Returns the rendered preview string and its character count.
+    func previewSmsTemplate(
+        templateId: Int64,
+        vars: [String: String]
+    ) async throws -> SmsTemplatePreviewResult {
+        let body = SmsTemplatePreviewRequest(templateId: templateId, vars: vars)
+        return try await post("/api/v1/sms/preview-template", body: body, as: SmsTemplatePreviewResult.self)
+    }
+
+    // MARK: - Team inbox assign (§12.1)
+
+    /// `POST /api/v1/inbox/:phone/assign` — assign conversation to current user (self-assign).
+    /// Server: sms.routes.ts inbox handler.
+    func assignInboxConversation(phone: String) async throws {
+        let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? phone
+        _ = try await post("/api/v1/inbox/\(encoded)/assign", body: InboxAssignBody(), as: InboxAssignResult.self)
+    }
+
+    // MARK: - Create customer from SMS thread (§12.2)
+
+    /// `POST /api/v1/customers` — creates a minimal customer record pre-filled with
+    /// the thread phone number. Returns the new customer's id.
+    /// Server: customer.routes.ts POST /customers — standard create endpoint.
+    @discardableResult
+    func createCustomerFromThread(
+        firstName: String,
+        lastName: String,
+        phone: String,
+        email: String?
+    ) async throws -> Int64 {
+        let body = CreateCustomerFromThreadBody(
+            firstName: firstName,
+            lastName: lastName,
+            phone: phone,
+            email: email
+        )
+        let result = try await post("/api/v1/customers", body: body, as: CreateCustomerResponse.self)
+        return result.id
+    }
+
+    // MARK: - Ticket/invoice/payment-link picker (§12.2)
+
+    /// `GET /api/v1/tickets?limit=20&status=open` — minimal list for SMS link picker.
+    func listTicketPickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/tickets?limit=20", as: [TicketPickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.displayId ?? "#\($0.id)", kind: .ticket) }
+    }
+
+    /// `GET /api/v1/invoices?limit=20&status=unpaid` — minimal list for SMS link picker.
+    func listInvoicePickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/invoices?limit=20", as: [InvoicePickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.displayId ?? "Invoice #\($0.id)", kind: .invoice) }
+    }
+
+    /// `GET /api/v1/payment-links?limit=20&active=true` — minimal list for SMS link picker.
+    func listPaymentLinkPickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/payment-links?limit=20", as: [PaymentLinkPickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.title ?? "Payment link", kind: .paymentLink) }
+    }
+}
+
+// MARK: - Request / response types
+
+// MARK: - Voice call request / response types (§12.10)
+
+/// Body for `POST /api/v1/voice/call`.
+struct InitiateCallBody: Encodable, Sendable {
+    let to: String
+    let customerId: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case to
+        case customerId = "customer_id"
+    }
+}
+
+/// Server response for `POST /api/v1/voice/call`.
+/// Returns `{ call_id }` (or `{ id }`) under the envelope `data`.
+struct InitiateCallResponse: Decodable, Sendable {
+    let callId: Int64
+
+    enum CodingKeys: String, CodingKey {
+        // Server may send either "call_id" or "id"
+        case callId = "call_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Prefer "call_id"; fall back to 0 as a safe sentinel (caller ignores on hangup)
+        callId = (try? container.decode(Int64.self, forKey: .callId)) ?? 0
+    }
+}
+
+/// Empty body for `POST /api/v1/voice/call/:id/hangup`.
+struct HangupBody: Encodable, Sendable {}
+
+/// Ack for hangup — server just acknowledges.
+struct HangupResponse: Decodable, Sendable {}
+
+/// `POST /api/v1/sms/preview-template` request body.
+/// Server reads: `template_id`, `vars`.
+public struct SmsTemplatePreviewRequest: Encodable, Sendable {
+    public let templateId: Int64
+    public let vars: [String: String]
+
+    public init(templateId: Int64, vars: [String: String]) {
+        self.templateId = templateId
+        self.vars = vars
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case templateId = "template_id"
+        case vars
+    }
+}
+
+/// Response data from `POST /api/v1/sms/preview-template`.
+/// Server: `{ preview: String, char_count: Int }`.
+public struct SmsTemplatePreviewResult: Decodable, Sendable {
+    public let preview: String
+    public let charCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case preview
+        case charCount = "char_count"
+    }
+}
+
+// MARK: - Customer picker types
+
+/// Minimal customer representation for SMS compose customer picker.
+public struct CustomerPickerItem: Identifiable, Sendable, Hashable {
+    public let id: Int64
+    public let firstName: String?
+    public let lastName: String?
+    public let phone: String
+
+    public init(id: Int64, firstName: String?, lastName: String?, phone: String) {
+        self.id = id
+        self.firstName = firstName
+        self.lastName = lastName
+        self.phone = phone
+    }
+
+    public var displayName: String {
+        let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        return parts.isEmpty ? phone : parts.joined(separator: " ")
+    }
+}
+
+/// Raw decoding helper — maps snake_case server fields.
+struct CustomerPickerItemRaw: Decodable, Sendable {
+    let id: Int64
+    let firstName: String?
+    let lastName: String?
+    let phone: String?
+    let mobile: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case firstName = "first_name"
+        case lastName  = "last_name"
+        case phone, mobile
+    }
+}
+
+// MARK: - Unread count response
+
+/// Response for `GET /api/v1/sms/unread-count`.
+public struct SmsUnreadCountResponse: Decodable, Sendable {
+    public let count: Int
+}
+
+// MARK: - Team inbox assign types
+
+/// Body for `POST /api/v1/inbox/:phone/assign`.
+/// Server reads `assignee_id`; nil = assign to caller (self-assign).
+struct InboxAssignBody: Encodable, Sendable {
+    let assigneeId: Int64?
+    init(assigneeId: Int64? = nil) { self.assigneeId = assigneeId }
+    enum CodingKeys: String, CodingKey { case assigneeId = "assignee_id" }
+}
+
+/// Response for inbox assign.
+public struct InboxAssignResult: Decodable, Sendable {
+    public let success: Bool
+}
+
+// MARK: - Create customer from thread types
+
+/// Body for `POST /api/v1/customers` from SMS thread.
+struct CreateCustomerFromThreadBody: Encodable, Sendable {
+    let firstName: String
+    let lastName: String
+    let phone: String
+    let email: String?
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName  = "last_name"
+        case phone, email
+    }
+}
+
+/// Minimal create-customer response — only need the new id.
+struct CreateCustomerResponse: Decodable, Sendable {
+    let id: Int64
+}
+
+// MARK: - SMS link picker types
+
+/// A reference to a ticket, invoice, or payment link for insertion into an SMS.
+public struct SmsLinkPickerItem: Identifiable, Sendable, Hashable {
+    public enum Kind: Sendable, Hashable {
+        case ticket, invoice, paymentLink
+    }
+
+    public let id: String
+    public let label: String
+    public let kind: Kind
+
+    public init(id: String, label: String, kind: Kind) {
+        self.id = id
+        self.label = label
+        self.kind = kind
+    }
+
+    /// The deep-link token inserted into the SMS body.
+    /// Example: `[Ticket #T-1234 — view: bizarrecrm://ticket/1234]`
+    public func linkToken(baseURL: String) -> String {
+        switch kind {
+        case .ticket:
+            return "[\(label) — view: \(baseURL)/public/tracking/\(id)]"
+        case .invoice:
+            return "[\(label) — pay: \(baseURL)/public/pay/\(id)]"
+        case .paymentLink:
+            return "[\(label): \(baseURL)/public/pay/\(id)]"
+        }
+    }
+}
+
+// Raw decoders — minimal fields only.
+struct TicketPickerRaw: Decodable, Sendable {
+    let id: Int64
+    let displayId: String?
+    enum CodingKeys: String, CodingKey { case id; case displayId = "display_id" }
+}
+struct InvoicePickerRaw: Decodable, Sendable {
+    let id: Int64
+    let displayId: String?
+    enum CodingKeys: String, CodingKey { case id; case displayId = "display_id" }
+}
+struct PaymentLinkPickerRaw: Decodable, Sendable {
+    let id: Int64
+    let title: String?
+}

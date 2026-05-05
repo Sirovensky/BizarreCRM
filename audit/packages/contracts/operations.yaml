@@ -1,0 +1,69 @@
+area: operations
+status: reference-only
+source:
+  server_routes:
+    - packages/server/src/routes/employees.routes.ts
+    - packages/server/src/routes/roles.routes.ts
+    - packages/server/src/routes/team.routes.ts
+    - packages/server/src/routes/teamChat.routes.ts
+    - packages/server/src/routes/bench.routes.ts
+    - packages/server/src/routes/onboarding.routes.ts
+    - packages/server/src/routes/search.routes.ts
+  web_client: packages/web/src/api/endpoints.ts
+auth: bearer
+endpoints:
+  - method: GET
+    path: /api/v1/employees
+    purpose: List employees.
+  - method: POST
+    path: /api/v1/employees/{id}/clock-in
+    purpose: Clock employee in.
+    request:
+      pin: string
+  - method: POST
+    path: /api/v1/employees/{id}/clock-out
+    purpose: Clock employee out.
+    request:
+      pin: string
+  - method: GET
+    path: /api/v1/employees/{id}/hours
+    purpose: Employee hours report.
+  - method: GET
+    path: /api/v1/roles
+    purpose: List roles/permissions.
+  - method: GET
+    path: /api/v1/team/my-queue
+    purpose: Team queue for the authenticated user.
+  - method: GET
+    path: /api/v1/team-chat/channels
+    purpose: List team chat channels.
+  - method: GET
+    path: /api/v1/team-chat/channels/{id}/messages
+    purpose: List team chat messages for one channel.
+  - method: GET
+    path: /api/v1/bench/config
+    purpose: Technician bench config.
+  - method: POST
+    path: /api/v1/bench/timer/start
+    purpose: Start bench timer.
+    request:
+      ticket_id: number
+      ticket_device_id: number optional
+      labor_rate_cents: number optional
+  - method: POST
+    path: /api/v1/bench/timer/{id}/pause
+    purpose: Pause bench timer.
+  - method: POST
+    path: /api/v1/bench/timer/{id}/stop
+    purpose: Stop bench timer.
+  - method: GET
+    path: /api/v1/bench/qc-checklist
+    purpose: List QC checklist items.
+  - method: GET
+    path: /api/v1/onboarding/state
+    purpose: Read onboarding state.
+  - method: GET
+    path: /api/v1/search
+    purpose: Global search.
+    query:
+      q: string
