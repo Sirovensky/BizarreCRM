@@ -44,7 +44,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, copyFileSync, mkdirSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -213,9 +213,56 @@ function stopRunning() {
 
 function npmInstall() {
   step('Installing dependencies');
+
+  // Native-module ABI mismatch detection. Modules like better-sqlite3,
+  // sharp, canvas compile a `.node` binary against a specific
+  // NODE_MODULE_VERSION (Node 22 = 127, Node 25 = 141). When the operator
+  // switches Node major (brew downgrade after our too-new install path,
+  // nvm use, fresh Node MSI install), existing .node binaries fail to
+  // load with ERR_DLOPEN_FAILED at runtime. `npm install` does NOT
+  // rebuild native modules unless package.json or package-lock changes
+  // — operators get a server that crashes on every boot with a confusing
+  // node-loader stack trace.
+  //
+  // Stamp the current Node major into node_modules/ on every install.
+  // If the stamp differs from the current Node major, force `npm rebuild`
+  // after the regular install completes.
+  const stampPath = path.join(REPO_ROOT, 'node_modules', '.bizarre-crm-node-major');
+  const currentMajor = process.versions.node.split('.')[0];
+  let needsRebuild = false;
+  try {
+    if (existsSync(stampPath)) {
+      const stamped = readFileSync(stampPath, 'utf8').trim();
+      if (stamped && stamped !== currentMajor) {
+        needsRebuild = true;
+        console.log(c.yellow(`  Node major changed since last install (was v${stamped}, now v${currentMajor}) — will rebuild native modules.`));
+      }
+    }
+  } catch { /* stamp read errors are non-fatal */ }
+
   const r = run('npm', ['install']);
   if (!r.ok) fatal(`npm install failed (exit ${r.code}).`);
   ok('Dependencies installed');
+
+  if (needsRebuild) {
+    const r2 = run('npm', ['rebuild']);
+    if (!r2.ok) {
+      // Don't fatal — let setup.mjs proceed, but the operator will see
+      // ERR_DLOPEN_FAILED at server boot. The error message tells them
+      // what to do (run npm rebuild) which they're now one step closer
+      // to having tried.
+      warn(`npm rebuild failed (exit ${r2.code}). Native modules (better-sqlite3, sharp, etc.) likely have ABI mismatches and will fail at server boot. Try \`xcode-select --install\` (macOS) or \`apt install build-essential\` (Linux) and re-run setup.`);
+    } else {
+      ok('Native modules rebuilt against current Node major');
+    }
+  }
+
+  // Update stamp regardless of whether we rebuilt — captures the major
+  // that node_modules is currently aligned to.
+  try {
+    mkdirSync(path.dirname(stampPath), { recursive: true });
+    writeFileSync(stampPath, currentMajor, 'utf8');
+  } catch { /* stamp write errors are non-fatal */ }
 }
 
 // ─── 5. .env ───────────────────────────────────────────────────────────────
