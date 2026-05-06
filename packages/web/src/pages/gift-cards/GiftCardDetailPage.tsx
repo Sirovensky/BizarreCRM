@@ -9,6 +9,7 @@ import { giftCardApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { SkeletonCard, SkeletonTable } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { useConfirmStore } from '@/stores/confirmStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
 import { formatDate, formatCurrency as formatCurrencyShared, dollarsFromMaybeCents } from '@/utils/format';
 
@@ -80,6 +81,9 @@ function statusBadge(status: GiftCardDetail['status']): string {
 
 // ─── Reload Modal ─────────────────────────────────────────────────────────────
 
+const RELOAD_MAX_AMOUNT = 5_000;
+const RELOAD_CONFIRM_THRESHOLD = 500;
+
 interface ReloadModalProps {
   cardId: number;
   onClose: () => void;
@@ -88,16 +92,13 @@ interface ReloadModalProps {
 function ReloadModal({ cardId, onClose }: ReloadModalProps) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
   // WEB-UIUX-557: focus-trap + scroll-lock (component only mounts when open).
   const dialogRef = useFocusTrap(true, { initialFocusSelector: 'input[type="number"]' }) as { current: HTMLDivElement | null };
   useBodyScrollLock(true);
 
   const reloadMutation = useMutation({
-    mutationFn: () => {
-      const value = parseFloat(amount);
-      if (!Number.isFinite(value) || value <= 0) throw new Error('Enter a valid amount');
-      return giftCardApi.reload(cardId, { amount: value });
-    },
+    mutationFn: (value: number) => giftCardApi.reload(cardId, { amount: value }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gift-card', cardId] });
       toast.success('Gift card reloaded');
@@ -107,6 +108,31 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
       toast.error(err instanceof Error ? err.message : 'Reload failed');
     },
   });
+
+  async function handleReload() {
+    const value = parseFloat(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      setAmountError('Enter a valid reload amount.');
+      return;
+    }
+    if (value > RELOAD_MAX_AMOUNT) {
+      setAmountError(`Reload amount cannot exceed ${formatCurrencyShared(RELOAD_MAX_AMOUNT)}.`);
+      return;
+    }
+    setAmountError(null);
+
+    if (value >= RELOAD_CONFIRM_THRESHOLD) {
+      const ok = await useConfirmStore.getState().confirm({
+        title: 'Confirm large reload',
+        message: `Reload this gift card by ${formatCurrencyShared(value)}?`,
+        confirmLabel: 'Reload gift card',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    reloadMutation.mutate(value);
+  }
 
   // Esc-to-close
   useEffect(() => {
@@ -132,13 +158,23 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
         <input
           type="number"
           min="0.01"
+          max={RELOAD_MAX_AMOUNT}
           step="0.01"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            setAmountError(null);
+          }}
           placeholder="25.00"
           autoFocus
-          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 mb-5"
+          aria-invalid={!!amountError}
+          aria-describedby="gift-card-reload-help"
+          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
+        <p id="gift-card-reload-help" className="mt-2 mb-5 text-xs text-surface-500 dark:text-surface-400">
+          Maximum reload is {formatCurrencyShared(RELOAD_MAX_AMOUNT)}. Reloads of {formatCurrencyShared(RELOAD_CONFIRM_THRESHOLD)} or more require confirmation.
+          {amountError && <span className="mt-1 block text-red-600 dark:text-red-400">{amountError}</span>}
+        </p>
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
@@ -147,7 +183,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
             Cancel
           </button>
           <button
-            onClick={() => reloadMutation.mutate()}
+            onClick={handleReload}
             disabled={reloadMutation.isPending || !amount}
             className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >

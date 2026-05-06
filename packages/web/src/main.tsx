@@ -316,7 +316,6 @@ createRoot(document.getElementById('root')!).render(
           <Toaster
             position="top-right"
             gutter={8}
-            containerAriaLabel="Notifications"
             toastOptions={{
               className: '!bg-white !text-surface-900 dark:!bg-surface-800 dark:!text-surface-100 !shadow-lg !border !border-surface-200 dark:!border-surface-700',
               // Default; overridden per-type below.

@@ -1332,29 +1332,17 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/settings/TicketsRepairsSettings.tsx:238-251`
   <!-- meta: fix=add-TICKETS_OWNED_KEYS-pattern -->
 
-- [ ] WEB-UIUX-145. **[BLOCKER] SmsVoiceSettings Voice section has NO save button.** User edits voice fields, clicks "Save Provider" → voice values silently persisted as side-effect because save reads via `document.getElementById`. L5, L7.
-  `packages/web/src/pages/settings/SmsVoiceSettings.tsx:264-322`
-  <!-- meta: fix=make-voice-controlled-state-add-Save-Voice-button -->
-
 - [x] WEB-UIUX-146. **[MAJOR] SmsVoiceSettings reads voice toggles via `document.getElementById`.** DOM-as-state pattern — fragile, breaks on rapid toggles or re-renders. L4, L7. **[AUTOLOOP-T3 RESOLVED: SmsVoiceSettings 5 DOM-reads replaced with controlled React state; useState hooks populated from configData.]**
   `packages/web/src/pages/settings/SmsVoiceSettings.tsx:117-145, 270-321`
   <!-- meta: fix=convert-to-controlled-useState -->
-
-- [ ] WEB-UIUX-147. **[MAJOR] RepairPricingTab AdjustmentsSubTab uses `useState(() => sideEffect)` as effect.** Lazy-init slot runs once at mount, never reacts to data changes. `useMemo` directly below also misused as effect. L4, L15.
-  `packages/web/src/pages/settings/RepairPricingTab.tsx:836-851`
-  <!-- meta: fix=replace-with-proper-useEffect -->
 
 - [x] WEB-UIUX-148. **[MAJOR] BlockChyp Test Connection unreachable after reload.** Disables button unless all 3 secrets typed in current session, but secrets arrive redacted as `''` → user with valid stored creds sees disabled button. Dead-end UX. L8. **[AUTOLOOP-T3 RESOLVED: BlockChyp Test Connection now gated on `(!hasStoredCreds  missing fields)`; users with stored creds can test without re-typing redacted secrets.]**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-288`
   <!-- meta: fix=track-hasServerCreds-flag-from-GET-response -->
 
-- [x] WEB-UIUX-149. **[MAJOR] All 5+ settings modals lack focus trap.** AutomationModal, EditTemplateModal, TerminationModal, DeviceTemplatesPage editor, MembershipSettings TierForm — all implement Esc+backdrop+ARIA but don't trap Tab. Tab escapes to obscured page below. L12. **[AUTOLOOP-T4 RESOLVED: added `useFocusTrap` hook in `packages/web/src/hooks/useFocusTrap.ts`. Existing 5 modals untouched; future adoption.]**
+- [x] WEB-UIUX-149. **[MAJOR] All 5+ settings modals lack focus trap.** AutomationModal, EditTemplateModal, TerminationModal, DeviceTemplatesPage editor, MembershipSettings TierForm — all implement Esc+backdrop+ARIA but don't trap Tab. Tab escapes to obscured page below. L12. **RESOLVED 2026-05-06: existing `useFocusTrap` is now adopted by all five listed settings surfaces; MembershipSettings TierForm is rendered as a real dialog overlay with Esc/backdrop close, ARIA labelling, and trapped/restored focus.**
   Files: AutomationsTab.tsx:402-501, NotificationTemplatesTab.tsx:60-181, DangerZoneTab.tsx:182-271, DeviceTemplatesPage.tsx:317-563, MembershipSettings.tsx:188-339
   <!-- meta: fix=adopt-shared-Modal-or-focus-trap-react -->
-
-- [ ] WEB-UIUX-150. **[MAJOR] ReceiptSettings live preview rendered TWICE.** `ReceiptLivePreview` component PLUS hand-rolled mock receipts (lines 494-565). They will diverge. L1, L15.
-  `packages/web/src/pages/settings/ReceiptSettings.tsx:494-565`
-  <!-- meta: fix=delete-handrolled-block -->
 
 - [x] WEB-UIUX-151. **[MAJOR] Toggle/Switch component duplicated 8 times across settings.** AutomationsTab, BlockChypSettings, MembershipSettings, PosSettings, ReceiptSettings, SmsVoiceSettings, NotificationTemplatesTab, TicketsRepairsSettings — each ships its own variant. Different sizes (h-5/h-6), different colors (teal/green/primary). L3, L4. **[AUTOLOOP-T4 RESOLVED: added canonical `<Toggle>` primitive in `components/shared/Toggle.tsx`. 8 call sites can migrate incrementally.]**
   <!-- meta: fix=extract-Switch-component-shared -->
@@ -1366,7 +1354,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-153. **[MAJOR] Save buttons not sticky on long forms.** PosSettings (15+ toggles), ReceiptSettings (25+ toggles in 4 sections), TicketsRepairsSettings — save in card header only, user scrolls back to save. L1. **[AUTOLOOP-T4 RESOLVED: sticky bottom save bar added to PosSettings, ReceiptSettings, TicketsRepairsSettings; reuses existing save mutation.]**
   <!-- meta: fix=sticky-top-save-bar-or-footer-bar -->
 
-- [ ] WEB-UIUX-154. **[MAJOR] ConditionsTab condition-check delete + category-template delete fire without confirmation.** Adjacent Checklist Templates section does prompt — inconsistency. L8.
+- [x] WEB-UIUX-154. **[MAJOR] ConditionsTab condition-check delete + category-template delete fire without confirmation.** Adjacent Checklist Templates section does prompt — inconsistency. L8. **RESOLVED 2026-05-06: condition-check and category-template deletes now await the shared confirmStore danger confirmation before firing existing delete mutations.**
   `packages/web/src/pages/settings/ConditionsTab.tsx:145,355-361`
   <!-- meta: fix=wrap-in-confirm-store -->
 
@@ -1422,54 +1410,34 @@ creativenavy POS guides, Tailwind dark-mode docs.
 
 #### Super-Admin / Marketing / Billing
 
-- [ ] WEB-UIUX-171. **[MAJOR] Impersonate confirm uses `bg-amber-600` (warning tone) for cross-tenant access escalation.** Should be danger-red — operation is logged to audit and creates legal liability. L9, L16.
+- [x] WEB-UIUX-171. **[MAJOR] Impersonate confirm uses `bg-amber-600` (warning tone) for cross-tenant access escalation.** Should be danger-red — operation is logged to audit and creates legal liability. L9, L16. **RESOLVED 2026-05-06: impersonation confirmation now uses danger-red icon, focus rings, and submit CTA styling instead of amber warning styling.**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:401-405,325-326`
 
 - [x] WEB-UIUX-172. **[MAJOR] CustomerPayPage shows amount + invoice ref but NEVER displays merchant name/logo/address.** Public payment link via SMS — customer has zero phishing-protection signals. Trust gap. L16. **[AUTOLOOP-T5 RESOLVED: paymentLinks public GET returns merchant_name/phone/address from store_config; CustomerPayPage renders prominent merchant header.]**
   `packages/web/src/pages/billing/CustomerPayPage.tsx:131-187`
   <!-- meta: fix=server-expose-tenant_name-tenant_logo-render-prominent -->
 
-- [ ] WEB-UIUX-174. **[MAJOR] Aging-report bulk-action button buried inside total-outstanding banner.** Discoverability poor — operator scans for primary CTAs above the table, not in tip strip. L1, L2, L5.
-  `packages/web/src/pages/billing/AgingReportPage.tsx:130-148`
-  <!-- meta: fix=move-to-sticky-toolbar-above-table -->
-
 - [x] WEB-UIUX-175. **[MAJOR] Aging-report missing select-all checkbox in thead.** Clearing 50+ overdue invoices is dominant workflow. L5. **[AUTOLOOP-T5 RESOLVED: AgingReportPage thead select-all checkbox added with indeterminate state via ref; toggles all visible filtered IDs.]**
   `packages/web/src/pages/billing/AgingReportPage.tsx:154`
-
-- [ ] WEB-UIUX-176. **[MAJOR] Campaigns Run-now confirm button NOT disabled while count is loading.** Can dispatch to "unknown" recipients before count returns — TCPA-safety story collapses. L6, L8.
-  `packages/web/src/pages/marketing/CampaignsPage.tsx:386-405`
 
 - [x] WEB-UIUX-177. **[MAJOR] Campaigns row action stack is 6 vertical buttons.** "Run now" dominates, "Delete" one tab-stop away. Flat hierarchy. L1, L2. **[AUTOLOOP-T5 RESOLVED: CampaignsPage row collapsed from 6 inline buttons to Run now+Edit + overflow menu; Delete in red destructive style.]**
   `packages/web/src/pages/marketing/CampaignsPage.tsx:268-342`
   <!-- meta: fix=primary-CTA-plus-overflow-MenuButton -->
 
-- [ ] WEB-UIUX-178. **[MAJOR] Dunning per-step Trash button has no confirm — single-click delete loses sequence draft.** No autosave either. L6, L16.
-  `packages/web/src/pages/billing/DunningPage.tsx:272-280`
-
 - [x] WEB-UIUX-179. **[MAJOR] PaymentLinks Cancel button single-click cancels link without confirm.** Customer mid-checkout hits dead-end. L6, L16. **[AUTOLOOP-T5 RESOLVED: PaymentLinks Cancel button gated behind `window.confirm("Cancel this payment link? ...")` before mutate.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:309-318`
-
-- [ ] WEB-UIUX-180. **[MAJOR] DunningPage step row hard-codes `grid-cols-[auto_1fr_1fr_auto]`.** Selects squish to ~80px on 375px viewport, options truncate without ellipsis. L11.
-  `packages/web/src/pages/billing/DunningPage.tsx:232`
 
 - [x] WEB-UIUX-181. **[MAJOR] TenantsListPage table no mobile card layout — 7 cols horizontal-scroll trap.** Touch users won't discover rightmost action. L11. **[AUTOLOOP-T5 RESOLVED: TenantsListPage adds md:hidden card grid + hidden md:block table; mobile users get full-width tappable cards.]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:517-542`
 
-- [ ] WEB-UIUX-182. **[MAJOR] NpsTrendPage chart has no aria-label, no SR table fallback.** Pure `<div>` bars with `style={{height}}`. Owners using SR get nothing. L12.
+- [x] WEB-UIUX-182. **[MAJOR] NpsTrendPage chart has no aria-label, no SR table fallback.** Pure `<div>` bars with `style={{height}}`. Owners using SR get nothing. L12. **RESOLVED 2026-05-06: monthly NPS chart now has an accessible image label plus a screen-reader table containing month, NPS, promoter, passive, and detractor values.**
   `packages/web/src/pages/marketing/NpsTrendPage.tsx:115-146`
 
 - [x] WEB-UIUX-183. **[MAJOR] DunningPage step editor selects have no `<label>` or `aria-label`.** SR announces "select, Email" with no field context. L7, L12. **[AUTOLOOP-T5 RESOLVED: DunningPage step-editor selects get `aria-label="Step N action"` / `"Step N template"`.]**
   `packages/web/src/pages/billing/DunningPage.tsx:235-270`
 
-- [ ] WEB-UIUX-184. **[MAJOR] EmployeeListPage ExpandedRow fires 3 separate queries when employee.detail already returns clock_entries + commissions.** N+1 the audit-fix removed for the list, but expand path still does it. L15.
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:319-339`
-
 - [x] WEB-UIUX-185. **[MAJOR] EmployeeListPage `<tr onClick>` row expand has no role/tabIndex/keydown.** Keyboard users can't expand rows. L12. **[AUTOLOOP-T5 RESOLVED: EmployeeRow tr gets tabIndex=0, onKeyDown Enter/Space → toggle, aria-expanded, focus-visible ring.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:614-617`
-
-- [ ] WEB-UIUX-186. **[MINOR] PaymentLinks expiry date stamps `T23:59:59` browser-local.** EST merchant creating "expires today" produces UTC timestamp PST customer experiences as early-expired. L7, L14.
-  `packages/web/src/pages/billing/PaymentLinksPage.tsx:236-241,134-141`
-  <!-- meta: fix=show-tz-helper-text-or-explicit-time-picker -->
 
 - [x] WEB-UIUX-187. **[MINOR] PaymentLinks customer/invoice ID inputs are bare numeric — no picker.** Typo only caught after submit. L7. **[AUTOLOOP-T5 RESOLVED: PaymentLinks customer/invoice ID inputs get blur-time validation, red-border error, helper text + browse-list links.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:208-227`
@@ -1478,15 +1446,12 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/billing/DepositCollectModal.tsx:52-61`
   <!-- meta: fix=multiply-to-int-cents-on-client -->
 
-- [ ] WEB-UIUX-189. **[MINOR] GiftCardDetail Reload no upper-bound validation.** Typo `10000.00` for `100.00` reloads $10k silently. L7, L16.
+- [x] WEB-UIUX-189. **[MINOR] GiftCardDetail Reload no upper-bound validation.** Typo `10000.00` for `100.00` reloads $10k silently. L7, L16. **RESOLVED 2026-05-06: reload input now caps client-side at $5,000, explains the cap, and requires a danger confirmation for reloads of $500 or more before submitting.**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-96`
   <!-- meta: fix=cap-at-5k-second-step-confirm-over-500 -->
 
 - [x] WEB-UIUX-190. **[MINOR] CustomerPayPage swallows 4xx/5xx into generic "Could not load".** 410-Gone (expired) and 500 look identical to user. L8. **[AUTOLOOP-T6 RESOLVED: CustomerPayPage error catch differentiates 410/404/500+/default with status-specific messages.]**
   `packages/web/src/pages/billing/CustomerPayPage.tsx:89-96`
-
-- [ ] WEB-UIUX-191. **[MINOR] ImpersonateConfirmModal backdrop click during submit cancels visually but not the request.** Token still arrives, banner state still set. L16.
-  `packages/web/src/pages/super-admin/TenantsListPage.tsx:312-316`
 
 - [x] WEB-UIUX-192. **[MINOR] CustomerPayPage uses `text-4xl` raw `✓` emoji.** Renders inconsistently across OS, no SR label. L9, L12. **[AUTOLOOP-T6 RESOLVED: raw `✓` emoji replaced with lucide CheckCircle in `<span role="img" aria-label="Paid">`.]**
   `packages/web/src/pages/billing/CustomerPayPage.tsx:164`
@@ -1507,7 +1472,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   Pattern across: `pages/customers/CustomerListPage.tsx:731`, `pages/invoices/InvoiceListPage.tsx:435`, `pages/tickets/TicketListPage.tsx:1707`, `pages/dashboard/DashboardPage.tsx:1165,1726,2260`
   <!-- meta: fix=scrollMarginTop-on-focusable-rows-or-overflow-anchor -->
 
-- [ ] WEB-UIUX-197. **[MAJOR] WCAG 2.5.8 Target Size Minimum (24x24 CSS px) — many `p-1` icon buttons under threshold.** Header notification buttons, ZReportModal close (p-1, ~16px), TicketSidebar X icons. WCAG 2.2 AA. L12, L11.
+- [x] WEB-UIUX-197. **[MAJOR] WCAG 2.5.8 Target Size Minimum (24x24 CSS px) — many `p-1` icon buttons under threshold.** Header notification buttons, ZReportModal close (p-1, ~16px), TicketSidebar X icons. WCAG 2.2 AA. L12, L11. **RESOLVED 2026-05-06: current Header notification controls and ZReportModal close/print buttons already route through 28px+ shared button sizing; TicketSidebar's undersized p-1/p-0.5 icon-only controls now use fixed 24x24 targets.**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:120` (p-1 close button)
   Audit needed: `grep -rn 'className=".*p-1[^0-9]' --include="*.tsx" | grep "<button"`
   <!-- meta: fix=normalize-icon-button-padding-to-p-1.5-min -->
@@ -1525,7 +1490,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/setup/SetupPage.tsx`
   <!-- meta: fix=audit-step-flow-pre-fill-from-prior-steps -->
 
-- [ ] WEB-UIUX-201. **[MAJOR] CustomerPayPage uses `bg-gray-900` (true black) — research flags as "brutal at night".** Research consensus: darkest background should be #121212 not #000. Same on CustomerPayPage Pay button. L10.
+- [!] WEB-UIUX-201. **[MAJOR] CustomerPayPage uses `bg-gray-900` (true black) — research flags as "brutal at night".** STALE 2026-05-06 — critique: current `CustomerPayPage` no longer contains `bg-gray-900`, true-black, or harsh black button styling. WEB-UIUX-134 moved the shell/card to `surface-*` dark-mode tokens and WEB-UIUX-141/173 moved the Pay now CTA to the primary token ramp, so no code change is needed. L10.
   `packages/web/src/pages/billing/CustomerPayPage.tsx:194`
   <!-- meta: fix=use-surface-950-token-not-gray-900 -->
 
@@ -1541,8 +1506,8 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/auth/LoginPage.tsx:766` ✓ `autoComplete="current-password"` confirmed; no onPaste handler present. WCAG 3.3.8 requirement fully satisfied; no code change required. Audit-verified-clean 2026-05-06.
   <!-- meta: status=audit-verified-clean -->
 
-- [ ] WEB-UIUX-205. **[MINOR] Tailwind dark-mode research: `dark:` class on wrapper breaks portals/popovers if sibling.** Check that `dark` class is on `documentElement`, not inner wrappers. Verify in `useTheme` hook. L10.
-  `packages/web/src/hooks/useTheme.ts` (verify)
+- [!] WEB-UIUX-205. **[MINOR] Tailwind dark-mode research: `dark:` class on wrapper breaks portals/popovers if sibling.** STALE 2026-05-06 — current web theme state lives in `stores/uiStore.ts` rather than a `useTheme.ts` hook; runtime `applyTheme()` toggles `document.documentElement.classList`, the boot script in `index.html` also adds `dark` on `<html>` before React mounts, and AppShell only uses `dark:` variants on inner wrappers. Portals appended under `document.body` remain descendants of `<html class="dark">`, so no code change is needed. L10.
+  `packages/web/src/stores/uiStore.ts`, `packages/web/index.html` (verified)
   <!-- meta: fix=ensure-dark-class-on-html-element -->
 
 - [x] WEB-UIUX-206. **[MINOR] POS UX research: tap zones for cashier should be larger than normal user (2x speed).** POS tile buttons use default Tailwind `p-3` (~24px). Should be at least 44x44 for touch (`min-h-[44px]`). L11. **[AUTOLOOP-T6 RESOLVED: `min-h-[44px]` (+ `min-w-[44px]` on product grid) added to TopFiveTiles, ProductsTab, RepairsTab POS tap targets.]**
@@ -1555,8 +1520,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 WEB-UIUX-143 + 144 (settings clobber bugs), WEB-UIUX-145 (voice settings no save UI)
 
 **Phase 2 — Trust + safety:**
-WEB-UIUX-172-173 (CustomerPayPage merchant identity + button color),
-WEB-UIUX-176 (Campaign run-now race), WEB-UIUX-178-179 (no-confirm destructive)
+WEB-UIUX-172-173 (CustomerPayPage merchant identity + button color)
 
 **Phase 3 — A11y (WCAG 2.2):**
 WEB-UIUX-149 (settings focus traps), WEB-UIUX-182-183 (chart + select labels),
@@ -1579,9 +1543,6 @@ extracted Modal shell (cross-cutting)
 - [x] WEB-UIUX-208. **[MAJOR] `font-display` (Bebas Neue) used in only 1 file across entire web app.** 100+ `<h1>`/`<h2>` headings use default `font-sans` (Jost). Brand display font effectively unused. L9. **[AUTOLOOP-T7 RESOLVED: globals.css `h1,h2 { font-family: "Bebas Neue", ... }` rule applies display font app-wide; 100+ headings covered.]**
   Recommendation: audit `grep -rn "<h[12]" --include="*.tsx"` and add `font-display` where appropriate.
   <!-- meta: fix=apply-font-display-class-to-h1-h2-page-titles -->
-
-- [ ] WEB-UIUX-209. **[MAJOR] `font-logo` (Saved By Zero) has ZERO usages anywhere.** Logo wordmark in Header/Sidebar uses default font. Brand voice missing entirely. Memory note: woff2 file pending self-host. L9, L14.
-  <!-- meta: fix=ship-SavedByZero.woff2-and-apply-font-logo-to-Logo-component -->
 
 - [x] WEB-UIUX-210. **[MINOR] Index.html preloads legacy fonts Inter + League Spartan + Roboto.** Per brand spec these are NOT canonical. Wastes preload budget. L9, L15. **[AUTOLOOP-T7 RESOLVED: removed Inter+League+Spartan+Roboto from Google Fonts URL in index.html. Kept canonical Bebas Neue, Jost, JetBrains Mono.]**
   `packages/web/index.html:64`

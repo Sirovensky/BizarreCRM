@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Save, Loader2, Plus, Trash2, Pencil, X, Check, Crown, AlertCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, membershipApi } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { cn } from '@/utils/cn';
 import { confirm } from '@/stores/confirmStore';
 // WEB-FF-022 (Fixer-C7 2026-04-25): swap raw `${n.toFixed(2)}` template usage
@@ -205,7 +206,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
   return (
     <form onSubmit={handleSubmit} className="card">
       <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
-        <h3 className="font-semibold text-surface-900 dark:text-surface-100">
+        <h3 id="membership-tier-form-title" className="font-semibold text-surface-900 dark:text-surface-100">
           {initial.name ? 'Edit Tier' : 'New Membership Tier'}
         </h3>
         <button aria-label="Close" type="button" onClick={onCancel} className="btn-icon btn-xs text-surface-400">
@@ -363,6 +364,19 @@ export function MembershipSettings() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingTier, setEditingTier] = useState<MembershipTier | null>(null);
+  const tierFormDialogRef = useFocusTrap<HTMLDivElement>(showForm, { initialFocusSelector: 'input' });
+
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingTier(null);
+  }, []);
+
+  useEffect(() => {
+    if (!showForm) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeForm(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showForm, closeForm]);
 
   // Fetch membership_enabled config
   const { data: configData } = useQuery({
@@ -538,12 +552,27 @@ export function MembershipSettings() {
 
       {/* Form */}
       {showForm && (
-        <TierForm
-          initial={formInitial}
-          onSave={handleSave}
-          onCancel={() => { setShowForm(false); setEditingTier(null); }}
-          saving={createMutation.isPending || updateMutation.isPending}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onClick={closeForm}
+        >
+          <div
+            ref={tierFormDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="membership-tier-form-title"
+            className="w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <TierForm
+              initial={formInitial}
+              onSave={handleSave}
+              onCancel={closeForm}
+              saving={createMutation.isPending || updateMutation.isPending}
+            />
+          </div>
+        </div>
       )}
 
       {/* Active Subscribers */}

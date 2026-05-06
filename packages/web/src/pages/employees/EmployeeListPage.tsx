@@ -29,10 +29,11 @@ interface Employee {
 }
 
 interface EmployeeDetail extends Employee {
-  clock_entries: ClockEntry[];
-  commissions: Commission[];
-  is_clocked_in: boolean;
-  current_clock_entry: ClockEntry | null;
+  clock_entries?: ClockEntry[];
+  commissions?: Commission[];
+  is_clocked_in?: boolean;
+  current_clock_entry?: ClockEntry | null;
+  pay_rate?: number | null;
 }
 
 interface ClockEntry {
@@ -81,18 +82,6 @@ function formatHours(hours: number) {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-function getWeekRange() {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
-  monday.setHours(0, 0, 0, 0);
-  return {
-    from_date: monday.toISOString(),
-    to_date: new Date().toISOString(),
-  };
 }
 
 function getMonthRange() {
@@ -316,31 +305,25 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
 }
 
 // ─── Expanded Row Detail ────────────────────────────────────────────
-function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
-  const weekRange = getWeekRange();
+function EmployeeExpandedRow({
+  employee,
+  detail,
+  isDetailLoading,
+}: {
+  employee: Employee;
+  detail: EmployeeDetail | undefined;
+  isDetailLoading: boolean;
+}) {
   const monthRange = getMonthRange();
 
-  const { data: hoursData } = useQuery({
-    queryKey: ['employee-hours', employeeId, weekRange.from_date],
-    queryFn: () => employeeApi.hours(employeeId, weekRange),
-  });
-
-  const { data: commissionsData } = useQuery({
-    queryKey: ['employee-commissions', employeeId, monthRange.from_date],
-    queryFn: () => employeeApi.commissions(employeeId, monthRange),
-  });
-
-  const { data: detailData } = useQuery({
-    queryKey: ['employee-detail', employeeId],
-    queryFn: () => employeeApi.get(employeeId),
-  });
-
-  const hoursResult = (hoursData?.data as any)?.data;
-  const commissionsResult = (commissionsData?.data as any)?.data;
-  const detail = (detailData?.data as any)?.data as EmployeeDetail | undefined;
-
+  const detailCommissions = detail?.commissions ?? [];
   const recentClock = detail?.clock_entries?.slice(0, 5) ?? [];
-  const recentCommissions = detail?.commissions?.slice(0, 5) ?? [];
+  const recentCommissions = detailCommissions.slice(0, 5);
+  const weeklyHours = Number(employee.weekly_hours ?? 0);
+  const monthStart = new Date(monthRange.from_date).getTime();
+  const recentMonthCommissionTotal = detailCommissions
+    .filter((commission) => new Date(commission.created_at).getTime() >= monthStart)
+    .reduce((total, commission) => total + Number(commission.amount ?? 0), 0);
 
   return (
     <tr>
@@ -351,8 +334,8 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
           <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Hourly Pay Rate</span>
           <div className="ml-auto">
             <PayRateEditor
-              employeeId={employeeId}
-              currentRate={(detail as any)?.pay_rate ?? null}
+              employeeId={employee.id}
+              currentRate={detail?.pay_rate ?? null}
             />
           </div>
         </div>
@@ -363,13 +346,13 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
             <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-700 dark:text-surface-300">
               <Clock className="h-4 w-4" />
               Recent Clock Entries
-              {hoursResult && (
-                <span className="ml-auto text-xs font-normal text-surface-500">
-                  This week: {formatHours(hoursResult.total_hours ?? 0)}
-                </span>
-              )}
+              <span className="ml-auto text-xs font-normal text-surface-500">
+                This week: {formatHours(weeklyHours)}
+              </span>
             </h4>
-            {recentClock.length === 0 ? (
+            {isDetailLoading && !detail ? (
+              <p className="text-sm text-surface-400">Loading clock entries...</p>
+            ) : recentClock.length === 0 ? (
               <p className="text-sm text-surface-400">No clock entries yet. Use the clock in/out buttons above.</p>
             ) : (
               <div className="space-y-1">
@@ -399,13 +382,15 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
             <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-700 dark:text-surface-300">
               <DollarSign className="h-4 w-4" />
               Recent Commissions
-              {commissionsResult && (
+              {recentMonthCommissionTotal > 0 && (
                 <span className="ml-auto text-xs font-normal text-surface-500">
-                  This month: {formatCurrency(commissionsResult.total_amount ?? 0)}
+                  Recent this month: {formatCurrency(recentMonthCommissionTotal)}
                 </span>
               )}
             </h4>
-            {recentCommissions.length === 0 ? (
+            {isDetailLoading && !detail ? (
+              <p className="text-sm text-surface-400">Loading commissions...</p>
+            ) : recentCommissions.length === 0 ? (
               <p className="text-sm text-surface-400">No commissions recorded yet. Commissions are tracked per ticket or invoice.</p>
             ) : (
               <div className="space-y-1">
@@ -474,7 +459,6 @@ export function EmployeeListPage() {
       setPinModal(null);
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
-      queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err));
@@ -489,7 +473,6 @@ export function EmployeeListPage() {
       setPinModal(null);
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
-      queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err));
@@ -585,11 +568,9 @@ export function EmployeeListPage() {
 }
 
 // ─── Employee Row ────────────────────────────────────────────────────
-// WEB-S6-033: clock status + weekly hours are now served by the list endpoint.
-// The per-row detail + hours queries are removed to eliminate the N+1 pattern.
-// The expanded detail panel (commissions, clock history) still fires a single
-// query when the row is expanded — that's intentional: only one employee is
-// expanded at a time and it needs the full payload.
+// WEB-S6-033 / WEB-UIUX-184: clock status + weekly hours are served by the
+// list endpoint, and the expanded panel reuses one detail payload for pay rate,
+// recent clock history, and recent commissions.
 function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   employee: Employee;
   isExpanded: boolean;
@@ -601,12 +582,13 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   const weeklyHours = Number(employee.weekly_hours ?? 0);
 
   // Detail query fires only when the row is expanded (single call per user).
-  const { data: detailData } = useQuery({
+  const { data: detailData, isLoading: isDetailLoading } = useQuery({
     queryKey: ['employee-detail', employee.id],
     queryFn: () => employeeApi.get(employee.id),
     enabled: isExpanded,
     staleTime: 30000,
   });
+  const detail = (detailData?.data as { data?: EmployeeDetail } | undefined)?.data;
 
   const roleClass = ROLE_COLORS[employee.role] ?? 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
 
@@ -683,7 +665,13 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
           </button>
         </td>
       </tr>
-      {isExpanded && <EmployeeExpandedRow employeeId={employee.id} />}
+      {isExpanded && (
+        <EmployeeExpandedRow
+          employee={employee}
+          detail={detail}
+          isDetailLoading={isDetailLoading}
+        />
+      )}
     </>
   );
 }

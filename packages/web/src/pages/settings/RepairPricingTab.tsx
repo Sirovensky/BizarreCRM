@@ -869,26 +869,17 @@ function AdjustmentsSubTab() {
     },
   });
 
-  // Sync from server
-  useState(() => {
-    if (data) {
-      setFlat(data.flat);
-      setPct(data.pct);
-    }
-  });
-
-  // Update local state when data loads
-  useMemo(() => {
-    if (data) {
-      setFlat(data.flat);
-      setPct(data.pct);
-    }
-  }, [data]);
+  useEffect(() => {
+    if (!data || dirty) return;
+    setFlat(data.flat);
+    setPct(data.pct);
+  }, [data, dirty]);
 
   const saveMutation = useMutation({
     mutationFn: (adj: { flat: number; pct: number }) => repairPricingApi.setAdjustments(adj),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'adjustments'] });
+    onSuccess: async (_res, adj) => {
+      queryClient.setQueryData(['repair-pricing', 'adjustments'], adj);
+      await queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'adjustments'] });
       setDirty(false);
       toast.success('Adjustments saved');
     },

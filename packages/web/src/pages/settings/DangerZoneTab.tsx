@@ -17,6 +17,7 @@ import { Navigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Loader2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHasRole } from '@/hooks/useHasRole';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useAuthStore } from '@/stores/authStore';
 import { formatDateTime } from '@/utils/format';
 import { tenantTerminationApi } from '@/api/endpoints';
@@ -114,6 +115,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
   const [typedPhrase, setTypedPhrase] = useState('');
   const [doneState, setDoneState] = useState<DoneState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   const canFinalize = useMemo(
     () => typedPhrase === TERMINATION_PHRASE,
@@ -193,6 +195,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="danger-zone-title"

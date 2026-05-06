@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Trap keyboard focus inside a container element while the trap is active.
@@ -50,14 +50,14 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
   );
 }
 
-export function useFocusTrap(
+export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
   active: boolean,
   options: UseFocusTrapOptions = {},
-): React.RefObject<HTMLElement | null> {
+): RefObject<T | null> {
   const { initialFocusSelector, returnFocusOnDeactivate = true } = options;
 
   // Ref that callers attach to the dialog/modal container element.
-  const containerRef = useRef<HTMLElement | null>(null);
+  const containerRef = useRef<T | null>(null);
   // Remember what was focused before the trap opened so we can restore it.
   const previouslyFocusedRef = useRef<Element | null>(null);
 

@@ -16,6 +16,8 @@ interface ConfirmDialogProps {
   requireTyping?: boolean;
   /** Text the user must type to confirm (shown as hint). Required when requireTyping is true. */
   confirmText?: string;
+  /** Optional guard for async preconditions before the destructive action is allowed. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -24,9 +26,10 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not
 
 export function ConfirmDialog({
   open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
-  danger = false, requireTyping = false, confirmText = '', onConfirm, onCancel,
+  danger = false, requireTyping = false, confirmText = '', confirmDisabled = false, onConfirm, onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   useBodyScrollLock(open);
@@ -37,6 +40,7 @@ export function ConfirmDialog({
   const [typedValue, setTypedValue] = useState('');
 
   const typingMatch = !requireTyping || typedValue === confirmText;
+  const confirmEnabled = typingMatch && !confirmDisabled;
 
   useEffect(() => {
     if (open) {
@@ -44,6 +48,8 @@ export function ConfirmDialog({
       setTypedValue('');
       if (requireTyping) {
         requestAnimationFrame(() => inputRef.current?.focus());
+      } else if (confirmDisabled) {
+        requestAnimationFrame(() => cancelRef.current?.focus());
       } else {
         requestAnimationFrame(() => confirmRef.current?.focus());
       }
@@ -125,7 +131,7 @@ export function ConfirmDialog({
               type="text"
               value={typedValue}
               onChange={(e) => setTypedValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && typingMatch) onConfirm(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && confirmEnabled) onConfirm(); }}
               placeholder={confirmText}
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
               autoComplete="off"
@@ -135,13 +141,13 @@ export function ConfirmDialog({
         )}
 
         <div className="mt-5 flex justify-end gap-2">
-          <Button onClick={onCancel} variant="secondary" size="sm">
+          <Button ref={cancelRef} onClick={onCancel} variant="secondary" size="sm">
             {cancelLabel}
           </Button>
           <Button
             ref={confirmRef}
             onClick={onConfirm}
-            disabled={!typingMatch}
+            disabled={!confirmEnabled}
             variant={danger ? 'danger' : 'primary'}
             size="sm"
           >

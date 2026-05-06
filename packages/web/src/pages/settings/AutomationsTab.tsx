@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { automationsApi, settingsApi } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
@@ -177,7 +178,7 @@ function ActionConfigForm({
               placeholder="{customer_phone}"
               className="w-full px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
             />
-            {config.to && String(config.to).trim() !== '' && !String(config.to).includes('{customer') && (
+            {String(config.to ?? '').trim() !== '' && !String(config.to ?? '').includes('{customer') && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                 Hardcoded values won&apos;t update if the customer&apos;s phone changes. Use &#123;customer_phone&#125; placeholder for live tracking.
               </p>
@@ -358,8 +359,9 @@ export function AutomationModal({
   const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(rule?.trigger_config ?? {});
   const [actionType, setActionType] = useState(rule?.action_type ?? 'send_sms');
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(rule?.action_config ?? {});
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, { initialFocusSelector: 'input' });
 
-  // WEB-FX-003: Esc closes the modal so keyboard users aren't trapped.
+  // WEB-FX-003 / WEB-UIUX-149: Esc closes; useFocusTrap keeps Tab inside.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -411,6 +413,7 @@ export function AutomationModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="automation-rule-title"

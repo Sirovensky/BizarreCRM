@@ -125,6 +125,7 @@ export function AgingReportPage() {
   const totalDueCents = data
     ? BUCKET_ORDER.reduce((sum, k) => sum + (data.buckets[k]?.total_cents ?? 0), 0)
     : 0;
+  const hasSelection = selected.size > 0;
 
   return (
     <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
@@ -168,22 +169,28 @@ export function AgingReportPage() {
 
       <div className="rounded-md border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800/70 dark:text-surface-200">
         <span>Total outstanding: <strong className="text-surface-900 dark:text-surface-100">{formatCents(totalDueCents)}</strong></span>
-        {selected.size > 0 && (
-          <span className="ml-4 inline-flex items-center gap-3">
-            <span>{selected.size} selected</span>
-            {/* WEB-W3-017: bulk send reminder */}
-            <button
-              onClick={() => bulkReminderMut.mutate([...selected])}
-              disabled={bulkReminderMut.isPending}
-              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-            >
-              {bulkReminderMut.isPending
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <Bell className="h-3 w-3" />}
-              Send Reminder ({selected.size})
-            </button>
-          </span>
-        )}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-surface-200 bg-white px-4 py-3 shadow-sm dark:border-surface-700 dark:bg-surface-900 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Overdue invoices</h2>
+          <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+            {filteredInvoices.length} visible, {selected.size} selected
+          </p>
+        </div>
+        {/* WEB-W3-017: bulk send reminder */}
+        <button
+          type="button"
+          onClick={() => bulkReminderMut.mutate([...selected])}
+          disabled={!hasSelection || bulkReminderMut.isPending}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 dark:focus:ring-amber-400 dark:focus:ring-offset-surface-900"
+          title={hasSelection ? 'Send payment reminders to selected invoices' : 'Select invoices to send reminders'}
+        >
+          {bulkReminderMut.isPending
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Bell className="h-4 w-4" />}
+          Send Reminder{hasSelection ? ` (${selected.size})` : ''}
+        </button>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-900">

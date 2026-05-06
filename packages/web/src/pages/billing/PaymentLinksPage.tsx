@@ -51,6 +51,8 @@ export function PaymentLinksPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [idErrors, setIdErrors] = useState<{ customer_id?: string; invoice_id?: string }>({});
+  const browserTimeZone = getBrowserTimeZone();
+  const expiryPreview = formatExpiryPreview(form.expires_at);
 
   // AUDIT-WEB-006: feature flag — payment links must be disabled at the
   // generation point until a live checkout provider is configured.
@@ -147,20 +149,22 @@ export function PaymentLinksPage() {
     if (customerId === 'error') return;
     const invoiceId = parseStrictId(form.invoice_id, 'Invoice ID');
     if (invoiceId === 'error') return;
-    // WEB-FG-010 sanity-belt: reject expiry dates already in the past.
+    // WEB-FG-010 sanity-belt: reject expiry timestamps already in the past.
+    let expiresAt: string | null = null;
     if (form.expires_at) {
-      const exp = new Date(`${form.expires_at}T23:59:59`);
+      const exp = parseLocalDateTimeInput(form.expires_at);
       if (!isFinite(exp.getTime()) || exp.getTime() < Date.now()) {
-        toast.error('Expiry date must be in the future');
+        toast.error('Expiry date and time must be in the future');
         return;
       }
+      expiresAt = exp.toISOString();
     }
     createMutation.mutate({
       customer_id: customerId,
       invoice_id: invoiceId,
       amount,
       description: form.description || null,
-      expires_at: form.expires_at || null,
+      expires_at: expiresAt,
     });
   };
 
@@ -290,12 +294,21 @@ export function PaymentLinksPage() {
               onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
-            <input
-              type="date"
-              value={form.expires_at}
-              onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
-            />
+            <div className="space-y-1">
+              <input
+                type="datetime-local"
+                aria-label="Expiry date and time (optional)"
+                aria-describedby="payment-link-expiry-hint"
+                value={form.expires_at}
+                onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
+              />
+              <p id="payment-link-expiry-hint" className="text-xs text-surface-500 dark:text-surface-400">
+                {expiryPreview
+                  ? `Expires at ${expiryPreview}.`
+                  : `Optional. Choose the exact local cutoff in ${browserTimeZone}.`}
+              </p>
+            </div>
             <input
               type="text"
               placeholder="Description"
@@ -405,4 +418,23 @@ function errorMessage(err: unknown): string {
     return anyErr.response?.data?.message ?? 'Request failed';
   }
   return 'Request failed';
+}
+
+function parseLocalDateTimeInput(value: string): Date {
+  return new Date(value);
+}
+
+function getBrowserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'your browser timezone';
+}
+
+function formatExpiryPreview(value: string): string | null {
+  if (!value) return null;
+  const date = parseLocalDateTimeInput(value);
+  if (!isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZoneName: 'short',
+  }).format(date);
 }

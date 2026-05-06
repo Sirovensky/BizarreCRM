@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { confirm } from '@/stores/confirmStore';
 
 interface DunningStep {
   days_offset: number;
@@ -115,6 +116,23 @@ export function DunningPage() {
   });
 
   const [lastSummary, setLastSummary] = useState<DunningSummary | null>(null);
+
+  const removeStep = async (idx: number) => {
+    const step = steps[idx];
+    if (!step || steps.length === 1) return;
+
+    const ok = await confirm(
+      `Remove step ${idx + 1} (day ${step.days_offset}, ${step.action}) from this draft sequence?`,
+      {
+        title: 'Remove dunning step',
+        confirmLabel: 'Remove step',
+        danger: true,
+      },
+    );
+    if (!ok) return;
+
+    setSteps((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const runNowMutation = useMutation<DunningSummary>({
     mutationFn: async () => {
@@ -229,9 +247,12 @@ export function DunningPage() {
             </button>
           </div>
           {steps.map((step, idx) => (
-            <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 px-3 py-2">
+            <div
+              key={idx}
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 rounded-md border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800/50 sm:grid-cols-[auto_minmax(8rem,0.8fr)_minmax(12rem,1.4fr)_auto] sm:items-center"
+            >
               <span className="text-xs text-surface-400 font-mono w-5 text-right">{idx + 1}.</span>
-              <div className="flex items-center gap-1">
+              <div className="flex min-w-0 items-center gap-1">
                 <label className="text-xs text-surface-500 whitespace-nowrap">Day offset</label>
                 <input
                   type="number" min="0" step="1"
@@ -242,14 +263,14 @@ export function DunningPage() {
                   className="w-16 rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs text-right"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="col-span-2 col-start-2 row-start-2 flex min-w-0 flex-col gap-2 sm:col-auto sm:row-auto sm:flex-row sm:items-center">
                 <select
                   aria-label={`Step ${idx + 1} action`}
                   value={step.action}
                   onChange={(e) => setSteps((prev) => prev.map((s, i) =>
                     i === idx ? { ...s, action: e.target.value } : s
                   ))}
-                  className="rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs"
+                  className="w-full min-w-0 rounded border border-surface-300 bg-white px-2 py-1 text-xs dark:border-surface-600 dark:bg-surface-800 sm:w-auto"
                 >
                   <option value="email">Email</option>
                   <option value="sms">SMS</option>
@@ -263,7 +284,7 @@ export function DunningPage() {
                     onChange={(e) => setSteps((prev) => prev.map((s, i) =>
                       i === idx ? { ...s, template_id: e.target.value } : s
                     ))}
-                    className="rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs"
+                    className="w-full min-w-0 rounded border border-surface-300 bg-white px-2 py-1 text-xs dark:border-surface-600 dark:bg-surface-800 sm:w-auto"
                   >
                     {KNOWN_TEMPLATE_IDS.map((t) => (
                       <option key={t} value={t}>{t}</option>
@@ -273,10 +294,11 @@ export function DunningPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setSteps((prev) => prev.filter((_, i) => i !== idx))}
+                onClick={() => void removeStep(idx)}
                 disabled={steps.length === 1}
-                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="col-start-3 row-start-1 justify-self-end p-1 text-red-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none sm:col-auto sm:row-auto"
                 title="Remove step"
+                aria-label={`Remove step ${idx + 1}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

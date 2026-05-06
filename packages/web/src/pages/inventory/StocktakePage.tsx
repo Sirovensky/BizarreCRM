@@ -28,7 +28,7 @@ import { formatDateTime, formatCurrency } from '@/utils/format';
 // themed async modal — matches the pattern already used on Estimates / POS /
 // Customers / Tickets / Invoices, picks up dark mode + brand fonts, and is
 // not blocked by Safari's third-party-iframe modal suppression.
-import { confirm } from '@/stores/confirmStore';
+import { useConfirmStore } from '@/stores/confirmStore';
 
 interface StocktakeSession {
   id: number;
@@ -430,7 +430,8 @@ export function StocktakePage() {
                           </div>
                         );
 
-                        const ok = await confirm(diffNode, {
+                        const ok = await useConfirmStore.getState().confirm({
+                          message: diffNode,
                           title: 'Commit stocktake',
                           confirmLabel: 'Commit',
                         });
@@ -443,7 +444,8 @@ export function StocktakePage() {
                     </button>
                     <button
                       onClick={async () => {
-                        const ok = await confirm('Cancel this stocktake? No stock changes will be applied.', {
+                        const ok = await useConfirmStore.getState().confirm({
+                          message: 'Cancel this stocktake? No stock changes will be applied.',
                           title: 'Cancel stocktake',
                           confirmLabel: 'Cancel stocktake',
                           danger: true,

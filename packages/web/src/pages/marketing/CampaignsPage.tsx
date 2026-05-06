@@ -102,7 +102,7 @@ export function CampaignsPage() {
   const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; segment_total: number | null; sample: Array<{ rendered_body: string }> } | null>(null);
   // Confirm dialogs for destructive actions — Run-now dispatches the segment
   // immediately to potentially thousands of recipients, and Delete is final.
-  const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
+  const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null; error: string | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
   // WEB-UIUX-177: overflow menu open state (campaign id or null)
   const [openOverflow, setOpenOverflow] = useState<number | null>(null);
@@ -277,7 +277,7 @@ export function CampaignsPage() {
                       onClick={async () => {
                         // Open confirm dialog with a recipient-count preview so the
                         // operator sees how many people will be messaged before firing.
-                        setRunConfirm({ campaign, total: null });
+                        setRunConfirm({ campaign, total: null, error: null });
                         // WEB-FK-017: abort any prior in-flight preview before starting a new one.
                         runPreviewAbortRef.current?.abort();
                         const ac = new AbortController();
@@ -285,14 +285,15 @@ export function CampaignsPage() {
                         try {
                           const res = await campaignsApi.preview(campaign.id, { signal: ac.signal });
                           if (ac.signal.aborted) return;
-                          const total = (res.data as any)?.data?.total_recipients ?? 0;
+                          const total = (res.data as { data?: { total_recipients?: number } } | undefined)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
-                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
+                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total, error: null } : curr));
                         } catch (err: unknown) {
                           const e = err as { name?: string };
                           if (ac.signal.aborted || e?.name === 'CanceledError' || e?.name === 'AbortError') return;
-                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
-                          toast.error(formatApiError(err));
+                          const message = formatApiError(err);
+                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: null, error: message } : curr));
+                          toast.error(message);
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
@@ -415,16 +416,32 @@ export function CampaignsPage() {
         title="Dispatch campaign now?"
         message={
           runConfirm
-            ? runConfirm.total === null
+            ? runConfirm.error
+              ? (
+                <div className="space-y-2">
+                  <p>
+                    Could not count eligible recipients for "{runConfirm.campaign.name}".
+                  </p>
+                  <p className="font-medium text-red-600 dark:text-red-400">
+                    Dispatch is disabled until the recipient count loads successfully.
+                  </p>
+                  <p className="text-xs text-surface-500 dark:text-surface-400">
+                    {runConfirm.error}
+                  </p>
+                </div>
+              )
+              : runConfirm.total === null
               ? `Counting eligible recipients for "${runConfirm.campaign.name}"…`
               : `This will immediately send "${runConfirm.campaign.name}" via ${runConfirm.campaign.channel.toUpperCase()} to ${runConfirm.total} eligible recipient${runConfirm.total === 1 ? '' : 's'} (after opt-in filtering). This cannot be undone.`
             : ''
         }
-        confirmLabel="Dispatch now"
+        confirmLabel={runConfirm?.error ? 'Count failed' : runConfirm?.total === null ? 'Counting recipients...' : 'Dispatch now'}
         cancelLabel="Cancel"
         danger
+        confirmDisabled={!runConfirm || runConfirm.total === null || !!runConfirm.error || runNow.isPending}
         onConfirm={() => {
-          if (runConfirm) runNow.mutate(runConfirm.campaign.id);
+          if (!runConfirm || runConfirm.total === null || runConfirm.error) return;
+          runNow.mutate(runConfirm.campaign.id);
           runPreviewAbortRef.current?.abort();
           setRunConfirm(null);
         }}

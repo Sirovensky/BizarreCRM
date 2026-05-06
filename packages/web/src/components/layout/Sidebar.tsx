@@ -195,7 +195,7 @@ export function Sidebar() {
         {!sidebarCollapsed && (
           <NavLink
             to="/"
-            className="truncate text-lg font-bold tracking-tight text-surface-900 hover:text-primary-500 dark:text-surface-50 dark:hover:text-primary-500 transition-colors"
+            className="truncate font-logo text-lg font-bold tracking-tight text-surface-900 transition-colors hover:text-primary-500 dark:text-surface-50 dark:hover:text-primary-500"
           >
             Bizarre CRM
           </NavLink>

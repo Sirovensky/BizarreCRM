@@ -324,7 +324,9 @@ function ImpersonateConfirmModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       role="presentation"
-      onClick={onCancel}
+      onClick={() => {
+        if (!submitting) onCancel();
+      }}
     >
       <div
         ref={dialogRef as React.RefObject<HTMLDivElement>}
@@ -335,8 +337,8 @@ function ImpersonateConfirmModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/30">
-            <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/30">
+            <ShieldCheck className="h-5 w-5 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3
@@ -372,7 +374,7 @@ function ImpersonateConfirmModal({
               placeholder={tenantSlug}
               autoComplete="off"
               spellCheck={false}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             />
           </div>
           <div>
@@ -389,7 +391,7 @@ function ImpersonateConfirmModal({
               onChange={(e) => onReasonChange(e.target.value)}
               placeholder="ticket #1234 — investigating refund issue"
               maxLength={200}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             />
             {!reasonValid && reason.length > 0 && (
               <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">
@@ -403,7 +405,8 @@ function ImpersonateConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+            disabled={submitting}
+            className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             Cancel
           </button>
@@ -413,7 +416,7 @@ function ImpersonateConfirmModal({
             disabled={!canConfirm}
             className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
               canConfirm
-                ? 'bg-amber-600 hover:bg-amber-700'
+                ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-surface-300 dark:bg-surface-600 cursor-not-allowed'
             }`}
           >

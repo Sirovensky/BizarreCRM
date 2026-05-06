@@ -203,7 +203,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
           title="Link a ticket"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -285,7 +285,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
             </button>
             <button
               onClick={() => unlinkMut.mutate({ ...beginMutation(), linkId: link.id })}
-              className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-surface-400 hover:text-red-500 transition-all"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-surface-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
               title="Remove link"
             >
               <X className="h-3 w-3" />
@@ -353,7 +353,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
           title="Schedule appointment"
         >
           <CalendarPlus className="h-3.5 w-3.5" />

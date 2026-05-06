@@ -113,7 +113,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const mergeAbortRef = useRef<AbortController | null>(null);
   const dialogActiveRef = useRef(true);
-  const trapRef = useFocusTrap(true);
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
   useEscClose(onClose, true);
 
   useEffect(() => {

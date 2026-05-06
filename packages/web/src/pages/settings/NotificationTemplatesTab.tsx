@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { cn } from '@/utils/cn';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -44,8 +45,9 @@ function EditTemplateModal({
   const [subject, setSubject] = useState(template.subject);
   const [emailBody, setEmailBody] = useState(template.email_body);
   const [smsBody, setSmsBody] = useState(template.sms_body);
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, { initialFocusSelector: 'input' });
 
-  // WEB-FX-003: Esc closes the modal so keyboard users aren't trapped.
+  // WEB-FX-003 / WEB-UIUX-149: Esc closes; useFocusTrap keeps Tab inside.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -63,6 +65,7 @@ function EditTemplateModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="notif-tpl-edit-title"

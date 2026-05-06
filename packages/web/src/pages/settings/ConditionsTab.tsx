@@ -117,6 +117,16 @@ function CategoryTemplates({ category }: { category: string }) {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete template'),
   });
 
+  const handleDeleteTemplate = async (template: ConditionTemplate) => {
+    try {
+      if (await confirm('Delete this template?', { confirmLabel: 'Delete', danger: true })) {
+        deleteMutation.mutate(template.id);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -142,7 +152,7 @@ function CategoryTemplates({ category }: { category: string }) {
           key={template.id}
           template={template}
           category={category}
-          onDelete={template.is_default ? undefined : () => deleteMutation.mutate(template.id)}
+          onDelete={template.is_default ? undefined : () => handleDeleteTemplate(template)}
         />
       ))}
 
@@ -231,6 +241,16 @@ function TemplateCard({
     },
     onError: () => toast.error('Failed to remove check'),
   });
+
+  const handleDeleteCheck = async (check: ConditionCheck) => {
+    try {
+      if (await confirm('Delete this condition check?', { confirmLabel: 'Delete', danger: true })) {
+        deleteCheckMutation.mutate(check.id);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
 
   const reorderMutation = useMutation({
     mutationFn: (order: number[]) => settingsApi.reorderConditionChecks(template.id, order),
@@ -351,7 +371,7 @@ function TemplateCard({
                 {check.is_active ? <ToggleRight className="h-4 w-4 text-green-500" /> : <ToggleLeft className="h-4 w-4" />}
               </button>
               <button
-                onClick={() => deleteCheckMutation.mutate(check.id)}
+                onClick={() => handleDeleteCheck(check)}
                 className="btn-icon btn-xs text-surface-400 hover:text-red-600"
                 title="Remove check"
               >

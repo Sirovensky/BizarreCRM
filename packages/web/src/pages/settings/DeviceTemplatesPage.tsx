@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { deviceTemplateApi, inventoryApi } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { confirm } from '@/stores/confirmStore';
 import { formatCents, formatCurrencySymbol } from '@/utils/format';
 
@@ -93,6 +94,7 @@ export function DeviceTemplatesPage() {
   const [editing, setEditing] = useState<TemplateForm | null>(null);
   const [partSearch, setPartSearch] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
+  const editorDialogRef = useFocusTrap<HTMLDivElement>(!!editing, { initialFocusSelector: '#dt-name' });
 
   // Debounce part search so we don't fire an inventory query on every keystroke.
   useEffect(() => {
@@ -325,6 +327,7 @@ export function DeviceTemplatesPage() {
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditing(null)}>
           <div
+            ref={editorDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="device-tpl-edit-title"

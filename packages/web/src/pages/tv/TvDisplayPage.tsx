@@ -177,7 +177,7 @@ export function TvDisplayPage() {
     queryFn: async () => { const r = await settingsApi.getStore(); return r.data.data as StoreConfig; },
     staleTime: 300000,
   });
-  const storeName = storeData?.name || 'Repair Shop';
+  const storeName = storeData?.store_name || 'Repair Shop';
 
   useEffect(() => {
     if (!dataUpdatedAt || dataUpdatedAt === lastDataUpdatedAtRef.current) return;
