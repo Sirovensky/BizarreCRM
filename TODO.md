@@ -2615,7 +2615,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### TV Display
 
-- [ ] WEB-UIUX-500. **[BLOCKER] TvDisplayPage hardcodes `en-US` locale for clock + date.** Spanish/multi-language tenants see English on lobby screen. L14.
+- [x] WEB-UIUX-500. **[BLOCKER] TvDisplayPage hardcodes `en-US` locale for clock + date.** Spanish/multi-language tenants see English on lobby screen. L14. **[AUTOLOOP-T22 RESOLVED: TvDisplayPage clock+date use navigator.language fallback instead of hardcoded en-US.]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:33-37,112-116`
 
 - [ ] WEB-UIUX-501. **[MAJOR] TvDisplayPage no auto-cycle — if more tickets than fit on screen, customers below the fold never see their status.** L5, L8.
