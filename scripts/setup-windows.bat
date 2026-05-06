@@ -207,36 +207,17 @@ copy /Y "%ROOT%packages\server\src\db\db-worker.mjs" "%ROOT%packages\server\dist
 echo  OK - Build completed
 echo.
 
-:: ── Step 9: Build Management Dashboard ───────────────────────────
-echo  [9/10] Building Management Dashboard...
-pushd "%ROOT%packages\management"
-call npm run build
-if %errorlevel% neq 0 (
-    color 0E
-    echo  WARNING: Dashboard build failed. Server will still work.
-    echo  You can build the dashboard later with:
-    echo    cd packages\management ^&^& npm run build ^&^& npm run package
-    echo.
-) else (
-    echo  OK - Dashboard built
-    echo  Packaging dashboard EXE...
-    call npm run package >nul 2>&1
-    :: Copy unpacked EXE to dashboard/ whether or not NSIS installer succeeded
-    :: (the dir target produces win-unpacked even if signing/NSIS fails)
-    if exist "release\win-unpacked\BizarreCRM Management.exe" (
-        if exist "%ROOT%dashboard" rmdir /s /q "%ROOT%dashboard" 2>nul
-        xcopy /E /I /Q /Y "release\win-unpacked" "%ROOT%dashboard" >nul 2>nul
-        echo  OK - Dashboard EXE packaged
-    ) else (
-        echo  WARNING: Dashboard packaging failed. You can run it with:
-        echo    cd packages\management ^&^& npm start
-    )
-)
-popd
-echo.
+:: ── Step 9: (REMOVED) Electron Management Dashboard build ────────
+:: The Electron .exe dashboard has been replaced by the browser-served
+:: super-admin SPA at https://localhost/super-admin. The SPA is built
+:: by the root `npm run build` (Step 8) into
+::   packages\server\dist\super-admin-spa\
+:: and served by the running CRM server. No separate Electron build /
+:: package step is needed. Operators who still want the Electron .exe
+:: can run `cd packages\management ^&^& npm run package` manually.
 
-:: ── Step 10: Launch ───────────────────────────────────────────────
-echo  [10/10] Launching...
+:: ── Step 9: Launch ───────────────────────────────────────────────
+echo  [9/9] Launching...
 echo.
 
 color 0A
@@ -270,20 +251,13 @@ if %errorlevel% equ 0 (
 )
 echo.
 
-set "DASHBOARD="
-if exist "%ROOT%dashboard\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%dashboard\BizarreCRM Management.exe"
-if not defined DASHBOARD if exist "%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe" set "DASHBOARD=%ROOT%packages\management\release\win-unpacked\BizarreCRM Management.exe"
-
-if defined DASHBOARD (
-    echo  Starting Management Dashboard...
-    :: Launch dashboard detached so we never block on it. The dashboard
-    :: probes the server on startup; if PM2 hasn't finished warming yet
-    :: the dashboard shows a "connecting" state, not a crash.
-    start "" "!DASHBOARD!"
-    echo  OK - Dashboard launched.
-) else (
-    echo  Dashboard EXE not found. Server is running at https://localhost
-)
+:: Open the super-admin dashboard in the operator's default browser.
+:: Replaces the prior Electron .exe launch. The empty quoted "" is a
+:: cmd `start` quirk — it's the window title; without it `start` would
+:: interpret the URL as a title and open nothing.
+echo  Opening super-admin dashboard in browser...
+start "" "https://localhost/super-admin"
+echo  OK - Browser launched. Server is running at https://localhost
 
 endlocal
 exit /b 0

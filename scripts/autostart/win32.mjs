@@ -225,21 +225,30 @@ export async function unregister(name) {
 export const __test = { buildXml, buildLauncher, validateName, esc };
 
 export async function status(name) {
+  // shell:true so schtasks resolves through cmd.exe consistently across
+  // Windows configs that don't have System32 first on PATH.
+  // windowsHide so this status probe doesn't pop a console window —
+  // setup.mjs calls this on every run + the SPA polls it.
   const r = spawnSync('schtasks', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
+    shell: true,
+    windowsHide: true,
   });
+  // Exit 0 + "ERROR: cannot find" never both occur. Non-zero typically
+  // means task does not exist. Treat that as not-enabled.
   if (r.status !== 0) {
     return { enabled: false, mechanism: MECHANISM, raw: (r.stderr || r.stdout || '').trim() };
   }
-  // Parse the LIST output for the Status field. A task that's been
-  // manually disabled in Task Scheduler GUI shows `Status: Disabled`;
-  // the prior implementation reported any registered task as enabled
-  // regardless of state. The /V flag adds verbose fields including the
-  // Status line. `Ready` and `Running` both count as enabled.
-  const out = r.stdout || '';
-  const statusMatch = out.match(/^\s*(?:Status|Scheduled Task State)\s*:\s*(.+)$/mi);
-  const stateValue = statusMatch ? statusMatch[1].trim() : '';
-  const enabled = /^(Ready|Running|Enabled)$/i.test(stateValue);
-  return { enabled, mechanism: MECHANISM, raw: out.trim() };
+  // The task exists. Now check whether it's been manually DISABLED in
+  // Task Scheduler GUI. The /V LIST output has multiple "Status:"
+  // fields (one per trigger, one for the task itself, etc.) and the
+  // exact label is locale-dependent on non-English Windows. So we
+  // invert the check: task is enabled UNLESS we can affirmatively
+  // detect a "Disabled" state. Conservative — minor false-positive
+  // possible if the task is in some PENDING state, but that's a rare
+  // edge case and re-running setup.mjs would just re-ask.
+  const out = (r.stdout || '').toLowerCase();
+  const explicitlyDisabled = /\b(?:status|scheduled task state)\s*:\s*disabled\b/i.test(out);
+  return { enabled: !explicitlyDisabled, mechanism: MECHANISM, raw: (r.stdout || '').trim() };
 }

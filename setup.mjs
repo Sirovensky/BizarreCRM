@@ -72,7 +72,7 @@ const c = {
   dim: (s) => (ANSI_OFF ? s : `\x1b[2m${s}\x1b[0m`),
 };
 
-const STEPS_TOTAL = 12;
+const STEPS_TOTAL = 11;
 let stepNum = 0;
 function step(label) {
   stepNum += 1;
@@ -406,53 +406,26 @@ function buildAndroid() {
   }
 }
 
-// ─── 9. Management dashboard (transitional, Electron) ──────────────────────
-
-function buildDashboard() {
-  step('Building management dashboard');
-  const mgmtPkg = path.join(REPO_ROOT, 'packages/management/package.json');
-  if (!existsSync(mgmtPkg)) {
-    ok('packages/management/ absent — skipped (likely post-deprecation).');
-    return;
-  }
-
-  // Sources build cross-platform via the workspace npm script.
-  const r = run('npm', ['run', 'build', '-w', '@bizarre-crm/management']);
-  if (!r.ok) {
-    warn(`Dashboard build failed (exit ${r.code}). Server still works. Browser dashboard will replace this in a future release (see docs/dashboard-migration-plan.md).`);
-    return;
-  }
-  ok('Dashboard sources built');
-
-  // Packaging the .exe is Windows-only because packages/management/package.json
-  // hard-codes `electron-builder --win`. Per dashboard-migration-plan this is
-  // transitional; once the browser dashboard ships, this whole step disappears.
-  if (process.platform === 'win32') {
-    const r2 = run('npm', ['run', 'package', '-w', '@bizarre-crm/management']);
-    if (!r2.ok) {
-      warn('Dashboard packaging (Electron .exe) failed. Sources built but no installable EXE.');
-      return;
-    }
-    ok('Dashboard EXE packaged');
-
-    // Copy unpacked EXE to <repo>/dashboard/ for the launch step + the
-    // legacy operator workflow that bookmarks this path.
-    const unpacked = path.join(REPO_ROOT, 'packages/management/release/win-unpacked');
-    const target = path.join(REPO_ROOT, 'dashboard');
-    if (existsSync(unpacked)) {
-      // Node's recursive copy. cpSync exists on Node 16.7+; we're 22+.
-      try {
-        if (existsSync(target)) rmSync(target, { recursive: true, force: true });
-        cpSync(unpacked, target, { recursive: true });
-        ok(`Dashboard copied to ${target}`);
-      } catch (err) {
-        warn(`Dashboard copy failed: ${err.message}`);
-      }
-    }
-  } else {
-    ok('Dashboard packaging skipped on non-Windows (electron-builder --win is Windows-only). Run scripts/setup-windows.bat directly if you need the .exe.');
-  }
-}
+// ─── 9. (REMOVED) Management dashboard build ─────────────────────────────
+//
+// The old step 9 built the Electron management app + packaged it as a
+// Windows .exe. That dashboard has been replaced by the browser-served
+// super-admin SPA which is built as part of `npm run build` at the root
+// (the root build script's last step is `build:renderer:web --workspace=
+// packages/management`, which emits the SPA bundle into
+// packages/server/dist/super-admin-spa/ that the server serves at
+// /super-admin/).
+//
+// Removing this step:
+//   - eliminates the slow `electron-builder --win` packaging path
+//   - drops the brittle NSIS code-signing failure mode
+//   - aligns with docs/dashboard-migration-plan.md Phase E (Electron
+//     deletion) — the package.json in packages/management can stay for
+//     now; setup just doesn't invoke its `package` script anymore.
+//
+// Operators who still need the Electron .exe can run it manually:
+//   cd packages/management && npm run package
+// Most should switch to the browser dashboard at /super-admin/.
 
 // ─── 10. PM2 start + save ──────────────────────────────────────────────────
 
@@ -757,7 +730,10 @@ async function openBrowser() {
   ensureCerts();
   buildApp();
   buildAndroid();
-  buildDashboard();
+  // Step 9 (Electron management dashboard build) was removed — the
+  // browser-served super-admin SPA is built as part of buildApp()'s
+  // root `npm run build` (which calls build:renderer:web for the
+  // management package). See dashboard-migration-plan.md Phase E.
   startPm2();
   await registerAutostart();
   await openBrowser();
