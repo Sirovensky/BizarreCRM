@@ -12,11 +12,24 @@
 
 let _currencyCode = 'USD';
 let _locale: string = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
-let _currencyFmt = buildFormatter(_currencyCode, _locale);
+
+const formatterCache = new Map<string, Intl.NumberFormat>();
+function getFormatter(locale: string, currency: string): Intl.NumberFormat {
+  const key = locale + '/' + currency;
+  if (!formatterCache.has(key)) {
+    formatterCache.set(key, new Intl.NumberFormat(locale, { style: 'currency', currency }));
+  }
+  return formatterCache.get(key)!;
+}
 
 function buildFormatter(code: string, locale: string = _locale): Intl.NumberFormat {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: code });
+  return getFormatter(locale, code);
 }
+
+let _currencyFmt = buildFormatter(_currencyCode, _locale);
+
+/** Tracks currency codes that have already triggered a format-failure warning (suppresses per-render spam). */
+const _warnedCurrencyCodes = new Set<string>();
 
 /** Call once at app startup (e.g. from AppShell) after settings load. */
 export function initCurrencyFromSettings(code: string | undefined | null, locale?: string): void {
@@ -50,7 +63,7 @@ export function formatCurrency(
   const code = currencyOverride ?? _currencyCode;
   const useCustomLocale = !!localeOverride;
   const fmt = useCustomLocale || currencyOverride
-    ? buildFormatter(code, localeOverride ?? _locale)
+    ? getFormatter(localeOverride ?? _locale, code)
     : _currencyFmt;
   if (amount == null || isNaN(Number(amount))) {
     return '—';
@@ -58,10 +71,13 @@ export function formatCurrency(
   try {
     return fmt.format(Number(amount));
   } catch (err) {
-    // Fallback for unknown currency codes — surface the bad code so misconfigured
-    // tenant currency settings don't hide behind a silent USD substitution.
-    console.error(`[formatCurrency] format failed for code "${code}" — falling back to USD`, err);
-    return new Intl.NumberFormat(localeOverride ?? _locale, { style: 'currency', currency: 'USD' }).format(Number(amount) || 0);
+    // Fallback for unknown currency codes — warn once per code so misconfigured
+    // tenant currency settings surface visibly without spamming per-render.
+    if (!_warnedCurrencyCodes.has(code)) {
+      _warnedCurrencyCodes.add(code);
+      console.error(`[formatCurrency] format failed for code "${code}" — falling back to USD`, err);
+    }
+    return getFormatter(localeOverride ?? _locale, 'USD').format(Number(amount) || 0);
   }
 }
 
@@ -75,7 +91,10 @@ export function formatCurrencySymbol(currencyOverride?: string, localeOverride?:
     }).formatToParts(0);
     return parts.find((part) => part.type === 'currency')?.value ?? code;
   } catch (err) {
-    console.error(`[formatCurrencySymbol] format failed for code "${code}"`, err);
+    if (!_warnedCurrencyCodes.has(code)) {
+      _warnedCurrencyCodes.add(code);
+      console.error(`[formatCurrencySymbol] format failed for code "${code}"`, err);
+    }
     return code;
   }
 }
@@ -170,6 +189,24 @@ export function formatNumber(n: number | null | undefined): string {
 export function formatTicketId(orderId: string | number): string {
   const str = String(orderId);
   return str.startsWith('T-') ? str : `T-${str.padStart(4, '0')}`;
+}
+
+// ─── Idempotency Key ─────────────────────────────────────────────────────────
+
+/**
+ * Generate a collision-resistant idempotency key.
+ *
+ * Prefers `crypto.randomUUID()` (available in all modern browsers and Node ≥ 14.17).
+ * Falls back to a `<prefix>-<timestamp>-<random>` string for older environments
+ * (e.g. Safari < 15.4 in non-secure contexts).
+ *
+ * Consolidates the six per-endpoint duplicates flagged in WEB-UIUX-337.
+ */
+export function generateIdempotencyKey(prefix = 'req'): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  );
 }
 
 // ─── Relative time ──────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 // linters / refactor tools.
 import axios from 'axios';
 import { api, superAdminClient } from './client';
+import { generateIdempotencyKey } from '../utils/format';
 import type {
   Customer, CreateCustomerInput, UpdateCustomerInput, CustomerAsset,
   Ticket, CreateTicketInput, TicketStatus, TicketNote,
@@ -298,20 +299,14 @@ export const invoiceApi = {
   create: (data: CreateInvoiceInput, idempotencyKey?: string) =>
     api.post('/invoices', data, {
       headers: {
-        'X-Idempotency-Key':
-          idempotencyKey ??
-          (globalThis.crypto?.randomUUID?.() ??
-            `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('inv'),
       },
     }),
   update: (id: number, data: UpdateInvoiceInput) => api.put(`/invoices/${id}`, data),
   recordPayment: (id: number, data: RecordPaymentInput, idempotencyKey?: string) =>
     api.post(`/invoices/${id}/payments`, data, {
       headers: {
-        'X-Idempotency-Key':
-          idempotencyKey ??
-          (globalThis.crypto?.randomUUID?.() ??
-            `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('pay'),
       },
     }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
@@ -895,10 +890,7 @@ export const posApi = {
   checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string, pinVerified?: boolean) =>
     api.post('/pos/checkout-with-ticket', data, {
       headers: {
-        'X-Idempotency-Key':
-          idempotencyKey ??
-          (globalThis.crypto?.randomUUID?.() ??
-            `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('pos'),
         // requirePosPinByMode middleware reads this when pos_require_pin_*
         // store-config flags are on. Caller passes true after a successful
         // /auth/verify-pin call in the same POS session.
@@ -928,10 +920,7 @@ export const posApi = {
   sales: (data: PosSaleInput, idempotencyKey?: string) =>
     api.post<PosSaleResponse>('/pos/sales', data, {
       headers: {
-        'X-Idempotency-Key':
-          idempotencyKey ??
-          (globalThis.crypto?.randomUUID?.() ??
-            `pos-sale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('pos-sale'),
       },
     }),
   /**
@@ -943,10 +932,7 @@ export const posApi = {
   return: (data: PosReturnInput, idempotencyKey?: string) =>
     api.post<{ success: boolean; data: PosReturnResponse }>('/pos/return', data, {
       headers: {
-        'X-Idempotency-Key':
-          idempotencyKey ??
-          (globalThis.crypto?.randomUUID?.() ??
-            `pos-return-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('pos-return'),
       },
     }),
   /** Multi-station kiosk workstations CRUD (`/pos/workstations*`). */
@@ -1476,9 +1462,7 @@ export const blockchypApi = {
   // the server charges that exact leg amount instead of the remaining invoice
   // balance. Validated server-side: > 0 and <= amountDue.
   processPayment: (invoiceId: number, tip?: number, amount?: number) => {
-    const idempotencyKey =
-      globalThis.crypto?.randomUUID?.() ??
-      `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const idempotencyKey = generateIdempotencyKey('bc');
     return api.post<{
       success: boolean;
       data: {

@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  message: string;
+  // WEB-UIUX-335: accepts plain string or ReactNode for semantic markup (lists,
+  // emphasis) that improves screen-reader output for complex confirms.
+  message: string | ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
@@ -101,7 +103,13 @@ export function ConfirmDialog({
           )}
           <div>
             <h3 id="confirm-dialog-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">{title}</h3>
-            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{message}</p>
+            {/* WEB-UIUX-335: use <div> when message is ReactNode so block-level
+                children (ul, ol, p) don't violate HTML nesting rules. Plain
+                strings still render identically — the class is the same. */}
+            {typeof message === 'string'
+              ? <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{message}</p>
+              : <div className="mt-1 text-sm text-surface-500 dark:text-surface-400">{message}</div>
+            }
           </div>
         </div>
 

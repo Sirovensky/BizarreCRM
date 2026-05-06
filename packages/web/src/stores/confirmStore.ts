@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ReactNode } from 'react';
 
 interface ConfirmState {
   open: boolean;
@@ -9,14 +10,16 @@ interface ConfirmState {
   // resolve-prev frame and the next render commit.
   generation: number;
   title: string;
-  message: string;
+  // WEB-UIUX-335: broadened from `string` to support ReactNode so callers can
+  // pass semantic markup (lists, emphasis) for screen-reader–friendly confirms.
+  message: string | ReactNode;
   confirmLabel: string;
   danger: boolean;
   resolve: ((value: boolean) => void) | null;
 }
 
 interface ConfirmStore extends ConfirmState {
-  confirm: (opts: { title?: string; message: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
+  confirm: (opts: { title?: string; message: string | ReactNode; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
   close: (result: boolean) => void;
 }
 
@@ -59,7 +62,18 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
         generation: get().generation + 1,
         title: opts.title || 'Confirm',
         message: opts.message,
-        confirmLabel: opts.confirmLabel || 'Confirm',
+        confirmLabel: opts.confirmLabel || (() => {
+          if (process.env.NODE_ENV !== 'production') {
+            // WEB-UIUX-331: generic "Confirm" label gives users no indication
+            // of what will happen. Provide a specific verb (e.g. 'Delete',
+            // 'Cancel', 'Send') via the confirmLabel option.
+            console.warn(
+              '[confirmStore] No confirmLabel provided — falling back to "Confirm". ' +
+              'Pass a specific verb (e.g. \'Delete\', \'Send\', \'Cancel\') so users know what the button does.',
+            );
+          }
+          return 'Confirm';
+        })(),
         danger: opts.danger ?? false,
         resolve,
       });

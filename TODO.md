@@ -2009,14 +2009,14 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/utils/format.ts:184-188`
   `packages/web/src/utils/phoneFormat.ts:1-9`
 
-- [ ] WEB-UIUX-323. **[MINOR] `formatPhone` partial-input falls through raw until 4th digit, then suddenly applies `+1 (XXX)-`.** Visual jump breaks input rhythm. L1.
+- [x] WEB-UIUX-323. **[MINOR] `formatPhone` partial-input falls through raw until 4th digit, then suddenly applies `+1 (XXX)-`.** Visual jump breaks input rhythm. L1. **[AUTOLOOP-T13 RESOLVED: phoneFormat 1-3 digit branch returns "+1 (X" progressively; jump at digit 4 eliminated.]**
   `packages/web/src/utils/format.ts:202-208`
 
 - [ ] WEB-UIUX-324. **[MINOR] 409 conflict toast `id: 'conflict-409'` swallows subsequent unrelated 409 within ~3s.** L8.
   `packages/web/src/api/client.ts:382-394`
   <!-- meta: fix=dedupe-per-URL-not-global -->
 
-- [ ] WEB-UIUX-325. **[MINOR] `useUndoableAction` pending toast lacks status icon.** Visually identical to generic toast. L8.
+- [x] WEB-UIUX-325. **[MINOR] `useUndoableAction` pending toast lacks status icon.** Visually identical to generic toast. L8. **[AUTOLOOP-T13 RESOLVED: useUndoableAction pending toast prepended with lucide Clock icon for visual distinction.]**
   `packages/web/src/hooks/useUndoableAction.tsx:129-158`
 
 - [ ] WEB-UIUX-326. **[MINOR] `useWebSocket` `setWsOffline(true)` flips state but no toast/banner wired in this file.** Only visible if some component subscribes. L8.
@@ -2024,7 +2024,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Dark-Mode + Theme
 
-- [ ] WEB-UIUX-327. **[MAJOR] `applyTheme` runs at module-import time but may execute AFTER React mount → flash-of-light-theme on dark users.** Canonical fix: inline `<script>` in index.html before React loads. L10.
+- [x] WEB-UIUX-327. **[MAJOR] `applyTheme` runs at module-import time but may execute AFTER React mount → flash-of-light-theme on dark users.** Canonical fix: inline `<script>` in index.html before React loads. L10. **[AUTOLOOP-T13 RESOLVED: STALE — index.html lines 66-89 already contain inline IIFE reading localStorage `theme` + `prefers-color-scheme`, sets dark class before React mounts.]**
   `packages/web/src/stores/uiStore.ts:59-62`
   Note: index.html:66-89 already has fallback script — verify it covers all paths
 
@@ -2032,7 +2032,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/stores/uiStore.ts:36-57`
   <!-- meta: fix=scope-transition-to-color-bg-only -->
 
-- [ ] WEB-UIUX-329. **[MINOR] `safeColor` falls back to grey `#6b7280` regardless of theme.** Invisible on dark surfaces. L9, L10.
+- [x] WEB-UIUX-329. **[MINOR] `safeColor` falls back to grey `#6b7280` regardless of theme.** Invisible on dark surfaces. L9, L10. **[AUTOLOOP-T13 RESOLVED: safeColor default fallback `#6b7280` → `var(--surface-500, #6b7280)` for theme-switching grey.]**
   `packages/web/src/utils/safeColor.ts:16`
 
 - [ ] WEB-UIUX-330. **[NIT] Theme cross-fade 320ms with rapid toggles produces stutter — in-progress transition not cancelled.** L13.
@@ -2040,19 +2040,19 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Copy + Confirms
 
-- [ ] WEB-UIUX-331. **[MINOR] `confirmStore` default `confirmLabel = "Confirm"` — generic, doesn't tell user what executes.** Should force callers to provide a verb (Delete/Cancel/Send). L14.
+- [x] WEB-UIUX-331. **[MINOR] `confirmStore` default `confirmLabel = "Confirm"` — generic, doesn't tell user what executes.** Should force callers to provide a verb (Delete/Cancel/Send). L14. **[AUTOLOOP-T13 RESOLVED: confirmStore emits dev-only console.warn when confirmLabel falls back to "Confirm"; ~40 callers nudged toward verbs.]**
   `packages/web/src/stores/confirmStore.ts:13,27,62`
 
 - [ ] WEB-UIUX-332. **[MINOR] `LOGOUT_REQUIRED` toast: "Your session has expired. Please sign in again." reads as user fault.** Distinguish "Signed out from another tab" vs "expired due to inactivity". L14.
   `packages/web/src/stores/authStore.ts:300-302`
 
-- [ ] WEB-UIUX-333. **[MINOR] `useUndoableAction` default pendingMessage `"Action scheduled"` — vague.** Should be `"Will run in 5s"` or force callers. L14.
+- [x] WEB-UIUX-333. **[MINOR] `useUndoableAction` default pendingMessage `"Action scheduled"` — vague.** Should be `"Will run in 5s"` or force callers. L14. **[AUTOLOOP-T13 RESOLVED: useUndoableAction default pendingMessage now `"Will run in Xs"` using countdownSec from timeoutMs.]**
   `packages/web/src/hooks/useUndoableAction.tsx:127`
 
 - [ ] WEB-UIUX-334. **[MINOR] Generic 5xx toast copy passive — no concrete next step.** Should suggest "Try again, or contact support with ref XXXXXXXX". L14.
   `packages/web/src/api/client.ts:369`
 
-- [ ] WEB-UIUX-335. **[MINOR] `confirmStore` message field plain string only — no JSX/markup support.** Confirms can't include semantic markup for SR (lists, item-name emphasis). L12.
+- [x] WEB-UIUX-335. **[MINOR] `confirmStore` message field plain string only — no JSX/markup support.** Confirms can't include semantic markup for SR (lists, item-name emphasis). L12. **[AUTOLOOP-T13 RESOLVED: ConfirmState.message + ConfirmDialogProps.message widened to `string | ReactNode`; render path differentiates `<p>` vs `<div>`.]**
   `packages/web/src/stores/confirmStore.ts:11-21`
 
 #### Components / Duplicates
@@ -2060,7 +2060,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-336. **[MINOR] Three near-identical JWT decoders.** `client.ts:122-142`, `client.ts:427-441`, `authStore.ts:241-249` — different error tolerance and length guards. L3.
   <!-- meta: fix=consolidate-into-utils/jwt.ts -->
 
-- [ ] WEB-UIUX-337. **[MINOR] Idempotency-key fallback `crypto.randomUUID() ?? "prefix-Date.now()-Math.random()"` duplicated across 6 endpoints.** L3.
+- [x] WEB-UIUX-337. **[MINOR] Idempotency-key fallback `crypto.randomUUID() ?? "prefix-Date.now()-Math.random()"` duplicated across 6 endpoints.** L3. **[AUTOLOOP-T13 RESOLVED: `generateIdempotencyKey(prefix)` extracted into format.ts; 6 duplicated callsites in endpoints.ts consolidated.]**
   `packages/web/src/api/endpoints.ts:278-283,287-292,712-722,740-748,753-761,1177-1180`
 
 - [ ] WEB-UIUX-338. **[MINOR] `useUndoableAction` Undo button hand-rolls Tailwind classes — not the Button component.** Different padding/hover/dark-mode. L4.
@@ -2068,14 +2068,14 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Performance
 
-- [ ] WEB-UIUX-339. **[MINOR] `formatCurrency` rebuilds `Intl.NumberFormat` per call when `currencyOverride`/`localeOverride` is passed.** 100-row invoice list = 100 formatter constructions. L15.
+- [x] WEB-UIUX-339. **[MINOR] `formatCurrency` rebuilds `Intl.NumberFormat` per call when `currencyOverride`/`localeOverride` is passed.** 100-row invoice list = 100 formatter constructions. L15. **[AUTOLOOP-T13 RESOLVED: `formatterCache: Map<locale/currency, Intl.NumberFormat>` + `getFormatter()` helper; 100-row list creates formatter once.]**
   `packages/web/src/utils/format.ts:46-66`
   <!-- meta: fix=memoize-by-code+locale-key -->
 
 - [ ] WEB-UIUX-340. **[MINOR] `useDraft.wipeAllDrafts` + `authStore` dismiss-key sweep both walk full localStorage on logout.** Two iterations. L15.
   `packages/web/src/hooks/useDraft.ts:42-56`, `packages/web/src/stores/authStore.ts:185-200`
 
-- [ ] WEB-UIUX-341. **[MINOR] `formatCurrency` console.errors per-call on unknown code → hundreds of errors per render.** L15, L16.
+- [x] WEB-UIUX-341. **[MINOR] `formatCurrency` console.errors per-call on unknown code → hundreds of errors per render.** L15, L16. **[AUTOLOOP-T13 RESOLVED: `_warnedCurrencyCodes: Set<string>` guards console.error in formatCurrency + formatCurrencySymbol; once-per-code only.]**
   `packages/web/src/utils/format.ts:60-66`
   <!-- meta: fix=rate-limit-or-single-warning -->
 

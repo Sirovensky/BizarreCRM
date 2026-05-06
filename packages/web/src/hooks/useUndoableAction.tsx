@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -124,11 +125,13 @@ export function useUndoableAction<TArgs = void>(
       argsRef.current = args;
       // Snapshot the action at trigger-time. See WEB-FI-024 note above.
       frozenActionRef.current = actionRef.current;
-      const body = resolveMessage(pendingMessageRef.current, args) ?? 'Action scheduled';
+      const countdownSec = Math.round(timeoutMs / 1000);
+      const body = resolveMessage(pendingMessageRef.current, args) ?? `Will run in ${countdownSec}s`;
 
       const tId = toast(
         (tInstance) => (
           <span className="flex items-center gap-2 text-sm">
+            <Clock size={14} className="shrink-0 text-zinc-400" aria-hidden="true" />
             <span>{body}</span>
             <button
               type="button"

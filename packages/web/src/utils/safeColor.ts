@@ -12,8 +12,13 @@
  * downgraded to grey. The doc here makes the constraint explicit.
  *
  * Returns the fallback color if the input is invalid.
+ *
+ * WEB-UIUX-329: Default fallback changed from the hard-coded `#6b7280` (zinc-500,
+ * invisible on dark surfaces) to `var(--surface-500, #6b7280)`.  The CSS variable
+ * is resolved at paint time, so it automatically picks the correct shade for the
+ * active theme.  Callers that supply their own fallback are unaffected.
  */
-export function safeColor(color: string | undefined | null, fallback = '#6b7280'): string {
+export function safeColor(color: string | undefined | null, fallback = 'var(--surface-500, #6b7280)'): string {
   if (!color) return fallback;
   const trimmed = color.trim();
   if (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) return trimmed;

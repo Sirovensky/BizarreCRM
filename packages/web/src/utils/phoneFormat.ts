@@ -1,6 +1,9 @@
 export function formatPhoneAsYouType(value: string): string {
   const digits = value.replace(/\D/g, '');
-  if (digits.length <= 3) return digits;
+  if (digits.length === 0) return '';
+  // Progressive formatting from digit 1: no sudden jump at digit 4.
+  // 1→`+1 (1`, 2→`+1 (12`, 3→`+1 (123`, 4→`+1 (123) 4`, etc.
+  if (digits.length <= 3) return `+1 (${digits}`;
   if (digits.length <= 6) return `+1 (${digits.slice(0, 3)}) ${digits.slice(3)}`;
   if (digits.length <= 10) return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   // 11 digits (with country code 1)
