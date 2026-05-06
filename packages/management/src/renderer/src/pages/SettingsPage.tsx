@@ -221,15 +221,51 @@ export function SettingsPage() {
 
   async function handleRestartServer() {
     setRestarting(true);
+    const startedAt = Date.now();
+    let toastId: string | undefined;
     try {
       const res = await getAPI().service.restart();
-      if (res.success) {
-        setRestartPending(false);
-        toast.success('Server restart requested. May take up to a minute to come back online.');
-      } else {
+      if (!res.success) {
         toast.error(formatApiError(res));
+        return;
+      }
+      toastId = toast.loading('Server restart requested. Waiting for server to come back online…');
+      // Poll the liveness endpoint until it returns 200 or we time out.
+      // PM2 graceful-stop + cold-start is normally <30s; we cap the wait
+      // at 90s to match the watchdog's failure threshold. After the
+      // server is reachable the SPA's own JS bundle is still loaded and
+      // doesn't need a hard reload — but env values shown in the editor
+      // ARE stale (we cached the pre-restart fields), so we trigger a
+      // soft refresh via refreshEnv() and clear the restart banner.
+      const TIMEOUT_MS = 90_000;
+      const POLL_MS = 1500;
+      let online = false;
+      while (Date.now() - startedAt < TIMEOUT_MS) {
+        await new Promise((r) => setTimeout(r, POLL_MS));
+        try {
+          // Use absolute path — same-origin fetch means no CORS, and the
+          // liveness endpoint is auth-free per its design.
+          const ping = await fetch('/api/v1/health/live', { credentials: 'omit' });
+          if (ping.ok) {
+            online = true;
+            break;
+          }
+        } catch {
+          // connection refused / network error during restart window —
+          // expected, keep polling
+        }
+      }
+      if (online) {
+        if (toastId) toast.dismiss(toastId);
+        toast.success('Server is back online. Settings refreshed.');
+        setRestartPending(false);
+        await refreshEnv();
+      } else {
+        if (toastId) toast.dismiss(toastId);
+        toast.error(`Server did not come back online within ${TIMEOUT_MS / 1000}s. Check pm2 logs.`);
       }
     } catch (err) {
+      if (toastId) toast.dismiss(toastId);
       toast.error(err instanceof Error ? err.message : 'Server restart failed');
     } finally {
       setRestarting(false);
