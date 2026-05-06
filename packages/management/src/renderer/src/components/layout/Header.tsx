@@ -72,39 +72,39 @@ export function Header() {
       {/* Center: Drag handle — fills all available space */}
       <div className="flex-1 h-full" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
 
-      {/* Right: User + window controls (not draggable) */}
+      {/* Right: User + window controls (not draggable).
+          - The ⌘K palette hint was removed per operator feedback. The
+            keyboard binding still works via CommandPalette's global
+            listener; we just dropped the visual chip.
+          - Minimize / Maximize buttons render only in Electron context
+            where window controls actually do something. In browser
+            context (window.isElectron=false, set by electronAPIShim),
+            the buttons would be no-ops; hide them entirely so we don't
+            present operators with dead UI. */}
       <div className="flex items-center gap-2">
-        {/* Static palette hint — the actual Cmd+K handler lives on window in
-            CommandPalette. DASH-ELEC-126: use <kbd> so SR announces "keyboard
-            shortcut" and add aria-keyshortcuts on the hint element itself. */}
-        <kbd
-          // DASH-ELEC-178: same dead breakpoint as the tick chip above —
-          // minWidth 900 means `sm:` (640) always matches. Drop the guard.
-          className="inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono not-italic"
-          aria-label="Command palette shortcut: Control K or Command K"
-          aria-keyshortcuts="Control+k Meta+k"
-        >
-          ⌘K
-        </kbd>
         {username && (
           <span className="text-xs text-surface-500 mr-2">{username}</span>
         )}
-        <button
-          onClick={() => getAPI().system.minimize()}
-          className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
-          title="Minimize"
-          aria-label="Minimize window"
-        >
-          <Minus className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={() => getAPI().system.maximize()}
-          className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
-          title="Maximize"
-          aria-label="Maximize window"
-        >
-          <Square className="w-3 h-3" />
-        </button>
+        {(typeof window !== 'undefined' && (window as { isElectron?: boolean }).isElectron !== false) && (
+          <>
+            <button
+              onClick={() => getAPI().system.minimize()}
+              className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
+              title="Minimize"
+              aria-label="Minimize window"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => getAPI().system.maximize()}
+              className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
+              title="Maximize"
+              aria-label="Maximize window"
+            >
+              <Square className="w-3 h-3" />
+            </button>
+          </>
+        )}
       </div>
     </header>
   );

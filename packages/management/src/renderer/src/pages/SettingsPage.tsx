@@ -292,6 +292,15 @@ export function SettingsPage() {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <label htmlFor={checkboxId} className="text-sm text-surface-200 cursor-pointer select-none">{f.label}</label>
+              {f.description && (
+                <span
+                  className="inline-flex items-center text-surface-500 hover:text-surface-300 cursor-help"
+                  title={f.description}
+                  aria-label={`Help: ${f.description}`}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
+              )}
               <code className="text-[10px] font-mono text-surface-600" aria-hidden="true">{f.key}</code>
               {dirty && <span className="text-[10px] text-amber-400">(modified)</span>}
             </div>
@@ -306,10 +315,19 @@ export function SettingsPage() {
     return (
       <div key={f.key} className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <label htmlFor={`env-${f.key}`} className="text-sm text-surface-300">
-            {f.label}
-            <code className="ml-2 text-[10px] font-mono text-surface-600">{f.key}</code>
-            {dirty && <span className="ml-2 text-[10px] text-amber-400">(modified)</span>}
+          <label htmlFor={`env-${f.key}`} className="text-sm text-surface-300 inline-flex items-center gap-2">
+            <span>{f.label}</span>
+            {f.description && (
+              <span
+                className="inline-flex items-center text-surface-500 hover:text-surface-300 cursor-help"
+                title={f.description}
+                aria-label={`Help: ${f.description}`}
+              >
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            )}
+            <code className="text-[10px] font-mono text-surface-600">{f.key}</code>
+            {dirty && <span className="text-[10px] text-amber-400">(modified)</span>}
           </label>
           {f.kind === 'secret' && f.hasValue && !dirty && (
             <span className="text-[11px] text-emerald-500/80">

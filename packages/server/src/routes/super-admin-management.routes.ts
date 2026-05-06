@@ -98,9 +98,9 @@ const ENV_FIELDS: readonly EnvFieldDef[] = [
     description: 'Apex A record target. New tenant subdomains point here.',
     placeholder: '203.0.113.10', maxLength: 64 },
   // CORS
-  { key: 'ALLOWED_ORIGINS', kind: 'value', category: 'cors', label: 'Additional allowed origins',
-    description: 'Comma-separated absolute URLs. Empty = localhost + BASE_DOMAIN only.',
-    placeholder: 'https://lan.example.com,https://crm.shop.com', maxLength: 4096 },
+  { key: 'ALLOWED_ORIGINS', kind: 'value', category: 'cors', label: 'Additional allowed CORS origins',
+    description: 'Server-wide CORS allowlist for browser API calls from external sites. NOT for super-admin specifically — applies to the entire CRM REST API. Tenants on subdomains of BASE_DOMAIN are auto-allowed and do NOT need to be listed. Empty value = localhost + BASE_DOMAIN + *.BASE_DOMAIN only. Add entries here only when an external partner site, embedded widget, or separate dashboard outside your domain needs to call the API.',
+    placeholder: 'https://partner-marketing.com,https://embed.thirdparty.io', maxLength: 4096 },
 ] as const;
 
 const ENV_KEY_TO_FIELD = new Map(ENV_FIELDS.map((f) => [f.key, f]));
@@ -411,67 +411,84 @@ router.delete('/watchdog-events', (req: Request, res: Response) => {
 // ─── System info / disk space ──────────────────────────────────
 
 router.get('/system/info', (_req: Request, res: Response) => {
+  // Shape MUST match SystemInfo in packages/management/src/renderer/src/
+  // api/bridge.ts:143. Renderer renders specific keys (totalMemory,
+  // freeMemory, electronVersion, appVersion, isPackaged); a nested
+  // `memory.total` shape produces NaN/undefined in the UI.
+  // Electron-only fields (electronVersion, appVersion, isPackaged) are
+  // returned as best-effort placeholders in browser context — the
+  // server is not Electron, doesn't have an Electron version, and is
+  // not "packaged" in the Electron sense. Renderer still renders them
+  // verbatim, so we provide non-empty strings.
+  let appVersion = '0.0.0';
+  try {
+    // Read packages/server/package.json for the canonical version.
+    const pkgPath = path.join(REPO_ROOT, 'packages', 'server', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    if (typeof pkg.version === 'string') appVersion = pkg.version;
+  } catch { /* best-effort */ }
   res.json({
     success: true,
     data: {
       platform: process.platform,
       arch: process.arch,
       hostname: os.hostname(),
-      nodeVersion: process.version,
-      uptime: process.uptime(),
-      hostUptime: os.uptime(),
-      memory: {
-        total: os.totalmem(),
-        free: os.freemem(),
-        rss: process.memoryUsage().rss,
-        heap: process.memoryUsage().heapUsed,
-      },
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
       cpus: os.cpus().length,
-      loadAverage: os.loadavg(),
-      env: {
-        nodeEnv: process.env.NODE_ENV || 'production',
-        port: process.env.PORT || '443',
-      },
-      repoRoot: REPO_ROOT,
+      nodeVersion: process.version,
+      // No Electron in browser-served context. Surface a clear marker
+      // so the renderer can hide / annotate the field if it wants.
+      electronVersion: 'n/a (browser)',
+      appVersion,
+      isPackaged: false,
     },
   });
 });
 
 router.get('/system/disk-space', (_req: Request, res: Response) => {
-  // Use Node's statfsSync (Node 19+) for cross-platform free/total bytes.
-  // Fall back to a parse of `df -k` if statfsSync throws on some odd FS.
+  // Renderer expects `data` to be an array of `{ mount, free, total }`
+  // (DiskDrive shape in bridge.ts) — NOT a wrapped object. Wrapping
+  // produced a clean error toast on the operator's first try. Fix
+  // the shape to match.
+  //
+  // Sample relevant filesystem mounts: repo root + the server's hot
+  // data dirs. Each mount probably resolves to the same physical
+  // volume, but we still report each so operators can see if any
+  // single subtree's volume is low (rare with bind-mounts, common
+  // with separate uploads/ partitions).
   const targets = [
-    { label: 'repo', path: REPO_ROOT },
-    { label: 'logs', path: path.join(REPO_ROOT, 'logs') },
-    { label: 'data', path: path.join(REPO_ROOT, 'packages', 'server', 'data') },
-    { label: 'uploads', path: path.join(REPO_ROOT, 'packages', 'server', 'uploads') },
+    { mount: REPO_ROOT, label: 'repo' },
+    { mount: path.join(REPO_ROOT, 'logs'), label: 'logs' },
+    { mount: path.join(REPO_ROOT, 'packages', 'server', 'data'), label: 'data' },
+    { mount: path.join(REPO_ROOT, 'packages', 'server', 'uploads'), label: 'uploads' },
   ];
-  const out: Array<{ label: string; path: string; free?: number; total?: number; error?: string }> = [];
+  const drives: Array<{ mount: string; label: string; free: number; total: number; used: number }> = [];
   for (const t of targets) {
-    if (!fs.existsSync(t.path)) {
-      out.push({ ...t, error: 'path does not exist' });
-      continue;
-    }
+    if (!fs.existsSync(t.mount)) continue; // skip missing dirs silently
     try {
       const s = (fs as unknown as { statfsSync?: (p: string) => { bsize: number; blocks: number; bavail: number } }).statfsSync;
+      let free = 0;
+      let total = 0;
       if (typeof s === 'function') {
-        const r = s(t.path);
-        out.push({ label: t.label, path: t.path, free: r.bavail * r.bsize, total: r.blocks * r.bsize });
-        continue;
+        const r = s(t.mount);
+        free = r.bavail * r.bsize;
+        total = r.blocks * r.bsize;
+      } else {
+        // Node < 19 fallback. df -k on POSIX; powershell on Windows
+        // already produces drive-level results elsewhere.
+        const df = execSync(`df -k "${t.mount}"`, { encoding: 'utf8', windowsHide: true });
+        const lastLine = df.trim().split('\n').pop() || '';
+        const parts = lastLine.split(/\s+/);
+        total = (parseInt(parts[1] || '0', 10) || 0) * 1024;
+        free = (parseInt(parts[3] || '0', 10) || 0) * 1024;
       }
-      // Node < 19 fallback: shell out.
-      const df = execSync(`df -k "${t.path}"`, { encoding: 'utf8' });
-      const lastLine = df.trim().split('\n').pop() || '';
-      const parts = lastLine.split(/\s+/);
-      // 1k-blocks: parts[1] total, parts[3] free
-      const total = (parseInt(parts[1] || '0', 10) || 0) * 1024;
-      const free = (parseInt(parts[3] || '0', 10) || 0) * 1024;
-      out.push({ label: t.label, path: t.path, free, total });
+      drives.push({ mount: t.mount, label: t.label, free, total, used: total - free });
     } catch (err) {
-      out.push({ ...t, error: err instanceof Error ? err.message : String(err) });
+      log.warn('disk-space probe failed', { path: t.mount, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  res.json({ success: true, data: { targets: out } });
+  res.json({ success: true, data: drives });
 });
 
 // ─── Service control (PM2 abstractions) ────────────────────────
