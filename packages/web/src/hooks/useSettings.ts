@@ -5,7 +5,7 @@ import { settingsApi } from '@/api/endpoints';
 type SettingsMap = Record<string, string>;
 const EMPTY_SETTINGS: SettingsMap = {};
 const SETTINGS_QUERY_KEY = ['settings', 'config'] as const;
-const SETTINGS_STALE_TIME_MS = 5 * 60 * 1000;
+const SETTINGS_STALE_TIME_MS = 30 * 1000; // 30 s — edits in other tabs become visible quickly
 
 // Runtime narrowing for the server's settings payload. The endpoint is
 // documented to return `Record<string, string>`, but we never trust external
@@ -44,6 +44,7 @@ function useSettingsQueryValue(): UseSettingsReturn {
       return coerceSettings(res.data?.data);
     },
     staleTime: SETTINGS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
   });
   const settings = data ?? EMPTY_SETTINGS;
 

@@ -323,7 +323,8 @@ client.interceptors.response.use(
         typeof error.response?.data?.message === 'string'
           ? error.response.data.message
           : null;
-      toast.error(serverMsg ?? 'Server error — please try again.');
+      const refId = error.requestId ? ` (Ref: ${error.requestId})` : '';
+      toast.error((serverMsg ?? 'Server error — please try again.') + refId);
     }
 
     // WEB-FO-001: surface 409 Conflict on mutating requests so concurrent

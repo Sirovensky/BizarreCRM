@@ -89,10 +89,34 @@ if (typeof window !== 'undefined') {
   });
 }
 
+export interface DraftStatus {
+  /** True when the current value has been successfully persisted to localStorage. */
+  saved: boolean;
+  /**
+   * True when the draft exceeds DRAFT_MAX_BYTES and was NOT written to
+   * localStorage. The caller should display a visible warning so the user
+   * knows their content will not survive a reload.
+   */
+  oversize?: boolean;
+  /**
+   * Timestamp of the last successful localStorage write, or null if no
+   * successful write has occurred in the current mount (e.g. value is empty,
+   * never crossed a debounce boundary yet, or every write attempt overflowed).
+   */
+  lastSavedAt: Date | null;
+}
+
 /**
  * Hook for localStorage-based draft saving with debounce.
- * Returns [value, setValue, clearDraft, hasDraft] where hasDraft indicates
- * whether the initial value was restored from a saved draft.
+ * Returns [value, setValue, clearDraft, status] where status is a
+ * {@link DraftStatus} object that replaces the old plain `hasDraft` boolean.
+ *
+ * - `status.saved`     — true when localStorage holds the current value.
+ * - `status.oversize`  — true when the value exceeds 100 KB and was silently
+ *                        dropped from localStorage. Callers MUST surface this
+ *                        to the user (toast / banner) so they are not surprised
+ *                        by lost work on reload.
+ * - `status.lastSavedAt` — wall-clock time of the last successful write.
  *
  * The `key` is the caller's per-form/per-record identifier (e.g.
  * `'ticket-1234-notes'`). Internally it is prefixed with
@@ -102,9 +126,11 @@ if (typeof window !== 'undefined') {
 export function useDraft(
   key: string,
   debounceMs = 2000,
-): [string, (v: string) => void, () => void, boolean] {
+): [string, (v: string) => void, () => void, DraftStatus] {
   const [value, setValue] = useState('');
   const [hasDraft, setHasDraft] = useState(false);
+  const [oversize, setOversize] = useState<boolean | undefined>(undefined);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Cache the resolved scoped key so the debounced timer + clearDraft do not
   // re-derive it on every fire (and so a mid-flight logout/login race can't
@@ -143,6 +169,9 @@ export function useDraft(
     const scopedKey = buildScopedKey(key);
     scopedKeyRef.current = scopedKey;
     const saved = localStorage.getItem(scopedKey);
+    // Reset oversize/lastSavedAt on key change — they belong to the previous key.
+    setOversize(undefined);
+    setLastSavedAt(null);
     if (saved) {
       setValue(saved);
       setHasDraft(true);
@@ -192,14 +221,26 @@ export function useDraft(
       // Skip persist if the draft exceeds the quota cap. The in-memory value
       // stays live for the active editing session; we just don't survive a
       // reload if the user typed >100 KB of text into one field.
+      // WEB-UIUX-318: surface this as `oversize: true` in DraftStatus so the
+      // caller can show a warning — previously this was a silent data loss.
       if (value.length > DRAFT_MAX_BYTES) {
         localStorage.removeItem(currentKey);
-        if (mountedRef.current) setHasDraft(false);
+        if (mountedRef.current) {
+          setHasDraft(false);
+          setOversize(true);
+          // lastSavedAt intentionally left unchanged — it still reflects the
+          // last moment the draft was successfully stored so the caller can
+          // show "last saved at <time>, current content too large to save".
+        }
         return;
       }
       try {
         localStorage.setItem(currentKey, value);
-        if (mountedRef.current) setHasDraft(true);
+        if (mountedRef.current) {
+          setHasDraft(true);
+          setOversize(false);
+          setLastSavedAt(new Date());
+        }
       } catch (err) {
         // QuotaExceededError or storage disabled — best-effort fallback.
         console.warn('[useDraft] failed to persist draft', err);
@@ -216,7 +257,15 @@ export function useDraft(
     localStorage.removeItem(scopedKeyRef.current);
     setValue('');
     setHasDraft(false);
+    setOversize(undefined);
+    setLastSavedAt(null);
   }, []);
 
-  return [value, setValue, clearDraft, hasDraft];
+  const status: DraftStatus = {
+    saved: hasDraft,
+    ...(oversize !== undefined && { oversize }),
+    lastSavedAt,
+  };
+
+  return [value, setValue, clearDraft, status];
 }

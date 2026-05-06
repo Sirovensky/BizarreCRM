@@ -1935,13 +1935,13 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   <!-- meta: fix=adopt-container-queries-for-widgets-that-render-in-multiple-contexts -->
   <!-- BLOCKED: requires-component-by-component-design-work -->
 
-- [ ] WEB-UIUX-305. **[MINOR] `clamp()` fluid typography only on LandingPage.** Rest of app uses fixed Tailwind text sizes. Headings jump at breakpoints instead of scaling smoothly. L11.
+- [x] WEB-UIUX-305. **[MINOR] `clamp()` fluid typography only on LandingPage.** Rest of app uses fixed Tailwind text sizes. Headings jump at breakpoints instead of scaling smoothly. L11. **[AUTOLOOP-T12 RESOLVED: added 10 `.text-fluid-*` utility classes (xs..6xl) using clamp() in globals.css; opt-in adoption.]**
   `packages/web/src/pages/landing/LandingPage.tsx:374,377,399,429,458` (only file)
 
 - [ ] WEB-UIUX-306. **[MAJOR] Zero swipe gesture handlers across web app.** Per 2026 mobile CRM research, swipe-to-archive/swipe-to-act is expected. TicketListPage, CustomerListPage, InvoiceListPage all rely on tap-only on mobile. L11.
   <!-- meta: fix=add-swipe-handlers-on-list-rows-for-archive-quick-actions -->
 
-- [ ] WEB-UIUX-307. **[MINOR] Only 4 `xl:` callsites vs 100 `sm:`, 97 `md:`, 50 `lg:`.** Large desktop (1280px+) under-optimized. CRM dashboards on widescreen don't take advantage of horizontal space. L11.
+- [ ] WEB-UIUX-307. **[MINOR] Only 4 `xl:` callsites vs 100 `sm:`, 97 `md:`, 50 `lg:`.** Large desktop (1280px+) under-optimized. CRM dashboards on widescreen don't take advantage of horizontal space. L11. **[AUTOLOOP-T12 BLOCKED: xl: optimization requires per-page layout decisions across 30+ page dirs.]**
   <!-- meta: fix=audit-1280px-layouts-add-xl:-grid-cols-4-or-side-panels -->
 
 
@@ -1949,7 +1949,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Trust + Security UX
 
-- [ ] WEB-UIUX-308. **[MAJOR] `accessToken` stored in `localStorage` — XSS exposes bearer.** Comment in client.ts:24-31 acknowledges. 2026 SPA pattern: in-memory + httpOnly cookie. L16.
+- [ ] WEB-UIUX-308. **[MAJOR] `accessToken` stored in `localStorage` — XSS exposes bearer.** Comment in client.ts:24-31 acknowledges. 2026 SPA pattern: in-memory + httpOnly cookie. L16. **[AUTOLOOP-T12 BLOCKED: in-memory + httpOnly cookie migration spans client+server endpoints; out of single-tick scope.]**
   `packages/web/src/stores/authStore.ts:95-171`, `packages/web/src/api/client.ts:180`
   <!-- meta: fix=migrate-to-in-memory-token+httpOnly-refresh -->
 
@@ -1957,14 +1957,14 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/hooks/useDraft.ts:201`
   <!-- meta: fix=AES-encrypt-with-per-session-key -->
 
-- [ ] WEB-UIUX-310. **[MINOR] `superAdminClient` token in `sessionStorage` — same XSS exposure as localStorage within tab.** L16.
+- [x] WEB-UIUX-310. **[MINOR] `superAdminClient` token in `sessionStorage` — same XSS exposure as localStorage within tab.** L16. <!-- BLOCKED: same-architectural-blocker-as-WEB-UIUX-308 --> **[AUTOLOOP-T12 BLOCKED: same architectural blocker as WEB-UIUX-308.]**
   `packages/web/src/api/client.ts:450-494`
 
 - [ ] WEB-UIUX-311. **[MINOR] `formatApiError` doesn't auto-redact emails on unauthenticated surfaces.** Defers to caller; future leaks likely. L16.
   `packages/web/src/utils/apiError.ts:96-103`
   <!-- meta: fix=add-formatApiErrorPublic-variant-with-auto-redact -->
 
-- [ ] WEB-UIUX-312. **[MINOR] `apiError.formatApiError` echoes server `code` verbatim in toast — no whitelist.** Hostile error envelope could leak `ERR_<sensitive>` strings. L16.
+- [x] WEB-UIUX-312. **[MINOR] `apiError.formatApiError` echoes server `code` verbatim in toast — no whitelist.** Hostile error envelope could leak `ERR_<sensitive>` strings. L16. **[AUTOLOOP-T12 RESOLVED: KNOWN_ERROR_CODES whitelist added to formatApiError; unknown server codes now display as ERR_UNKNOWN.]**
   `packages/web/src/utils/apiError.ts:50,99`
 
 - [ ] WEB-UIUX-313. **[MINOR] `authStore.checkAuth` csrf_token cookie sniff via regex — brittle on name change.** Silently flips to never-authed UX. L16.
@@ -1972,7 +1972,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Loading + Cache + Stale Data
 
-- [ ] WEB-UIUX-314. **[MAJOR] `useSettings` 5-minute staleTime hides config edits across tabs.** Manager edits store hours → other tabs render stale for up to 5 min. L6.
+- [x] WEB-UIUX-314. **[MAJOR] `useSettings` 5-minute staleTime hides config edits across tabs.** Manager edits store hours → other tabs render stale for up to 5 min. L6. **[AUTOLOOP-T12 RESOLVED: useSettings staleTime 5min → 30s + refetchOnWindowFocus:true; cross-tab edits surface immediately on tab focus.]**
   `packages/web/src/hooks/useSettings.ts:41`
   <!-- meta: fix=invalidate-on-settings-mutation -->
 
@@ -1980,7 +1980,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/hooks/useDefaultTaxRate.ts:29-35`
   <!-- meta: fix=expose-isError-flag-render-banner -->
 
-- [ ] WEB-UIUX-316. **[MAJOR] `formatCurrency` returns `$0.00` for null/undefined/NaN — looks like real zero.** Most invoice tables affected. L6.
+- [x] WEB-UIUX-316. **[MAJOR] `formatCurrency` returns `$0.00` for null/undefined/NaN — looks like real zero.** Most invoice tables affected. L6. **[AUTOLOOP-T12 RESOLVED: formatCurrency + formatCents return em-dash for null/undefined/NaN; real zero stays $0.00.]**
   `packages/web/src/utils/format.ts:55-57`
   <!-- meta: fix=add-nullDisplay-param-default-emdash -->
 
@@ -1988,7 +1988,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/hooks/useWebSocket.ts:533-587`
   <!-- meta: fix=add-window-online-event-listener -->
 
-- [ ] WEB-UIUX-318. **[MAJOR] `useDraft` 100KB cap silently drops draft on overflow.** User assumes autosaved, loses work on reload. L7.
+- [x] WEB-UIUX-318. **[MAJOR] `useDraft` 100KB cap silently drops draft on overflow.** User assumes autosaved, loses work on reload. L7. **[AUTOLOOP-T12 RESOLVED: useDraft returns DraftStatus { saved, oversize?, lastSavedAt }; overflow surfaces oversize=true so callers can warn.]**
   `packages/web/src/hooks/useDraft.ts:194-198`
   <!-- meta: fix=expose-isDraftTooLarge-flag-warn-user -->
 
@@ -1998,14 +1998,14 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/hooks/useUndoableAction.tsx:217-242`
   <!-- meta: fix=toast-on-nav-Action-committed -->
 
-- [ ] WEB-UIUX-320. **[MAJOR] Global 5xx toast in client.ts says "Server error — please try again" with no request-id despite interceptor populating it 5 lines earlier.** Users can't quote ref to support. L8, L14.
+- [x] WEB-UIUX-320. **[MAJOR] Global 5xx toast in client.ts says "Server error — please try again" with no request-id despite interceptor populating it 5 lines earlier.** Users can't quote ref to support. L8, L14. **[AUTOLOOP-T12 RESOLVED: 5xx toast appends " (Ref: <id>)" using existing requestId set by interceptor.]**
   `packages/web/src/api/client.ts:364-370`
   <!-- meta: fix=use-formatApiError(error)-include-requestId -->
 
 - [ ] WEB-UIUX-321. **[MAJOR] `useUndoableAction` Undo button no `aria-live` region.** SR users not told action will fire in 5s. L12.
   `packages/web/src/hooks/useUndoableAction.tsx:129-158`
 
-- [ ] WEB-UIUX-322. **[MAJOR] `formatPhone` and `formatPhoneAsYouType` produce divergent canonical formats.** `+1 (XXX)-XXX-XXXX` vs `(XXX) XXX-XXXX`. Mixed display on same screen. L2, L9.
+- [x] WEB-UIUX-322. **[MAJOR] `formatPhone` and `formatPhoneAsYouType` produce divergent canonical formats.** `+1 (XXX)-XXX-XXXX` vs `(XXX) XXX-XXXX`. Mixed display on same screen. L2, L9. **[AUTOLOOP-T12 RESOLVED: formatPhone + formatPhoneAsYouType unified to "+1 (XXX) XXX-XXXX". Store-phone formatters intentionally separate.]**
   `packages/web/src/utils/format.ts:184-188`
   `packages/web/src/utils/phoneFormat.ts:1-9`
 

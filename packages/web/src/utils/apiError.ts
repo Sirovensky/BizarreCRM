@@ -83,10 +83,46 @@ export function redactEmails(input: string): string {
 }
 
 /**
+ * Codes the server emits that are safe to surface verbatim in a user-facing
+ * toast. Any code NOT in this set is replaced with a generic "ERR_UNKNOWN"
+ * label to prevent hostile error envelopes from leaking internal identifiers
+ * (WEB-UIUX-312).
+ *
+ * When adding a new code, verify it does not leak PII, credentials, or
+ * internal path/resource information.
+ */
+const KNOWN_ERROR_CODES = new Set<string>([
+  'ERR_VALIDATION',
+  'ERR_NOT_FOUND',
+  'ERR_UNAUTHORIZED',
+  'ERR_FORBIDDEN',
+  'ERR_CONFLICT',
+  'ERR_RATE_LIMITED',
+  'ERR_QUOTA_EXCEEDED',
+  'ERR_PAYMENT_REQUIRED',
+  'ERR_PLAN_LIMIT',
+  'ERR_SUBSCRIPTION_EXPIRED',
+  'ERR_INSUFFICIENT_PERMISSIONS',
+  'ERR_DUPLICATE',
+  'ERR_INVALID_TOKEN',
+  'ERR_TOKEN_EXPIRED',
+  'ERR_TOO_MANY_REQUESTS',
+  'ERR_SERVICE_UNAVAILABLE',
+  'ERR_TIMEOUT',
+  'ERR_BAD_REQUEST',
+  'ERR_UNPROCESSABLE',
+]);
+
+/**
  * Format an error for a single-line toast. Appends "(ERR_X · ref abc12…)"
  * when the server provided them so a support ticket can trace the exact
  * log line. Short request-id prefix keeps toasts readable without trimming
  * the underlying full id from `extractApiError()` if a UI needs it.
+ *
+ * WEB-UIUX-312: raw server `code` is only echoed when it appears in
+ * KNOWN_ERROR_CODES. Unknown codes are replaced with "ERR_UNKNOWN" so a
+ * hostile error envelope cannot leak internal ERR_<sensitive> strings to
+ * the UI.
  *
  * WEB-FJ-019: callers rendering on unauthenticated surfaces should pass the
  * result through `redactEmails()` — this fn does NOT auto-redact because
@@ -96,7 +132,9 @@ export function redactEmails(input: string): string {
 export function formatApiError(err: unknown): string {
   const f = extractApiError(err);
   const suffixParts: string[] = [];
-  if (f.code) suffixParts.push(f.code);
+  if (f.code) {
+    suffixParts.push(KNOWN_ERROR_CODES.has(f.code) ? f.code : 'ERR_UNKNOWN');
+  }
   if (f.requestId) suffixParts.push(`ref ${f.requestId.slice(0, 8)}`);
   if (suffixParts.length === 0) return f.message;
   return `${f.message} (${suffixParts.join(' · ')})`;

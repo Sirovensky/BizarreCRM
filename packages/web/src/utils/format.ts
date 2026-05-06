@@ -53,7 +53,7 @@ export function formatCurrency(
     ? buildFormatter(code, localeOverride ?? _locale)
     : _currencyFmt;
   if (amount == null || isNaN(Number(amount))) {
-    return fmt.format(0);
+    return '—';
   }
   try {
     return fmt.format(Number(amount));
@@ -89,7 +89,7 @@ export function formatCurrencySymbol(currencyOverride?: string, localeOverride?:
  */
 export function formatCents(cents: number | null | undefined, currencyOverride?: string): string {
   if (cents == null || !isFinite(Number(cents))) {
-    return buildFormatter(currencyOverride ?? _currencyCode).format(0);
+    return '—';
   }
   const n = Number(cents);
   // Integer cents → dollars without losing sign.
@@ -237,17 +237,17 @@ function formatKnownInternationalPhone(digits: string): string | null {
 // formatting instead of being silently mangled. The strip-then-format path
 // is reserved for the two known US shapes; everything else echoes the input.
 //
-// CROSS13 decision (2026-04-17): canonical US display is `+1 (XXX)-XXX-XXXX`
-// (parens + dashes, always with +1 prefix). Matches CROSS7's on-write format
-// and Android's shared formatPhoneDisplay helper. A bare 10-digit number is
-// promoted to the +1 form — all stored US numbers are assumed E.164-compatible.
+// WEB-UIUX-322 (2026-05-06): canonical US display unified to `+1 (XXX) XXX-XXXX`
+// (parens + space, always with +1 prefix). Aligns with formatPhoneAsYouType.
+// A bare 10-digit number is promoted to the +1 form — all stored US numbers
+// are assumed E.164-compatible.
 export function formatPhone(phone: string | null | undefined): string {
   if (!phone) return '';
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 10)
-    return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   if (digits.length === 11 && digits[0] === '1')
-    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   // International or extension-bearing input: preserve the user's formatting,
   // but make sure we keep a leading "+" if the raw string had one.
   const trimmed = phone.trim();
@@ -260,15 +260,15 @@ export function formatPhone(phone: string | null | undefined): string {
   // WEB-FD-018 (Fixer-C12 2026-04-25): half-formatted US numbers (e.g. user
   // typed "(303) 261-19" while still entering it) used to echo back raw with
   // no `+1` hint, so display surfaces showed an inconsistent mix of
-  // canonical "+1 (303)-261-1900" and raw "(303) 261-19" side-by-side. For
+  // canonical "+1 (303) 261-1900" and raw "(303) 261-19" side-by-side. For
   // partial inputs of 4-9 digits with no leading "+" / "00" we promote to
   // a partial-progressive canonical form: keep the typed digits, add the
-  // `+1` prefix and as much of the parens-dashes ladder as we have. Fewer
+  // `+1` prefix and as much of the parens-space ladder as we have. Fewer
   // than 4 digits (area-code prefix only) is too ambiguous — fall through.
   if (digits.length >= 4 && digits.length < 10) {
     const a = digits.slice(0, 3);
-    if (digits.length <= 6) return `+1 (${a})-${digits.slice(3)}`;
-    return `+1 (${a})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    if (digits.length <= 6) return `+1 (${a}) ${digits.slice(3)}`;
+    return `+1 (${a}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return trimmed;
 }
