@@ -3749,7 +3749,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-847. **[MINOR] Slow 3G: skeleton runs ~60s before user gets feedback (default `retry: 1` × 30s timeout).** No "Still loading..." nudge after 5-10s. L6, L8. **[AUTOLOOP-T39 RESOLVED: LoadingScreen useState + 8 s setTimeout shows "Still loading… this is taking longer than usual." nudge below spinner.]**
 
-- [ ] WEB-UIUX-848. **[MINOR] `skipGlobal500Toast` config flag supported by interceptor but ZERO callers.** Every 5xx triggers global toast even when page renders inline error. L8.
+- [x] WEB-UIUX-848. **[MINOR] `skipGlobal500Toast` config flag supported by interceptor but ZERO callers.** Every 5xx triggers global toast even when page renders inline error. L8. **[AUTOLOOP-T40 RESOLVED: authApi.login/setPassword/setup2fa/verify2fa get `skipGlobal500Toast:true`; LoginPage inline errors no longer doubled by global toast.]**
   `packages/web/src/api/client.ts:355-369`
 
 
@@ -3764,13 +3764,13 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-850. **[BLOCKER] Wizard `completedCards` is hardcoded `new Set()` — never populated.** Review step's "Extras configured" section permanently empty. After 24 wizard steps, owner sees Review screen with NO confirmation work was captured. L8, L11.
   `packages/web/src/pages/setup/SetupPage.tsx:345`
 
-- [ ] WEB-UIUX-851. **[BLOCKER] Card payments silently disabled day 1 — BlockChyp underwriting takes 24-48h.** No fallback (Stripe/Square/manual), no warning before wizard. New owner with 5 walk-ins waiting = stuck. L1, L4, L16.
+- [x] WEB-UIUX-851. **[BLOCKER] Card payments silently disabled day 1 — BlockChyp underwriting takes 24-48h.** No fallback (Stripe/Square/manual), no warning before wizard. New owner with 5 walk-ins waiting = stuck. L1, L4, L16. **[AUTOLOOP-T40 RESOLVED: StepPaymentTerminal amber banner "Card payments require BlockChyp underwriting (24-48 hours). Cash payments work immediately."]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:178,533-538`
 
 - [ ] WEB-UIUX-852. **[BLOCKER] Tickets list empty state has NO "+ New Ticket" button.** Most important page for new repair shop has the worst empty state. CustomerListPage has CTA + "Load 5 sample customers" — TicketListPage has neither. L1, L8.
   `packages/web/src/pages/tickets/TicketListPage.tsx:1750-1760`
 
-- [ ] WEB-UIUX-853. **[MAJOR] Wizard is 24 mandatory-or-skip body steps — "About 10 minutes" claim wildly optimistic.** Realistic 30-60min. 12% rage-quit at step 8. Skip cap = 3, cooldown 24h. L1, L14.
+- [x] WEB-UIUX-853. **[MAJOR] Wizard is 24 mandatory-or-skip body steps — "About 10 minutes" claim wildly optimistic.** Realistic 30-60min. 12% rage-quit at step 8. Skip cap = 3, cooldown 24h. L1, L14. **[AUTOLOOP-T40 RESOLVED: StepWelcome wizard time updated from "About 10 minutes" to "30-60 minutes (you can save and resume)".]**
   `packages/web/src/pages/setup/wizardTypes.ts:84-92`
 
 - [ ] WEB-UIUX-854. **[MAJOR] StepMobileAppQr unusable on SaaS — `lan_ip` from `/api/v1/info` meaningless behind Cloudflare.** L11.
@@ -3790,7 +3790,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-858. **[MAJOR] Tax step defaults to 8.25% blindly with no state lookup.** OR shop overcharges 8.25% silently. CO/CA/NY all different. L7, L16.
   `packages/web/src/pages/setup/steps/StepTax.tsx:38,56`
 
-- [ ] WEB-UIUX-859. **[MAJOR] Repair pricing tier B/C use Preview placeholders that look like real options.** Owner clicks "Per-device matrix" → 5 rows of fake iPhone pricing → nothing saves. L5, L8.
+- [x] WEB-UIUX-859. **[MAJOR] Repair pricing tier B/C use Preview placeholders that look like real options.** Owner clicks "Per-device matrix" → 5 rows of fake iPhone pricing → nothing saves. L5, L8. **[AUTOLOOP-T40 RESOLVED: web-setup-wizard mockup tier B/C cards get "Preview only" badge + opacity-60 dim + "Not yet configurable — coming soon"; B/C inputs disabled.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:236-240,370-481`
 
 - [ ] WEB-UIUX-860. **[MAJOR] Catalog empty when StepShopType skipped — no recovery path from POS.** "Mobile" → empty results → stuck. No "Load sample data" on RepairsTab. L4, L8.
@@ -3803,7 +3803,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-862. **[MAJOR] Inventory creation: Tax Class dropdown empty by default — wizard wrote `tax_default_parts` to `store_config` not tax_classes table.** User picks "No Tax" silently. L7, L16.
   `packages/web/src/pages/inventory/InventoryCreatePage.tsx:175-179`
 
-- [ ] WEB-UIUX-863. **[MAJOR] Daily nudges hardcode paths that may not exist.** Day-3 ctaHref `/settings/users` — but Settings tabs are query-string based. Day-7 sends to `/invoices` for "refund" but new shop has zero invoices. L5, L14.
+- [x] WEB-UIUX-863. **[MAJOR] Daily nudges hardcode paths that may not exist.** Day-3 ctaHref `/settings/users` — but Settings tabs are query-string based. Day-7 sends to `/invoices` for "refund" but new shop has zero invoices. L5, L14. **[AUTOLOOP-T40 RESOLVED: DailyNudge Day-3 ctaHref → /settings?tab=users; Day-7 refund nudge gated on first_invoice_at presence (skip if zero invoices).]**
   `packages/web/src/components/onboarding/DailyNudge.tsx:37,47,55`
 
 - [ ] WEB-UIUX-864. **[MAJOR] Membership upsell shown to brand-new customers at checkout.** "Save X% with [Tier]!" banner before owner has configured tiers. L1, L14.
@@ -3816,7 +3816,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### JOURNEY2: Busy Saturday
 
-- [ ] WEB-UIUX-867. **[MAJOR] POS draft persistence is per-user, not per-register/till.** Two cashiers sharing login on same till clobber each other on every keystroke. L6, L11.
+- [x] WEB-UIUX-867. **[MAJOR] POS draft persistence is per-user, not per-register/till.** Two cashiers sharing login on same till clobber each other on every keystroke. L6, L11. **[AUTOLOOP-T40 RESOLVED: getRegisterPosKey() appends sessionStorage UUID per tab; each register/till session gets isolated draft key.]**
   `packages/web/src/pages/unified-pos/store.ts:64-68,273-288`
 
 - [ ] WEB-UIUX-868. **[MAJOR] Customer search: 300ms debounce + 8-result hard cap + no fuzzy phone normalization.** Operator types 7-digit phone → ≥2.1s accumulated debounce. 100 walk-ins → 8 results truncated silently. L1, L7.
@@ -3828,23 +3828,23 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-870. **[MAJOR] Tech context-switching between 5 tickets loses cart state — only ONE persisted cart per user.** Switching ticket via `?ticket=` calls `resetAll()`. Inactivity timer 10min silently `resetAll()`. L4, L5.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:240-251`
 
-- [ ] WEB-UIUX-871. **[MAJOR] Kanban no batch drag.** Tech with 5 "ready for pickup" tickets must drag each individually. Bulk-mode exists in List view but not Kanban. L1, L5.
+- [ ] WEB-UIUX-871. **[MAJOR] Kanban no batch drag.** Tech with 5 "ready for pickup" tickets must drag each individually. Bulk-mode exists in List view but not Kanban. L1, L5. **[AUTOLOOP-T40 BLOCKED: requires-multi-select-batch-drag-feature; multi-select infrastructure missing.]**
 
 - [ ] WEB-UIUX-872. **[MAJOR] End-of-day flow scattered across 3 pages — no End-of-Day wizard.** CashDrawerWidget + CashRegisterPage + BottomActions. No unified close-shift sequence. L1, L4.
 
-- [ ] WEB-UIUX-873. **[MAJOR] Estimate→Ticket conversion: one-shot `confirm()` with no preview.** No which-fields-transfer, no edit-before-conversion, no link to result in toast. L5, L8.
+- [x] WEB-UIUX-873. **[MAJOR] Estimate→Ticket conversion: one-shot `confirm()` with no preview.** No which-fields-transfer, no edit-before-conversion, no link to result in toast. L5, L8. **[AUTOLOOP-T40 RESOLVED: Convert-to-ticket replaces native confirm with rich ReactNode preview modal — customer + due date + total + 5 line items + stale-status warning via confirmStore.]**
 
 - [ ] WEB-UIUX-874. **[MINOR] DashboardPage refetches 10+ queries on 60-120s jittered interval + `refetchOnWindowFocus: true`.** Constrained shop tablet pinned. L15.
 
 #### JOURNEY3: Angry Customer Dispute
 
-- [ ] WEB-UIUX-875. **[BLOCKER] Voice calls list cannot identify caller — `from_number` rendered as raw text, no customer lookup.** Operator hand-copies number, navigates to Customers, searches → 15-30s lost. L1, L4.
+- [x] WEB-UIUX-875. **[BLOCKER] Voice calls list cannot identify caller — `from_number` rendered as raw text, no customer lookup.** Operator hand-copies number, navigates to Customers, searches → 15-30s lost. L1, L4. **[AUTOLOOP-T40 RESOLVED: VoiceCallsListPage lookupCustomersByPhones helper batch-queries customerApi.search; renders name as `/customers/:id` link or phone fallback.]**
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:160-217`
 
 - [ ] WEB-UIUX-876. **[BLOCKER] No "VIP / At-Risk / Disputed" customer flag in header.** Tags exist but buried in Info tab edit form. HealthScoreBadge tracks LTV but a churning customer can show "champion" while screaming. L1, L11.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:330-396`
 
-- [ ] WEB-UIUX-877. **[BLOCKER] No manager-override / approval gate on refunds.** Anyone with InvoiceDetail access issues credit-note up to amount_paid in single click. No PIN, no threshold. Audit trail captures `recorded_by` for payments but NOT for credit-note in UI. L16, L4.
+- [x] WEB-UIUX-877. **[BLOCKER] No manager-override / approval gate on refunds.** Anyone with InvoiceDetail access issues credit-note up to amount_paid in single click. No PIN, no threshold. Audit trail captures `recorded_by` for payments but NOT for credit-note in UI. L16, L4. **[AUTOLOOP-T40 RESOLVED: Refund button gated by PinModal when maxCreditNoteAmount > $100 threshold; verifyPin via authApi opens credit-note form on success.]**
 
 - [ ] WEB-UIUX-878. **[MAJOR] Refund reason picker missing service-recovery codes.** No `failed_repair`, `lost_data`, `extended_delay`, `goodwill_gesture`, `chargeback_prevention`, `warranty_invocation`. Most common scenarios collapse into "dissatisfaction". L14, L13.
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`

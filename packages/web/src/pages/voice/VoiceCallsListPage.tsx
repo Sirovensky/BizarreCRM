@@ -14,11 +14,44 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { voiceApi, type VoiceCall, type VoiceCallsResponse } from '@/api/endpoints';
+import { voiceApi, customerApi, type VoiceCall, type VoiceCallsResponse } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
+
+// WEB-UIUX-875: minimal customer shape returned by /customers/search
+interface CustomerSummary {
+  id: number;
+  first_name: string;
+  last_name?: string;
+}
+
+// WEB-UIUX-875: given a list of phone numbers, search for matching customers
+// and return a Map<normalizedPhone, CustomerSummary>.
+async function lookupCustomersByPhones(phones: string[]): Promise<Map<string, CustomerSummary>> {
+  const map = new Map<string, CustomerSummary>();
+  if (phones.length === 0) return map;
+
+  await Promise.all(
+    phones.map(async (phone) => {
+      try {
+        const res = await customerApi.search(phone);
+        const results: CustomerSummary[] = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray((res.data as { data?: CustomerSummary[] })?.data)
+            ? (res.data as { data: CustomerSummary[] }).data
+            : [];
+        if (results.length > 0) {
+          map.set(phone, results[0]);
+        }
+      } catch {
+        // ignore per-phone errors — fall back to raw number in UI
+      }
+    }),
+  );
+  return map;
+}
 
 // WEB-FK-009: Consent confirmation dialog shown before playing a recording
 // when the caller was not confirmed to have been informed of recording.
@@ -179,9 +212,11 @@ async function openRecordingSecure(callId: number): Promise<void> {
 
 interface CallRowProps {
   call: VoiceCall;
+  // WEB-UIUX-875: caller lookup map — key is from_number, value is matched customer
+  callerMap: Map<string, CustomerSummary>;
 }
 
-function CallRow({ call }: CallRowProps) {
+function CallRow({ call, callerMap }: CallRowProps) {
   const [loadingRec, setLoadingRec] = useState(false);
   // WEB-FK-009: track whether the consent dialog is open for this row.
   const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -229,8 +264,23 @@ function CallRow({ call }: CallRowProps) {
       document.body,
     )}
     <tr className="border-t border-surface-100 dark:border-surface-800 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-      <td className="px-4 py-3 text-sm text-surface-700 dark:text-surface-300 font-mono">
-        {call.from_number || '—'}
+      <td className="px-4 py-3 text-sm text-surface-700 dark:text-surface-300">
+        {/* WEB-UIUX-875: show customer name as link if found, else raw phone */}
+        {(() => {
+          const customer = call.from_number ? callerMap.get(call.from_number) : undefined;
+          if (customer) {
+            const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ');
+            return (
+              <Link
+                to={`/customers/${customer.id}`}
+                className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+              >
+                {name}
+              </Link>
+            );
+          }
+          return <span className="font-mono">{call.from_number || '—'}</span>;
+        })()}
       </td>
       <td className="px-4 py-3 text-sm text-surface-700 dark:text-surface-300 font-mono">
         {call.to_number || '—'}
@@ -302,6 +352,19 @@ export function VoiceCallsListPage() {
   });
 
   const allCalls = data?.calls ?? [];
+
+  // WEB-UIUX-875: collect unique inbound from_numbers and look up matching customers
+  const fromNumbers = useMemo(
+    () => Array.from(new Set(allCalls.map((c) => c.from_number).filter(Boolean) as string[])),
+    [allCalls],
+  );
+  const { data: callerMap = new Map<string, CustomerSummary>() } = useQuery({
+    queryKey: ['voice-calls', 'callers', fromNumbers],
+    queryFn: () => lookupCustomersByPhones(fromNumbers),
+    enabled: fromNumbers.length > 0,
+    staleTime: 60_000,
+  });
+
   const serverTotal = data?.pagination.total ?? allCalls.length;
   const filtersActive = directionFilter !== 'all' || statusFilter !== 'all';
   const statusOptions = useMemo(() => {
@@ -486,7 +549,7 @@ export function VoiceCallsListPage() {
               </thead>
               <tbody>
                 {calls.map((call) => (
-                  <CallRow key={call.id} call={call} />
+                  <CallRow key={call.id} call={call} callerMap={callerMap} />
                 ))}
               </tbody>
             </table>

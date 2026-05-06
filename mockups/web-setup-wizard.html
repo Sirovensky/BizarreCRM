@@ -453,55 +453,63 @@ body { font-family: 'Inter', system-ui, sans-serif; }
                   <p class="text-primary-900">iPhone 15/16, Galaxy S24/S25, Pixel 9. Customers pay premium. Profit driver.</p>
                   <p class="text-primary-900 mt-1 font-mono text-xs">42 models</p>
                 </div>
-                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
-                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">⚖️ Tier B — Mainstream (3-5 yr)</div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3 opacity-60">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="font-bold text-surface-700 dark:text-surface-300">⚖️ Tier B — Mainstream (3-5 yr)</div>
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400 border border-surface-300 dark:border-surface-600">Preview only</span>
+                  </div>
                   <p class="text-surface-600 dark:text-surface-400">iPhone 11/12/13, Galaxy S20/S21, Pixel 5/6. Bread-and-butter volume.</p>
                   <p class="text-surface-500 mt-1 font-mono text-xs">87 models</p>
+                  <p class="text-xs text-surface-400 dark:text-surface-500 mt-2 italic">Not yet configurable — coming soon</p>
                 </div>
-                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
-                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">🚪 Tier C — Older (6+ yr)</div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3 opacity-60">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="font-bold text-surface-700 dark:text-surface-300">🚪 Tier C — Older (6+ yr)</div>
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400 border border-surface-300 dark:border-surface-600">Preview only</span>
+                  </div>
                   <p class="text-surface-600 dark:text-surface-400">iPhone X/XR/8, Galaxy S9/S10. Get-in-door pricing — break-even on labor, upsell add-ons.</p>
                   <p class="text-surface-500 mt-1 font-mono text-xs">74 models</p>
+                  <p class="text-xs text-surface-400 dark:text-surface-500 mt-2 italic">Not yet configurable — coming soon</p>
                 </div>
               </div>
 
               <!-- Per-service tier grid -->
               <table class="w-full text-sm">
-                <thead><tr class="border-b border-surface-200 dark:border-surface-700"><th class="text-left py-2">Service</th><th class="text-right py-2 px-2 text-primary-900">Tier A labor</th><th class="text-right py-2 px-2">Tier B labor</th><th class="text-right py-2 px-2">Tier C labor</th><th class="text-right py-2">Time</th></tr></thead>
+                <thead><tr class="border-b border-surface-200 dark:border-surface-700"><th class="text-left py-2">Service</th><th class="text-right py-2 px-2 text-primary-900">Tier A labor</th><th class="text-right py-2 px-2 text-surface-400 dark:text-surface-500">Tier B labor <span class="text-xs font-normal opacity-70">(preview)</span></th><th class="text-right py-2 px-2 text-surface-400 dark:text-surface-500">Tier C labor <span class="text-xs font-normal opacity-70">(preview)</span></th><th class="text-right py-2">Time</th></tr></thead>
                 <tbody class="divide-y divide-surface-100 dark:divide-surface-700">
                   <tr>
                     <td class="py-2">Screen replacement</td>
                     <td class="text-right px-2"><input class="field-input w-20 text-right" value="$249" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$129" disabled title="Preview only — not yet available" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$79" disabled title="Preview only — not yet available" /></td>
                     <td class="text-right text-surface-500">45 min</td>
                   </tr>
                   <tr>
                     <td class="py-2">Battery replacement</td>
                     <td class="text-right px-2"><input class="field-input w-20 text-right" value="$99" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$69" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$69" disabled title="Preview only — not yet available" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$49" disabled title="Preview only — not yet available" /></td>
                     <td class="text-right text-surface-500">30 min</td>
                   </tr>
                   <tr>
                     <td class="py-2">Charge port repair</td>
                     <td class="text-right px-2"><input class="field-input w-20 text-right" value="$89" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$59" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$59" disabled title="Preview only — not yet available" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$45" disabled title="Preview only — not yet available" /></td>
                     <td class="text-right text-surface-500">30 min</td>
                   </tr>
                   <tr>
                     <td class="py-2">Water damage diagnostic</td>
                     <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$35" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$25" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$35" disabled title="Preview only — not yet available" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$25" disabled title="Preview only — not yet available" /></td>
                     <td class="text-right text-surface-500">15 min</td>
                   </tr>
                   <tr>
                     <td class="py-2">Camera lens replacement</td>
                     <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
-                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$79" disabled title="Preview only — not yet available" /></td>
+                    <td class="text-right px-2 opacity-40"><input class="field-input w-20 text-right" value="$49" disabled title="Preview only — not yet available" /></td>
                     <td class="text-right text-surface-500">40 min</td>
                   </tr>
                 </tbody>

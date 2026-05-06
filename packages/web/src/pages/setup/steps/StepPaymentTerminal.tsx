@@ -10,6 +10,7 @@ import {
   Loader2,
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
@@ -210,6 +211,19 @@ export function StepPaymentTerminal({
           BlockChyp is the single processor for card-present and card-not-present
           payments. Shop-owned credentials — you can also set this up later from
           Settings &rarr; Payments.
+        </p>
+      </div>
+
+      {/* ── Underwriting warning banner ─────────────────────────── */}
+      <div
+        role="alert"
+        className="mb-6 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-600/50 dark:bg-amber-900/20"
+      >
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+        <p className="text-sm leading-relaxed text-amber-800 dark:text-amber-300">
+          <span className="font-semibold">Card payments require BlockChyp underwriting (24&ndash;48 hours).</span>{' '}
+          Cash payments work immediately — you can skip this step and return once
+          your BlockChyp account is approved.
         </p>
       </div>
 

@@ -38,7 +38,7 @@ export function StepWelcome({ pending, onUpdate, onNext, onSkip }: StepProps) {
           Welcome to BizarreCRM
         </h1>
         <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
-          Let's get your shop running. About 10 minutes — most steps are skippable.
+          Let's get your shop running. 30–60 minutes (you can save and resume) — most steps are skippable.
         </p>
       </div>
 

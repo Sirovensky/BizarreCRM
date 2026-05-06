@@ -80,13 +80,13 @@ export const authApi = {
       challengeToken?: string; totpEnabled?: boolean; requires2faSetup?: boolean;
       requiresPasswordSetup?: boolean;
       trustedDevice?: boolean; accessToken?: string; refreshToken?: string; user?: User;
-    }; message?: string }>('/auth/login', { username, password }),
+    }; message?: string }>('/auth/login', { username, password }, { skipGlobal500Toast: true } as object),
   setPassword: (challengeToken: string, password: string) =>
-    api.post<{ success: boolean; data: { challengeToken: string; message?: string }; message?: string }>('/auth/login/set-password', { challengeToken, password }),
+    api.post<{ success: boolean; data: { challengeToken: string; message?: string }; message?: string }>('/auth/login/set-password', { challengeToken, password }, { skipGlobal500Toast: true } as object),
   setup2fa: (challengeToken: string) =>
-    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string }; message?: string }>('/auth/login/2fa-setup', { challengeToken }),
+    api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string }; message?: string }>('/auth/login/2fa-setup', { challengeToken }, { skipGlobal500Toast: true } as object),
   verify2fa: (challengeToken: string, code: string, trustDevice?: boolean) =>
-    api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }),
+    api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }, { skipGlobal500Toast: true } as object),
   logout: () => api.post('/auth/logout'),
   // @audit-fixed: server only returns `{ accessToken, user }` — refresh is in
   // an httpOnly cookie. Was previously typed as `AuthTokens` which required

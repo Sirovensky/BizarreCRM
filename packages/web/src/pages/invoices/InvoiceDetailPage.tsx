@@ -7,6 +7,7 @@ import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, install
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
+import { PinModal } from '@/components/shared/PinModal';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -46,6 +47,9 @@ export function InvoiceDetailPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
+  // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
+  const [showRefundPinGate, setShowRefundPinGate] = useState(false);
+  const REFUND_PIN_THRESHOLD = 100;
   const [creditNoteForm, setCreditNoteForm] = useState<{
     amount: string;
     reason: RefundReasonCode | null;
@@ -423,7 +427,17 @@ export function InvoiceDetailPage() {
               <Printer className="h-4 w-4" /> Print
             </button>
             {canCreateCreditNote && (
-              <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+              <button
+                onClick={() => {
+                  // WEB-UIUX-877: require manager PIN for refunds above threshold.
+                  if (maxCreditNoteAmount > REFUND_PIN_THRESHOLD) {
+                    setShowRefundPinGate(true);
+                  } else {
+                    setShowCreditNote(true);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+              >
                 <Undo2 className="h-4 w-4" /> Refund (credit note)
               </button>
             )}
@@ -1002,6 +1016,20 @@ export function InvoiceDetailPage() {
           ticketId={invoice.ticket_id}
           invoiceId={invoiceId}
           onClose={() => setShowPrintModal(false)}
+        />
+      )}
+
+      {/* WEB-UIUX-877: manager PIN gate — shown before credit-note dialog when
+          the refundable amount exceeds REFUND_PIN_THRESHOLD ($100). On success
+          the PIN modal closes and the credit-note form opens normally. */}
+      {showRefundPinGate && (
+        <PinModal
+          title={`Manager approval required (refund > $${REFUND_PIN_THRESHOLD})`}
+          onSuccess={() => {
+            setShowRefundPinGate(false);
+            setShowCreditNote(true);
+          }}
+          onCancel={() => setShowRefundPinGate(false)}
         />
       )}
     </div>

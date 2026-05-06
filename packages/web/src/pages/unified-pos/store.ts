@@ -67,6 +67,29 @@ function getUserPosKey(): string {
   return `pos-store-u${userId}`;
 }
 
+/**
+ * WEB-UIUX-867: Returns a per-register draft key so two cashiers sharing the
+ * same login on different tills (or browser tabs) no longer clobber each other.
+ *
+ * The register ID is stored in sessionStorage so it survives page refreshes on
+ * the same tab but is NOT shared with other tabs (each tab = one register).
+ * If no register ID has been minted yet for this session we create one with
+ * crypto.randomUUID() (falls back to timestamp+random for older Safari).
+ */
+function getRegisterPosKey(): string {
+  const REGISTER_ID_KEY = 'pos_register_id';
+  let registerId = sessionStorage.getItem(REGISTER_ID_KEY);
+  if (!registerId) {
+    registerId =
+      globalThis.crypto?.randomUUID?.() ??
+      `reg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem(REGISTER_ID_KEY, registerId);
+  }
+  const user = useAuthStore.getState().user;
+  const userId = user?.id ?? 'anon';
+  return `pos-store-u${userId}-r${registerId}`;
+}
+
 interface UnifiedPosState {
   // Customer
   customer: CustomerResult | null;
@@ -297,16 +320,16 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   name: 'pos-store', // base name (actual key is user-scoped)
   storage: createJSONStorage(() => ({
     getItem: (name: string) => {
-      const key = getUserPosKey();
+      const key = getRegisterPosKey();
       return sessionStorage.getItem(key) ?? localStorage.getItem(key);
     },
     setItem: (name: string, value: string) => {
-      const key = getUserPosKey();
+      const key = getRegisterPosKey();
       sessionStorage.setItem(key, value);
       localStorage.removeItem(key);
     },
     removeItem: (name: string) => {
-      const key = getUserPosKey();
+      const key = getRegisterPosKey();
       sessionStorage.removeItem(key);
       localStorage.removeItem(key);
     },

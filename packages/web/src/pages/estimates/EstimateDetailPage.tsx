@@ -8,7 +8,7 @@ import {
 import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
 import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoints';
-import { confirm } from '@/stores/confirmStore';
+import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -525,10 +525,52 @@ export function EstimateDetailPage() {
               onClick={async () => {
                 try {
                   const isStale = estimate.status === 'draft' || estimate.status === 'expired';
-                  const msg = isStale
-                    ? `Convert this ${estimate.status} estimate to a ticket? Customer hasn't signed/approved this quote.`
-                    : 'Convert this estimate to a ticket?';
-                  if (await confirm(msg)) convertMut.mutate();
+                  const customerName = [estimate.customer_first_name, estimate.customer_last_name].filter(Boolean).join(' ') || 'Unknown customer';
+                  const previewMsg = (
+                    <div className="space-y-3 text-sm">
+                      <p className="text-surface-600 dark:text-surface-400">
+                        The following will be transferred to a new ticket:
+                      </p>
+                      <ul className="space-y-1.5 rounded-lg bg-surface-50 dark:bg-surface-800/50 p-3">
+                        <li className="flex justify-between gap-4">
+                          <span className="text-surface-500">Customer</span>
+                          <span className="font-medium text-surface-900 dark:text-surface-100 text-right">{customerName}</span>
+                        </li>
+                        <li className="flex justify-between gap-4">
+                          <span className="text-surface-500">Due date</span>
+                          <span className="font-medium text-surface-900 dark:text-surface-100 text-right">
+                            {estimate.valid_until ? formatDate(estimate.valid_until) : '—'}
+                          </span>
+                        </li>
+                        <li className="flex justify-between gap-4">
+                          <span className="text-surface-500">Total</span>
+                          <span className="font-medium text-surface-900 dark:text-surface-100 text-right">{formatCurrency(estimate.total)}</span>
+                        </li>
+                        {lineItems.length > 0 && (
+                          <li className="pt-1.5 border-t border-surface-200 dark:border-surface-700">
+                            <span className="text-surface-500 block mb-1">Line items ({lineItems.length})</span>
+                            <ul className="space-y-0.5">
+                              {lineItems.slice(0, 5).map((item: any, i: number) => (
+                                <li key={i} className="flex justify-between gap-4 text-xs">
+                                  <span className="text-surface-700 dark:text-surface-300 truncate max-w-[60%]">{item.description || item.name || `Item ${i + 1}`}</span>
+                                  <span className="text-surface-600 dark:text-surface-400 shrink-0">{item.qty ?? item.quantity ?? 1} × {formatCurrency(item.unit_price ?? item.price ?? 0)}</span>
+                                </li>
+                              ))}
+                              {lineItems.length > 5 && (
+                                <li className="text-xs text-surface-400 dark:text-surface-500">…and {lineItems.length - 5} more</li>
+                              )}
+                            </ul>
+                          </li>
+                        )}
+                      </ul>
+                      {isStale && (
+                        <p className="text-amber-600 dark:text-amber-400 text-xs">
+                          Note: this estimate is {estimate.status} — the customer hasn't signed or approved this quote.
+                        </p>
+                      )}
+                    </div>
+                  );
+                  if (await useConfirmStore.getState().confirm({ message: previewMsg, title: 'Convert estimate to ticket?', confirmLabel: 'Convert' })) convertMut.mutate();
                 }
                 catch (err) { toast.error(formatApiError(err)); }
               }}

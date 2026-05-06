@@ -34,7 +34,7 @@ const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
     title: 'Invite your first technician',
     body: 'Add a team member so they can create tickets and view their queue.',
     ctaLabel: 'Go to Users',
-    ctaHref: '/settings/users',
+    ctaHref: '/settings?tab=users',
     patchKey: 'nudge_day3_seen',
   },
   day5: {
@@ -65,7 +65,8 @@ function computeActiveNudge(state: OnboardingState): NudgeConfig | null {
   const daysSinceSignup = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
 
   // Show highest applicable unseen nudge
-  if (daysSinceSignup >= 7 && !state.nudge_day7_seen) return NUDGE_CONFIGS.day7;
+  // Day-7 refund nudge is only relevant once the shop has at least one invoice.
+  if (daysSinceSignup >= 7 && !state.nudge_day7_seen && state.first_invoice_at) return NUDGE_CONFIGS.day7;
   if (daysSinceSignup >= 5 && !state.nudge_day5_seen) return NUDGE_CONFIGS.day5;
   if (daysSinceSignup >= 3 && !state.nudge_day3_seen) return NUDGE_CONFIGS.day3;
   return null;
