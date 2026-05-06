@@ -80,6 +80,11 @@ export const ERROR_CODES = {
   ERR_TENANT_PROVISIONING: 'ERR_TENANT_PROVISIONING',
   ERR_TENANT_DB_FAILED: 'ERR_TENANT_DB_FAILED',
   ERR_TENANT_CONTEXT_MISSING: 'ERR_TENANT_CONTEXT_MISSING',
+  /** Tenant has been suspended by an administrator. Returned on 401 during token
+   *  refresh so authenticated clients can surface a specific message rather than
+   *  the generic "session expired" fallback. Only emitted for authenticated
+   *  requests (not the public tenant-resolver) to avoid E8 information leakage. */
+  ERR_TENANT_SUSPENDED: 'ERR_TENANT_SUSPENDED',
 
   // ── Portal / customer-facing (401 / 404 / 409) ───────────────────
   /** Customer portal session expired or not provided. */
@@ -94,6 +99,10 @@ export const ERROR_CODES = {
   ERR_RESOURCE_NOT_FOUND: 'ERR_RESOURCE_NOT_FOUND',
   /** Operation conflicts with current resource state (already paid, already reviewed). */
   ERR_RESOURCE_CONFLICT: 'ERR_RESOURCE_CONFLICT',
+
+  // ── User management (409) ────────────────────────────────────────
+  /** Attempt to demote or deactivate the last active admin — at least one must remain. */
+  ERR_USER_LAST_ADMIN: 'ERR_USER_LAST_ADMIN',
 
   // ── Route / service (503) ────────────────────────────────────────
   ERR_ROUTE_DISABLED: 'ERR_ROUTE_DISABLED',

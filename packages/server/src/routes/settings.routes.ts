@@ -1739,7 +1739,8 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     if (remaining < 2) {
       throw new AppError(
         'Cannot demote or deactivate another admin — at least 2 active admins must remain.',
-        400,
+        409,
+        'ERR_USER_LAST_ADMIN',
       );
     }
   }

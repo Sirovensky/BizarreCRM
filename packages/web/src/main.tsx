@@ -178,14 +178,19 @@ if (typeof window !== 'undefined') {
     } catch { /* quota / privacy mode — best-effort only */ }
   });
 
-  // WEB-FAE-009: cross-tenant token clobber detected by authStore's storage
-  // event handler. authStore dispatches this custom event so we can surface
-  // a toast (toast is imported here, not in authStore) before the redirect.
+  // WEB-FAE-009 / WEB-UIUX-816: cross-tenant token detected by authStore's
+  // storage/broadcast handler. When this tab is logged out (oldSlug null) and a
+  // sibling writes a tenant-B token, authStore dispatches this event instead of
+  // silently calling checkAuth(). We surface a persistent toast so the user must
+  // explicitly reload before adopting the new tenant session.
   window.addEventListener('bizarre-crm:cross-tenant-token', (e: Event) => {
     try {
       const msg = (e as CustomEvent<{ message: string }>).detail?.message
-        || 'Account changed in another tab. Please sign in again.';
-      toast.error(msg, { id: 'cross-tenant-swap', duration: 8000 });
+        || 'A sign-in occurred in another tab. Reload this page to sign in.';
+      // duration: Infinity keeps the toast visible until the user acts (reload or dismiss).
+      // This is the explicit-action gate required by WEB-UIUX-816: the tab will NOT
+      // silently re-hydrate — the user must reload intentionally.
+      toast.error(msg, { id: 'cross-tenant-swap', duration: Infinity });
     } catch { /* best-effort */ }
   });
 

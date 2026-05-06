@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, X } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
 
 export const IMPERSONATION_KEY = 'impersonation_session';
 
@@ -14,18 +13,18 @@ export interface ImpersonationSession {
 const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
 
 export function setImpersonationSession(session: ImpersonationSession): void {
-  localStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
+  sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
   window.dispatchEvent(new CustomEvent(IMPERSONATION_CHANGED_EVENT));
 }
 
 export function clearImpersonationSession(): void {
-  localStorage.removeItem(IMPERSONATION_KEY);
+  sessionStorage.removeItem(IMPERSONATION_KEY);
   window.dispatchEvent(new CustomEvent(IMPERSONATION_CHANGED_EVENT));
 }
 
 export function getImpersonationSession(): ImpersonationSession | null {
   try {
-    const raw = localStorage.getItem(IMPERSONATION_KEY);
+    const raw = sessionStorage.getItem(IMPERSONATION_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
@@ -45,20 +44,14 @@ export function getImpersonationSession(): ImpersonationSession | null {
 export function ImpersonationBanner() {
   const [session, setSession] = useState<ImpersonationSession | null>(null);
   const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
     setSession(getImpersonationSession());
   }, []);
 
-  // Re-check on cross-tab storage events AND same-tab CustomEvents
-  // (storage event does not fire in the tab that wrote the value).
+  // Re-check on same-tab CustomEvents.
+  // sessionStorage is tab-isolated so no cross-tab storage event is needed.
   useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key === IMPERSONATION_KEY) {
-        setSession(getImpersonationSession());
-      }
-    }
     function onChanged() {
       setSession(getImpersonationSession());
     }
@@ -74,11 +67,9 @@ export function ImpersonationBanner() {
       clearImpersonationSession();
       setSession(null);
     }
-    window.addEventListener('storage', onStorage);
     window.addEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
     window.addEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     return () => {
-      window.removeEventListener('storage', onStorage);
       window.removeEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
       window.removeEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     };
@@ -86,10 +77,9 @@ export function ImpersonationBanner() {
 
   if (!session) return null;
 
-  async function handleExit() {
+  function handleExit() {
     clearImpersonationSession();
-    await logout();
-    navigate('/login');
+    navigate('/super-admin/tenants');
   }
 
   return (

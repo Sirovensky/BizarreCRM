@@ -27,6 +27,7 @@ import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { getMasterDb } from '../db/master-connection.js';
 
 const logger = createLogger('auth');
 
@@ -1343,6 +1344,35 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
 
     // Touch last_active on refresh
     await adb.run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId);
+
+    // WEB-UIUX-820: Check tenant status against the master DB before issuing new
+    // tokens. The tenant-resolver cache (up to 60 s TTL) can allow a suspended
+    // tenant's refresh request to reach this point without being blocked by the
+    // resolver's 404 early-return. Emit ERR_TENANT_SUSPENDED on 401 so the client
+    // can surface a specific "tenant suspended" message instead of the generic
+    // "session expired" fallback. We use the master DB (not the tenant DB) because
+    // tenant status lives there; failure to read it is non-fatal — we fall through
+    // so a master-DB hiccup doesn't lock every user out of a healthy tenant.
+    const tenantSlugForStatusCheck = (req as any).tenantSlug;
+    if (tenantSlugForStatusCheck) {
+      try {
+        const masterDb = getMasterDb();
+        if (masterDb) {
+          const tenantRow = masterDb
+            .prepare("SELECT status FROM tenants WHERE slug = ? LIMIT 1")
+            .get(tenantSlugForStatusCheck) as { status: string } | undefined;
+          if (tenantRow?.status === 'suspended') {
+            audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'tenant_suspended' });
+            logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'tenant_suspended' });
+            res.status(401).json({ success: false, code: ERROR_CODES.ERR_TENANT_SUSPENDED, message: 'Tenant suspended' });
+            return;
+          }
+        }
+      } catch (err) {
+        // Non-fatal: if master DB is unavailable, allow the refresh to proceed.
+        logger.warn('refresh: tenant status check failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
+      }
+    }
 
     // SECURITY: Always derive tenant from request context (subdomain), never from old token
     const tenantSlug = (req as any).tenantSlug || null;

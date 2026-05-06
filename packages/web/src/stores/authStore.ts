@@ -259,11 +259,29 @@ function handleAuthBroadcastMessage(msg: AuthBroadcastMessage): void {
   }
 
   if (msg.type === 'ready') {
+    // WEB-UIUX-816: if this tab has no authenticated user (oldSlug is null —
+    // i.e. logged-out tab), a sibling's token write must NOT auto-hydrate
+    // silently. Doing so would let tenant-B's session leak into a tab that
+    // never performed an explicit login action. Require the user to confirm
+    // via a reload prompt instead of calling checkAuth() directly.
+    const prevUserId = useAuthStore.getState().user?.id ?? null;
+    const isLoggedOut = useAuthStore.getState().user === null;
+    if (isLoggedOut) {
+      // Dispatch the cross-tenant event so main.tsx can surface a toast/prompt.
+      // We do NOT call checkAuth() here — the user must explicitly act (reload).
+      try {
+        window.dispatchEvent(new CustomEvent('bizarre-crm:cross-tenant-token', {
+          detail: {
+            message: 'A sign-in occurred in another tab. Reload this page to sign in.',
+          },
+        }));
+      } catch { /* best-effort */ }
+      return;
+    }
     // WEB-UIUX-744: a sibling tab completed a silent token refresh and broadcast
     // 'ready'. We re-hydrate via checkAuth() but must NOT wipe drafts/dismissals
     // if the same user is still active. Pass the current user.id as prevUserId so
     // wipe listeners can skip destructive sweeps when the user hasn't changed.
-    const prevUserId = useAuthStore.getState().user?.id ?? null;
     useAuthStore.setState({ isLoading: true });
     emitAuthCleared(false, prevUserId);
     queueMicrotask(() => {
@@ -305,6 +323,8 @@ if (typeof window !== 'undefined') {
     if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
       toast.error('Your session has expired. Please sign in again.');
     }
+    // WEB-UIUX-820: 'tenant-suspended' toast is shown in client.ts before
+    // forceLogout() fires; no second toast here to avoid duplication.
     // AUDIT-WEB-024: clearing auth state without navigating leaves the user on
     // a protected page that immediately re-checks auth and loops. Prefer the
     // react-router bridge (WEB-FI-005) so the SPA tree stays mounted long

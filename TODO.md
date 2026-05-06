@@ -3637,61 +3637,61 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13. **[AUTOLOOP-T37 BLOCKED: PrintPage has no /print/estimate/:id route; adding estimateId prop has no target. Needs backend-rendered estimate print page.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:100-120`
 
-- [ ] WEB-UIUX-810. **[MAJOR] Stage-skip allowed: estimate→invoice WITHOUT going through ticket approval.** `Generate Invoice` only checks `!ticket.invoice_id`, not approved-estimate gate. L5, L16.
+- [x] WEB-UIUX-810. **[MAJOR] Stage-skip allowed: estimate→invoice WITHOUT going through ticket approval.** `Generate Invoice` only checks `!ticket.invoice_id`, not approved-estimate gate. L5, L16. **[AUTOLOOP-T38 RESOLVED: TicketPayments fetches linked estimate via useQuery; handleGenerateInvoice shows window.confirm warning when estimate.status !== "approved".]**
   `packages/web/src/pages/tickets/TicketPayments.tsx:114-123,270-274`
 
 - [ ] WEB-UIUX-811. **[MAJOR] Customer-side approval doesn't lock totals snapshot.** Operator edits line items post-approval (WEB-UIUX-801), portal shows new totals "Approved on [date]" — customer told they approved version they never saw. L16.
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:22-51`
 
-- [ ] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5.
+- [ ] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**
 
 #### ED18: Super-Admin / Multi-Tenant
 
 - [ ] WEB-UIUX-813. **[BLOCKER] Impersonation indistinguishable from real login at logout time.** SA walks away mid-session, token expires (15min), bounces to /login (tenant login) → next person at kiosk logs in as REAL tenant admin, looks normal. L16.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:185-211`
 
-- [ ] WEB-UIUX-814. **[BLOCKER] Single localStorage key `impersonation_session` for marker — second impersonation clobbers first across tabs.** Banner says A, requests use B. L16.
+- [x] WEB-UIUX-814. **[BLOCKER] Single localStorage key `impersonation_session` for marker — second impersonation clobbers first across tabs.** Banner says A, requests use B. L16. **[AUTOLOOP-T38 RESOLVED: ImpersonationBanner switched localStorage→sessionStorage for impersonation_session marker; per-tab isolation; cross-tab StorageEvent listener removed.]**
   `packages/web/src/components/ImpersonationBanner.tsx:6,17`
 
 - [ ] WEB-UIUX-815. **[BLOCKER] Banner trusts localStorage without verifying token claims.** Stale marker + fresh login on same browser → "Impersonating acme-co" while user is logged in as themselves at acme-co. L16, L11.
   `packages/web/src/components/ImpersonationBanner.tsx:26-43,50-85`
 
-- [ ] WEB-UIUX-816. **[BLOCKER] Cross-tenant guard skipped when oldSlug is null.** Tab logged-out + sibling tab writes tenant-B token → tab silently re-hydrates as B. L16.
+- [x] WEB-UIUX-816. **[BLOCKER] Cross-tenant guard skipped when oldSlug is null.** Tab logged-out + sibling tab writes tenant-B token → tab silently re-hydrates as B. L16. **[AUTOLOOP-T38 RESOLVED: handleAuthBroadcastMessage("ready") no longer calls checkAuth() when current user is null; dispatches `bizarre-crm:cross-tenant-token` event; main.tsx shows persistent toast requiring explicit reload.]**
   `packages/web/src/stores/authStore.ts:250-267`
 
 - [ ] WEB-UIUX-817. **[MAJOR] Guard reads `payload.tenantSlug` (camelCase) but rest of codebase uses `tenant_slug` (snake_case) — guard likely silently no-op.** L16.
   `packages/web/src/stores/authStore.ts:241-249`
 
-- [ ] WEB-UIUX-818. **[MAJOR] Exit impersonation calls full `logout()` → bounces to tenant /login.** SA console not restored. SA must manually navigate back to /super-admin/tenants. L4, L1.
+- [x] WEB-UIUX-818. **[MAJOR] Exit impersonation calls full `logout()` → bounces to tenant /login.** SA console not restored. SA must manually navigate back to /super-admin/tenants. L4, L1. **[AUTOLOOP-T38 RESOLVED: handleExit clears impersonation marker + navigate("/super-admin/tenants") instead of full logout; SA console restored.]**
   `packages/web/src/components/ImpersonationBanner.tsx:89-93`
 
 - [ ] WEB-UIUX-819. **[MAJOR] `jti` returned from /impersonate never persisted client-side.** `endImpersonation` API exists but unreachable — leaked token can't be revoked from UI. Only TTL expiry. L16.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:179-212`
 
-- [ ] WEB-UIUX-820. **[MAJOR] Tenant suspended mid-session → 401 → generic "session expired" toast.** Real reason buried in `error.response.data.code`. Operator doesn't know why. L8, L4.
+- [x] WEB-UIUX-820. **[MAJOR] Tenant suspended mid-session → 401 → generic "session expired" toast.** Real reason buried in `error.response.data.code`. Operator doesn't know why. L8, L4. **[AUTOLOOP-T38 RESOLVED: server adds ERR_TENANT_SUSPENDED code; refresh handler checks master DB; client 401 interceptor shows "Your account has been suspended. Contact support." + force-logs out.]**
   `packages/web/src/api/client.ts:320-349`
 
 - [ ] WEB-UIUX-821. **[MAJOR] Trial expiry mid-sale: 403 upgrade modal but cart NOT preserved.** Cashier mid-sale loses cart silently. L4, L8.
 
-- [ ] WEB-UIUX-822. **[MAJOR] Last-admin deletion: 409 surfaces wrong toast "This item was updated elsewhere — refresh to see latest changes."** Tenant locked out forever, no in-app recovery path. L8, L4.
+- [x] WEB-UIUX-822. **[MAJOR] Last-admin deletion: 409 surfaces wrong toast "This item was updated elsewhere — refresh to see latest changes."** Tenant locked out forever, no in-app recovery path. L8, L4. **[AUTOLOOP-T38 RESOLVED: server last-admin guard 400→409 with ERR_USER_LAST_ADMIN code; client 409 interceptor shows actionable "Promote another user to admin first" toast.]**
 
 - [ ] WEB-UIUX-823. **[MAJOR] Tenant slug change breaks magic links with no graceful surface.** L4, L14.
 
-- [ ] WEB-UIUX-824. **[MINOR] `impersonation_session` localStorage outlives sessionStorage SA token.** Marker survives browser restart with no live token. L16.
+- [x] WEB-UIUX-824. **[MINOR] `impersonation_session` localStorage outlives sessionStorage SA token.** Marker survives browser restart with no live token. L16. **[AUTOLOOP-T38 RESOLVED: App.tsx boot useEffect clears impersonation marker if no live SA token (covers hard-refresh expiry); session storage swap already done.]**
 
 #### ED7: Subscription/Billing Chaos
 
 - [ ] WEB-UIUX-825. **[BLOCKER] CheckoutModal HTTP 202 / `pending_reconciliation` lumped into flat "decline".** Cashier hits Retry, server idempotency replays prior charge, customer potentially double-billed. UI never tells operator first charge actually went through. L8, L16.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:351-365,377-398`
 
-- [ ] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16.
+- [ ] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:891-902`
 
 - [ ] WEB-UIUX-827. **[BLOCKER] Cancel hard-codes `{ immediate: true }` — no end-of-period option.** Customer paid through end of month → forfeits remaining time. CustomerDetailPage variant has NO confirmation at all. L5, L8, L16.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124,155-168`
 
-- [ ] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7.
+- [ ] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
 
 - [ ] WEB-UIUX-829. **[BLOCKER] Past-due status badge shown but per-row "Bill now" button gated on `status === 'active'` — past-due rows can't be retried.** Wrong gating. L5, L8.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`

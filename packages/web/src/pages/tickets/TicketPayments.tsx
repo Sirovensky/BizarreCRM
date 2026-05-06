@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   DollarSign, FileText, TrendingUp, ExternalLink, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ticketApi } from '@/api/endpoints';
+import { ticketApi, estimateApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
@@ -121,6 +121,28 @@ export function TicketPayments({
     },
     onError: () => toast.error('Failed to generate invoice'),
   });
+
+  // WEB-UIUX-810: fetch linked estimate to guard against stage-skip
+  const { data: estimateData } = useQuery({
+    queryKey: ['estimate', ticket.estimate_id],
+    queryFn: () => estimateApi.get(ticket.estimate_id!),
+    enabled: !!ticket.estimate_id,
+    staleTime: 30_000,
+  });
+  const linkedEstimate = estimateData?.data?.data;
+
+  const handleGenerateInvoice = () => {
+    // WEB-UIUX-810: warn if a linked estimate exists but is not yet approved
+    if (linkedEstimate && linkedEstimate.status !== 'approved') {
+      const proceed = window.confirm(
+        `The linked estimate is currently "${linkedEstimate.status}". ` +
+        'Generating an invoice without an approved estimate skips the approval step. ' +
+        'Continue anyway?'
+      );
+      if (!proceed) return;
+    }
+    convertInvoiceMut.mutate();
+  };
 
   return (
     <>
@@ -267,7 +289,7 @@ export function TicketPayments({
             )}
           </div>
         ) : (
-          <button onClick={() => convertInvoiceMut.mutate()} disabled={convertInvoiceMut.isPending}
+          <button onClick={handleGenerateInvoice} disabled={convertInvoiceMut.isPending}
             className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
             {convertInvoiceMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
             Generate Invoice

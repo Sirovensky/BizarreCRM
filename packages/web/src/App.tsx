@@ -4,6 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
 import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
+import {
+  clearImpersonationSession,
+  getImpersonationSession,
+} from './components/ImpersonationBanner';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary, PageErrorBoundary } from './components/shared/PageErrorBoundary';
 import { SpotlightCoach } from './components/onboarding/SpotlightCoach';
@@ -330,6 +334,17 @@ export default function App() {
   // `__bizarreLoginNavReady` flag tells authStore the bridge is wired so the
   // setTimeout fallback (which would still hard-nav if nothing was listening)
   // can short-circuit.
+  // WEB-UIUX-824: on every app boot, if an impersonation marker is present
+  // but no live SA token backs it, clear the stale marker immediately.
+  // Both keys live in sessionStorage (so they die with the tab), but a
+  // hard-refresh within the same session can leave a marker with no token
+  // if the SA token expired between page loads.
+  useEffect(() => {
+    if (getImpersonationSession() && !superAdminTokenStore.get()) {
+      clearImpersonationSession();
+    }
+  }, []); // runs once at mount — no deps needed
+
   useEffect(() => {
     (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = true;
     const handler = () => {

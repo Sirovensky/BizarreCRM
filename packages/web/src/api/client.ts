@@ -18,7 +18,7 @@ export const LOGOUT_REQUIRED_EVENT = 'bizarre-crm:logout-required';
 const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
 
 interface LogoutRequiredDetail {
-  reason: 'refresh-failed' | 'session-expired' | 'forced';
+  reason: 'refresh-failed' | 'session-expired' | 'forced' | 'tenant-suspended';
 }
 
 // WEB-FJ-007 / FIXED-by-Fixer-JJJ 2026-04-25 — production console output must
@@ -277,6 +277,17 @@ client.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+
+      // WEB-UIUX-820: If the server signals the tenant has been suspended, skip
+      // the refresh attempt entirely (it would fail for the same reason) and emit
+      // a specific logout reason so the auth store can show an actionable message
+      // instead of the generic "session expired" toast.
+      if (error.errorCode === 'ERR_TENANT_SUSPENDED') {
+        toast.error('Your account has been suspended. Please contact support.');
+        forceLogout('tenant-suspended');
+        return Promise.reject(error);
+      }
+
       try {
         await performRefresh();
         // WEB-FI-003 fix: if the retried request still 401s the response was
@@ -363,10 +374,24 @@ client.interceptors.response.use(
         typeof error.response?.data?.message === 'string'
           ? error.response.data.message
           : null;
-      toast.error(
-        serverMsg ?? 'This item was updated elsewhere — refresh to see the latest changes.',
-        { id: 'conflict-409' }, // dedupe burst on rapid double-click
-      );
+      const errorCode =
+        typeof error.response?.data?.code === 'string'
+          ? error.response.data.code
+          : null;
+      // WEB-UIUX-822: last-admin deletion/demotion returns ERR_USER_LAST_ADMIN —
+      // show an actionable message instead of the generic stale-data fallback.
+      if (errorCode === 'ERR_USER_LAST_ADMIN') {
+        toast.error(
+          (serverMsg ?? 'Cannot remove the last admin.') +
+            ' Promote another user to admin first.',
+          { id: 'conflict-409' },
+        );
+      } else {
+        toast.error(
+          serverMsg ?? 'This item was updated elsewhere — refresh to see the latest changes.',
+          { id: 'conflict-409' }, // dedupe burst on rapid double-click
+        );
+      }
     }
 
     return Promise.reject(error);
