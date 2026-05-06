@@ -163,6 +163,18 @@
       0 0 0 4px rgb(var(--primary-500));
   }
 
+  /* WEB-UIUX-196 — WCAG 2.4.11 Focus Not Obscured: sticky <thead> can cover a
+   * focused row when the user tabs through a table. scroll-margin-top tells the
+   * browser to leave at least 4rem of clearance above the focused element when
+   * scrolling it into view, which is enough for the tallest sticky header used
+   * across the 14+ pages that have <thead class="sticky top-0">. Applied via
+   * :focus-within so it fires whether the focused element is the <tr> itself or
+   * any child cell/button inside it. */
+  tbody tr:focus-within,
+  tbody tr:focus {
+    scroll-margin-top: 4rem;
+  }
+
   /* Low-contrast placeholders */
   ::placeholder {
     color: #a1a1aa;

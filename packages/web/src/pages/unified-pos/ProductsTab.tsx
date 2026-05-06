@@ -171,7 +171,7 @@ export function ProductsTab() {
                   onClick={() => handleAdd(p)}
                   disabled={outOfStock}
                   className={cn(
-                    'btn btn-md relative !h-auto flex-col !items-start !justify-start rounded-xl border !p-3 text-left !whitespace-normal',
+                    'btn btn-md relative !h-auto min-h-[44px] min-w-[44px] flex-col !items-start !justify-start rounded-xl border !p-3 text-left !whitespace-normal',
                     outOfStock
                       ? 'cursor-not-allowed border-surface-200 opacity-50 dark:border-surface-700'
                       : 'border-surface-200 bg-white hover:border-primary-400 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:border-surface-700 dark:bg-surface-800 dark:hover:border-primary-500',

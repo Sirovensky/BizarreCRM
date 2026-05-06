@@ -53,10 +53,15 @@ export function DepositCollectModal({
       if (!isFinite(parsed) || parsed <= 0 || parsed > 999_999.99) {
         throw new Error('Enter a positive amount up to $999,999.99');
       }
+      // Reject fractional cents (more than 2 decimal places)
+      if (Math.round(parsed * 100) !== parsed * 100) {
+        throw new Error('Amount cannot have fractional cents (max 2 decimal places)');
+      }
+      const amountCents = Math.round(parsed * 100);
       const res = await api.post('/deposits', {
         customer_id: customerId,
         ticket_id: ticketId,
-        amount: parsed,
+        amount: amountCents,
         notes: notes || null,
       });
       return res.data.data as { id: number; amount_cents: number };
@@ -99,6 +104,7 @@ export function DepositCollectModal({
             <input
               type="number"
               step="0.01"
+              min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"

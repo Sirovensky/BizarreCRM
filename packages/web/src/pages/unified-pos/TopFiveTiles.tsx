@@ -74,7 +74,7 @@ export function TopFiveTiles() {
           <button
             key={item.inventory_item_id}
             onClick={() => handleAdd(item)}
-            className="btn btn-md !h-auto flex-col !items-start !justify-between !gap-1 border border-orange-200 bg-white !px-3 !py-2 text-left !whitespace-normal hover:border-orange-400 hover:bg-orange-50 dark:border-orange-500/30 dark:bg-surface-800 dark:hover:border-orange-400 dark:hover:bg-orange-500/10"
+            className="btn btn-md !h-auto min-h-[44px] flex-col !items-start !justify-between !gap-1 border border-orange-200 bg-white !px-3 !py-2 text-left !whitespace-normal hover:border-orange-400 hover:bg-orange-50 dark:border-orange-500/30 dark:bg-surface-800 dark:hover:border-orange-400 dark:hover:bg-orange-500/10"
             title={`${item.units_sold} sold today — ${formatCurrency(item.retail_price)}`}
           >
             <div className="line-clamp-2 text-xs font-medium text-surface-900 dark:text-surface-50">

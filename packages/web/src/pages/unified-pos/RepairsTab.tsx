@@ -357,7 +357,7 @@ function DeviceStep({ category, onSelect }: {
                   key={d.id}
                   data-tutorial-target="ticket:device-picker-option"
                   onClick={() => onSelect(d.id, `${d.manufacturer_name ?? ''} ${d.name}`.trim())}
-                  className="btn btn-md !h-auto w-full !justify-start !gap-3 !rounded-none border-b border-surface-100 !px-3 !py-2.5 text-left !whitespace-normal last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+                  className="btn btn-md !h-auto min-h-[44px] w-full !justify-start !gap-3 !rounded-none border-b border-surface-100 !px-3 !py-2.5 text-left !whitespace-normal last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
                 >
                   <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
                     {d.manufacturer_name && !mfgFilter && (
@@ -606,7 +606,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   key={grade.id}
                   onClick={() => setSelectedGradeId(grade.id)}
                   className={cn(
-                    'btn btn-md !h-auto w-full !justify-start !gap-3 border !px-3 !py-2.5 text-left !whitespace-normal',
+                    'btn btn-md !h-auto min-h-[44px] w-full !justify-start !gap-3 border !px-3 !py-2.5 text-left !whitespace-normal',
                     isGradeSelected
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-600 dark:bg-primary-900/20'
                       : 'border-surface-200 hover:border-surface-300 dark:border-surface-700 dark:hover:border-surface-600',

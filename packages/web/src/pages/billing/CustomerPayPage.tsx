@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { formatCents } from '@/utils/format';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle, Loader2 } from 'lucide-react';
 
 interface PublicLink {
   id: number;
@@ -91,12 +91,20 @@ export function CustomerPayPage() {
         });
       }
     } catch (err) {
-      setView({
-        kind: 'error',
-        message: axios.isAxiosError(err)
-          ? err.response?.data?.message ?? 'Could not load payment link'
-          : 'Could not load payment link',
-      });
+      let message = 'Could not load payment link';
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 410) {
+          message = 'Payment link has expired. Contact the merchant for a new link.';
+        } else if (status === 404) {
+          message = 'Payment link not found.';
+        } else if (status !== undefined && status >= 500) {
+          message = 'Service temporarily unavailable. Please try again.';
+        } else {
+          message = err.response?.data?.message ?? 'Could not load payment link';
+        }
+      }
+      setView({ kind: 'error', message });
     }
   }, [token]);
 
@@ -191,7 +199,7 @@ export function CustomerPayPage() {
 
           {view.kind === 'paid' ? (
             <div className="space-y-3 text-center">
-              <div className="text-4xl text-success-600 dark:text-success-400">✓</div>
+              <span role="img" aria-label="Paid"><CheckCircle className="mx-auto h-10 w-10 text-success-600 dark:text-success-400" /></span>
               <p className="text-lg font-semibold text-success-700 dark:text-success-300">Already paid</p>
               <p className="text-sm text-surface-600 dark:text-surface-300">
                 This invoice has already been paid in full. Thank you!
