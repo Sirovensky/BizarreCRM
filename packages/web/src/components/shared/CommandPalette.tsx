@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUiStore } from '@/stores/uiStore';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { searchApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import {
@@ -208,10 +209,11 @@ export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen } = useUiStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  // SCAN-1117: monotonically increasing request id so a slow prior search
-  // response can't overwrite a newer one if the user types faster than the
-  // network round-trip.
-  const reqSeq = useRef(0);
+  const trapRef = useFocusTrap(commandPaletteOpen, { initialFocusSelector: 'input' });
+  // WEB-UIUX-447: AbortController ref so each new search cancels the in-flight
+  // axios request rather than just discarding its response. Slow responses no
+  // longer consume server bandwidth or parse their payload.
+  const abortCtrlRef = useRef<AbortController | null>(null);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GroupedResults | null>(null);
@@ -261,7 +263,44 @@ export function CommandPalette() {
     return () => cancelAnimationFrame(raf);
   }, [commandPaletteOpen]);
 
-  // Debounced search
+  // Core search executor — called directly for immediate fetches (e.g. recent-
+  // item click) or via the debounced effect for normal typing.
+  const runSearch = useCallback(async (term: string) => {
+    if (term.trim().length < MIN_QUERY_LENGTH) {
+      setResults(null);
+      setSelectedIndex(0);
+      return;
+    }
+    // WEB-UIUX-447: abort any in-flight request before starting a new one so
+    // slow axios responses are actually cancelled at the network level, not
+    // merely discarded after being fully parsed.
+    abortCtrlRef.current?.abort();
+    const ac = new AbortController();
+    abortCtrlRef.current = ac;
+
+    setLoading(true);
+    setSearchError(false);
+    // WEB-FL-007 (Fixer-B12): page-jump matches are local + synchronous,
+    // so they appear even if the backend search fails or is unavailable.
+    const pages = matchPageJumps(term);
+    try {
+      const res = await searchApi.global(term.trim(), { signal: ac.signal });
+      const data = res.data.data as Omit<GroupedResults, 'pages'>;
+      setResults({ ...data, pages });
+      setSelectedIndex(0);
+    } catch (err) {
+      if (ac.signal.aborted) return; // cancelled — a newer search is in flight
+      // Surface the failure as an explicit error state so the palette shows
+      // "Search unavailable" instead of a misleading "No results found".
+      console.error('[CommandPalette] search failed', err);
+      setResults({ tickets: [], customers: [], inventory: [], invoices: [], pages });
+      setSearchError(true);
+    } finally {
+      if (!ac.signal.aborted) setLoading(false);
+    }
+  }, []);
+
+  // Debounced search for normal typing — recent-item clicks bypass this via runSearch
   useEffect(() => {
     if (query.trim().length < MIN_QUERY_LENGTH) {
       setResults(null);
@@ -269,35 +308,9 @@ export function CommandPalette() {
       return;
     }
 
-    const timer = setTimeout(async () => {
-      // SCAN-1117: capture the request id BEFORE awaiting so late responses
-      // from a stale query can be discarded when they resolve.
-      const myReqId = ++reqSeq.current;
-      setLoading(true);
-      setSearchError(false);
-      // WEB-FL-007 (Fixer-B12): page-jump matches are local + synchronous,
-      // so they appear even if the backend search fails or is unavailable.
-      const pages = matchPageJumps(query);
-      try {
-        const res = await searchApi.global(query.trim());
-        if (myReqId !== reqSeq.current) return; // stale — a newer search is in flight
-        const data = res.data.data as Omit<GroupedResults, 'pages'>;
-        setResults({ ...data, pages });
-        setSelectedIndex(0);
-      } catch (err) {
-        if (myReqId !== reqSeq.current) return;
-        // Surface the failure as an explicit error state so the palette shows
-        // "Search unavailable" instead of a misleading "No results found".
-        console.error('[CommandPalette] search failed', err);
-        setResults({ tickets: [], customers: [], inventory: [], invoices: [], pages });
-        setSearchError(true);
-      } finally {
-        if (myReqId === reqSeq.current) setLoading(false);
-      }
-    }, 300);
-
+    const timer = setTimeout(() => runSearch(query), 300);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, runSearch]);
 
   // Navigate to result
   const navigateTo = useCallback(
@@ -349,10 +362,12 @@ export function CommandPalette() {
     }
   }, [selectedIndex]);
 
-  // Use recent search as query
+  // Use recent search as query — sets the input and fires the search immediately,
+  // bypassing the 300ms debounce so results appear on click without delay.
   const useRecent = (term: string) => {
     setQuery(term);
     inputRef.current?.focus();
+    runSearch(term);
   };
 
   if (!commandPaletteOpen) return null;
@@ -447,6 +462,7 @@ export function CommandPalette() {
       {/* Modal */}
       <div className="fixed inset-0 z-[101] flex items-start justify-center px-4 pt-[15vh]">
         <div
+          ref={trapRef as React.RefObject<HTMLDivElement>}
           role="dialog"
           aria-modal="true"
           aria-labelledby="command-palette-title"

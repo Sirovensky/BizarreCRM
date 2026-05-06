@@ -72,6 +72,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   const [lockedUntil, setLockedUntil] = useState<number | null>(initialLockout.lockedUntil);
   const [lockCountdown, setLockCountdown] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   // WEB-FC-005: dialog ref drives the Tab focus trap below
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +138,15 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // WEB-UIUX-445: when lockout activates, the PIN input becomes disabled and
+  // retains DOM focus — keyboard events are silently dropped. Move focus to
+  // the Cancel button so the user has a reachable, actionable target.
+  useEffect(() => {
+    if (isLocked) {
+      cancelButtonRef.current?.focus();
+    }
+  }, [isLocked]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,12 +239,19 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
 
-          {error && (
+          {isLocked && (
+            <p role="alert" aria-live="polite" className="text-center text-sm text-amber-600 dark:text-amber-400">
+              Locked. Press Cancel to close.
+            </p>
+          )}
+
+          {error && !isLocked && (
             <p className="text-center text-sm text-red-500">{error}</p>
           )}
 
           <div className="flex gap-3">
             <Button
+              ref={cancelButtonRef}
               type="button"
               onClick={onCancel}
               variant="secondary"

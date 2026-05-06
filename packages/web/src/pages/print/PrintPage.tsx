@@ -1295,6 +1295,20 @@ export function PrintPage() {
   const isEmbedded = params.get('embed') === '1';
   // Auto-print only if ?autoprint=1 is in URL (explicit opt-in)
   const autoprint = params.get('autoprint') === '1';
+  // WEB-UIUX-449: signal PrintPreviewModal's iframe poll that content is
+  // fully rendered. The modal polls for [data-print-ready] on the iframe
+  // document; setting it on <body> here (after data + config have loaded)
+  // ensures the attribute is present only when the receipt is actually ready,
+  // so the modal can fire print() without waiting for the 8-second timeout.
+  useEffect(() => {
+    if (printReady) {
+      document.body.dataset.printReady = 'true';
+      return () => {
+        delete document.body.dataset.printReady;
+      };
+    }
+  }, [printReady]);
+
   useEffect(() => {
     if (autoprint && printReady) {
       const timer = setTimeout(() => window.print(), 400);

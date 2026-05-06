@@ -41,6 +41,7 @@ const FOCUSABLE_SELECTORS = [
   'select:not([disabled])',
   'textarea:not([disabled])',
   '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable]',
 ].join(', ');
 
 function getFocusable(container: HTMLElement): HTMLElement[] {

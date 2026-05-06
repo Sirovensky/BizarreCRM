@@ -587,7 +587,9 @@ export const automationsApi = {
 
 // ==================== Search ====================
 export const searchApi = {
-  global: (q: string) => api.get('/search', { params: { q } }),
+  // WEB-UIUX-447: accept an AbortSignal so callers can cancel in-flight requests.
+  global: (q: string, options?: { signal?: AbortSignal }) =>
+    api.get('/search', { params: { q }, signal: options?.signal }),
 };
 
 // ==================== Expenses ====================

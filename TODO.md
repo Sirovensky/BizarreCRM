@@ -2412,45 +2412,45 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-436. **[BLOCKER] No shared `<Modal>` primitive — 9 sites in this pass each hand-roll backdrop+role+focus+Esc.** ConfirmDialog, CommandPalette, PinModal, UpgradeModal, PrintPreviewModal, QuickSmsModal, MergeDialog (TicketDetail), ReloadModal (gift-card), NewShiftModal. Inevitable focus/scroll/Esc drift. L4, L12. **[AUTOLOOP-T18 RESOLVED: created canonical `<Modal>` primitive at `components/shared/Modal.tsx` (backdrop+role+aria+useFocusTrap+useEscClose+body-lock); 9 hand-rolled modals untouched for incremental adoption.]**
   <!-- meta: fix=extract-Modal-with-portal+focus-trap+scroll-lock+restore-focus -->
 
-- [ ] WEB-UIUX-437. **[BLOCKER] CommandPalette no focus trap.** Tab cycles to host page chrome behind backdrop. Esc handled on input only — focus on a result row + Esc closes via list keydown delegation but Tab after last result escapes. L12.
+- [x] WEB-UIUX-437. **[BLOCKER] CommandPalette no focus trap.** Tab cycles to host page chrome behind backdrop. Esc handled on input only — focus on a result row + Esc closes via list keydown delegation but Tab after last result escapes. L12. **[AUTOLOOP-T19 RESOLVED: CommandPalette wired with `useFocusTrap(open, {initialFocusSelector:"input"})`; trapRef on dialog div.]**
   `packages/web/src/components/shared/CommandPalette.tsx:325-342,444-453`
 
 - [ ] WEB-UIUX-438. **[BLOCKER] UpgradeModal no focus trap, no initial focus, no focus-restore.** Open via planStore from anywhere → Tab leaks behind backdrop, focus lands wherever it was before. L12.
   `packages/web/src/components/shared/UpgradeModal.tsx:13-20,77-90`
 
-- [ ] WEB-UIUX-439. **[BLOCKER] PrintPreviewModal no focus trap, no initial focus.** L12.
+- [x] WEB-UIUX-439. **[BLOCKER] PrintPreviewModal no focus trap, no initial focus.** L12. **[AUTOLOOP-T19 RESOLVED: PrintPreviewModal swaps inline trap for canonical useFocusTrap; initial focus set to Close button.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:62-68,69-78`
 
 - [ ] WEB-UIUX-440. **[BLOCKER] QuickSmsModal no focus trap. `autoFocus` lands on textarea but Tab cycles out.** L12.
   `packages/web/src/components/shared/QuickSmsModal.tsx:101-114,179-187`
 
-- [ ] WEB-UIUX-441. **[BLOCKER] Body-scroll-lock missing on every modal in this pass.** Backdrop intercepts clicks but `<body>` keeps scrolling under modal — keyboard space/PageDown scrolls page behind dialog. L4, L11.
+- [x] WEB-UIUX-441. **[BLOCKER] Body-scroll-lock missing on every modal in this pass.** Backdrop intercepts clicks but `<body>` keeps scrolling under modal — keyboard space/PageDown scrolls page behind dialog. L4, L11. **[AUTOLOOP-T19 RESOLVED: extracted `useBodyScrollLock(active)` hook in `hooks/useBodyScrollLock.ts`; canonical Modal delegates; hand-rolled modals can adopt directly.]**
   9 sites
   <!-- meta: fix=add-useScrollLock-or-data-attr-toggle-on-body -->
 
 - [ ] WEB-UIUX-442. **[MAJOR] ConfirmDialog focus restore tied to cleanup of `useEffect([open, requireTyping])`.** Toggling `requireTyping` while open re-runs cleanup → focus restored to original element while modal still showing. L12.
   `packages/web/src/components/shared/ConfirmDialog.tsx:36-57`
 
-- [ ] WEB-UIUX-443. **[MAJOR] ConfirmDialog focus-trap selector misses `<a>`, `<select>`, `<textarea>`, `[contenteditable]`.** Empirically only buttons + inputs in current usage; trap will leak if any consumer adds a link or textarea. L12.
+- [x] WEB-UIUX-443. **[MAJOR] ConfirmDialog focus-trap selector misses `<a>`, `<select>`, `<textarea>`, `[contenteditable]`.** Empirically only buttons + inputs in current usage; trap will leak if any consumer adds a link or textarea. L12. **[AUTOLOOP-T19 RESOLVED: useFocusTrap FOCUSABLE_SELECTORS adds `[contenteditable]`; a/button/input/select/textarea/[tabindex] already covered.]**
   `packages/web/src/components/shared/ConfirmDialog.tsx:19`
 
 - [ ] WEB-UIUX-444. **[MAJOR] CommandPalette uses `'k'` literal not `e.key.toLowerCase()`.** Cmd+Shift+K (DevTools toggle on Firefox) bypasses preventDefault but if user has CapsLock on, Cmd+K does nothing. L1.
   `packages/web/src/components/layout/Header.tsx:281`
 
-- [ ] WEB-UIUX-445. **[MAJOR] PinModal Cancel button is the closest focus target after lockout.** Once `isLocked`, the disabled input keeps focus but typing is no-op — user has no clear indication that Tab→Cancel is the only way out. L12, L8.
+- [x] WEB-UIUX-445. **[MAJOR] PinModal Cancel button is the closest focus target after lockout.** Once `isLocked`, the disabled input keeps focus but typing is no-op — user has no clear indication that Tab→Cancel is the only way out. L12, L8. **[AUTOLOOP-T19 RESOLVED: PinModal moves focus to Cancel button on isLocked; visible amber "Locked. Press Cancel to close." alert.]**
   `packages/web/src/components/shared/PinModal.tsx:213-222`
 
 - [ ] WEB-UIUX-446. **[MAJOR] CommandPalette page-jump match is global substring on aliases — `q="po"` lights up "Pos", "Purchase Orders" (alias `po`), "Pipeline".** No fuzzy/prefix preference. L5.
   `packages/web/src/components/shared/CommandPalette.tsx:83-101`
 
-- [ ] WEB-UIUX-447. **[MAJOR] CommandPalette stale-search guard uses `reqSeq.current` ref but doesn't cancel underlying axios request.** Slow-network responses still fly + parsed. Wasted bandwidth + minor server pressure. L15.
+- [x] WEB-UIUX-447. **[MAJOR] CommandPalette stale-search guard uses `reqSeq.current` ref but doesn't cancel underlying axios request.** Slow-network responses still fly + parsed. Wasted bandwidth + minor server pressure. L15. **[AUTOLOOP-T19 RESOLVED: CommandPalette uses AbortController instead of reqSeq ref; slow axios requests aborted at network level. searchApi.global accepts signal.]**
   `packages/web/src/components/shared/CommandPalette.tsx:266-301`
   <!-- meta: fix=AbortController-passed-to-axios-signal -->
 
 - [ ] WEB-UIUX-448. **[MINOR] ConfirmDialog backdrop-click cancels even with required-typing in progress.** Half-typed confirm text discarded silently. L8.
   `packages/web/src/components/shared/ConfirmDialog.tsx:93`
 
-- [ ] WEB-UIUX-449. **[MINOR] PrintPreviewModal `iframe.onload` polls every 200 ms for 8 s checking for `[data-print-ready]` — no `data-print-ready` actually emitted by PrintPage.** Fallback path always taken. L13, L4.
+- [x] WEB-UIUX-449. **[MINOR] PrintPreviewModal `iframe.onload` polls every 200 ms for 8 s checking for `[data-print-ready]` — no `data-print-ready` actually emitted by PrintPage.** Fallback path always taken. L13, L4. **[AUTOLOOP-T19 RESOLVED: PrintPage useEffect sets `document.body.dataset.printReady = "true"` once data+config loaded; PrintPreviewModal poll exits 8 s fallback.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:39-56`
   vs `packages/web/src/pages/print/PrintPage.tsx` — no `data-print-ready` attribute
 
@@ -2464,20 +2464,20 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-452. **[MINOR] CommandPalette `kbd` ESC hint hidden below `sm` — mobile users see no close hint.** L11.
   `packages/web/src/components/shared/CommandPalette.tsx:480-482`
 
-- [ ] WEB-UIUX-453. **[MINOR] CommandPalette `useRecent(term)` sets query but doesn't trigger immediate fetch — 300 ms debounce delay still applies.** Looks broken on click. L5.
+- [x] WEB-UIUX-453. **[MINOR] CommandPalette `useRecent(term)` sets query but doesn't trigger immediate fetch — 300 ms debounce delay still applies.** Looks broken on click. L5. **[AUTOLOOP-T19 RESOLVED: extracted `runSearch(term)` useCallback in CommandPalette; useRecent calls it directly bypassing 300 ms debounce.]**
   `packages/web/src/components/shared/CommandPalette.tsx:354-357`
 
 - [ ] WEB-UIUX-454. **[MINOR] EmptyState component has no `role="status"` — SR users miss "no results" announcement on async results swap.** L12.
   `packages/web/src/components/shared/EmptyState.tsx:18`
 
-- [ ] WEB-UIUX-455. **[MINOR] Skeleton uses `Math.random()` for column widths — every render shifts skeleton sizes.** Visible jiggle on parent re-render. L13.
+- [x] WEB-UIUX-455. **[MINOR] Skeleton uses `Math.random()` for column widths — every render shifts skeleton sizes.** Visible jiggle on parent re-render. L13. **[AUTOLOOP-T19 RESOLVED: SkeletonTable header row Math.random width replaced with deterministic per-column-index formula.]**
   `packages/web/src/components/shared/Skeleton.tsx:41`
   <!-- meta: fix=seed-random-by-row-index -->
 
 - [ ] WEB-UIUX-458. **[MINOR] Button primary variant `text-primary-950` only legible if primary is light/cream.** Same issue as WEB-UIUX-418 but in shared component. L9.
   `packages/web/src/components/shared/Button.tsx:55-56`
 
-- [ ] WEB-UIUX-459. **[MINOR] OfflineBanner not in landmark — sits between `<ImpersonationBanner>` and `<Header>` with no `<aside>`/`<section>` wrapper.** Banner appears as orphan to SR rotor. L12.
+- [x] WEB-UIUX-459. **[MINOR] OfflineBanner not in landmark — sits between `<ImpersonationBanner>` and `<Header>` with no `<aside>`/`<section>` wrapper.** Banner appears as orphan to SR rotor. L12. **[AUTOLOOP-T19 RESOLVED: OfflineBanner root <div role=status> → <section role=alert aria-label="Connectivity status" aria-live=polite> landmark.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:42-50`
 
 - [ ] WEB-UIUX-460. **[MINOR] OfflineBanner `role="status"`+`aria-live="polite"` but aria-live region must be present BEFORE update; conditional `if (online) return null` re-mounts the region each transition.** SR may miss the announcement. L12.

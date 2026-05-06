@@ -42,6 +42,7 @@
 
 import { useEffect, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,6 +193,7 @@ export function Modal({
 
   useFocusRestore(open);
   useFocusTrapAndEsc(dialogRef, open, onClose);
+  useBodyScrollLock(open);
 
   // Auto-focus first focusable element when modal opens.
   useEffect(() => {
@@ -203,14 +205,6 @@ export function Modal({
       first?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [open]);
-
-  // Prevent body scroll while modal is open.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; };
   }, [open]);
 
   if (!open) return null;

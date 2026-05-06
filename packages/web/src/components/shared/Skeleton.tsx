@@ -37,7 +37,7 @@ export function SkeletonTable({ rows = 5, cols = 4 }: SkeletonTableProps) {
           <div
             key={i}
             className="h-3 rounded bg-surface-200 dark:bg-surface-700"
-            style={{ width: `${80 + Math.random() * 120}px` }}
+            style={{ width: `${80 + (i * 37 + 53) % 121}px` }}
           />
         ))}
       </div>
