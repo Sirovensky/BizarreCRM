@@ -16,6 +16,7 @@ import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { extractApiError } from '@/utils/apiError';
 
 interface Shift {
   id: number;
@@ -128,7 +129,7 @@ export function ShiftSchedulePage() {
       setNewEnd('');
       setNewRole('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to create shift'),
+    onError: (e: unknown) => toast.error(extractApiError(e).message || 'Failed to create shift'),
   });
 
   const deleteMut = useMutation({
@@ -140,7 +141,7 @@ export function ShiftSchedulePage() {
       toast.success('Shift deleted');
       queryClient.invalidateQueries({ queryKey: ['team', 'shifts'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to delete shift'),
+    onError: (e: unknown) => toast.error(extractApiError(e).message || 'Failed to delete shift'),
   });
 
   const reviewMut = useMutation({
@@ -152,7 +153,7 @@ export function ShiftSchedulePage() {
       toast.success(`Time-off ${vars.status}`);
       queryClient.invalidateQueries({ queryKey: ['team', 'time-off', 'pending'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to update time-off'),
+    onError: (e: unknown) => toast.error(extractApiError(e).message || 'Failed to update time-off'),
   });
 
   const days = useMemo(() => {

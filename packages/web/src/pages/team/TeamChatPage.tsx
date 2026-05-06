@@ -14,6 +14,8 @@
  * tab comes forward (so chat doesn't look frozen on tab switch).
  */
 import { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -88,6 +90,9 @@ export function TeamChatPage() {
   const [showMentions, setShowMentions] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [showNew, setShowNew] = useState(false);
+  // WEB-UIUX-557: focus-trap + scroll-lock for the New-channel modal.
+  const newChannelTrapRef = useFocusTrap(showNew, { initialFocusSelector: 'input' }) as { current: HTMLDivElement | null };
+  useBodyScrollLock(showNew);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -384,6 +389,7 @@ export function TeamChatPage() {
           }}
         >
           <div
+            ref={newChannelTrapRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-channel-title"

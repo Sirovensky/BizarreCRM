@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  useBodyScrollLock(open);
   // WEB-FD-010 (Fixer-AAA 2026-04-25): capture the element that was focused
   // when the dialog opened so keyboard users land back on the originating
   // delete/edit button instead of <body> after dismiss.

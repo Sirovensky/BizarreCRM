@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -84,6 +86,9 @@ interface ReloadModalProps {
 function ReloadModal({ cardId, onClose }: ReloadModalProps) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
+  // WEB-UIUX-557: focus-trap + scroll-lock (component only mounts when open).
+  const dialogRef = useFocusTrap(true, { initialFocusSelector: 'input[type="number"]' }) as { current: HTMLDivElement | null };
+  useBodyScrollLock(true);
 
   const reloadMutation = useMutation({
     mutationFn: () => {
@@ -112,6 +117,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="gift-card-reload-title"
@@ -166,12 +172,15 @@ function DetailSkeleton() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const TX_PAGE_SIZE = 50;
+
 export function GiftCardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const cardId = Number(id);
   const [showCode, setShowCode] = useState(false);
   const [showReloadModal, setShowReloadModal] = useState(false);
+  const [txPage, setTxPage] = useState(0);
   // WEB-UIUX-552: gate Reload on server-side permission (gift_cards.reload is
   // admin/manager only). Free-plan cashiers don't have it, so the button must
   // be inert rather than letting them fire a request that returns 403.
@@ -297,40 +306,78 @@ export function GiftCardDetailPage() {
       </div>
 
       {/* Transaction History */}
-      <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-surface-100 dark:border-surface-800">
-          <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-200">Transaction history</h2>
-        </div>
-        {card.transactions.length === 0 ? (
-          <p className="text-sm text-surface-500 text-center py-10">No transactions yet</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
-                <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Date</th>
-                <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Type</th>
-                <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Notes</th>
-                <th className="text-right px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-              {card.transactions.map((tx) => (
-                <tr key={tx.id}>
-                  <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{formatDate(tx.created_at)}</td>
-                  <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
-                  <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
-                  <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type, tx.amount)}`}>
-                    {/* Fixer-WW: sign driven by tx.type so redemptions always
-                        render `-$X` (matches POS convention) and -0 amounts
-                        no longer flash as `+$0.00` (Math.abs trips -0). */}
-                    {tx.type === 'redemption' ? '-' : tx.amount > 0 ? '+' : tx.amount < 0 ? '-' : ''}{formatCurrency(tx.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {(() => {
+        const txs = card.transactions;
+        const totalPages = Math.max(1, Math.ceil(txs.length / TX_PAGE_SIZE));
+        const safePage = Math.min(txPage, totalPages - 1);
+        const start = safePage * TX_PAGE_SIZE;
+        const end = Math.min(start + TX_PAGE_SIZE, txs.length);
+        const pageTxs = txs.slice(start, end);
+        return (
+          <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between gap-4">
+              <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-200">Transaction history</h2>
+              {txs.length > 0 && (
+                <span className="text-xs text-surface-400 dark:text-surface-500 shrink-0">
+                  {start + 1}–{end} of {txs.length}
+                </span>
+              )}
+            </div>
+            {txs.length === 0 ? (
+              <p className="text-sm text-surface-500 text-center py-10">No transactions yet</p>
+            ) : (
+              <>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
+                      <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Date</th>
+                      <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Type</th>
+                      <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Notes</th>
+                      <th className="text-right px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                    {pageTxs.map((tx) => (
+                      <tr key={tx.id}>
+                        <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{formatDate(tx.created_at)}</td>
+                        <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
+                        <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
+                        <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type, tx.amount)}`}>
+                          {/* Fixer-WW: sign driven by tx.type so redemptions always
+                              render `-$X` (matches POS convention) and -0 amounts
+                              no longer flash as `+$0.00` (Math.abs trips -0). */}
+                          {tx.type === 'redemption' ? '-' : tx.amount > 0 ? '+' : tx.amount < 0 ? '-' : ''}{formatCurrency(tx.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-5 py-3 border-t border-surface-100 dark:border-surface-800">
+                    <button
+                      onClick={() => setTxPage((p) => Math.max(0, p - 1))}
+                      disabled={safePage === 0}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-xs text-surface-500 dark:text-surface-400">
+                      Page {safePage + 1} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setTxPage((p) => Math.min(totalPages - 1, p + 1))}
+                      disabled={safePage >= totalPages - 1}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {showReloadModal && (
         <ReloadModal cardId={card.id} onClose={() => setShowReloadModal(false)} />

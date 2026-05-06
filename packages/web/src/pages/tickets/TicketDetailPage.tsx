@@ -59,6 +59,23 @@ interface TicketStatusMutationScope extends TicketMutationScope {
   statusId: number;
 }
 
+interface TicketCacheEnvelope {
+  data: { data: Ticket & { status_id: number } };
+}
+
+interface StatusRollbackCtx {
+  prev: TicketCacheEnvelope | undefined;
+  prevStatusId: number | null;
+}
+
+interface TicketListItem {
+  id: number;
+  order_id: string | number | null;
+  customer?: { first_name: string; last_name: string } | null;
+  first_device?: { device_name: string } | null;
+  devices?: { device_name: string }[] | null;
+}
+
 // ─── Loading skeleton ───────────────────────────────────────────────
 
 function DetailSkeleton() {
@@ -120,8 +137,8 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
     enabled: debouncedSearch.length >= 2,
   });
 
-  const candidates = (results?.data?.data?.tickets || results?.data?.tickets || [])
-    .filter((t: any) => t.id !== ticketId);
+  const candidates = ((results?.data?.data?.tickets || results?.data?.tickets || []) as TicketListItem[])
+    .filter((t) => t.id !== ticketId);
 
   async function handleMerge() {
     if (!selectedId) return;
@@ -187,7 +204,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
               {debouncedSearch.length < 2 ? 'Type to search for tickets...' : 'No matching tickets found'}
             </p>
           ) : (
-            candidates.map((t: any) => (
+            candidates.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setSelectedId(t.id)}
@@ -202,7 +219,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
                   {t.customer ? `${t.customer.first_name} ${t.customer.last_name}` : '--'}
                 </span>
                 <span className="ml-auto text-xs text-surface-400 shrink-0">
-                  {t.first_device?.device_name || (t.devices?.[0] as any)?.device_name || ''}
+                  {t.first_device?.device_name || t.devices?.[0]?.device_name || ''}
                 </span>
               </button>
             ))
@@ -347,8 +364,8 @@ export function TicketDetailPage() {
       ticketApi.changeStatus(routeTicketId, statusId, controller.signal),
     onMutate: async ({ routeTicketId, statusId: newStatusId }) => {
       await queryClient.cancelQueries({ queryKey: ['ticket', routeTicketId] });
-      const prev = queryClient.getQueryData(['ticket', routeTicketId]);
-      queryClient.setQueryData(['ticket', routeTicketId], (old: any) => {
+      const prev = queryClient.getQueryData<TicketCacheEnvelope>(['ticket', routeTicketId]);
+      queryClient.setQueryData(['ticket', routeTicketId], (old: TicketCacheEnvelope | undefined) => {
         if (!old) return old;
         // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone over
         // JSON.parse(JSON.stringify(...)) — preserves Dates/undefined that
@@ -362,14 +379,14 @@ export function TicketDetailPage() {
         }
         return clone;
       });
-      return { prev, prevStatusId: prev ? (prev as any)?.data?.data?.status_id : null };
+      return { prev, prevStatusId: prev?.data?.data?.status_id ?? null } satisfies StatusRollbackCtx;
     },
-    onError: (err, vars, ctx: any) => {
+    onError: (err, vars, ctx: StatusRollbackCtx | undefined) => {
       if (ctx?.prev) queryClient.setQueryData(['ticket', vars.routeTicketId], ctx.prev);
       if (shouldSuppressTicketMutationFeedback(vars, err)) return;
       toast.error('Failed to change status');
     },
-    onSuccess: (_data, vars, ctx: any) => {
+    onSuccess: (_data, vars, ctx: StatusRollbackCtx | undefined) => {
       if (shouldSuppressTicketMutationFeedback(vars)) return;
       const prevStatusId = ctx?.prevStatusId ?? ticket?.status_id;
       const newStatusId = vars.statusId;
@@ -683,7 +700,7 @@ export function TicketDetailPage() {
           <DeviceTemplatePicker
             ticketId={ticketId}
             ticketDeviceId={devices[0]?.id}
-            suggestedCategory={(devices[0] as any)?.device_type}
+            suggestedCategory={devices[0]?.device_type ?? undefined}
             onApplied={invalidateTicket}
           />
 
@@ -692,7 +709,7 @@ export function TicketDetailPage() {
             <CustomerHistorySidebar
               customerId={customer.id}
               currentTicketId={ticketId}
-              currentDeviceName={(devices[0] as any)?.device_name || (devices[0] as any)?.name}
+              currentDeviceName={devices[0]?.device_name || ''}
             />
           )}
 
@@ -746,9 +763,9 @@ export function TicketDetailPage() {
     {showSms && customer && (
       <QuickSmsModal
         onClose={() => setShowSms(false)}
-        customer={customer as any}
-        ticket={{ id: ticketId, order_id: (ticket as any)?.order_id || '' }}
-        device={devices[0] ? { name: (devices[0] as any).device_name || (devices[0] as any).name || '' } : undefined}
+        customer={{ first_name: customer.first_name, last_name: customer.last_name, phone: customer.phone ?? undefined, mobile: customer.mobile ?? undefined }}
+        ticket={{ id: ticketId, order_id: ticket.order_id || '' }}
+        device={devices[0] ? { name: devices[0].device_name || '' } : undefined}
       />
     )}
 
@@ -779,7 +796,7 @@ export function TicketDetailPage() {
       <QcSignOffModal
         ticketId={ticketId}
         ticketDeviceId={devices[0]?.id}
-        deviceCategory={(devices[0] as any)?.device_type}
+        deviceCategory={devices[0]?.device_type ?? undefined}
         onClose={() => setShowQcSignOff(false)}
         onSigned={invalidateTicket}
       />
@@ -789,7 +806,7 @@ export function TicketDetailPage() {
     {showHandoff && (
       <TicketHandoffModal
         ticketId={ticketId}
-        currentAssigneeId={(ticket as any)?.assigned_to ?? null}
+        currentAssigneeId={ticket.assigned_to ?? null}
         onClose={() => setShowHandoff(false)}
         onHandedOff={() => {
           invalidateTicket();

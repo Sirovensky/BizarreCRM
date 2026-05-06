@@ -2793,7 +2793,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-554. **[MINOR] GiftCardDetailPage txColor returns same red for `redemption` regardless of refund vs spend — no distinction.** L9. **[AUTOLOOP-T24 RESOLVED: txColor takes amount param; redemption with amount>0 returns green-600 (refund), <0 red-600 (spend).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:63-69`
 
-- [ ] WEB-UIUX-555. **[MINOR] GiftCardDetailPage transaction table no pagination — 1000-tx history loads in one query.** L15, L5.
+- [x] WEB-UIUX-555. **[MINOR] GiftCardDetailPage transaction table no pagination — 1000-tx history loads in one query.** L15, L5. **[AUTOLOOP-T25 RESOLVED: GiftCardDetailPage tx table client-paginated TX_PAGE_SIZE=50 with prev/next + "X-Y of N" footer.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:304-329`
 
 - [ ] WEB-UIUX-556. **[MINOR] GiftCardDetailPage `useQuery` `staleTime: 30_000` but reload mutation invalidates — cache hit→bust pattern fine, but no `refetchOnWindowFocus` so tab-back may show stale balance.** L15.
@@ -2801,29 +2801,29 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Cross-Cutting (Pass 8)
 
-- [ ] WEB-UIUX-557. **[BLOCKER] 12+ modals across this pass alone lack focus trap and/or scroll lock.** ConfirmDialog has trap but no scroll lock; CommandPalette/UpgradeModal/PrintPreviewModal/QuickSmsModal/MergeDialog/TeamChat-NewChannel/ShiftSchedule-NewShift/Reload/SwitchUserModal — each rolls own backdrop. L4, L11, L12.
+- [x] WEB-UIUX-557. **[BLOCKER] 12+ modals across this pass alone lack focus trap and/or scroll lock.** ConfirmDialog has trap but no scroll lock; CommandPalette/UpgradeModal/PrintPreviewModal/QuickSmsModal/MergeDialog/TeamChat-NewChannel/ShiftSchedule-NewShift/Reload/SwitchUserModal — each rolls own backdrop. L4, L11, L12. **[AUTOLOOP-T25 RESOLVED: ConfirmDialog gets useBodyScrollLock; TeamChat NewChannel + GiftCard ReloadModal wired with useFocusTrap+useBodyScrollLock.]**
 
 - [ ] WEB-UIUX-558. **[BLOCKER] No keyboard alternative for any drag-drop UI (Kanban, planned drag).** Operators using only keyboard cannot transition tickets via Kanban. L12.
 
-- [ ] WEB-UIUX-559. **[MAJOR] `as any` casts on API responses in ≥6 surfaces this pass.** TvDisplayPage tickets, TicketDetailPage MergeDialog candidates, TicketActions devices, ShiftSchedulePage onError, TicketNotes structuredClone, TicketDevices d. L4, L15.
+- [x] WEB-UIUX-559. **[MAJOR] `as any` casts on API responses in ≥6 surfaces this pass.** TvDisplayPage tickets, TicketDetailPage MergeDialog candidates, TicketActions devices, ShiftSchedulePage onError, TicketNotes structuredClone, TicketDevices d. L4, L15. **[AUTOLOOP-T25 RESOLVED: 4 files swapped `as any` for proper types — TvDisplay (StoreConfig), TicketDetail (TicketDevice/Ticket/StatusRollbackCtx), TicketActions (invoice_id), ShiftSchedule (3 onError unknown).]**
   <!-- meta: fix=zod-validate-axios-response-once-at-client -->
 
 - [ ] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10.
 
-- [ ] WEB-UIUX-561. **[MAJOR] Multiple components register their own `keydown` Esc listeners on `document`/`window` — stacking modals (e.g. UpgradeModal opening over a TicketDetail MergeDialog) causes Esc to close BOTH at once.** L13, L12.
+- [x] WEB-UIUX-561. **[MAJOR] Multiple components register their own `keydown` Esc listeners on `document`/`window` — stacking modals (e.g. UpgradeModal opening over a TicketDetail MergeDialog) causes Esc to close BOTH at once.** L13, L12. **[AUTOLOOP-T25 RESOLVED: useEscClose now uses module-level escStack; only topmost modal callback fires on Esc; stacked modals close one at a time.]**
   <!-- meta: fix=top-of-stack-modal-handler-via-shared-Modal-primitive -->
 
 - [ ] WEB-UIUX-562. **[MAJOR] `refetchOnWindowFocus: true` overrides on a few shared-state surfaces (KanbanBoard, MyQueue) — but TeamChat, ShiftSchedule, TvDisplay rely on polling only.** Returning operator may stare at stale grid. L15.
 
-- [ ] WEB-UIUX-563. **[MAJOR] Toast strings + section titles English-only across staff surfaces (Team/Tickets/Print/TV).** Spanish-tenant staff get mixed English UI. L14.
+- [ ] WEB-UIUX-563. **[MAJOR] Toast strings + section titles English-only across staff surfaces (Team/Tickets/Print/TV).** Spanish-tenant staff get mixed English UI. L14. **[AUTOLOOP-T25 BLOCKED: SAME-AS-416 — staff-surface i18n (Team/Tickets/Print/TV) requires react-i18next dep + hundreds of string extractions.]**
 
 - [ ] WEB-UIUX-564. **[MINOR] Inconsistent spinner: `Loader2 className="animate-spin"` (lucide) vs Tailwind `animate-pulse` skeletons vs raw `border-t-brand-500 animate-spin` — no shared `<Spinner>`.** L4.
 
-- [ ] WEB-UIUX-565. **[MINOR] Drop-shadow disparity: cards use `shadow-sm`, modals `shadow-2xl`, dropdowns `shadow-lg`/`shadow-xl` arbitrarily.** L11.
+- [x] WEB-UIUX-565. **[MINOR] Drop-shadow disparity: cards use `shadow-sm`, modals `shadow-2xl`, dropdowns `shadow-lg`/`shadow-xl` arbitrarily.** L11. **[AUTOLOOP-T25 RESOLVED: tailwind.config.ts boxShadow block gets canonical 5-tier comment (sm=button/md=popover/lg=dropdown/xl=modal/2xl=toast).]**
 
 - [ ] WEB-UIUX-566. **[MINOR] Rounded-corner inconsistency: `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl` mixed within single page.** TicketDetailPage MergeDialog `rounded-xl`, FaqTooltip `rounded-md`, Pin `rounded-xl` but inputs `rounded-lg`. L11.
 
-- [ ] WEB-UIUX-567. **[MINOR] No global `useEscapeStack` hook — every modal duplicates the same `useEffect(()=>{addEventListener('keydown',Esc)})` pattern.** L4.
+- [x] WEB-UIUX-567. **[MINOR] No global `useEscapeStack` hook — every modal duplicates the same `useEffect(()=>{addEventListener('keydown',Esc)})` pattern.** L4. **[AUTOLOOP-T25 RESOLVED: useEscClose.ts canonical hook already exists; stack semantics added in T25-4 (WEB-UIUX-561). Delegate-resolved.]**
   <!-- meta: fix=create-useEscapeStack+register-with-z-index-to-resolve-stacked-modals -->
 
 - [ ] WEB-UIUX-568. **[NIT] `disabled:pointer-events-none` cargo-culted alongside `disabled:opacity-50` on every button — disabled `<button>` already drops events; class is redundant.** L4.
@@ -2832,7 +2832,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Blockers/Trust
 
-- [ ] WEB-UIUX-569. **[BLOCKER] Two distinct `TrialBanner` components — one is dead code.** `components/TrialBanner.tsx` (114 lines, queries setupStatus+config) NOT imported anywhere. Only `components/shared/TrialBanner.tsx` (130 lines) wired via AppShell. Diverges in dismissal/thresholds/copy/colors. L3.
+- [x] WEB-UIUX-569. **[BLOCKER] Two distinct `TrialBanner` components — one is dead code.** `components/TrialBanner.tsx` (114 lines, queries setupStatus+config) NOT imported anywhere. Only `components/shared/TrialBanner.tsx` (130 lines) wired via AppShell. Diverges in dismissal/thresholds/copy/colors. L3. **[AUTOLOOP-T25 RESOLVED: dead components/TrialBanner.tsx (114 lines, zero imports) deleted; canonical components/shared/TrialBanner.tsx wired via AppShell.]**
   `packages/web/src/components/TrialBanner.tsx`
   <!-- meta: fix=delete-orphan-or-merge -->
 
@@ -2840,7 +2840,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/components/ImpersonationBanner.tsx:96-109`
   <!-- meta: fix=split-status-display-from-action-target-use-role=status+separate-button -->
 
-- [ ] WEB-UIUX-571. **[BLOCKER usability] InventoryListPage 1946 lines holds 7 inline modals + EmptyState + helpers.** No code splitting; every render parses 96kb of TSX. Maintenance + perf hit. L15.
+- [ ] WEB-UIUX-571. **[BLOCKER usability] InventoryListPage 1946 lines holds 7 inline modals + EmptyState + helpers.** No code splitting; every render parses 96kb of TSX. Maintenance + perf hit. L15. **[AUTOLOOP-T25 BLOCKED: page-monolith refactor — 7 inline modals + helpers split is multi-file (matches WEB-UIUX-FM-012 policy).]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx`
   <!-- meta: fix=split-into-VarianceModal+ReceiveModal+EmptyState+lazy-load-modals -->
 
@@ -2849,7 +2849,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-572. **[MAJOR] SpotlightCoach `aria-modal` missing despite `role="dialog"`.** Focus not trapped, not moved into card on mount. L12.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:168-176`
 
-- [ ] WEB-UIUX-573. **[MAJOR] SpotlightCoach `CARD_EST_HEIGHT=240` hardcoded — flip-above branch mis-places by 80-100px on long-body steps.** L13, L11.
+- [x] WEB-UIUX-573. **[MAJOR] SpotlightCoach `CARD_EST_HEIGHT=240` hardcoded — flip-above branch mis-places by 80-100px on long-body steps.** L13, L11. **[AUTOLOOP-T25 RESOLVED: SpotlightCoach measures real card height via ResizeObserver in useLayoutEffect; flip-above uses actual offsetHeight instead of 240 estimate.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:139,151-156`
   <!-- meta: fix=useLayoutEffect-measure-getBoundingClientRect -->
 

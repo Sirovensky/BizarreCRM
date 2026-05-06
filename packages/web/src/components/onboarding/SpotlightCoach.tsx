@@ -15,7 +15,7 @@
  *  - "Skip all tutorials" — sets `tutorial.all.dismissed=1`, patches onboarding
  *                           state, and navigates to `/`
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -143,6 +143,27 @@ function TooltipCard({
   const CARD_EST_HEIGHT = 240;
   const PADDING = 12;
 
+  // Measure the card's actual rendered height so flip-above positioning is
+  // accurate even when step body is long (fixes ~80-100px mis-placement).
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(CARD_EST_HEIGHT);
+
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    // Read initial height immediately after paint.
+    setCardHeight(el.offsetHeight);
+
+    // Keep updating whenever the card resizes (font load, step change, etc.).
+    const ro = new ResizeObserver(([entry]) => {
+      const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      if (h > 0) setCardHeight(h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [step]); // re-run when step changes so body length is re-measured
+
   let style: React.CSSProperties;
 
   if (isFallback || !targetRect) {
@@ -153,11 +174,11 @@ function TooltipCard({
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
     const spaceBelow = viewportHeight - (targetRect.top + targetRect.height);
-    const showBelow = spaceBelow >= CARD_EST_HEIGHT + PADDING;
+    const showBelow = spaceBelow >= cardHeight + PADDING;
 
     const top = showBelow
       ? targetRect.top + targetRect.height + PADDING
-      : targetRect.top - CARD_EST_HEIGHT - PADDING;
+      : targetRect.top - cardHeight - PADDING;
 
     // Align left edge with target, but clamp to viewport
     const idealLeft = targetRect.left;
@@ -171,6 +192,7 @@ function TooltipCard({
 
   return (
     <div
+      ref={cardRef}
       className="z-[9999] rounded-2xl border border-primary-200 bg-white shadow-2xl dark:border-primary-500/40 dark:bg-surface-900"
       style={style}
       role="dialog"

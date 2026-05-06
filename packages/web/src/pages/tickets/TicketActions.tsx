@@ -280,7 +280,7 @@ export function TicketActions({
               <ShoppingCart className="h-4 w-4" />
               Checkout
             </button>
-            <PrintButton ticketId={ticketId} invoiceId={(ticket as any)?.invoice_id} />
+            <PrintButton ticketId={ticketId} invoiceId={ticket.invoice_id} />
             <ActionsDropdown
               onDelete={onDelete}
               onMerge={onMerge}

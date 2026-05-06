@@ -200,6 +200,23 @@ export default {
         toast:         '120',  // Toast / snackbar notifications
         tooltip:       '130',  // Tooltips — always on top
       },
+      // @audit-fixed (WEB-UIUX-565 2026-05-06): canonical elevation / shadow scale.
+      // Previously cards used shadow-sm, modals shadow-2xl, and dropdowns varied
+      // between shadow-lg and shadow-xl arbitrarily. WEB-UIUX-12 (tick 3) locked
+      // lead modals to shadow-xl; this comment codifies the full ladder so future
+      // components use consistent values without per-PR negotiation.
+      //
+      // Elevation ladder (low → high):
+      //   button / card   → shadow-sm   (Tailwind default: 0 1px 2px)
+      //   popover         → shadow-md   (Tailwind default: 0 4px 6px)
+      //   dropdown        → shadow-lg   (Tailwind default: 0 10px 15px)
+      //   modal / drawer  → shadow-xl   (Tailwind default: 0 20px 25px)
+      //   toast / snackbar→ shadow-2xl  (Tailwind default: 0 25px 50px)
+      //
+      // No custom values are defined here — Tailwind's built-in scale covers every
+      // tier. Keep new components within these five steps; do not introduce
+      // shadow-3xl or arbitrary shadow-[…] values without updating this ladder.
+      boxShadow: {},
     },
   },
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -4,6 +4,7 @@ import { Wrench, Monitor } from 'lucide-react';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { safeColor } from '@/utils/safeColor';
+import type { StoreConfig } from '@bizarre-crm/shared';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface TvTicket {
@@ -173,7 +174,7 @@ export function TvDisplayPage() {
   });
   const { data: storeData } = useQuery({
     queryKey: ['store-info-tv'],
-    queryFn: async () => { const r = await settingsApi.getStore(); return r.data.data as any; },
+    queryFn: async () => { const r = await settingsApi.getStore(); return r.data.data as StoreConfig; },
     staleTime: 300000,
   });
   const storeName = storeData?.name || 'Repair Shop';

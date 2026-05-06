@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Attach a keyboard listener that calls `onClose` when the user presses Escape.
@@ -24,9 +24,9 @@ import { useEffect } from 'react';
  *   capture  – pass true to use capture phase (useful for nested modals that
  *              need to intercept Esc before a parent handler fires).
  *
- * The handler calls `e.stopPropagation()` by default so only the top-most
- * modal receives the keystroke when modals are stacked. Pass `capture: true`
- * on the outermost layer if you need capture-phase ordering instead.
+ * WEB-UIUX-561: a module-level stack ensures only the topmost registered
+ * callback fires when Esc is pressed. Stacking modals no longer causes every
+ * open layer to close simultaneously.
  *
  * WEB-UIUX-9: canonical hook — new modals, drawers, and popovers should use
  * this instead of duplicating their own keydown logic.
@@ -38,6 +38,19 @@ export interface UseEscCloseOptions {
   capture?: boolean;
 }
 
+/** Module-level stack of active Esc callbacks. Last entry is the topmost layer. */
+const escStack: Array<() => void> = [];
+
+/** Single document-level handler shared by all hook instances. */
+function globalEscHandler(e: KeyboardEvent): void {
+  if (e.key !== 'Escape') return;
+  const top = escStack[escStack.length - 1];
+  if (top) {
+    e.stopPropagation();
+    top();
+  }
+}
+
 export function useEscClose(
   onClose: () => void,
   enabled: boolean = true,
@@ -45,17 +58,34 @@ export function useEscClose(
 ): void {
   const { capture = false } = options;
 
+  // Keep a stable ref to the latest onClose so the stack entry stays current
+  // even if the caller passes a new function reference on each render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!enabled) return;
 
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
+    // Stable wrapper so push/pop identity matches across renders.
+    const callback = () => onCloseRef.current();
+
+    // Register the global handler on first consumer.
+    if (escStack.length === 0) {
+      document.addEventListener('keydown', globalEscHandler, capture);
+    }
+
+    escStack.push(callback);
+
+    return () => {
+      const idx = escStack.lastIndexOf(callback);
+      if (idx !== -1) escStack.splice(idx, 1);
+
+      // Remove the global handler when the last consumer unregisters.
+      if (escStack.length === 0) {
+        document.removeEventListener('keydown', globalEscHandler, capture);
       }
     };
-
-    document.addEventListener('keydown', handler, capture);
-    return () => document.removeEventListener('keydown', handler, capture);
-  }, [onClose, enabled, capture]);
+  }, [enabled, capture]);
 }
