@@ -4,10 +4,49 @@ import { Camera, Upload, CheckCircle2, X, Loader2, ImageIcon, AlertCircle } from
 import { api } from '@/api/client';
 import toast from 'react-hot-toast';
 import {
-  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
   IMAGE_UPLOAD_ACCEPT,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
+import { formatTicketId } from '@/utils/format';
+
+/**
+ * WEB-UIUX-510: Re-encode image via canvas to bake EXIF orientation into pixel
+ * data and strip all metadata before upload. Modern browsers honour the EXIF
+ * orientation tag when drawImage() is called, so the resulting blob is always
+ * upright and carries no rotation tag.
+ *
+ * WEB-UIUX-514: Also resize images whose long side exceeds MAX_DIMENSION to
+ * MAX_DIMENSION px, re-encoding at JPEG_QUALITY. Modern phone cameras produce
+ * 4-8 MB files easily; the resize brings them well under the server limit
+ * before the file is even staged for upload.
+ */
+const MAX_DIMENSION = 2048;
+const JPEG_QUALITY = 0.85;
+
+async function normalizeOrientation(file: File): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { naturalWidth: w, naturalHeight: h } = img;
+      const longSide = Math.max(w, h);
+      const scale = longSide > MAX_DIMENSION ? MAX_DIMENSION / longSide : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => resolve(blob ?? file),
+        'image/jpeg',
+        JPEG_QUALITY,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
 
 export function PhotoCapturePage() {
   const { ticketId, deviceId } = useParams<{ ticketId: string; deviceId: string }>();
@@ -61,9 +100,13 @@ export function PhotoCapturePage() {
     }
 
     const valid: File[] = [];
+    // WEB-UIUX-514: validate against a generous pre-resize ceiling (25 MB).
+    // normalizeOrientation() will resize any image > 2048 px long side down to
+    // 2048 px at JPEG 0.85 before upload, so the server never sees the raw file.
+    const PRE_RESIZE_MAX_BYTES = 25 * 1024 * 1024;
     for (const file of files) {
       const error = await validateImageFile(file, {
-        maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+        maxBytes: PRE_RESIZE_MAX_BYTES,
         label: `"${file.name}"`,
       });
       if (error) {
@@ -100,8 +143,13 @@ export function PhotoCapturePage() {
     setUploading(true);
     setError('');
     try {
+      // WEB-UIUX-510: normalise orientation + strip EXIF before upload.
+      const blobs = await Promise.all(photos.map((p) => normalizeOrientation(p.file)));
       const formData = new FormData();
-      photos.forEach((p) => formData.append('photos', p.file));
+      blobs.forEach((blob, i) => {
+        const name = photos[i].file.name.replace(/\.[^.]+$/, '.jpg');
+        formData.append('photos', blob, name);
+      });
       formData.append('ticket_device_id', deviceId);
       formData.append('type', 'pre');
       await api.post(`/tickets/${ticketId}/photos`, formData, {
@@ -155,7 +203,7 @@ export function PhotoCapturePage() {
         </div>
         <h1 className="text-2xl font-bold text-surface-50 mb-2">Photos Saved!</h1>
         <p className="text-surface-400 mb-1">
-          {photos.length} photo{photos.length !== 1 ? 's' : ''} added to ticket #{ticketId}
+          {photos.length} photo{photos.length !== 1 ? 's' : ''} added to ticket {formatTicketId(ticketId!)}
         </p>
         <p className="text-surface-600 text-sm mt-4">You can close this page now.</p>
         <button
@@ -187,7 +235,7 @@ export function PhotoCapturePage() {
         </div>
         <div>
           <h1 className="text-surface-50 font-semibold leading-tight">Device Photos</h1>
-          <p className="text-surface-400 text-xs">Ticket #{ticketId} — Pre-condition</p>
+          <p className="text-surface-400 text-xs">Ticket {formatTicketId(ticketId!)} — Pre-condition</p>
         </div>
       </div>
 

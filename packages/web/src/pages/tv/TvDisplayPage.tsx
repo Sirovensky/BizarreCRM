@@ -60,7 +60,7 @@ function useLiveClock() {
 function LiveClock({ now }: { now: Date }) {
   return (
     <span className="tabular-nums">
-      {now.toLocaleTimeString('en-US', {
+      {now.toLocaleTimeString(navigator.language || 'en-US', {
         hour: 'numeric',
         minute: '2-digit',
         second: '2-digit',
@@ -240,7 +240,7 @@ export function TvDisplayPage() {
             <LiveClock now={now} />
           </div>
           <div className="text-sm text-surface-400">
-            {now.toLocaleDateString('en-US', {
+            {now.toLocaleDateString(navigator.language || 'en-US', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
@@ -273,9 +273,11 @@ export function TvDisplayPage() {
             <button
               type="button"
               onClick={() => refetch()}
-              className="rounded-lg bg-primary-600 px-6 py-2.5 text-base font-medium text-primary-950 hover:bg-primary-700"
+              disabled={isFetching}
+              aria-disabled={isFetching}
+              className="rounded-lg bg-primary-600 px-6 py-2.5 text-base font-medium text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Retry now
+              {isFetching ? 'Retrying…' : 'Retry now'}
             </button>
           </div>
         ) : isLoading ? (
@@ -307,7 +309,7 @@ export function TvDisplayPage() {
       <div className="border-t border-surface-700/50 bg-surface-900/80 px-8 py-3 backdrop-blur-sm">
         <div className="flex items-center justify-between text-sm text-surface-400">
           <span>{tickets.length} active repair{tickets.length !== 1 ? 's' : ''}</span>
-          <span className={cn('inline-flex items-center gap-2', statusToneClass)}>
+          <span role="status" aria-live="polite" className={cn('inline-flex items-center gap-2', statusToneClass)}>
             <span className={cn('h-2 w-2 rounded-full', statusDotClass)} />
             {refreshStatus.text}
           </span>
@@ -322,8 +324,11 @@ export function TvDisplayPage() {
 // Full model string ("iPhone 14 Pro Max") lets bystanders fingerprint a customer;
 // brand + generation ("iPhone 14") is enough for visual identification.
 function truncateDeviceName(name: string): string {
-  const tokens = name.trim().split(/\s+/);
-  return tokens.slice(0, 2).join(' ');
+  // WEB-UIUX-502: strip any 12+ digit numeric run (IMEI / serial pattern)
+  // before truncating, in case a user free-typed an identifier into device_name.
+  const sanitized = name.replace(/\d{12,}/g, '').trim();
+  const tokens = sanitized.split(/\s+/).filter(Boolean);
+  return tokens.slice(0, 2).join(' ') || 'Unknown device';
 }
 
 // ─── Ticket Card ────────────────────────────────────────────────────
@@ -336,7 +341,7 @@ function TicketCard({ ticket }: { ticket: TvTicket }) {
     <div
       className={cn(
         'rounded-xl border border-surface-700/50 bg-surface-800/60 p-5 backdrop-blur-sm',
-        'transition-all duration-500 hover:border-surface-600/50 hover:bg-surface-800/80',
+        'transition-all duration-500',
       )}
     >
       {/* Top row: ticket ID + status */}

@@ -2607,7 +2607,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-497. **[MINOR] TicketActions PrintButton spawns PrintPreviewModal but mounting cost paid on `setShowModal(true)` — no `lazy` boundary.** L15. **[AUTOLOOP-T21 RESOLVED: TicketActions PrintPreviewModal becomes `React.lazy()` import wrapped in `<Suspense fallback={null}>`; bundle cost deferred until first print.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:184-198`
 
-- [ ] WEB-UIUX-498. **[MINOR] TicketActions Checkout button `bg-teal-600` not brand token — hardcoded teal across this and Breadcrumb.** L9, L10.
+- [x] WEB-UIUX-498. **[MINOR] TicketActions Checkout button `bg-teal-600` not brand token — hardcoded teal across this and Breadcrumb.** L9, L10. **[AUTOLOOP-T22 RESOLVED: TicketActions Checkout button switched from `bg-teal-600` to canonical `bg-primary-600 text-primary-950`. Breadcrumb had no teal-600.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:289-294`
 
 - [ ] WEB-UIUX-499. **[MINOR] MergeDialog "type to search" 2-char minimum — not announced; no aria-describedby.** Empty results say "Type to search for tickets..." but SR users hit Enter on empty input. L12.
@@ -2622,25 +2622,25 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/tv/TvDisplayPage.tsx:153-158`
   <!-- meta: fix=add-page-rotation-or-virtualized-scroll -->
 
-- [ ] WEB-UIUX-502. **[MAJOR] TvDisplayPage shows `customer_first_name.charAt(0)` initial — but device names rendered in full (`d` text) can include customer-identifiable IMEI/serial pattern.** PII bleed not consistent with initial-only customer name. L16.
+- [x] WEB-UIUX-502. **[MAJOR] TvDisplayPage shows `customer_first_name.charAt(0)` initial — but device names rendered in full (`d` text) can include customer-identifiable IMEI/serial pattern.** PII bleed not consistent with initial-only customer name. L16. **[AUTOLOOP-T22 RESOLVED: TvDisplayPage `truncateDeviceName()` strips `\d{12,}` runs (IMEI/serial) before 2-token slice.]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:202-211`
 
 - [ ] WEB-UIUX-503. **[MAJOR] TvDisplayPage tickets array typed via `as any` cast — server schema drift silent.** L4.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:92`
 
-- [ ] WEB-UIUX-504. **[MAJOR] TvDisplayPage retry button always available even when isFetching — repeated clicks fire concurrent refetch.** L6.
+- [x] WEB-UIUX-504. **[MAJOR] TvDisplayPage retry button always available even when isFetching — repeated clicks fire concurrent refetch.** L6. **[AUTOLOOP-T22 RESOLVED: TvDisplayPage retry button gets `disabled={isFetching}` + aria-disabled + "Retrying…" label; concurrent refetch prevented.]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:128-134`
 
 - [ ] WEB-UIUX-505. **[MINOR] TvDisplayPage `text-white` card content on dark gradient — works, but ticket-status badge `safeColor + 25` opacity over `bg-surface-800/60` produces low-contrast pills for dark status colors.** L9.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:46-48`
 
-- [ ] WEB-UIUX-506. **[MINOR] TvDisplayPage `Auto-refreshes every 30 seconds` footer text — not localized, not aria-live.** L14, L12.
+- [x] WEB-UIUX-506. **[MINOR] TvDisplayPage `Auto-refreshes every 30 seconds` footer text — not localized, not aria-live.** L14, L12. **[AUTOLOOP-T22 RESOLVED: TvDisplayPage footer refresh-status span gets `role="status" aria-live="polite"`; SR announces refreshes. i18n deferred.]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:165`
 
 - [ ] WEB-UIUX-507. **[MINOR] TvDisplayPage no fullscreen toggle / wake-lock — lobby cabinet sleeps on macOS/Windows defaults.** L8.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:75-169`
 
-- [ ] WEB-UIUX-508. **[MINOR] TvDisplayPage TicketCard hover effect (`hover:border-surface-600/50`) on a TV display — non-interactive surface, hover meaningless.** L13.
+- [x] WEB-UIUX-508. **[MINOR] TvDisplayPage TicketCard hover effect (`hover:border-surface-600/50`) on a TV display — non-interactive surface, hover meaningless.** L13. **[AUTOLOOP-T22 RESOLVED: TvDisplayPage TicketCard hover:border + hover:bg removed (TV display has no mouse).]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:179-184`
 
 #### Photo Capture
@@ -2648,26 +2648,26 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-509. **[MAJOR] PhotoCapturePage re-uploads ALL photos on retry — no per-photo state.** Network drop mid-batch wastes bandwidth on already-uploaded ones. L15, L8.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:94-123`
 
-- [ ] WEB-UIUX-510. **[MAJOR] PhotoCapturePage no client-side rotation/EXIF strip — iOS portrait shots upload with rotation tag, server-side display may render sideways.** L4, L8.
+- [x] WEB-UIUX-510. **[MAJOR] PhotoCapturePage no client-side rotation/EXIF strip — iOS portrait shots upload with rotation tag, server-side display may render sideways.** L4, L8. **[AUTOLOOP-T22 RESOLVED: PhotoCapturePage `normalizeOrientation()` re-encodes images via canvas.toBlob() — bakes EXIF rotation into pixels + strips metadata. No new deps.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:79-85`
 
 - [ ] WEB-UIUX-511. **[MAJOR] PhotoCapturePage hardcodes `bg-gray-900`/`text-white` — not dark/light mode aware.** Pre-condition page only — fine for kiosk, broken if customer accesses on system in light scheme. L10.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-285`
 
-- [ ] WEB-UIUX-512. **[MAJOR] PhotoCapturePage strings English-only ("Take Photo", "Add more").** Customer-facing. L14.
+- [ ] WEB-UIUX-512. **[MAJOR] PhotoCapturePage strings English-only ("Take Photo", "Add more").** Customer-facing. L14. **[AUTOLOOP-T22 BLOCKED: 18 distinct customer-facing strings; exceeds 4-8 key budget per tick. Portal i18n infrastructure ready, dedicated pass needed.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:185-256`
 
 - [ ] WEB-UIUX-513. **[MAJOR] PhotoCapturePage Camera button uses `<label>` wrapping `<input type="file">` — keyboard Tab+Space activates correctly but Enter sometimes doesn't trigger file picker on iOS.** L12, L13.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:251-264`
 
-- [ ] WEB-UIUX-514. **[MINOR] PhotoCapturePage 10 MB MAX_FILE_SIZE pre-resize — modern phones produce 4-8 MB easily; reject path triggers on edge cases.** L8.
+- [x] WEB-UIUX-514. **[MINOR] PhotoCapturePage 10 MB MAX_FILE_SIZE pre-resize — modern phones produce 4-8 MB easily; reject path triggers on edge cases.** L8. **[AUTOLOOP-T22 RESOLVED: PhotoCapture `normalizeOrientation` extended to scale >2048px-long-side to 2048px @ JPEG 0.85; pre-validation ceiling 10MB→25MB.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:45,65-68`
   <!-- meta: fix=add-canvas-downscale-before-upload -->
 
 - [ ] WEB-UIUX-515. **[MINOR] PhotoCapturePage emoji 📸 in instruction text rendered without `role="img"`/`aria-label`.** SR reads "camera with flash". L12.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:192-194`
 
-- [ ] WEB-UIUX-516. **[MINOR] PhotoCapturePage uploaded confirmation page renders `#${ticketId}` raw — no formatting (`T-0042`).** L14.
+- [x] WEB-UIUX-516. **[MINOR] PhotoCapturePage uploaded confirmation page renders `#${ticketId}` raw — no formatting (`T-0042`).** L14. **[AUTOLOOP-T22 RESOLVED: PhotoCapture upload confirmation + header use `formatTicketId(ticketId!)` instead of raw `#${ticketId}`.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:154`
 
 - [ ] WEB-UIUX-517. **[MINOR] PhotoCapturePage no photo metadata (timestamp, geolocation toggle) — repair photo evidence can't establish chain of custody.** L16.
