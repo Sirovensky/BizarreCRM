@@ -1,3 +1,5 @@
+import { Clock } from 'lucide-react';
+import { EmptyState } from './EmptyState';
 import { cn } from '@/utils/cn';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -27,9 +29,10 @@ export function Timeline({
 }: TimelineProps) {
   if (entries.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12 text-surface-400 dark:text-surface-500">
-        <p className="text-sm">{emptyMessage}</p>
-      </div>
+      <EmptyState
+        icon={Clock}
+        title={emptyMessage}
+      />
     );
   }
 

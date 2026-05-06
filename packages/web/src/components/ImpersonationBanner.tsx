@@ -98,11 +98,20 @@ export function ImpersonationBanner() {
       className="flex w-full items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500"
       onClick={handleExit}
       title="Click to exit impersonation and return to super-admin"
-      aria-label={`Exit impersonation of tenant ${session.tenant_slug}`}
+      aria-label={`Exit impersonation of tenant ${session.tenant_name ?? session.tenant_slug}`}
     >
       <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>
-        Impersonating <strong>{session.tenant_slug}</strong>. Click to exit.
+        Impersonating{' '}
+        {session.tenant_name ? (
+          <>
+            <strong>{session.tenant_name}</strong>{' '}
+            <code className="font-normal opacity-80">({session.tenant_slug})</code>
+          </>
+        ) : (
+          <strong>{session.tenant_slug}</strong>
+        )}
+        . Click to exit.
       </span>
       <X className="h-3.5 w-3.5 shrink-0 ml-1" aria-hidden="true" />
     </button>

@@ -53,7 +53,7 @@ interface CelebratedSnapshot {
 
 function readSnapshot(): CelebratedSnapshot {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return {};
@@ -65,7 +65,7 @@ function readSnapshot(): CelebratedSnapshot {
 
 function writeSnapshot(snap: CelebratedSnapshot): void {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
   } catch {
     // Quota exceeded or storage disabled — silently degrade.
   }

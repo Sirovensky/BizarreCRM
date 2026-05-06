@@ -2,24 +2,24 @@
  * useMilestoneToasts — Phase E1
  *
  * Fires a toast (and confetti for the payment milestone) the first time a
- * milestone transitions from null to non-null between renders. Uses a ref
- * so page reloads do NOT re-fire — the SuccessCelebration component already
- * uses sessionStorage to gate confetti; this hook dedupes toast-only messages
- * via the same sessionStorage mechanism implicitly (since SuccessCelebration
- * is the source of truth for confetti+toast).
+ * milestone transitions from null to non-null between renders.
  *
- * NOTE: SuccessCelebration already fires toast.success + confetti for every
- * first_*_at milestone. This hook provides the additional specific messages
- * called out in the plan ("First ticket saved — nice", "First payment received")
- * as DISTINCT messages from what SuccessCelebration fires. We gate on
- * transitions observed within a session via useRef so we don't double-fire
- * on the first render.
+ * Deduplication strategy (WEB-UIUX-576):
+ *   - Both this hook and SuccessCelebration now use localStorage (not
+ *     sessionStorage) so the fired-flag is shared across browser tabs.
+ *   - Before firing, we also check SuccessCelebration's own localStorage key
+ *     (`onboarding_celebrated_v1`). If it already recorded the milestone, we
+ *     skip the toast+confetti entirely to avoid a duplicate celebration.
+ *   - SuccessCelebration writes its key before this hook's effect runs (it
+ *     mounts earlier in the tree), so the check is reliable within the same tab.
  */
 import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import type { OnboardingState } from '@/api/endpoints';
 
 const SESSION_KEY = 'milestone_toasts_v1';
+// Key written by SuccessCelebration — used to check if it already fired for a milestone.
+const CELEBRATION_KEY = 'onboarding_celebrated_v1';
 
 interface ToastSnapshot {
   first_ticket_at_toasted: boolean;
@@ -28,7 +28,7 @@ interface ToastSnapshot {
 
 function readToastSnapshot(): ToastSnapshot {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return { first_ticket_at_toasted: false, first_payment_at_toasted: false };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') {
@@ -42,9 +42,24 @@ function readToastSnapshot(): ToastSnapshot {
 
 function writeToastSnapshot(snap: ToastSnapshot): void {
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(snap));
   } catch {
     // Storage quota or disabled — degrade silently.
+  }
+}
+
+/**
+ * Returns true if SuccessCelebration has already recorded this milestone key.
+ * Prevents useMilestoneToasts from firing a duplicate toast+confetti.
+ */
+function celebrationAlreadyFired(key: string): boolean {
+  try {
+    const raw = localStorage.getItem(CELEBRATION_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return !!(parsed && typeof parsed === 'object' && parsed[key]);
+  } catch {
+    return false;
   }
 }
 
@@ -103,19 +118,32 @@ export function useMilestoneToasts(state: OnboardingState | null): void {
     const prev = prevStateRef.current;
     prevStateRef.current = state;
 
-    // NOTE: read-modify-write on sessionStorage has a theoretical cross-tab race (two tabs may both read before either writes).
+    // NOTE: read-modify-write on localStorage has a theoretical cross-tab race (two tabs may both read before either writes),
+    // but the celebrationAlreadyFired() check provides a second dedup layer that catches most practical cases.
     const next = { ...snap };
     let changed = false;
 
     // first_ticket_at: null → non-null
-    if (!prev?.first_ticket_at && state.first_ticket_at && !snap.first_ticket_at_toasted) {
+    // Skip if SuccessCelebration already fired for this milestone (shared localStorage).
+    if (
+      !prev?.first_ticket_at &&
+      state.first_ticket_at &&
+      !snap.first_ticket_at_toasted &&
+      !celebrationAlreadyFired('first_ticket_at')
+    ) {
       toast.success('First ticket saved — nice');
       next.first_ticket_at_toasted = true;
       changed = true;
     }
 
     // first_payment_at: null → non-null
-    if (!prev?.first_payment_at && state.first_payment_at && !snap.first_payment_at_toasted) {
+    // Skip if SuccessCelebration already fired for this milestone (shared localStorage).
+    if (
+      !prev?.first_payment_at &&
+      state.first_payment_at &&
+      !snap.first_payment_at_toasted &&
+      !celebrationAlreadyFired('first_payment_at')
+    ) {
       toast.success('First payment received');
       fireConfetti();
       next.first_payment_at_toasted = true;

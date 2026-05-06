@@ -7,6 +7,7 @@ import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
+import { Modal } from '@/components/shared/Modal';
 
 // Covers every field the detail form reads or writes. Loose `number | string`
 // types on numeric columns mirror the edit-field state shape (inputs return
@@ -346,43 +347,47 @@ export function InventoryDetailPage() {
             </div>
           )}
 
-          {/* Stock Adjustment Modal */}
-          {showAdjust && (
-            <div className="card p-6 border-2 border-primary-200 dark:border-primary-800">
-              <h3 className="font-semibold text-surface-900 dark:text-surface-100 mb-4">Adjust Stock</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Type</label>
-                  <select value={adjustType} onChange={(e) => setAdjustType(e.target.value)} className="input w-full text-sm">
-                    <option value="adjustment">Manual Adjustment</option>
-                    <option value="purchase">Purchase / Received</option>
-                    <option value="return">Customer Return</option>
-                    <option value="defective">Defective / Write-off</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Quantity (+ to add, - to remove)</label>
-                  <input
-                    type="number"
-                    value={adjustQty}
-                    onChange={(e) => setAdjustQty(e.target.value)}
-                    placeholder="e.g. +5 or -2"
-                    className="input w-full text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
-                  <input value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-                  <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-                    {adjustMutation.isPending ? 'Saving...' : 'Apply'}
-                  </button>
-                </div>
+          {/* Stock Adjustment Modal — WEB-UIUX-592: focus trap, Esc, auto-focus */}
+          <Modal
+            open={showAdjust}
+            onClose={() => setShowAdjust(false)}
+            labelledById="adjust-stock-title"
+            size="sm"
+            className="p-6"
+          >
+            <h3 id="adjust-stock-title" className="font-semibold text-surface-900 dark:text-surface-100 mb-4">Adjust Stock</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-surface-500 mb-1">Type</label>
+                <select value={adjustType} onChange={(e) => setAdjustType(e.target.value)} className="input w-full text-sm">
+                  <option value="adjustment">Manual Adjustment</option>
+                  <option value="purchase">Purchase / Received</option>
+                  <option value="return">Customer Return</option>
+                  <option value="defective">Defective / Write-off</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-500 mb-1">Quantity (+ to add, - to remove)</label>
+                <input
+                  type="number"
+                  value={adjustQty}
+                  onChange={(e) => setAdjustQty(e.target.value)}
+                  placeholder="e.g. +5 or -2"
+                  className="input w-full text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
+                <input value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
+                <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  {adjustMutation.isPending ? 'Saving...' : 'Apply'}
+                </button>
               </div>
             </div>
-          )}
+          </Modal>
 
           {/* Barcode Preview */}
           {barcodeUrl && (

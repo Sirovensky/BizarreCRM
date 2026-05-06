@@ -1,6 +1,7 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { extractApiError } from '../../utils/apiError';
 import { Button } from './Button';
+import { CopyButton } from './CopyButton';
 
 /**
  * WEB-FE-021 (Fixer-C12 2026-04-25): the four boot/route-fallback screens
@@ -32,18 +33,15 @@ export function PageLoader() {
 
 export function NotFoundPage() {
   // Fixer-WW (WEB-FE-022): swap raw `text-gray-*` for surface tokens with dark
-  // partners so the 404 doesn't render as a white-on-dark eyesore. Primary
-  // button left as-is until brand-surface-ramp swap (FE-007) lands.
+  // partners so the 404 doesn't render as a white-on-dark eyesore.
+  const navigate = useNavigate();
   return (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center">
       <h1 className="text-4xl font-bold text-surface-800 dark:text-surface-100 mb-2">404</h1>
       <p className="text-lg text-surface-600 dark:text-surface-400 mb-6">Page not found</p>
-      <Link
-        to="/"
-        className="btn btn-md btn-primary"
-      >
+      <Button onClick={() => navigate('/')} variant="primary" size="md">
         Back to Dashboard
-      </Link>
+      </Button>
     </div>
   );
 }
@@ -81,7 +79,10 @@ export function SetupFailedScreen({ error, onRetry }: { error: unknown; onRetry:
           {requestId && (
             <>
               <dt className="text-surface-400">ref</dt>
-              <dd className="break-all">{requestId}</dd>
+              <dd className="break-all flex items-center gap-1">
+                <span>{requestId}</span>
+                <CopyButton text={requestId} />
+              </dd>
             </>
           )}
         </dl>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WifiOff } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 /**
  * WEB-FO-004: persistent banner shown whenever `navigator.onLine === false`.
@@ -21,15 +22,28 @@ export function OfflineBanner() {
   const [online, setOnline] = useState<boolean>(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   );
+  // Track whether this is the initial mount so we don't toast on first render.
+  const initialMount = useRef(true);
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    const handleOnline = () => {
+      setOnline(true);
+      if (!initialMount.current) {
+        toast.success("Back online");
+      }
+    };
+    const handleOffline = () => {
+      setOnline(false);
+      if (!initialMount.current) {
+        toast.error("You're offline");
+      }
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     // Re-sync once on mount in case the events fired before this listener
     // attached (e.g. fast page nav while already offline).
     setOnline(navigator.onLine);
+    initialMount.current = false;
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);

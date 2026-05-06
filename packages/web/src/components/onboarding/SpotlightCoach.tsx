@@ -84,7 +84,7 @@ function SpotlightOverlay({ rect }: SpotlightOverlayProps) {
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[9998]"
+      className="spotlight-overlay pointer-events-none fixed inset-0 z-[9998]"
       aria-hidden="true"
       style={{
         background: 'rgba(0,0,0,0.5)',

@@ -2853,21 +2853,21 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:139,151-156`
   <!-- meta: fix=useLayoutEffect-measure-getBoundingClientRect -->
 
-- [ ] WEB-UIUX-574. **[MAJOR] SpotlightCoach 50% black overlay no `prefers-reduced-transparency` opt-out.** Low-vision users lose page context entirely. L12, L13.
+- [x] WEB-UIUX-574. **[MAJOR] SpotlightCoach 50% black overlay no `prefers-reduced-transparency` opt-out.** Low-vision users lose page context entirely. L12, L13. **[AUTOLOOP-T26 RESOLVED: SpotlightCoach overlay gets `.spotlight-overlay` class + `@media (prefers-reduced-transparency)` rule in globals.css raising opacity 0.5→0.85.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:107`
 
 - [ ] WEB-UIUX-575. **[MAJOR usability] SpotlightCoach "Skip step" sits next to "Skip tutorial" with similar styling — destructive vs non-destructive indistinguishable.** L14, L2.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:234-241,408-410`
   <!-- meta: fix=rename-to-Next-or-Mark-as-done-different-color-from-Skip-tutorial -->
 
-- [ ] WEB-UIUX-576. **[MAJOR] `useMilestoneToasts` + `SuccessCelebration` both fire toast+confetti on first payment.** Duplicate celebration. Per-tab sessionStorage means each open tab fires independently. L3, L8.
+- [x] WEB-UIUX-576. **[MAJOR] `useMilestoneToasts` + `SuccessCelebration` both fire toast+confetti on first payment.** Duplicate celebration. Per-tab sessionStorage means each open tab fires independently. L3, L8. **[AUTOLOOP-T26 RESOLVED: useMilestoneToasts + SuccessCelebration both use localStorage (cross-tab); toasts skip if SuccessCelebration already fired same milestone.]**
   `packages/web/src/components/onboarding/useMilestoneToasts.ts:13-17,107-123`
 
 - [ ] WEB-UIUX-577. **[MINOR] SpotlightCoach `TARGET_FIND_TIMEOUT_MS=300` linear retry — partial-render races show nothing for 300ms then snap.** L1, L12.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:33,322-345`
   <!-- meta: fix=use-MutationObserver-on-document.body -->
 
-- [ ] WEB-UIUX-578. **[MINOR] tutorialFlows final hint says "real jobs" — implies prior was simulation but flow used real money.** L14.
+- [x] WEB-UIUX-578. **[MINOR] tutorialFlows final hint says "real jobs" — implies prior was simulation but flow used real money.** L14. **[AUTOLOOP-T26 RESOLVED: tutorialFlows final hint changed from "real jobs" to "speed up your real-shop workflow"; no false simulation implication.]**
   `packages/web/src/components/onboarding/tutorialFlows.ts:189`
 
 - [ ] WEB-UIUX-579. **[MINOR] tutorialFlows `dismissAllTutorials` writes localStorage BEFORE API call.** API failure leaves local flag sticky. L16.
@@ -2875,14 +2875,14 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Shared Components
 
-- [ ] WEB-UIUX-580. **[MAJOR] LoadingScreen + NotFoundPage + SetupFailedScreen + PageErrorBoundary + ErrorBoundary all reinvent button styles instead of canonical `<Button>`.** Cumulative drift. L4, L9.
+- [x] WEB-UIUX-580. **[MAJOR] LoadingScreen + NotFoundPage + SetupFailedScreen + PageErrorBoundary + ErrorBoundary all reinvent button styles instead of canonical `<Button>`.** Cumulative drift. L4, L9. **[AUTOLOOP-T26 RESOLVED: NotFoundPage + ErrorFallback page-variant Links replaced with canonical Button via useNavigate. Other 3 components already used Button.]**
   Files: `components/shared/LoadingScreen.tsx:13-30,40-45,88-100`, `components/shared/PageErrorBoundary.tsx:142-160`, `components/ErrorBoundary.tsx:32-60`
 
 - [ ] WEB-UIUX-581. **[MAJOR] OfflineBanner uses `relative z-0` — modals at z-50 hide it.** Cashier mid-transaction can't see offline state. L8, L11.
   `packages/web/src/components/shared/OfflineBanner.tsx:45`
   <!-- meta: fix=z-[60]+ensure-banners-stack-above-modals -->
 
-- [ ] WEB-UIUX-582. **[MAJOR] OfflineBanner doesn't toast on online↔offline transitions — silent state change.** L8.
+- [x] WEB-UIUX-582. **[MAJOR] OfflineBanner doesn't toast on online↔offline transitions — silent state change.** L8. **[AUTOLOOP-T26 RESOLVED: OfflineBanner toasts on online↔offline transitions; useRef initial-mount guard suppresses toast on first render.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:26-37`
   <!-- meta: fix=fire-toast.error-on-offline-toast.success-on-recovery -->
 
@@ -2890,26 +2890,26 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/components/shared/PageErrorBoundary.tsx:79-118`
   <!-- meta: fix=add-attempts-counter-bail-after-3 -->
 
-- [ ] WEB-UIUX-584. **[MAJOR] ErrorBoundary + PageErrorBoundary fallback UI 80% redundant.** L3, L4.
+- [x] WEB-UIUX-584. **[MAJOR] ErrorBoundary + PageErrorBoundary fallback UI 80% redundant.** L3, L4. **[AUTOLOOP-T26 RESOLVED: ~100-line DefaultFallback extracted to components/shared/ErrorFallback.tsx; both ErrorBoundary + PageErrorBoundary import it.]**
   `components/ErrorBoundary.tsx:32-60` vs `components/shared/PageErrorBoundary.tsx:128-163`
   <!-- meta: fix=extract-ErrorFallback-shared -->
 
 - [ ] WEB-UIUX-585. **[MAJOR] TrialBanner (shared) uses 4 different button styles + 3 different upgrade verbs across 3 banner variants.** Visually identical except color/copy — extract subcomponent. L9, L14.
   `packages/web/src/components/shared/TrialBanner.tsx:55-72,84-105,108-127`
 
-- [ ] WEB-UIUX-586. **[MAJOR] ImpersonationBanner shows `tenant_slug` raw — should show `tenant_name` (human label) primary.** Misleading on slug-only display. L9, L16.
+- [x] WEB-UIUX-586. **[MAJOR] ImpersonationBanner shows `tenant_slug` raw — should show `tenant_name` (human label) primary.** Misleading on slug-only display. L9, L16. **[AUTOLOOP-T26 RESOLVED: ImpersonationBanner shows tenant_name as bold primary + tenant_slug as monospace secondary in parens; falls back to slug if name absent.]**
   `packages/web/src/components/ImpersonationBanner.tsx:101-106`
 
 - [ ] WEB-UIUX-587. **[MINOR] LoadingScreen "Loading..." with no context — boot >3s users have zero idea what's happening.** L14, L8.
   `packages/web/src/components/shared/LoadingScreen.tsx:18`
 
-- [ ] WEB-UIUX-588. **[MINOR] SetupFailedScreen request-id `break-all` but no copy button.** Manual selection error-prone. L12.
+- [x] WEB-UIUX-588. **[MINOR] SetupFailedScreen request-id `break-all` but no copy button.** Manual selection error-prone. L12. **[AUTOLOOP-T26 RESOLVED: SetupFailedScreen request-id gains inline CopyButton from components/shared/CopyButton.tsx.]**
   `packages/web/src/components/shared/LoadingScreen.tsx:80-85`
 
 - [ ] WEB-UIUX-589. **[MINOR] PermissionBoundary silent fallback hides UX — vanished tabs/buttons with no explanation.** L12, L8.
   `packages/web/src/components/shared/PermissionBoundary.tsx:13-25`
 
-- [ ] WEB-UIUX-590. **[MINOR] Timeline empty state hand-rolled — should use shared EmptyState.** L4.
+- [x] WEB-UIUX-590. **[MINOR] Timeline empty state hand-rolled — should use shared EmptyState.** L4. **[AUTOLOOP-T26 RESOLVED: Timeline empty state replaced with shared `<EmptyState icon={Clock} title=...>`; emptyMessage prop flows through as title.]**
   `packages/web/src/components/shared/Timeline.tsx:28-34`
 
 - [ ] WEB-UIUX-591. **[MINOR] ImpersonationBanner + OfflineBanner + TrialBanner z-index inconsistency.** Stacking order undefined. L9.
@@ -2917,7 +2917,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Inventory Detail/Create
 
-- [ ] WEB-UIUX-592. **[MAJOR usability] InventoryDetailPage "Adjust Stock" inline panel not modal — no focus trap, no Esc, no auto-focus.** Tab cycles through underlying form. L12, L7.
+- [x] WEB-UIUX-592. **[MAJOR usability] InventoryDetailPage "Adjust Stock" inline panel not modal — no focus trap, no Esc, no auto-focus.** Tab cycles through underlying form. L12, L7. **[AUTOLOOP-T26 RESOLVED: InventoryDetailPage Adjust Stock inline panel replaced with canonical `<Modal>` (focus trap + Esc + auto-focus + body-scroll-lock + aria-labelledby).]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:346-382`
 
 - [ ] WEB-UIUX-593. **[MAJOR usability] InventoryDetailPage handleAdjust uses `parseInt('+5')` — returns NaN in older engines, silently truncates `5.5` to `5`.** L7.

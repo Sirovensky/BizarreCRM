@@ -186,7 +186,7 @@ const checkoutFlow: SpotlightFlow = {
       target: 'checkout:complete-payment-button',
       advanceOn: 'custom-event',
       customEventName: 'pos:payment-completed',
-      hint: 'That\'s the full lifecycle: ticket → edit → parts → payment. You\'re ready for real jobs.',
+      hint: 'That\'s the full lifecycle: ticket → edit → parts → payment. You\'re all set — these tools will speed up your real-shop workflow.',
     },
   ],
 };
