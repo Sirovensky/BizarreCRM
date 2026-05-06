@@ -110,3 +110,7 @@ coverage/
 Repair_Shop_CRM_UIUX_Audit_Instructions.md
 UsersPavel.claudeplansmighty-*.md
 antigravity.md
+
+# Per-host dashboard choice (electron vs browser) persisted by setup.mjs.
+# Operator-local; not for the repo.
+.bizarrecrm-dashboard-choice

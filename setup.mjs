@@ -72,7 +72,7 @@ const c = {
   dim: (s) => (ANSI_OFF ? s : `\x1b[2m${s}\x1b[0m`),
 };
 
-const STEPS_TOTAL = 11;
+const STEPS_TOTAL = 12;
 let stepNum = 0;
 function step(label) {
   stepNum += 1;
@@ -406,26 +406,130 @@ function buildAndroid() {
   }
 }
 
-// ─── 9. (REMOVED) Management dashboard build ─────────────────────────────
+// ─── 9. Dashboard mode choice + Electron build (Windows only) ─────────────
 //
-// The old step 9 built the Electron management app + packaged it as a
-// Windows .exe. That dashboard has been replaced by the browser-served
-// super-admin SPA which is built as part of `npm run build` at the root
-// (the root build script's last step is `build:renderer:web --workspace=
-// packages/management`, which emits the SPA bundle into
-// packages/server/dist/super-admin-spa/ that the server serves at
-// /super-admin/).
+// On Windows, operators can choose between:
+//   - "electron" — packaged .exe desktop dashboard. Slower install
+//     (~2-3 min for build + electron-builder packaging) but provides a
+//     native window experience.
+//   - "browser"  — open the super-admin SPA in the default browser.
+//     Always available regardless of choice (the SPA bundle is part of
+//     `npm run build`); the only difference is what setup.mjs LAUNCHES
+//     at the end.
 //
-// Removing this step:
-//   - eliminates the slow `electron-builder --win` packaging path
-//   - drops the brittle NSIS code-signing failure mode
-//   - aligns with docs/dashboard-migration-plan.md Phase E (Electron
-//     deletion) — the package.json in packages/management can stay for
-//     now; setup just doesn't invoke its `package` script anymore.
+// On non-Windows, browser is the only option (electron-builder's package
+// script is `--win`-flagged) and we don't prompt.
 //
-// Operators who still need the Electron .exe can run it manually:
-//   cd packages/management && npm run package
-// Most should switch to the browser dashboard at /super-admin/.
+// Choice persistence:
+//   1. SETUP_DASHBOARD env var ("electron" or "browser") — wins if set.
+//   2. Marker file `<repo>/.bizarrecrm-dashboard-choice` — read on
+//      subsequent runs so the operator isn't re-prompted.
+//   3. Interactive prompt — first run only, requires TTY in+out.
+//   4. Default — browser (safer fallback in non-interactive contexts).
+//
+// Operator can switch later by deleting the marker file or setting
+// SETUP_DASHBOARD=<mode> on the next run.
+
+const DASHBOARD_CHOICE_FILE = path.join(REPO_ROOT, '.bizarrecrm-dashboard-choice');
+
+async function chooseDashboardMode() {
+  step('Dashboard mode (Electron .exe or browser)');
+
+  // Non-Windows: browser only. Don't prompt.
+  if (!IS_WIN) {
+    ok('Non-Windows host — browser dashboard only.');
+    return 'browser';
+  }
+
+  // 1. Env override wins.
+  const envChoice = (process.env.SETUP_DASHBOARD || '').toLowerCase().trim();
+  if (envChoice === 'electron' || envChoice === 'browser') {
+    ok(`SETUP_DASHBOARD=${envChoice} — using ${envChoice}.`);
+    return envChoice;
+  }
+
+  // 2. Persisted marker.
+  try {
+    if (existsSync(DASHBOARD_CHOICE_FILE)) {
+      const stored = readFileSync(DASHBOARD_CHOICE_FILE, 'utf8').trim().toLowerCase();
+      if (stored === 'electron' || stored === 'browser') {
+        ok(`Remembered choice: ${stored} (delete .bizarrecrm-dashboard-choice to re-prompt).`);
+        return stored;
+      }
+    }
+  } catch { /* ignore corrupt marker */ }
+
+  // 3. Interactive prompt — TTY required for both ends.
+  if (!input.isTTY || !output.isTTY) {
+    ok('Non-interactive — defaulting to browser dashboard. Set SETUP_DASHBOARD=electron to override.');
+    return 'browser';
+  }
+
+  const rl = readline.createInterface({ input, output });
+  const answer = (await rl.question(
+    '\n  Dashboard preference?\n' +
+    '    [E] Electron desktop app (.exe, native window, slower install)\n' +
+    '    [B] Browser (lighter, accessible from any device on LAN)\n' +
+    '  Choice [E/b]: '
+  )).trim().toLowerCase();
+  rl.close();
+
+  const choice = /^b/.test(answer) ? 'browser' : 'electron';
+
+  // 4. Persist the choice so subsequent runs skip the prompt.
+  try {
+    writeFileSync(DASHBOARD_CHOICE_FILE, choice + '\n', { encoding: 'utf8' });
+  } catch (err) {
+    warn(`Could not write ${DASHBOARD_CHOICE_FILE}: ${err instanceof Error ? err.message : String(err)}. Choice will be re-prompted next run.`);
+  }
+  ok(`Choice saved: ${choice}.`);
+  return choice;
+}
+
+/**
+ * Build the Electron .exe via electron-builder. Only invoked when the
+ * operator chose 'electron'. Best-effort: warn-and-continue on failure
+ * so the operator still gets a working server + browser dashboard
+ * fallback even if NSIS / code-signing blow up.
+ */
+function buildElectronApp() {
+  step('Building Electron desktop dashboard');
+  const mgmtPkg = path.join(REPO_ROOT, 'packages/management/package.json');
+  if (!existsSync(mgmtPkg)) {
+    warn('packages/management/ absent — Electron build skipped.');
+    return false;
+  }
+  const r = run('npm', ['run', 'build', '-w', '@bizarre-crm/management']);
+  if (!r.ok) {
+    warn(`Dashboard sources build failed (exit ${r.code}). Browser dashboard at /super-admin will still work.`);
+    return false;
+  }
+  ok('Dashboard sources built.');
+
+  const r2 = run('npm', ['run', 'package', '-w', '@bizarre-crm/management']);
+  if (!r2.ok) {
+    warn(`electron-builder packaging failed (exit ${r2.code}). NSIS / code-signing failures are common — the unpacked .exe may still exist.`);
+  }
+
+  // electron-builder emits to packages/management/release/win-unpacked/
+  // even if NSIS fails. Copy the directory to <repo>/dashboard/ so the
+  // launch step has a stable path to find the .exe.
+  const unpacked = path.join(REPO_ROOT, 'packages/management/release/win-unpacked');
+  const target = path.join(REPO_ROOT, 'dashboard');
+  if (existsSync(unpacked)) {
+    try {
+      if (existsSync(target)) rmSync(target, { recursive: true, force: true });
+      cpSync(unpacked, target, { recursive: true });
+      ok(`Electron dashboard packaged at ${target}.`);
+      return true;
+    } catch (err) {
+      warn(`Dashboard copy failed: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }
+  warn('No release/win-unpacked/ directory after electron-builder run. Browser dashboard fallback only.');
+  return false;
+}
 
 // ─── 10. PM2 start + save ──────────────────────────────────────────────────
 
@@ -676,16 +780,44 @@ function resolvePm2Bin() {
 
 // ─── 12. Open browser ──────────────────────────────────────────────────────
 
-async function openBrowser() {
-  step('Opening dashboard in browser');
+/**
+ * Launch the dashboard the operator chose. Branches:
+ *
+ *   1. mode === 'electron' AND we successfully built the .exe → spawn
+ *      it detached so setup.mjs can exit. The Electron app then probes
+ *      the local server itself.
+ *   2. Otherwise → open the default browser to /super-admin.
+ *
+ * SETUP_NO_BROWSER=1 still skips the entire launch step (useful in CI /
+ * unattended). The same flag also blocks the .exe spawn for symmetry —
+ * "no browser" really means "no UI auto-launch".
+ */
+async function launchDashboard(mode, electronBuilt) {
+  step('Opening dashboard');
   if (process.env.SETUP_NO_BROWSER === '1') {
-    ok('SETUP_NO_BROWSER=1 — skipped');
+    ok('SETUP_NO_BROWSER=1 — UI launch skipped');
     return;
   }
-  // Read PORT from .env so we don't guess. Falls back to 443 (server default).
-  // Regex tolerates an inline `# comment` after the value — operators
-  // commonly annotate their .env this way; the prior `\s*$` anchor refused
-  // to match those lines and silently fell back to 443.
+
+  // Try Electron .exe path on Windows when chosen + built successfully.
+  if (mode === 'electron' && electronBuilt && IS_WIN) {
+    const exePath = path.join(REPO_ROOT, 'dashboard', 'BizarreCRM Management.exe');
+    if (existsSync(exePath)) {
+      try {
+        const child = spawn(exePath, [], { stdio: 'ignore', detached: true, windowsHide: false });
+        child.unref();
+        ok(`Electron dashboard launched (${exePath}).`);
+        return;
+      } catch (err) {
+        warn(`Failed to launch Electron .exe: ${err instanceof Error ? err.message : String(err)} — falling back to browser.`);
+      }
+    } else {
+      warn(`Electron .exe not found at ${exePath} — falling back to browser.`);
+    }
+  }
+
+  // Browser fallback path. Read PORT from .env so we don't guess.
+  // Regex tolerates an inline `# comment` after the value.
   let port = '443';
   try {
     const env = readFileSync(path.join(REPO_ROOT, '.env'), 'utf8');
@@ -693,12 +825,6 @@ async function openBrowser() {
     if (m) port = m[1];
   } catch { /* .env may not exist on first run failure path */ }
 
-  // Open the super-admin dashboard, NOT the customer-facing CRM landing.
-  // Post-setup the operator needs to (a) finish first-run super-admin
-  // password + 2FA setup, OR (b) hit their existing super-admin login.
-  // /super-admin serves admin/super-admin.html (see server/src/index.ts
-  // mounting at line ~1472). Opening the root `/` lands on the customer
-  // login page which is the wrong destination at the end of an install.
   const base = port === '443' ? 'https://localhost' : `https://localhost:${port}`;
   const url = `${base}/super-admin`;
 
@@ -730,13 +856,19 @@ async function openBrowser() {
   ensureCerts();
   buildApp();
   buildAndroid();
-  // Step 9 (Electron management dashboard build) was removed — the
-  // browser-served super-admin SPA is built as part of buildApp()'s
-  // root `npm run build` (which calls build:renderer:web for the
-  // management package). See dashboard-migration-plan.md Phase E.
+  // Dashboard mode: 'electron' (Windows .exe desktop app) or 'browser'
+  // (super-admin SPA in default browser). Persisted to
+  // .bizarrecrm-dashboard-choice so subsequent runs skip the prompt.
+  const dashboardMode = await chooseDashboardMode();
+  let electronBuilt = false;
+  if (dashboardMode === 'electron' && IS_WIN) {
+    electronBuilt = buildElectronApp();
+  }
   startPm2();
   await registerAutostart();
-  await openBrowser();
+  // Launch step now honors the dashboard choice. Electron path on Windows
+  // when the build succeeded; browser otherwise.
+  await launchDashboard(dashboardMode, electronBuilt);
 
   console.log(`\n${c.green(c.bold('Setup complete.'))} Server running supervised by PM2.`);
   console.log(c.dim('  Logs:        pm2 logs bizarre-crm'));
