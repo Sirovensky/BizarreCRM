@@ -99,7 +99,7 @@ export function CampaignsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
-  const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; sample: Array<{ rendered_body: string }> } | null>(null);
+  const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; segment_total: number | null; sample: Array<{ rendered_body: string }> } | null>(null);
   // Confirm dialogs for destructive actions — Run-now dispatches the segment
   // immediately to potentially thousands of recipients, and Delete is final.
   const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
@@ -188,9 +188,11 @@ export function CampaignsPage() {
     // WEB-FC-017: narrow preview response shape.
     onSuccess: ({ campaign, data }) => {
       const d = (data as { data?: { total_recipients?: number; preview?: Array<{ rendered_body: string }> } } | undefined)?.data ?? {};
+      const seg = campaign.segment_id != null ? segments.find((s) => s.id === campaign.segment_id) : null;
       setPreviewData({
         campaign,
         total: d.total_recipients ?? 0,
+        segment_total: seg?.member_count ?? null,
         sample: d.preview ?? [],
       });
     },
@@ -818,7 +820,7 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
 }
 
 interface PreviewProps {
-  data: { campaign: Campaign; total: number; sample: Array<{ rendered_body: string }> };
+  data: { campaign: Campaign; total: number; segment_total: number | null; sample: Array<{ rendered_body: string }> };
   onClose: () => void;
 }
 
@@ -843,7 +845,10 @@ function PreviewModal({ data, onClose }: PreviewProps) {
             <BarChart3 className="h-5 w-5" /> Preview: {data.campaign.name}
           </h2>
           <p className="text-xs text-surface-500 mt-1">
-            {data.total} eligible recipient{data.total === 1 ? '' : 's'} in the segment, after opt-in filtering.
+            {data.segment_total != null && data.segment_total > data.total
+              ? <>{data.total} of {data.segment_total} member{data.segment_total === 1 ? '' : 's'} will receive this — <strong>{data.segment_total - data.total}</strong> suppressed (opted out / unreachable).</>
+              : <>{data.total} eligible recipient{data.total === 1 ? '' : 's'} in the segment, after opt-in filtering.</>
+            }
           </p>
         </div>
 

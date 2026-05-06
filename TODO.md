@@ -3243,25 +3243,25 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-692. **[MAJOR] Stale phone hard-coded in automation `to` field — no warning that hard-coded value won't track customer record updates.** L5, L11. **[AUTOLOOP-T31 RESOLVED: AutomationsTab SMS to-field renders amber warning when hardcoded phone (no `{customer` placeholder) detected.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:170-180`
 
-- [ ] WEB-UIUX-693. **[MAJOR] Campaign opt-out compliance regex catches phrasings but doesn't show which segment members are suppressed.** Operator firing 2000 blast can't see "X opted out, will not receive". L7, L16.
+- [x] WEB-UIUX-693. **[MAJOR] Campaign opt-out compliance regex catches phrasings but doesn't show which segment members are suppressed.** Operator firing 2000 blast can't see "X opted out, will not receive". L7, L16. **[AUTOLOOP-T32 RESOLVED: campaign PreviewModal shows "X of Y will receive — Z suppressed (opted out / unreachable)" using segment_total - total client-side.]**
   `packages/web/src/pages/marketing/CampaignsPage.tsx:81-88`
 
 - [ ] WEB-UIUX-694. **[MAJOR] No duplicate-rule detection — two rules sharing `(trigger_type, trigger_config)` both fire silently.** Dry-run shows single rule only. L3, L8.
   `packages/web/src/pages/settings/AutomationsTab.tsx`
 
-- [ ] WEB-UIUX-695. **[MAJOR] Disable rule toggle has no UI feedback about pending/queued sends.** Disabled rule, queued effects honored or aborted? L11, L8.
+- [x] WEB-UIUX-695. **[MAJOR] Disable rule toggle has no UI feedback about pending/queued sends.** Disabled rule, queued effects honored or aborted? L11, L8. **[AUTOLOOP-T32 RESOLVED: AutomationsTab disabled rule shows amber inline note "Already-queued effects will still fire. Disabling stops new triggers only."]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:606-612`
 
 - [ ] WEB-UIUX-696. **[MAJOR] ScheduledSendModal naive about DST — March 9 03:00 EDT-edge case ambiguous.** Zoneless `<input type="datetime-local">`, no UTC display, no impossible-time rejection. L7, L14.
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx:27-83`
 
-- [ ] WEB-UIUX-697. **[MAJOR] FailedSendRetryList doesn't distinguish permanent failures (5xx hard bounce, opted-out).** Retry button always enabled — operator can hammer bounced address. L8, L16.
+- [x] WEB-UIUX-697. **[MAJOR] FailedSendRetryList doesn't distinguish permanent failures (5xx hard bounce, opted-out).** Retry button always enabled — operator can hammer bounced address. L8, L16. **[AUTOLOOP-T32 RESOLVED: FailedSendRetryList isPermanentFailure helper disables Retry on opted-out/invalid-number/5xx; tooltip explains. Fixed pre-existing JSX fragment bug.]**
   `packages/web/src/pages/communications/components/FailedSendRetryList.tsx:21-31`
 
 - [ ] WEB-UIUX-698. **[MAJOR] Segments have no concept of intersection / precedence.** Customer in "VIP" AND "High Risk" → which campaign wins? Undocumented. L5, L14.
   `packages/web/src/pages/marketing/SegmentsPage.tsx`
 
-- [ ] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5.
+- [ ] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5. **[AUTOLOOP-T32 BLOCKED: customer_in_segment trigger needs server segment evaluation engine + UI trigger config form; multi-component.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:42-48`
 
 - [ ] WEB-UIUX-700. **[MINOR] Segment value coercion: `Number("$50")` = NaN → falls through to string → segment matches zero customers silently.** L7.
@@ -3280,7 +3280,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Blockers — Unwired server APIs
 
-- [ ] WEB-UIUX-703. **[BLOCKER] No web UI for `refunds.routes.ts` API surface.** Server exposes POST `/refunds` (idempotent + `refunds.create` perm), PATCH `/refunds/:id/approve` (+`refunds.approve`), PATCH `/refunds/:id/decline`, GET `/refunds/credits/:customerId`, POST `/refunds/credits/:customerId/use`, GET `/refunds/credits/liability`. Zero callers in `packages/web/src` (grep `/refunds`, `refundsApi` → 0). Operators have only Credit Note path — no approval workflow, no store-credit redemption at POS, no manager liability dashboard. L8, L3, L1.
+- [ ] WEB-UIUX-703. **[BLOCKER] No web UI for `refunds.routes.ts` API surface.** Server exposes POST `/refunds` (idempotent + `refunds.create` perm), PATCH `/refunds/:id/approve` (+`refunds.approve`), PATCH `/refunds/:id/decline`, GET `/refunds/credits/:customerId`, POST `/refunds/credits/:customerId/use`, GET `/refunds/credits/liability`. Zero callers in `packages/web/src` (grep `/refunds`, `refundsApi` → 0). Operators have only Credit Note path — no approval workflow, no store-credit redemption at POS, no manager liability dashboard. L8, L3, L1. **[AUTOLOOP-T32 BLOCKED: refunds API has 7 endpoints (list/create/approve/decline/credit balance/use/liability) — multi-page feature implementation.]**
   `packages/server/src/routes/refunds.routes.ts:107,253,418,439,462,529`
   <!-- meta: fix=add-refundsApi-endpoint-shim+RefundsListPage+ApprovalQueue+StoreCreditRedeemModal -->
 
@@ -3288,7 +3288,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/server/src/routes/creditNotes.routes.ts:63,135,237,318`
   <!-- meta: fix=add-creditNotesApi+CreditNotesListPage+apply-modal+void-mutation -->
 
-- [ ] WEB-UIUX-705. **[BLOCKER] `posApi.return` defined in endpoints.ts but never invoked.** "Cash refund on existing sale" idempotent endpoint at `/pos/return` — declared with full idempotency-key boilerplate but no UI consumer. Cashier on POS cannot run a return without leaving POS to InvoiceDetail. L8, L3.
+- [x] WEB-UIUX-705. **[BLOCKER] `posApi.return` defined in endpoints.ts but never invoked.** "Cash refund on existing sale" idempotent endpoint at `/pos/return` — declared with full idempotency-key boilerplate but no UI consumer. Cashier on POS cannot run a return without leaving POS to InvoiceDetail. L8, L3. **[AUTOLOOP-T32 RESOLVED: STALE — ReturnModal.tsx:149 already calls posApi.return via useMutation. Wired in prior tick.]**
   `packages/web/src/api/endpoints.ts:749-761`
 
 - [ ] WEB-UIUX-706. **[BLOCKER] Credit Note button has no `requirePermission('invoices.credit_note')` gate.** Server checks perm; client renders button to all roles. Junior staff click → 403 → generic toast "Failed to create credit note". L12, L8.
@@ -3297,7 +3297,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Major — State visibility, recovery, integration
 
-- [ ] WEB-UIUX-707. **[MAJOR] InvoiceDetailPage never displays credit notes already issued against the invoice.** No fetch of `credit_note_for = invoiceId` siblings. Operator who issued $50 credit yesterday opens invoice today, sees no record on this page. Must navigate to InvoiceListPage and find the negative-total entry to inspect. L8, L1.
+- [x] WEB-UIUX-707. **[MAJOR] InvoiceDetailPage never displays credit notes already issued against the invoice.** No fetch of `credit_note_for = invoiceId` siblings. Operator who issued $50 credit yesterday opens invoice today, sees no record on this page. Must navigate to InvoiceListPage and find the negative-total entry to inspect. L8, L1. **[AUTOLOOP-T32 RESOLVED: server getInvoiceDetail extended to query credit_note_for siblings; InvoiceDetailPage renders "Credit Notes Issued" card (date+order_id+amount+reason).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   <!-- meta: fix=add-Credit-Notes-section-below-Payment-Timeline+invoice.credit_notes-from-server -->
 
@@ -3306,21 +3306,21 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/server/src/services/repairShoprImport.ts:773-774` `packages/server/src/services/repairDeskImport.ts:1290`
   <!-- meta: fix=either-set-refunded-on-original-when-fully-credited-OR-remove-dead-color -->
 
-- [ ] WEB-UIUX-709. **[MAJOR] Credit Note destructive but no `requireTyping` confirm — Void requires typing the order ID.** Asymmetric friction: Void (which has 5s undo + reverses cleanly) demands typing; Credit Note (which moves money out, has NO undo, NO client-side void path) is one click + amount + reason. Operator misclick refunds $200. L1, L16.
+- [x] WEB-UIUX-709. **[MAJOR] Credit Note destructive but no `requireTyping` confirm — Void requires typing the order ID.** Asymmetric friction: Void (which has 5s undo + reverses cleanly) demands typing; Credit Note (which moves money out, has NO undo, NO client-side void path) is one click + amount + reason. Operator misclick refunds $200. L1, L16. **[AUTOLOOP-T32 RESOLVED: handleCreditNote prompts user to type invoice.order_id; mismatch or cancel aborts with toast error.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:807-817` (Void) vs `737-805` (CreditNote)
   <!-- meta: fix=ConfirmDialog-with-requireTyping-amount-OR-add-undoableAction-window -->
 
 - [ ] WEB-UIUX-710. **[MAJOR] Credit Note has no undo window; Void has 5s undo (`useUndoableAction`).** Same severity action, different recovery affordance. Operator-initiated mistake on credit note is permanent from web (server has POST /credit-notes/:id/void but unwired — see WEB-UIUX-704). L8.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,110-135`
 
-- [ ] WEB-UIUX-711. **[MAJOR] Credit Note modal does not show store-credit overflow preview.** Server (`invoices.routes.ts:1259-1289`) silently creates `store_credits` row when credit > remaining due. Operator never told customer accumulated $X store credit. Customer leaves not knowing they have a balance. L8, L16.
+- [x] WEB-UIUX-711. **[MAJOR] Credit Note modal does not show store-credit overflow preview.** Server (`invoices.routes.ts:1259-1289`) silently creates `store_credits` row when credit > remaining due. Operator never told customer accumulated $X store credit. Customer leaves not knowing they have a balance. L8, L16. **[AUTOLOOP-T32 RESOLVED: Credit Note modal shows live 3-line split preview when amount > amount_due — balance reduction + store credit overflow + total credit.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
 
 - [ ] WEB-UIUX-712. **[MAJOR] Customer's existing `store_credits` balance not displayed anywhere in web.** Server endpoints `GET /refunds/credits/:customerId` + `POST /refunds/credits/:customerId/use` exist; CustomerDetailPage has no panel, InvoiceDetailPage cannot apply prior credit toward outstanding. Customers expecting "use my $20 credit" cannot — operator runs cash payment instead, ledger drifts. L8, L1.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx`
   <!-- meta: fix=add-Store-Credit-card-on-customer-page+Apply-Credit-button-on-invoice -->
 
-- [ ] WEB-UIUX-713. **[MAJOR] `RefundReasonPicker` swallows note text typed before reason picked.** Line 47-50: `handleNoteChange` only fires `onChange` when `localReason` is non-null. Operator who types a 3-sentence justification first, picks reason after, loses the note text from the parent state — but the local textarea still shows it (false sense of safety). Submit fires with `note=""`. L7, L1.
+- [x] WEB-UIUX-713. **[MAJOR] `RefundReasonPicker` swallows note text typed before reason picked.** Line 47-50: `handleNoteChange` only fires `onChange` when `localReason` is non-null. Operator who types a 3-sentence justification first, picks reason after, loses the note text from the parent state — but the local textarea still shows it (false sense of safety). Submit fires with `note=""`. L7, L1. **[AUTOLOOP-T32 RESOLVED: RefundReasonPicker handleNoteChange `localReason` guard removed; note text always propagates to parent via onChange (now accepts RefundReasonCode|null).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:47-50`
   <!-- meta: fix=always-fire-onChange-with-current-or-pending-reason -->
 

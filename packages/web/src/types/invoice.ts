@@ -29,6 +29,18 @@ export interface InvoicePayment {
   processor_transaction_id?: string | null;
 }
 
+export interface InvoiceCreditNote {
+  id: number;
+  order_id: string;
+  /** Credit note face value (stored as negative total on the CN row; absolute here) */
+  total: number;
+  amount_paid: number;
+  notes?: string | null;
+  credit_note_code?: string | null;
+  credit_note_note?: string | null;
+  created_at: string;
+}
+
 export interface InvoiceDepositRef {
   id: number;
   order_id: string;
@@ -81,4 +93,6 @@ export interface InvoiceDetail {
   line_items: InvoiceLineItem[];
   payments: InvoicePayment[];
   deposit_invoices: InvoiceDepositRef[];
+  // WEB-UIUX-707: credit notes issued against this invoice
+  credit_notes?: InvoiceCreditNote[];
 }

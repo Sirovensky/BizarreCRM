@@ -34,7 +34,7 @@ const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: stri
 interface RefundReasonPickerProps {
   value: RefundReasonCode | null;
   note: string;
-  onChange: (reason: RefundReasonCode, note: string) => void;
+  onChange: (reason: RefundReasonCode | null, note: string) => void;
   required?: boolean;
 }
 
@@ -54,7 +54,7 @@ export function RefundReasonPicker({
 
   const handleNoteChange = (next: string) => {
     setLocalNote(next);
-    if (localReason) onChange(localReason, next);
+    onChange(localReason, next);
   };
 
   // WEB-FE-016 (Fixer-B5 2026-04-25): swap raw `text-gray-*`/`border-gray-*`

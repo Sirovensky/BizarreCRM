@@ -22,7 +22,7 @@ import {
   RefundReasonPicker,
   type RefundReasonCode,
 } from '@/components/billing/RefundReasonPicker';
-import type { InvoiceDetail, InvoicePayment } from '@/types/invoice';
+import type { InvoiceDetail, InvoiceCreditNote, InvoicePayment } from '@/types/invoice';
 
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -323,6 +323,15 @@ export function InvoiceDetailPage() {
       );
     }
     if (!creditNoteForm.reason) return toast.error('Select a reason');
+    const invoiceId = invoice.order_id;
+    const typed = window.prompt(
+      `Type the invoice number "${invoiceId}" to confirm Credit Note of ${formatCurrency(amount)}.`,
+    );
+    if (typed === null) return; // cancelled
+    if (typed.trim() !== String(invoiceId)) {
+      toast.error('Invoice number did not match. Credit note cancelled.');
+      return;
+    }
     creditNoteMutation.mutate({
       amount,
       code: creditNoteForm.reason,
@@ -562,6 +571,34 @@ export function InvoiceDetailPage() {
               </div>
             </div>
           )}
+
+          {/* WEB-UIUX-707: Credit Notes Issued */}
+          {(invoice.credit_notes ?? []).length > 0 && (
+            <div className="card p-6">
+              <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Credit Notes Issued</h2>
+              <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                {(invoice.credit_notes as InvoiceCreditNote[]).map((cn) => {
+                  const reason = cn.credit_note_code
+                    ? (cn.credit_note_note ? `${cn.credit_note_code}: ${cn.credit_note_note}` : cn.credit_note_code)
+                    : (cn.notes ?? null);
+                  return (
+                    <div key={cn.id} className="py-3 flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-surface-900 dark:text-surface-100 font-mono">{cn.order_id}</p>
+                        <time className="text-xs text-surface-400">{formatDate(cn.created_at)}</time>
+                        {reason && (
+                          <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5 truncate" title={reason}>{reason}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
+                        -{formatCurrency(Math.abs(cn.total))}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Panel */}
@@ -766,18 +803,41 @@ export function InvoiceDetailPage() {
               </button>
             </div>
             {/* WEB-UIUX-435: outcome-preview — show what will happen, not just what the action is */}
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+            {/* WEB-UIUX-711: store-credit overflow preview when amount > amount_due */}
+            <div className="text-sm text-surface-500 dark:text-surface-400 mb-4">
               {(() => {
                 const enteredAmount = parseFloat(creditNoteForm.amount);
-                const displayAmount = !isNaN(enteredAmount) && enteredAmount > 0
-                  ? formatCurrency(enteredAmount)
-                  : null;
-                if (Number(invoice.amount_due) > 0) {
-                  // Partially unpaid — credit reduces balance
-                  return displayAmount
-                    ? `${displayAmount} will be deducted from the outstanding balance on invoice ${invoice.order_id}.`
-                    : `A credit will be applied to the outstanding balance on invoice ${invoice.order_id}.`;
+                const hasAmount = !isNaN(enteredAmount) && enteredAmount > 0;
+                const displayAmount = hasAmount ? formatCurrency(enteredAmount) : null;
+                const balanceDue = Number(invoice.amount_due) || 0;
+
+                if (balanceDue > 0 && hasAmount) {
+                  const appliedToBalance = Math.min(enteredAmount, balanceDue);
+                  const storeCreditOverflow = Math.max(0, enteredAmount - balanceDue);
+                  if (storeCreditOverflow > 0.004) {
+                    // Amount exceeds remaining balance — split preview
+                    return (
+                      <div className="space-y-2">
+                        <p>{displayAmount} will be applied as follows:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li><span className="font-medium text-surface-700 dark:text-surface-200">{formatCurrency(appliedToBalance)}</span> will reduce the outstanding balance on invoice {invoice.order_id} to $0.</li>
+                          <li><span className="font-medium text-surface-700 dark:text-surface-200">{formatCurrency(storeCreditOverflow)}</span> will be added to the customer's store credit balance.</li>
+                        </ul>
+                        <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">Total credit applied: {displayAmount}</p>
+                      </div>
+                    );
+                  }
+                  // Amount ≤ balance — simple balance reduction
+                  return (
+                    <p>{displayAmount} will be deducted from the outstanding balance on invoice {invoice.order_id}.</p>
+                  );
                 }
+
+                if (balanceDue > 0) {
+                  // No amount entered yet
+                  return <p>A credit will be applied to the outstanding balance on invoice {invoice.order_id}.</p>;
+                }
+
                 // Fully paid — refund goes back to original payment method
                 const payments: InvoicePayment[] = invoice.payments ?? [];
                 const latestPayment = payments
@@ -787,13 +847,13 @@ export function InvoiceDetailPage() {
                   ? `${latestPayment.method_detail || latestPayment.method}`
                   : null;
                 if (displayAmount && methodLabel) {
-                  return `${displayAmount} will be refunded to the ${methodLabel} used for this invoice, typically within 3–5 business days.`;
+                  return <p>{displayAmount} will be refunded to the {methodLabel} used for this invoice, typically within 3–5 business days.</p>;
                 } else if (displayAmount) {
-                  return `${displayAmount} will be refunded to the original payment method, typically within 3–5 business days.`;
+                  return <p>{displayAmount} will be refunded to the original payment method, typically within 3–5 business days.</p>;
                 }
-                return "The credit will be refunded to the original payment method (or as store credit if unavailable).";
+                return <p>The credit will be refunded to the original payment method (or as store credit if unavailable).</p>;
               })()}
-            </p>
+            </div>
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1">

@@ -40,6 +40,30 @@ function truncate(s: string, len: number) {
   return s.length > len ? s.slice(0, len) + '…' : s;
 }
 
+/**
+ * Returns true when last_error indicates a permanent failure that cannot be
+ * retried (opted-out recipient, invalid number, 5xx hard bounce, etc.).
+ */
+const PERMANENT_FAILURE_PATTERNS: ReadonlyArray<string> = [
+  'opted_out',
+  'opted out',
+  'unsubscribed',
+  'invalid_number',
+  'invalid number',
+  'unreachable number',
+  '5xx hard bounce',
+  'hard bounce',
+  'permanently failed',
+  'blacklisted',
+  'landline',
+];
+
+function isPermanentFailure(lastError: string | null): boolean {
+  if (!lastError) return false;
+  const lower = lastError.toLowerCase();
+  return PERMANENT_FAILURE_PATTERNS.some((p) => lower.includes(p));
+}
+
 const PAGE_SIZE = 10;
 
 export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
@@ -94,6 +118,7 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
           All sends delivered cleanly.
         </div>
       ) : (
+        <>
         <ul className="divide-y divide-surface-100 dark:divide-surface-700">
           {(showAll ? failed : failed.slice(0, PAGE_SIZE)).map((r) => (
             <li key={r.id} className="py-2 text-[11px]">
@@ -115,14 +140,28 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => retryMut.mutate(r.id)}
-                    disabled={retryMut.isPending}
-                    title="Retry now"
-                    className="rounded p-1 text-surface-500 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
+                  {(() => {
+                    const permanent = isPermanentFailure(r.last_error);
+                    return (
+                      <button
+                        onClick={() => !permanent && retryMut.mutate(r.id)}
+                        disabled={retryMut.isPending || permanent}
+                        title={
+                          permanent
+                            ? `Cannot retry — recipient permanent failure: ${r.last_error}`
+                            : 'Retry now'
+                        }
+                        className={cn(
+                          'rounded p-1 text-surface-500 dark:hover:bg-primary-900/20',
+                          permanent
+                            ? 'cursor-not-allowed opacity-40'
+                            : 'hover:bg-primary-50 hover:text-primary-600',
+                        )}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => cancelMut.mutate(r.id)}
                     disabled={cancelMut.isPending}
@@ -144,6 +183,7 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
             {showAll ? `Show first ${PAGE_SIZE}` : `Show all ${failed.length}`}
           </button>
         )}
+        </>
       )}
     </div>
   );

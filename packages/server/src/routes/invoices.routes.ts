@@ -92,7 +92,7 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
   `, id);
   if (!invoice) return null;
 
-  const [line_items, payments, deposit_invoices] = await Promise.all([
+  const [line_items, payments, deposit_invoices, credit_notes] = await Promise.all([
     adb.all<any>(`
       SELECT li.*, i.name as item_name, i.sku
       FROM invoice_line_items li
@@ -113,6 +113,17 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
       FROM invoices
       WHERE parent_invoice_id = ? OR (id = ? AND ? IS NOT NULL)
     `, id, invoice.parent_invoice_id, invoice.parent_invoice_id),
+    // WEB-UIUX-707: Fetch credit notes already issued against this invoice.
+    // Credit note rows are stored with credit_note_for = original invoice id.
+    // They are inserted with status='paid' (negative-total rows); filter by
+    // credit_note_for alone to include all of them regardless of status drift.
+    adb.all<any>(`
+      SELECT id, order_id, total, amount_paid, notes,
+             credit_note_code, credit_note_note, created_at
+      FROM invoices
+      WHERE credit_note_for = ?
+      ORDER BY created_at ASC
+    `, id),
   ]);
 
   const {
@@ -146,6 +157,7 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
     line_items,
     payments,
     deposit_invoices,
+    credit_notes,
   };
 }
 

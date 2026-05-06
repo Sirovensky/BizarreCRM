@@ -768,6 +768,11 @@ export function AutomationsTab() {
                       <span className="mx-1 text-surface-400">-&gt;</span>
                       <span className="font-medium">{actionLabel(rule.action_type)}</span>
                     </p>
+                    {!rule.is_active && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                        Already-queued effects will still fire. Disabling stops new triggers only.
+                      </p>
+                    )}
                   </div>
 
                   {/* Actions */}
