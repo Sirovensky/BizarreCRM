@@ -59,6 +59,24 @@ const PRESET_COLORS = [
   '#14b8a6', '#ec4899', '#6366f1', '#78716c',
 ];
 
+// WEB-UIUX-163: pick black or white text based on relative luminance so
+// light backgrounds (amber, yellow, etc.) stay readable at ≥ 4.5:1 contrast.
+function getContrastingTextColor(hex: string): string {
+  const raw = hex.replace('#', '');
+  const full = raw.length === 3
+    ? raw.split('').map((c) => c + c).join('')
+    : raw;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const linearise = (c: number) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const L =
+    0.2126 * linearise(r) + 0.7152 * linearise(g) + 0.0722 * linearise(b);
+  // contrast vs white = (L + 0.05) / 0.05; vs black = 1.05 / (L + 0.05)
+  return L > 0.179 ? '#0a0a0a' : 'white';
+}
+
 // ─── Toggle Component ─────────────────────────────────────────────
 
 function Toggle({ checked, onChange, label, description }: {
@@ -129,8 +147,8 @@ function TierCard({ tier, onEdit, onDelete }: {
         </div>
         <div className="mt-1">
           <span
-            className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
-            style={{ backgroundColor: tier.color }}
+            className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+            style={{ backgroundColor: tier.color, color: getContrastingTextColor(tier.color) }}
           >
             {tier.discount_pct}% off {tier.discount_applies_to}
           </span>

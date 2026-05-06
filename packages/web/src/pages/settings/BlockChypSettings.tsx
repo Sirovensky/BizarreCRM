@@ -235,7 +235,7 @@ export function BlockChypSettings() {
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !isDirty}
-          className="btn btn-md bg-green-600 text-white hover:bg-green-700"
+          className="btn btn-md bg-primary-600 text-primary-950 hover:bg-primary-700"
           title={!isDirty ? 'No changes to save' : 'Save dirty fields only'}
         >
           {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

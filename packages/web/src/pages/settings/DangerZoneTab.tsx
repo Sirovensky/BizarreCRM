@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Loader2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHasRole } from '@/hooks/useHasRole';
+import { useAuthStore } from '@/stores/authStore';
 import { formatDateTime } from '@/utils/format';
 import { tenantTerminationApi } from '@/api/endpoints';
 
@@ -93,6 +94,7 @@ interface TerminationModalProps {
 }
 
 function TerminationModal({ onClose }: TerminationModalProps) {
+  const logout = useAuthStore((s) => s.logout);
   const [step, setStep] = useState<Step>('intro');
   const [loading, setLoading] = useState(false);
 
@@ -262,7 +264,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
           )}
 
           {step === 'done' && doneState && (
-            <StepDone data={doneState} onClose={onClose} />
+            <StepDone data={doneState} onClose={onClose} logout={logout} />
           )}
         </div>
       </div>
@@ -453,7 +455,27 @@ function StepConfirmPhrase({
   );
 }
 
-function StepDone({ data, onClose }: { data: DoneState; onClose: () => void }) {
+function StepDone({
+  data,
+  onClose,
+  logout,
+}: {
+  data: DoneState;
+  onClose: () => void;
+  logout: () => Promise<void>;
+}) {
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleClose() {
+    setSigningOut(true);
+    try {
+      await logout();
+    } catch {
+      // logout clears local session even on server error; safe to proceed
+    }
+    onClose();
+  }
+
   return (
     <>
       <div className="flex items-center gap-3">
@@ -482,14 +504,16 @@ function StepDone({ data, onClose }: { data: DoneState; onClose: () => void }) {
         </div>
       </dl>
       <p className="text-xs text-surface-500">
-        You will be signed out on your next action. Save this page for your records.
+        Closing this dialog will sign you out immediately. Save this page for your records.
       </p>
       <div className="pt-2">
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
+          disabled={signingOut}
           className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
+          {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Close
         </button>
       </div>

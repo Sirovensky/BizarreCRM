@@ -29,7 +29,7 @@ import {
 import toast from 'react-hot-toast';
 import { deviceTemplateApi, inventoryApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
-import { formatCents } from '@/utils/format';
+import { formatCents, formatCurrencySymbol } from '@/utils/format';
 
 interface TemplatePart {
   inventory_item_id: number;
@@ -92,6 +92,13 @@ export function DeviceTemplatesPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<TemplateForm | null>(null);
   const [partSearch, setPartSearch] = useState('');
+  const [debouncedTerm, setDebouncedTerm] = useState('');
+
+  // Debounce part search so we don't fire an inventory query on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTerm(partSearch), 250);
+    return () => clearTimeout(t);
+  }, [partSearch]);
 
   // WEB-FX-003: Esc closes the editor modal so keyboard users aren't trapped.
   useEffect(() => {
@@ -108,13 +115,13 @@ export function DeviceTemplatesPage() {
   const templates = data?.data?.data ?? [];
 
   const { data: partData } = useQuery({
-    queryKey: ['inventory-part-search', partSearch],
+    queryKey: ['inventory-part-search', debouncedTerm],
     queryFn: () =>
       inventoryApi.list({
-        keyword: partSearch,
+        keyword: debouncedTerm,
         pagesize: 10,
       } as any),
-    enabled: !!editing && partSearch.length >= 2,
+    enabled: !!editing && debouncedTerm.length >= 2,
   });
   const partResults =
     partData?.data?.data?.items ||
@@ -404,7 +411,7 @@ export function DeviceTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Labor ($)</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Labor ({formatCurrencySymbol()})</label>
                   <input
                     type="number"
                     min={0}
@@ -420,7 +427,7 @@ export function DeviceTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Price ($)</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Price ({formatCurrencySymbol()})</label>
                   <input
                     type="number"
                     min={0}
@@ -483,7 +490,7 @@ export function DeviceTemplatesPage() {
                   placeholder="Search inventory to add parts..."
                   className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
                 />
-                {partSearch.length >= 2 && Array.isArray(partResults) && partResults.length > 0 && (
+                {debouncedTerm.length >= 2 && Array.isArray(partResults) && partResults.length > 0 && (
                   <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
                     {partResults.map((item: any) => (
                       <button

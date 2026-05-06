@@ -436,10 +436,6 @@ function GradesSection({ priceId }: { priceId: number }) {
     part_price: 0, labor_price_override: '' as string | number, is_default: false, sort_order: 0,
   });
 
-  const { data: prices } = useQuery({
-    queryKey: ['repair-pricing', 'prices'],
-  });
-
   // Fetch grades by getting the price detail -- or we can load them from the prices list
   // For simplicity, let's fetch prices which include grade_count, but not grades themselves.
   // We need a separate query for grades.
@@ -926,7 +922,7 @@ function AdjustmentsSubTab() {
             <div className="flex items-center gap-2">
               <button onClick={() => { setFlat((f) => Math.round((f - 5) * 100) / 100); setDirty(true); }}
                 className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
-                -$5
+                -{formatCurrency(5)}
               </button>
               <div className="relative flex-1">
                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
@@ -940,7 +936,7 @@ function AdjustmentsSubTab() {
               </div>
               <button onClick={() => { setFlat((f) => Math.round((f + 5) * 100) / 100); setDirty(true); }}
                 className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
-                +$5
+                +{formatCurrency(5)}
               </button>
             </div>
           </div>

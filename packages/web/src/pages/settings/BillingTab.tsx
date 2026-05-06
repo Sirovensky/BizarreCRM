@@ -7,7 +7,7 @@ import { api } from '@/api/client';
 import { PLAN_DEFINITIONS, FEATURE_NAMES } from '@bizarre-crm/shared';
 import { useState } from 'react';
 import { formatApiError } from '@/utils/apiError';
-import { formatDate } from '@/utils/format';
+import { formatDate, formatCents } from '@/utils/format';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -107,7 +107,7 @@ export function BillingTab() {
             )}
             {!trialActive && isPro && (
               <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
-                ${(priceCents / 100).toFixed(0)}/month
+                {formatCents(priceCents)}/month
               </p>
             )}
             {!trialActive && !isPro && (
@@ -196,7 +196,7 @@ export function BillingTab() {
             disabled={checkoutLoading}
             className="btn btn-lg mt-6 w-full bg-gradient-to-r from-primary-500 to-primary-700 text-primary-950 shadow-lg transition-all hover:shadow-xl"
           >
-            {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — $${(proDef.priceCents / 100).toFixed(0)}/mo`}
+            {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — ${formatCents(proDef.priceCents)}/mo`}
           </button>
         </div>
       )}

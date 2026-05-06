@@ -153,6 +153,7 @@ export function PosSettings() {
 
       <div className="p-6">
         <SectionHeader title="Display Options" />
+
         <ToggleRow
           label="Display products tab"
           description="Show products tab in POS interface"
@@ -262,6 +263,29 @@ export function PosSettings() {
           value={bool('pos_require_referral')}
           onChange={() => toggle('pos_require_referral')}
         />
+      </div>
+
+      {/* WEB-UIUX-153: sticky save bar so user doesn't scroll back to header */}
+      <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-white/90 backdrop-blur border-t border-surface-200 dark:bg-surface-900/90 dark:border-surface-700 flex justify-end">
+        <button
+          onClick={() => {
+            const patch: Record<string, string> = {};
+            for (const k of POS_OWNED_KEYS) {
+              if (k in config) patch[k] = config[k];
+            }
+            saveMutation.mutate(patch);
+          }}
+          disabled={!dirty || saveMutation.isPending}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            dirty
+              ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+              : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
+          )}
+        >
+          {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save Changes
+        </button>
       </div>
     </div>
   );

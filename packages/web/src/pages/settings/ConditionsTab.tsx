@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, Pencil, X, Check, Loader2, AlertCircle,
-  GripVertical, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
+  ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
   Smartphone, Tablet, Laptop, Monitor, Gamepad2, Tv, HelpCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -281,8 +281,6 @@ function TemplateCard({
               !check.is_active && 'opacity-50'
             )}
           >
-            <GripVertical className="h-4 w-4 text-surface-300 dark:text-surface-600 flex-shrink-0" />
-
             {/* Up/Down buttons */}
             <div className="flex flex-col gap-0.5">
               <button

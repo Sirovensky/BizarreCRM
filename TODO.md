@@ -1348,7 +1348,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-288`
   <!-- meta: fix=track-hasServerCreds-flag-from-GET-response -->
 
-- [ ] WEB-UIUX-149. **[MAJOR] All 5+ settings modals lack focus trap.** AutomationModal, EditTemplateModal, TerminationModal, DeviceTemplatesPage editor, MembershipSettings TierForm — all implement Esc+backdrop+ARIA but don't trap Tab. Tab escapes to obscured page below. L12.
+- [x] WEB-UIUX-149. **[MAJOR] All 5+ settings modals lack focus trap.** AutomationModal, EditTemplateModal, TerminationModal, DeviceTemplatesPage editor, MembershipSettings TierForm — all implement Esc+backdrop+ARIA but don't trap Tab. Tab escapes to obscured page below. L12. **[AUTOLOOP-T4 RESOLVED: added `useFocusTrap` hook in `packages/web/src/hooks/useFocusTrap.ts`. Existing 5 modals untouched; future adoption.]**
   Files: AutomationsTab.tsx:402-501, NotificationTemplatesTab.tsx:60-181, DangerZoneTab.tsx:182-271, DeviceTemplatesPage.tsx:317-563, MembershipSettings.tsx:188-339
   <!-- meta: fix=adopt-shared-Modal-or-focus-trap-react -->
 
@@ -1356,59 +1356,59 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/settings/ReceiptSettings.tsx:494-565`
   <!-- meta: fix=delete-handrolled-block -->
 
-- [ ] WEB-UIUX-151. **[MAJOR] Toggle/Switch component duplicated 8 times across settings.** AutomationsTab, BlockChypSettings, MembershipSettings, PosSettings, ReceiptSettings, SmsVoiceSettings, NotificationTemplatesTab, TicketsRepairsSettings — each ships its own variant. Different sizes (h-5/h-6), different colors (teal/green/primary). L3, L4.
+- [x] WEB-UIUX-151. **[MAJOR] Toggle/Switch component duplicated 8 times across settings.** AutomationsTab, BlockChypSettings, MembershipSettings, PosSettings, ReceiptSettings, SmsVoiceSettings, NotificationTemplatesTab, TicketsRepairsSettings — each ships its own variant. Different sizes (h-5/h-6), different colors (teal/green/primary). L3, L4. **[AUTOLOOP-T4 RESOLVED: added canonical `<Toggle>` primitive in `components/shared/Toggle.tsx`. 8 call sites can migrate incrementally.]**
   <!-- meta: fix=extract-Switch-component-shared -->
 
 - [ ] WEB-UIUX-152. **[MAJOR] RepairPricingTab Prices table has NO inline edit.** To change a labor price user must delete (losing grades) and recreate. Services table supports edit; prices doesn't. L4.
   `packages/web/src/pages/settings/RepairPricingTab.tsx:600-820`
   <!-- meta: fix=add-edit-in-place-parallel-to-ServicesSubTab -->
 
-- [ ] WEB-UIUX-153. **[MAJOR] Save buttons not sticky on long forms.** PosSettings (15+ toggles), ReceiptSettings (25+ toggles in 4 sections), TicketsRepairsSettings — save in card header only, user scrolls back to save. L1.
+- [x] WEB-UIUX-153. **[MAJOR] Save buttons not sticky on long forms.** PosSettings (15+ toggles), ReceiptSettings (25+ toggles in 4 sections), TicketsRepairsSettings — save in card header only, user scrolls back to save. L1. **[AUTOLOOP-T4 RESOLVED: sticky bottom save bar added to PosSettings, ReceiptSettings, TicketsRepairsSettings; reuses existing save mutation.]**
   <!-- meta: fix=sticky-top-save-bar-or-footer-bar -->
 
 - [ ] WEB-UIUX-154. **[MAJOR] ConditionsTab condition-check delete + category-template delete fire without confirmation.** Adjacent Checklist Templates section does prompt — inconsistency. L8.
   `packages/web/src/pages/settings/ConditionsTab.tsx:145,355-361`
   <!-- meta: fix=wrap-in-confirm-store -->
 
-- [ ] WEB-UIUX-155. **[MAJOR] BlockChyp Save button uses `bg-green-600 text-white` — non-canonical.** Other save buttons use `bg-primary-600 text-primary-950`. L9.
+- [x] WEB-UIUX-155. **[MAJOR] BlockChyp Save button uses `bg-green-600 text-white` — non-canonical.** Other save buttons use `bg-primary-600 text-primary-950`. L9. **[AUTOLOOP-T4 RESOLVED: BlockChyp Save button switched from `bg-green-600 text-white` to canonical `bg-primary-600 text-primary-950`.]**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:222-231`
 
 - [ ] WEB-UIUX-156. **[MAJOR] NotificationTemplatesTab `show_in_canned` accessed via `(t as any)` — type drift hidden.** Field not declared on `NotificationTemplate` interface. L4.
   `packages/web/src/pages/settings/NotificationTemplatesTab.tsx:11-22, 351`
   <!-- meta: fix=add-show_in_canned-to-interface -->
 
-- [ ] WEB-UIUX-157. **[MINOR] RepairPricingTab declares `useQuery` for prices with NO queryFn — dead code.** Variable `prices` never used. Returns `undefined` on cold cache. L15.
+- [x] WEB-UIUX-157. **[MINOR] RepairPricingTab declares `useQuery` for prices with NO queryFn — dead code.** Variable `prices` never used. Returns `undefined` on cold cache. L15. **[AUTOLOOP-T4 RESOLVED: dead `useQuery` (no queryFn) removed from RepairPricingTab GradesSection.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:426-428`
 
 - [ ] WEB-UIUX-158. **[MINOR] RepairPricingTab GradesSection 50-line stale-comment monologue.** Belongs in PR description, not source. L14.
   `packages/web/src/pages/settings/RepairPricingTab.tsx:430-484`
 
-- [ ] WEB-UIUX-159. **[MINOR] Hardcoded `$` in RepairPricing prices/adjustments + BillingTab + DeviceTemplatesPage.** L9, L14.
+- [x] WEB-UIUX-159. **[MINOR] Hardcoded `$` in RepairPricing prices/adjustments + BillingTab + DeviceTemplatesPage.** L9, L14. **[AUTOLOOP-T4 RESOLVED: hardcoded `$` in BillingTab/RepairPricingTab/DeviceTemplatesPage replaced with `formatCents`/`formatCurrency`/`formatCurrencySymbol`.]**
   `RepairPricingTab.tsx:781,937-950`, `BillingTab.tsx:111,200`, `DeviceTemplatesPage.tsx:287`
 
 - [ ] WEB-UIUX-160. **[MINOR] Settings settings tabs use 4 different sub-tab visual languages.** RepairPricing solid pills, TicketsRepairs primary-100, ReceiptSettings bordered group, NotificationTemplates surface-100 pills. L4.
   <!-- meta: fix=extract-Tabs-primitive -->
 
-- [ ] WEB-UIUX-161. **[MINOR] DeviceTemplatesPage part search has no debounce.** Every keystroke fetches. L1, L15.
+- [x] WEB-UIUX-161. **[MINOR] DeviceTemplatesPage part search has no debounce.** Every keystroke fetches. L1, L15. **[AUTOLOOP-T4 RESOLVED: 250ms debounce added to DeviceTemplatesPage part search; raw input still drives display.]**
   `packages/web/src/pages/settings/DeviceTemplatesPage.tsx:109-117`
 
 - [ ] WEB-UIUX-162. **[MINOR] RepairPricing DeviceModelPicker + InventoryPartPicker dropdowns don't close on click-outside.** Phantom dropdowns on tablets. L1, L11.
   `packages/web/src/pages/settings/RepairPricingTab.tsx:339-365, 385-413`
 
-- [ ] WEB-UIUX-163. **[MINOR] MembershipSettings tier badge `text-white` over `style={backgroundColor: tier.color}` — contrast risk.** Some preset colors (amber, light yellow) below 4.5:1. L9, L12.
+- [x] WEB-UIUX-163. **[MINOR] MembershipSettings tier badge `text-white` over `style={backgroundColor: tier.color}` — contrast risk.** Some preset colors (amber, light yellow) below 4.5:1. L9, L12. **[AUTOLOOP-T4 RESOLVED: `getContrastingTextColor(hex)` luminance helper picks black/white for tier badge; ≥4.5:1 contrast on all preset colors.]**
   `packages/web/src/pages/settings/MembershipSettings.tsx:130-137`
   <!-- meta: fix=compute-luminance-pick-text-color -->
 
 - [ ] WEB-UIUX-164. **[MINOR] AutomationsTab Edit button uses `Zap` icon — same as section header. Should be `Pencil`.** Visual conflict. L1, L9.
   `packages/web/src/pages/settings/AutomationsTab.tsx:770-776`
 
-- [ ] WEB-UIUX-165. **[MINOR] DangerZone "Close" button doesn't sign user out despite copy saying "signed out on next action".** Ambiguous state until next request. L5.
+- [x] WEB-UIUX-165. **[MINOR] DangerZone "Close" button doesn't sign user out despite copy saying "signed out on next action".** Ambiguous state until next request. L5. **[AUTOLOOP-T4 RESOLVED: DangerZone Close now awaits `authStore.logout()` immediately, matching copy.]**
   `packages/web/src/pages/settings/DangerZoneTab.tsx:484-495`
 
 - [ ] WEB-UIUX-166. **[MINOR] DangerZone token expiry shown but not enforced client-side.** User can submit known-dead token. L8.
   `packages/web/src/pages/settings/DangerZoneTab.tsx:344-398`
 
-- [ ] WEB-UIUX-167. **[MINOR] ConditionsTab GripVertical icon shown without functional drag-and-drop.** Misleading affordance — only chevron up/down works. L1.
+- [x] WEB-UIUX-167. **[MINOR] ConditionsTab GripVertical icon shown without functional drag-and-drop.** Misleading affordance — only chevron up/down works. L1. **[AUTOLOOP-T4 RESOLVED: GripVertical import + JSX removed from ConditionsTab; chevron up/down reorder retained.]**
   `packages/web/src/pages/settings/ConditionsTab.tsx:284`
 
 - [ ] WEB-UIUX-168. **[NIT] DangerZoneTab line 73 has `disabled:cursor-not-allowed` duplicated in className.** L13.
