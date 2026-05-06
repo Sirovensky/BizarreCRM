@@ -59,13 +59,13 @@ export function RefundReasonPicker({
         <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
           Refund reason {required ? <span className="text-red-500">*</span> : null}
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {REASONS.map((r) => (
             <button
               type="button"
               key={r.code}
               onClick={() => handleReasonChange(r.code)}
-              className={`rounded-md border px-3 py-2 text-left text-sm transition ${
+              className={`min-h-[44px] rounded-md border px-3 py-2 text-left text-sm transition ${
                 localReason === r.code
                   ? 'border-primary-500 bg-primary-50 text-primary-900 dark:bg-primary-900/30 dark:text-primary-200'
                   : 'border-surface-300 dark:border-surface-700 text-surface-900 dark:text-surface-100 hover:border-surface-400 dark:hover:border-surface-600'

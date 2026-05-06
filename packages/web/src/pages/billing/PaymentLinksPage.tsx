@@ -66,7 +66,7 @@ export function PaymentLinksPage() {
   const paymentLinksFlag = configData?.['billing_pay_link_enabled'];
   const paymentLinksEnabled = paymentLinksFlag === 'true' || paymentLinksFlag === '1';
   const paymentLinksDisabledReason =
-    'Payment links are not yet active. Configure a checkout provider first in Settings > Payment Processing.';
+    'Payment links are not yet active. Configure a checkout provider first in Settings > Payment Processing. New links cannot be created until a payment provider is configured in Settings → BlockChyp.';
 
   const { data, isLoading } = useQuery({
     queryKey: ['payment-links', filter],

@@ -4,6 +4,7 @@ import { X, AlertTriangle, Users, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { smsApi } from '@/api/endpoints';
+import { SmsTemplateListResponse } from '@/api/types';
 import { cn } from '@/utils/cn';
 
 /**
@@ -60,7 +61,8 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     queryFn: () => smsApi.templates(),
     enabled: open,
   });
-  const templates: SmsTemplate[] = (tplData?.data as any)?.data?.templates ?? [];
+  const tplPayload = tplData?.data as SmsTemplateListResponse | undefined;
+  const templates: SmsTemplate[] = tplPayload?.data?.templates ?? [];
 
   const previewMut = useMutation({
     mutationFn: async () => {

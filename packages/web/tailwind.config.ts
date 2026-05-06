@@ -15,6 +15,14 @@ export default {
         // Runtime-themed primary ramp. Defaults are defined in globals.css
         // and AppShell replaces the CSS variables from store_config
         // `theme_primary_color` after settings load.
+        // WEB-UIUX-418: semantic token for text rendered on top of a primary-
+        // colored surface. Resolves to --text-on-primary in globals.css, which
+        // defaults to near-black for the cream ramp. When the primary accent is
+        // swapped to a dark color, AppShell must also update --text-on-primary
+        // to a light value (e.g. 255 255 255). Use `text-on-primary` on any
+        // element that sits on a `bg-primary-*` surface instead of hard-coding
+        // `text-primary-950`.
+        'on-primary': 'rgb(var(--text-on-primary) / <alpha-value>)',
         primary: {
           50:  'rgb(var(--primary-50) / <alpha-value>)',
           100: 'rgb(var(--primary-100) / <alpha-value>)',

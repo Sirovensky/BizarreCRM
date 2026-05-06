@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -19,6 +19,7 @@ import {
   setImpersonationSession,
 } from '@/components/ImpersonationBanner';
 import { cn } from '@/utils/cn';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface LoginFormProps {
   onSuccess: () => void;
@@ -115,7 +116,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
               disabled={submitting}
               className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Continue'}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Continue →'}
             </button>
           </form>
         ) : (
@@ -139,7 +140,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
               disabled={submitting || code.length !== 6}
               className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Verify'}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Verify & sign in'}
             </button>
             <button
               type="button"
@@ -255,7 +256,7 @@ function TenantRow({ tenant }: TenantRowProps) {
         <button
           onClick={() => setConfirmOpen(true)}
           disabled={impersonateMutation.isPending || tenant.status !== 'active'}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-600 text-white border border-amber-700 rounded-lg hover:bg-amber-700 dark:bg-amber-700 dark:border-amber-600 dark:hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           title={tenant.status !== 'active' ? `Cannot impersonate: tenant is ${tenant.status}` : 'Log in as tenant admin'}
         >
           {impersonateMutation.isPending ? (
@@ -306,6 +307,9 @@ function ImpersonateConfirmModal({
   const reasonValid = reason.trim().length >= 8;
   const canConfirm = slugMatches && reasonValid && !submitting;
 
+  // WEB-UIUX-412: focus trap for WCAG 2.1 SC 2.1.2 compliance.
+  const dialogRef = useFocusTrap(true);
+
   // WEB-FX-003: Esc dismisses unless we're mid-submit (avoid losing the
   // typed slug/reason during the network round trip).
   useEffect(() => {
@@ -323,6 +327,7 @@ function ImpersonateConfirmModal({
       onClick={onCancel}
     >
       <div
+        ref={dialogRef as React.RefObject<HTMLDivElement>}
         role="dialog"
         aria-modal="true"
         aria-labelledby="impersonate-confirm-title"
@@ -475,7 +480,7 @@ function TenantCard({ tenant }: TenantRowProps) {
         <button
           onClick={() => setConfirmOpen(true)}
           disabled={impersonateMutation.isPending || tenant.status !== 'active'}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-600 text-white border border-amber-700 rounded-lg hover:bg-amber-700 dark:bg-amber-700 dark:border-amber-600 dark:hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           title={tenant.status !== 'active' ? `Cannot impersonate: tenant is ${tenant.status}` : 'Log in as tenant admin'}
         >
           {impersonateMutation.isPending ? (

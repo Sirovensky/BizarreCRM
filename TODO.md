@@ -2274,13 +2274,13 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-399. **[MINOR] PaymentLinksPage Token column shows `row.token.slice(0,12)…` — rows with same prefix indistinguishable.** L2. **[AUTOLOOP-T16 RESOLVED: PaymentLinks Token column now displays `first6…last4` instead of `first12…`; shared-prefix rows distinguishable.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:295`
 
-- [ ] WEB-UIUX-400. **[MINOR] PaymentLinksPage feature-disabled banner generic — empty state doesn't say "and you can't create new ones until provider configured".** L8.
+- [x] WEB-UIUX-400. **[MINOR] PaymentLinksPage feature-disabled banner generic — empty state doesn't say "and you can't create new ones until provider configured".** L8. **[AUTOLOOP-T17 RESOLVED: feature-disabled banner text appended with "New links cannot be created until provider configured in Settings → BlockChyp."]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:289-291`
 
 - [ ] WEB-UIUX-401. **[MINOR] InstallmentPlanWizard schedule preview no `<tfoot>` total row — verification of `sum === totalCents` impossible at glance.** L16.
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:140-161`
 
-- [ ] WEB-UIUX-402. **[MINOR] RefundReasonPicker grid-cols-2 with long labels wraps awkwardly on phones.** L11.
+- [x] WEB-UIUX-402. **[MINOR] RefundReasonPicker grid-cols-2 with long labels wraps awkwardly on phones.** L11. **[AUTOLOOP-T17 RESOLVED: RefundReasonPicker grid `grid-cols-2` → `grid-cols-1 sm:grid-cols-2`; min-h-[44px] touch target.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
 
 - [ ] WEB-UIUX-403. **[MINOR] QrReceiptCode fallback renders empty placeholder (only enters when `!value`).** L8.
@@ -2288,25 +2288,25 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Super-Admin Deeper
 
-- [ ] WEB-UIUX-404. **[MAJOR] TenantsListPage no pagination — large fleets load all tenants in one query.** L15.
+- [x] WEB-UIUX-404. **[MAJOR] TenantsListPage no pagination — large fleets load all tenants in one query.** L15. **[AUTOLOOP-T17 RESOLVED: STALE — TenantsListPage already has full server-side pagination (page+per_page query, prev/next, page-size selector).]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:435-545`
 
 - [ ] WEB-UIUX-405. **[MAJOR] ImpersonateConfirmModal focus not auto-moved to slug input on mount.** L12.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:311-417`
 
-- [ ] WEB-UIUX-406. **[MAJOR] TenantRow "Log in as" same primary color as "Sign out" — destructive-cross-boundary indistinguishable from safe.** L9, L16.
+- [x] WEB-UIUX-406. **[MAJOR] TenantRow "Log in as" same primary color as "Sign out" — destructive-cross-boundary indistinguishable from safe.** L9, L16. **[AUTOLOOP-T17 RESOLVED: TenantRow + TenantCard "Log in as" buttons restyled to `bg-amber-600 text-white` solid; cross-boundary action visually flagged.]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:246-259`
 
 - [ ] WEB-UIUX-407. **[MINOR] SuperAdminLoginForm TOTP input doesn't autofocus on second step.** L1.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:118-149`
 
-- [ ] WEB-UIUX-408. **[MINOR] ImpersonateConfirmModal `slugMatches` rejects trailing whitespace silently.** L8.
+- [x] WEB-UIUX-408. **[MINOR] ImpersonateConfirmModal `slugMatches` rejects trailing whitespace silently.** L8. **[AUTOLOOP-T17 RESOLVED: STALE — `slugMatches` already uses `typedSlug.trim() === tenantSlug` (line 305).]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:297-299`
 
 - [ ] WEB-UIUX-409. **[MINOR] TenantsListPage table no sortable columns.** L5.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:518-541`
 
-- [ ] WEB-UIUX-410. **[MINOR] SuperAdminLoginForm Continue/Verify buttons no semantic differentiation across 2FA steps.** L2.
+- [x] WEB-UIUX-410. **[MINOR] SuperAdminLoginForm Continue/Verify buttons no semantic differentiation across 2FA steps.** L2. **[AUTOLOOP-T17 RESOLVED: SuperAdminLoginForm step buttons differentiated — "Continue →" (creds) vs "Verify  sign in" (TOTP).]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:91-117`
 
 - [ ] WEB-UIUX-411. **[NIT] TenantsListPage `db_size_mb` rendered as raw "MB" — no GB rollup for large tenants.** L14.
@@ -2314,23 +2314,23 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Cross-Cutting (Pass 7)
 
-- [ ] WEB-UIUX-412. **[BLOCKER] 6+ modals across Pass 7 lack focus trap.** BulkSmsModal, ScheduledSendModal, RecordingConsentDialog, DepositCollectModal, FinancingButton stub, ImpersonateConfirmModal. L12, L4.
+- [x] WEB-UIUX-412. **[BLOCKER] 6+ modals across Pass 7 lack focus trap.** BulkSmsModal, ScheduledSendModal, RecordingConsentDialog, DepositCollectModal, FinancingButton stub, ImpersonateConfirmModal. L12, L4. **[AUTOLOOP-T17 RESOLVED: FinancingButton + ImpersonateConfirmModal wired with useFocusTrap. All 6 Pass-7 modals now have focus traps.]**
   <!-- meta: fix=shared-Modal-primitive-with-focus-trap+Esc+scroll-lock -->
 
 - [ ] WEB-UIUX-413. **[MAJOR] Multiple modals close on backdrop click without confirming dirty input.** DepositCollectModal, BulkSmsModal, ScheduledSendModal, FinancingButton stub. L5, L8.
 
-- [ ] WEB-UIUX-414. **[MAJOR] Loose `any` casts on API responses across 3 components mask schema drift.** BulkSmsModal `tplData?.data as any`, FailedSendRetryList, ConversationAssignee. L4, L15.
+- [x] WEB-UIUX-414. **[MAJOR] Loose `any` casts on API responses across 3 components mask schema drift.** BulkSmsModal `tplData?.data as any`, FailedSendRetryList, ConversationAssignee. L4, L15. **[AUTOLOOP-T17 RESOLVED: BulkSmsModal uses SmsTemplateListResponse from @/api/types; ConversationAssignee uses generic api.get<{data:UserRow[]}>; FailedSendRetryList had no `as any`.]**
   <!-- meta: fix=zod-validate-at-API-client-boundary -->
 
 - [ ] WEB-UIUX-415. **[MINOR] At least 4 different loading strings: "...", "Loading...", "Loading…", "Looking up…", "Sending…".** L14.
   Pattern across web/src
   <!-- meta: fix=standardize-on-shared-LoadingText-component -->
 
-- [ ] WEB-UIUX-416. **[MINOR] Toast strings English-only across staff surfaces.** Portal has i18n; Communications/Billing/Super-admin don't translate. L14.
+- [ ] WEB-UIUX-416. **[MINOR] Toast strings English-only across staff surfaces.** Portal has i18n; Communications/Billing/Super-admin don't translate. L14. **[AUTOLOOP-T17 BLOCKED: requires react-i18next dep + hundreds of string extractions across staff surfaces.]**
 
 - [ ] WEB-UIUX-417. **[MINOR] Date inputs (`<input type="date">`) used without TZ disclaimer.** PaymentLinks `expires_at`, InstallmentPlanWizard `startDate`. L7, L14.
 
-- [ ] WEB-UIUX-418. **[MINOR] `text-primary-950` text-on-primary works only for warm-cream scheme — unreadable if primary changes to dark color.** L9.
+- [x] WEB-UIUX-418. **[MINOR] `text-primary-950` text-on-primary works only for warm-cream scheme — unreadable if primary changes to dark color.** L9. **[AUTOLOOP-T17 RESOLVED: `--text-on-primary` CSS var added to globals.css + Tailwind `on-primary` color token; pages can use `text-on-primary` utility.]**
   <!-- meta: fix=introduce-text-on-primary-semantic-token -->
 
 - [ ] WEB-UIUX-419. **[MINOR] Components return `null` for empty/error states — silent layout shift, no user-visible reason.** TechCard, TrustBadges, QueuePosition. L8, L11.

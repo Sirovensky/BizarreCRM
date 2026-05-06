@@ -33,7 +33,7 @@ interface AssignmentRow {
 
 async function fetchUsers(): Promise<UserRow[]> {
   const res = await api.get<{ success: boolean; data: UserRow[] }>('/settings/users');
-  return (res.data as any).data ?? [];
+  return res.data.data ?? [];
 }
 
 function userLabel(u: UserRow | undefined): string {

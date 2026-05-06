@@ -15,9 +15,10 @@
  * SEVERITY=LOW: component is marketing-only today, behind a feature flag,
  * and the "coming soon" message is shown to the user directly.
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { formatCents } from '@/utils/format';
 import { ComingSoonBadge } from '@/pages/settings/components/ComingSoonBadge';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface FinancingButtonProps {
   amountCents: number;
@@ -66,6 +67,9 @@ export function FinancingButton({
     return () => document.removeEventListener('keydown', handler);
   }, [showModal]);
 
+  // WEB-UIUX-412: focus trap keeps Tab cycling inside the stub dialog.
+  const dialogRef = useFocusTrap(showModal);
+
   return (
     <>
       <button
@@ -80,6 +84,7 @@ export function FinancingButton({
       {showModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowModal(false)}>
           <div
+            ref={dialogRef as React.RefObject<HTMLDivElement>}
             role="dialog"
             aria-modal="true"
             aria-labelledby="financing-stub-title"

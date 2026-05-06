@@ -23,6 +23,13 @@
     --primary-900:  43  20   0;
     --primary-950:  26  11   0;
 
+    /* WEB-UIUX-418: semantic text-on-primary token.
+     * Set to a dark value (near-black) that contrasts the default warm-cream
+     * primary ramp. When AppShell switches to a dark primary accent it must
+     * also update this var to a light value (e.g. 255 255 255) so all
+     * `text-on-primary` sites flip automatically without per-site changes. */
+    --text-on-primary: 26 11 0;
+
     /* Surface ramp — Option F (Web POS Recolor 2026-05-01).
      * Warm-graphite ramp between stone and neutral. Cream restrained to
      * small surfaces (CTAs, dots, 2px hero-card left edges). Replaces the
