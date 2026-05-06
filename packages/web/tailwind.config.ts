@@ -173,6 +173,25 @@ export default {
           '100%': { opacity: '1' },
         },
       },
+      // @audit-fixed (WEB-UIUX-299 2026-05-06): canonical z-index scale.
+      // Existing raw values (60, 80, 100, 101, 9998, 9999) were undocumented,
+      // causing modal-on-modal stacking bugs (e.g. ConfirmDialog behind
+      // QuickSmsModal). Named tokens make intent explicit and enforce ordering.
+      // Migration is incremental: new/edited components use `z-modal` etc.;
+      // existing raw `z-[N]` classes continue working until replaced.
+      //
+      // Layer order (low → high):
+      //   dropdown (40) < popover (50) < modalOverlay (90) < modal (100)
+      //   < confirmDialog (110) < toast (120) < tooltip (130)
+      zIndex: {
+        dropdown:      '40',   // Select menus, autocomplete panels
+        popover:       '50',   // Popovers, date-pickers, colour pickers
+        modalOverlay:  '90',   // Backdrop behind a modal
+        modal:         '100',  // First-level modal / drawer
+        confirmDialog: '110',  // ConfirmDialog layered over a modal
+        toast:         '120',  // Toast / snackbar notifications
+        tooltip:       '130',  // Tooltips — always on top
+      },
     },
   },
   // eslint-disable-next-line @typescript-eslint/no-require-imports

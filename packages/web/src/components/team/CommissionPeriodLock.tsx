@@ -123,7 +123,7 @@ export function CommissionPeriodLock() {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow border p-4">
+    <div className="bg-white dark:bg-surface-800 rounded-lg shadow border dark:border-surface-700 p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-bold text-surface-800 dark:text-surface-100">Payroll periods</h2>
         <button
@@ -140,7 +140,7 @@ export function CommissionPeriodLock() {
         {periods.map((p) => (
           <div
             key={p.id}
-            className={`border rounded p-2 text-xs ${p.locked_at ? 'bg-surface-50 dark:bg-surface-800/50' : ''}`}
+            className={`border dark:border-surface-700 rounded p-2 text-xs ${p.locked_at ? 'bg-surface-50 dark:bg-surface-800/50' : ''}`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -185,16 +185,16 @@ export function CommissionPeriodLock() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-payroll-period-title"
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            className="bg-white dark:bg-surface-800 rounded-lg shadow-xl max-w-md w-full p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="new-payroll-period-title" className="text-lg font-bold mb-4">New payroll period</h2>
+            <h2 id="new-payroll-period-title" className="text-lg font-bold mb-4 text-surface-900 dark:text-surface-100">New payroll period</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Name</span>
                 <input
                   type="text"
-                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                  className="mt-1 w-full border dark:border-surface-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. 2026-W14"
@@ -205,7 +205,7 @@ export function CommissionPeriodLock() {
                   <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Start</span>
                   <input
                     type="date"
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                    className="mt-1 w-full border dark:border-surface-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                     value={newStart}
                     onChange={(e) => setNewStart(e.target.value)}
                   />
@@ -214,7 +214,7 @@ export function CommissionPeriodLock() {
                   <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">End</span>
                   <input
                     type="date"
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                    className="mt-1 w-full border dark:border-surface-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                     value={newEnd}
                     onChange={(e) => setNewEnd(e.target.value)}
                   />

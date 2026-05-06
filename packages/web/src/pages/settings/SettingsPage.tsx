@@ -447,7 +447,7 @@ function StoreInfoTab() {
  * a separate feature.
  */
 function AppearanceSection() {
-  const { theme, setTheme } = useUiStore();
+  const { theme, setTheme, keyboardShortcutsEnabled, setKeyboardShortcutsEnabled } = useUiStore();
   const navigate = useNavigate();
 
   // Read wizard_completed so we can show the "Resume setup" button only when
@@ -501,6 +501,40 @@ function AppearanceSection() {
               </button>
             );
           })}
+        </div>
+
+        {/* WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts (F2/F3/F4/F6/?) must be
+            disableable. Toggle persists to localStorage via uiStore. */}
+        <div className="mt-6 rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+                Keyboard shortcuts
+              </p>
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                Enable single-key shortcuts (F2, F3, F4, F6, ?) for quick navigation. Disable if these keys conflict with assistive technology or your workflow.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={keyboardShortcutsEnabled}
+              onClick={() => setKeyboardShortcutsEnabled(!keyboardShortcutsEnabled)}
+              className={cn(
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+                keyboardShortcutsEnabled ? 'bg-blue-600' : 'bg-surface-300 dark:bg-surface-600'
+              )}
+              aria-label="Toggle keyboard shortcuts"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  keyboardShortcutsEnabled ? 'translate-x-5' : 'translate-x-0'
+                )}
+              />
+            </button>
+          </div>
         </div>
 
         {canResume && (
@@ -2062,7 +2096,8 @@ function SettingsPageInner() {
 
   return (
     <div>
-      {/* Global Ctrl/Cmd+K palette — mounted once, listens on window. */}
+      {/* Settings search palette — mounted once; opened programmatically.
+          Cmd/Ctrl+K is owned by the global Header command palette. */}
       <SettingsGlobalSearch
         onNavigate={(tab) => void setActiveTab(tab as Tab)}
       />

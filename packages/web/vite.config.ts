@@ -82,6 +82,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false, // Never ship source maps to production — prevents source code exposure
+    // WEB-UIUX-302: strip console.log + console.warn from production bundles so
+    // debug noise is never visible in end-user DevTools. console.error is kept
+    // because it's used for legitimate runtime error reporting (Sentry / uncaught
+    // promise rejections). Terser's pure_funcs removes call-sites with no side
+    // effects; drop_debugger also removes any stray debugger statements.
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        pure_funcs: ['console.log', 'console.warn'],
+        drop_debugger: true,
+      },
+    },
     // WEB-FW-002 (Fixer-RRR 2026-04-25): explicit production budget. Default
     // chunkSizeWarningLimit is 500 kB which lets vendor chunks (recharts ~500 kB)
     // silently exceed the budget. Tightening to 350 kB surfaces a build-log

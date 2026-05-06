@@ -89,7 +89,7 @@ function isRequestCanceled(err: unknown): boolean {
 
 export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode }) {
   const navigate = useNavigate();
-  const { setCommandPaletteOpen } = useUiStore();
+  const { setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
   const { user, logout } = useAuthStore();
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent), []);
@@ -341,6 +341,10 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   // card (audit section 42, idea 14). The "?" binding is suppressed when
   // the user is typing in an input/textarea so they can still type an actual
   // question mark into forms.
+  //
+  // WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts must be disableable.
+  // Cmd+K / Ctrl+K are modifier-keyed (not affected). Bare "?" is gated
+  // behind keyboardShortcutsEnabled so users who opt out aren't triggered.
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -348,6 +352,8 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         setCommandPaletteOpen(true);
         return;
       }
+      // Bare "?" is a single-key shortcut — respect user's WCAG opt-out.
+      if (!keyboardShortcutsEnabled) return;
       if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const target = e.target as HTMLElement | null;
         const isEditable =
@@ -361,7 +367,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         }
       }
     },
-    [setCommandPaletteOpen]
+    [keyboardShortcutsEnabled, setCommandPaletteOpen]
   );
 
   useEffect(() => {

@@ -1,8 +1,11 @@
 /**
- * SettingsGlobalSearch — a modal command-palette opened with Ctrl/Cmd+K while
- * anywhere inside /settings. It augments the inline SettingsSearch dropdown
- * for users who prefer keyboard-driven navigation (and works well on phones
- * where dropdowns fight the virtual keyboard for vertical space).
+ * SettingsGlobalSearch — a modal search palette for /settings, augmenting the
+ * inline SettingsSearch dropdown for keyboard-driven and mobile users.
+ *
+ * NOTE: This palette does NOT register a Cmd/Ctrl+K shortcut. That shortcut
+ * belongs exclusively to the global Header command palette. Opening this
+ * palette is done programmatically from SettingsPage to avoid double-firing
+ * on /settings (WEB-UIUX-297).
  *
  * Why a separate component?
  *   - The inline SettingsSearch sits in the header and is great for mouse
@@ -11,9 +14,8 @@
  *   - Both components read from the SAME static index (settingsSearchIndex.ts)
  *     so results are identical — they just render differently.
  *
- * The palette is mounted once at the SettingsPage level and listens for a
- * global Ctrl/Cmd+K shortcut. Results navigate via the onNavigate prop and
- * trigger the shared highlight helper after the tab switch commits.
+ * Results navigate via the onNavigate prop and trigger the shared highlight
+ * helper after the tab switch commits.
  */
 
 import {
@@ -38,33 +40,29 @@ export interface SettingsGlobalSearchProps {
   onNavigate: (tab: string, settingKey: string) => void;
   /** Max number of results rendered in the palette. */
   maxResults?: number;
-  /** Keyboard shortcut character (default: "k"). */
-  shortcutKey?: string;
 }
 
 export function SettingsGlobalSearch({
   onNavigate,
   maxResults = 25,
-  shortcutKey = 'k',
 }: SettingsGlobalSearchProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Global shortcut: Ctrl/Cmd+K opens the palette.
+  // Escape closes the palette. Cmd/Ctrl+K is intentionally NOT handled here —
+  // the global Header command palette already owns that shortcut app-wide.
+  // Opening this palette is done programmatically (see SettingsPage) to avoid
+  // the double-fire that occurred when both listeners fired on /settings.
   useEffect(() => {
     function handleGlobalKey(e: globalThis.KeyboardEvent) {
       const normalized = e.key?.toLowerCase?.();
-      if ((e.metaKey || e.ctrlKey) && normalized === shortcutKey) {
-        e.preventDefault();
-        setOpen(true);
-      }
       if (normalized === 'escape') setOpen(false);
     }
     window.addEventListener('keydown', handleGlobalKey);
     return () => window.removeEventListener('keydown', handleGlobalKey);
-  }, [shortcutKey]);
+  }, []);
 
   // Autofocus the input when the modal opens.
   useEffect(() => {

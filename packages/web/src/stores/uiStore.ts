@@ -5,11 +5,14 @@ interface UiState {
   mobileSidebarOpen: boolean;
   theme: 'light' | 'dark' | 'system';
   commandPaletteOpen: boolean;
+  // WCAG 2.1.4: single-key shortcuts must be disableable or remappable.
+  keyboardShortcutsEnabled: boolean;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setMobileSidebarOpen: (open: boolean) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setCommandPaletteOpen: (open: boolean) => void;
+  setKeyboardShortcutsEnabled: (enabled: boolean) => void;
 }
 
 const getInitialTheme = (): 'light' | 'dark' | 'system' => {
@@ -69,6 +72,17 @@ const readSidebarCollapsed = (): boolean => {
   }
 };
 
+// WCAG 2.1.4: default ON, but persisted so a user who opts out stays opted out.
+const readKeyboardShortcutsEnabled = (): boolean => {
+  try {
+    const stored = localStorage.getItem('keyboardShortcutsEnabled');
+    // Explicit 'false' opts out; anything else (including null for first-run) stays enabled.
+    return stored !== 'false';
+  } catch {
+    return true;
+  }
+};
+
 const safeWrite = (key: string, value: string): void => {
   try {
     localStorage.setItem(key, value);
@@ -83,6 +97,7 @@ export const useUiStore = create<UiState>((set) => ({
   mobileSidebarOpen: false,
   theme: getInitialTheme(),
   commandPaletteOpen: false,
+  keyboardShortcutsEnabled: readKeyboardShortcutsEnabled(),
 
   toggleSidebar: () =>
     set((state) => {
@@ -116,6 +131,11 @@ export const useUiStore = create<UiState>((set) => ({
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),
+
+  setKeyboardShortcutsEnabled: (enabled: boolean) => {
+    safeWrite('keyboardShortcutsEnabled', String(enabled));
+    set({ keyboardShortcutsEnabled: enabled });
+  },
 }));
 
 // @audit-fixed: previously the matchMedia listener referenced

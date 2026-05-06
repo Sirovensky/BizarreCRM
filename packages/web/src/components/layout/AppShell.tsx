@@ -31,7 +31,7 @@ interface ServerConfigPayload {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
+  const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
   const [devBannerDismissed, dismissDevBanner] = useDismissible('dev-banner');
   const location = useLocation();
   const navigate = useNavigate();
@@ -110,7 +110,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // shortcuts dialog — both firing caused two stacked modals and focus-trap
   // conflicts. Header's listener (with matching isEditable guard) already
   // covers the case; drop ours.
+  //
+  // WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts must be disableable.
+  // Gate all F-key shortcuts behind keyboardShortcutsEnabled (persisted to
+  // localStorage, toggled in Settings > Appearance).
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
+    // WCAG 2.1.4: user opted out of single-key shortcuts.
+    if (!keyboardShortcutsEnabled) return;
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     if (isTypingInField()) return;
     // Don't yank the user out of an open modal mid-task.
@@ -130,7 +136,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
       case 'F6': e.preventDefault(); setCommandPaletteOpen(true); break;
     }
-  }, [navigate, setCommandPaletteOpen, location.pathname]);
+  }, [keyboardShortcutsEnabled, navigate, setCommandPaletteOpen, location.pathname]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleGlobalKeys);

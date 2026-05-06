@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useUiStore } from '@/stores/uiStore';
 
 /**
  * F-key quick tabs for the unified POS page (audit §43.10).
@@ -57,6 +58,11 @@ function isTypingInField(target: EventTarget | null): boolean {
 }
 
 export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled = true): void {
+  // WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts must be disableable.
+  // Read the persisted preference directly from the store; callers don't
+  // need to thread this through their own props.
+  const keyboardShortcutsEnabled = useUiStore((s) => s.keyboardShortcutsEnabled);
+
   // Keep the latest handlers in a ref so an inline `{ onRepairsTab: ... }`
   // literal from the caller doesn't tear down + re-add the window listener
   // on every render. The listener itself is stable; it reads `handlersRef`.
@@ -69,6 +75,8 @@ export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled =
 
   useEffect(() => {
     if (!enabled) return;
+    // WCAG 2.1.4 opt-out: user disabled single-key shortcuts in Settings.
+    if (!keyboardShortcutsEnabled) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       // WEB-FD-005: Shift+F5 → Complete sale; bare F5 falls through to the
@@ -92,5 +100,5 @@ export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled =
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enabled]);
+  }, [enabled, keyboardShortcutsEnabled]);
 }

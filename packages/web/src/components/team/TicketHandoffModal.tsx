@@ -39,11 +39,12 @@ export function TicketHandoffModal({
   const [context, setContext] = useState('');
 
   const { data: employeesData } = useQuery({
-    queryKey: ['employees', 'simple'],
+    queryKey: ['employees'],
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
       return res.data.data;
     },
+    staleTime: 60_000,
   });
   const employees: Employee[] = (employeesData || []).filter((e) => e.id !== currentAssigneeId);
 
