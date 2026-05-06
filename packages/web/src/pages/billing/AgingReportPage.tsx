@@ -200,7 +200,7 @@ export function AgingReportPage() {
               <th className="px-3 py-2 text-left">Action</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody aria-busy={isLoading}>
             {isLoading ? (
               <tr><td colSpan={8} className="px-3 py-6 text-center text-surface-400">Loading…</td></tr>
             ) : filteredInvoices.length === 0 ? (

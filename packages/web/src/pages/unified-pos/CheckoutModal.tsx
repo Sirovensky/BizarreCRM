@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, DollarSign, CreditCard, MoreHorizontal, Loader2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
+import { X, DollarSign, CreditCard, MoreHorizontal, Loader2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, membershipApi, settingsApi, blockchypApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -189,6 +190,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     { method: 'Cash', amount: '' },
     { method: 'Card', amount: '' },
   ]);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [terminalErrorInvoiceId, setTerminalErrorInvoiceId] = useState<number | null>(null);
 
   // WEB-FB-009 / WEB-FH-014 (Fixer-V 2026-04-25): keep the split-payment
   // running tally in integer cents and only divide once for display. The
@@ -465,21 +468,21 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                 cardDeclined = true;
                 cardDeclineMessage =
                   terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
-                toast.error(
-                  `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
-                  { duration: 8000 },
-                );
+                setTerminalError(`Invoice created but terminal declined: ${cardDeclineMessage}.`);
+                setTerminalErrorInvoiceId(invoiceId);
               }
             } catch (terminalErr: unknown) {
               cardDeclined = true;
               cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
-              toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
+              setTerminalError(`Invoice created but terminal charge failed: ${cardDeclineMessage}.`);
+              setTerminalErrorInvoiceId(invoiceId);
             }
           } else if (splitMode) {
             // WEB-W3-004: split payments — each Card leg must fire an independent
             // BlockChyp `charge` for that leg's amount. Non-card legs (Cash/Other)
             // are already recorded by the POS checkout endpoint; we only hit
             // the terminal for Card legs.
+            const legErrors: string[] = [];
             for (const leg of cardSplits) {
               const legAmount = parseFloat(leg.amount) || 0;
               if (legAmount <= 0) continue;
@@ -493,10 +496,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   cardDeclineMessage = cardDeclineMessage
                     ? `${cardDeclineMessage}; ${legMsg}`
                     : legMsg;
-                  toast.error(
-                    `Card leg ${formatCurrency(legAmount)} declined: ${legMsg}. Retry from the invoice page.`,
-                    { duration: 8000 },
-                  );
+                  legErrors.push(`Card leg ${formatCurrency(legAmount)} declined: ${legMsg}.`);
                 }
               } catch (terminalErr: unknown) {
                 cardDeclined = true;
@@ -504,17 +504,27 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                 cardDeclineMessage = cardDeclineMessage
                   ? `${cardDeclineMessage}; ${legMsg}`
                   : legMsg;
-                toast.error(`Card leg ${formatCurrency(legAmount)} failed: ${legMsg}. Retry from the invoice page.`, { duration: 8000 });
+                legErrors.push(`Card leg ${formatCurrency(legAmount)} failed: ${legMsg}.`);
               }
+            }
+            if (legErrors.length > 0) {
+              setTerminalError(legErrors.join(' '));
+              setTerminalErrorInvoiceId(invoiceId);
             }
           }
         }
       }
 
+      // WEB-UIUX-222: terminal failures stay in the modal as a persistent inline
+      // error — do NOT close or show the success screen until the user dismisses
+      // and retries from the invoice page.
+      if (cardDeclined) {
+        return;
+      }
+
       setShowSuccess({
         ...res.data.data,
         mode: 'checkout',
-        ...(cardDeclined ? { card_declined: true, card_decline_message: cardDeclineMessage } : {}),
       });
       // Advance the checkout tutorial when payment is completed.
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
@@ -835,6 +845,43 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             </div>
           )}
         </div>
+
+        {/* WEB-UIUX-222: persistent inline terminal error — must be explicitly dismissed */}
+        {terminalError && (
+          <div
+            role="alert"
+            className="mx-6 mb-4 rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-700 dark:bg-red-900/20"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-800 dark:text-red-300">Terminal Payment Failed</p>
+                <p className="mt-1 text-sm text-red-700 dark:text-red-400">{terminalError}</p>
+                <p className="mt-2 text-sm text-red-700 dark:text-red-400">
+                  The invoice has been created.{' '}
+                  {terminalErrorInvoiceId ? (
+                    <Link
+                      to={`/invoices/${terminalErrorInvoiceId}`}
+                      className="font-medium underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200"
+                    >
+                      Retry from the invoice page
+                    </Link>
+                  ) : (
+                    <span className="font-medium">Retry from the invoice page.</span>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setTerminalError(null); setTerminalErrorInvoiceId(null); }}
+                className="shrink-0 rounded p-0.5 text-red-600 hover:bg-red-100 hover:text-red-800 dark:text-red-400 dark:hover:bg-red-800/30 dark:hover:text-red-200"
+                aria-label="Dismiss error"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="border-t border-surface-200 px-6 py-4 dark:border-surface-700">

@@ -1811,7 +1811,7 @@ export function TicketListPage() {
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+            <tbody aria-busy={isLoading} className="divide-y divide-surface-100 dark:divide-surface-800">
               {showSkeleton ? (
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : isLoading && tickets.length === 0 ? (

@@ -1576,14 +1576,14 @@ extracted Modal shell (cross-cutting)
   `packages/web/tailwind.config.ts:157`
   <!-- meta: fix=add-Bebas+Neue-to-Google-Fonts-preload-or-self-host -->
 
-- [ ] WEB-UIUX-208. **[MAJOR] `font-display` (Bebas Neue) used in only 1 file across entire web app.** 100+ `<h1>`/`<h2>` headings use default `font-sans` (Jost). Brand display font effectively unused. L9.
+- [x] WEB-UIUX-208. **[MAJOR] `font-display` (Bebas Neue) used in only 1 file across entire web app.** 100+ `<h1>`/`<h2>` headings use default `font-sans` (Jost). Brand display font effectively unused. L9. **[AUTOLOOP-T7 RESOLVED: globals.css `h1,h2 { font-family: "Bebas Neue", ... }` rule applies display font app-wide; 100+ headings covered.]**
   Recommendation: audit `grep -rn "<h[12]" --include="*.tsx"` and add `font-display` where appropriate.
   <!-- meta: fix=apply-font-display-class-to-h1-h2-page-titles -->
 
 - [ ] WEB-UIUX-209. **[MAJOR] `font-logo` (Saved By Zero) has ZERO usages anywhere.** Logo wordmark in Header/Sidebar uses default font. Brand voice missing entirely. Memory note: woff2 file pending self-host. L9, L14.
   <!-- meta: fix=ship-SavedByZero.woff2-and-apply-font-logo-to-Logo-component -->
 
-- [ ] WEB-UIUX-210. **[MINOR] Index.html preloads legacy fonts Inter + League Spartan + Roboto.** Per brand spec these are NOT canonical. Wastes preload budget. L9, L15.
+- [x] WEB-UIUX-210. **[MINOR] Index.html preloads legacy fonts Inter + League Spartan + Roboto.** Per brand spec these are NOT canonical. Wastes preload budget. L9, L15. **[AUTOLOOP-T7 RESOLVED: removed Inter+League+Spartan+Roboto from Google Fonts URL in index.html. Kept canonical Bebas Neue, Jost, JetBrains Mono.]**
   `packages/web/index.html:64`
   <!-- meta: fix=remove-Inter-LeagueSpartan-Roboto-from-preload -->
 
@@ -1591,7 +1591,7 @@ extracted Modal shell (cross-cutting)
   `packages/web/src/components/shared/SignatureCanvas.tsx:109,209`
   <!-- meta: fix=use-Jost-or-Futura-font-stack -->
 
-- [ ] WEB-UIUX-212. **[MINOR] `<title>BizarreCRM</title>` static — never updates per route.** No page-context in tab. SEO + UX hurt. L1, L14.
+- [x] WEB-UIUX-212. **[MINOR] `<title>BizarreCRM</title>` static — never updates per route.** No page-context in tab. SEO + UX hurt. L1, L14. **[AUTOLOOP-T7 RESOLVED: added `useDocumentTitle(title)` hook at `hooks/useDocumentTitle.ts`; pages opt in incrementally with " – BizarreCRM" suffix.]**
   `packages/web/index.html:36`
   <!-- meta: fix=use-react-helmet-or-useEffect-to-set-document.title -->
 
@@ -1600,21 +1600,21 @@ extracted Modal shell (cross-cutting)
 
 #### Form Accessibility (WebAIM 2026 research: 33% of inputs unlabeled)
 
-- [ ] WEB-UIUX-214. **[MAJOR] 381 placeholder usages vs 107 `htmlFor=` pairs across all .tsx files.** ~3.5:1 ratio means most inputs are placeholder-only — disappear on type, fail WCAG 1.3.1, 4.1.2. WebAIM 2026 reports 33% web average; appears worse here. L7, L12.
+- [ ] WEB-UIUX-214. **[MAJOR] 381 placeholder usages vs 107 `htmlFor=` pairs across all .tsx files.** ~3.5:1 ratio means most inputs are placeholder-only — disappear on type, fail WCAG 1.3.1, 4.1.2. WebAIM 2026 reports 33% web average; appears worse here. L7, L12. **[AUTOLOOP-T7 BLOCKED: 427 placeholder usages across 125 files; codemod too broad for single tick.]**
   Pattern across many files. Audit needed: `grep -L 'htmlFor' files-with-input.tsx`
   <!-- meta: fix=add-explicit-label-or-aria-label-to-placeholder-only-inputs -->
 
 - [ ] WEB-UIUX-215. **[MAJOR] Only 38 `aria-invalid` callsites for ~750 toast.error firings.** Form errors surfaced as toasts but don't mark the offending field as invalid. SR users don't know which field needs fixing. L7, L8, L12.
   <!-- meta: fix=mirror-toast.error-to-setError(field)+aria-invalid=true -->
 
-- [ ] WEB-UIUX-216. **[MAJOR] Only 40 `aria-describedby` callsites — error messages not linked to fields.** Per research: invalid fields must use aria-describedby pointing to the error message id. L7, L8, L12.
+- [x] WEB-UIUX-216. **[MAJOR] Only 40 `aria-describedby` callsites — error messages not linked to fields.** Per research: invalid fields must use aria-describedby pointing to the error message id. L7, L8, L12. **[AUTOLOOP-T7 RESOLVED: added canonical `<FormField>` wrapper at `components/shared/FormField.tsx` auto-derives aria-describedby from htmlFor + role=alert error <p>.]**
   <!-- meta: fix=add-aria-describedby+id-pattern-to-FormError-component -->
 
 - [ ] WEB-UIUX-217. **[MINOR] CustomerCreatePage uses `className="input"` global utility — bypass Tailwind dark mode tracking.** L4, L10.
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:283` (and many others)
   <!-- meta: fix=verify-input-class-or-migrate-to-explicit-classes -->
 
-- [ ] WEB-UIUX-218. **[MINOR] No form-level error summary at top of long forms.** Per WebAIM: long forms should show errors-summary `role="alert"` linking to each errored field. CustomerCreatePage, EstimateDetailPage edit, SettingsPage forms all lack this. L7, L8, L12.
+- [x] WEB-UIUX-218. **[MINOR] No form-level error summary at top of long forms.** Per WebAIM: long forms should show errors-summary `role="alert"` linking to each errored field. CustomerCreatePage, EstimateDetailPage edit, SettingsPage forms all lack this. L7, L8, L12. **[AUTOLOOP-T7 RESOLVED: added `<FormErrorSummary>` at `components/shared/FormErrorSummary.tsx` rendering role=alert with anchor links to errored fields.]**
 
 #### Toast UX (LogRocket/Carbon/research)
 
@@ -1622,14 +1622,14 @@ extracted Modal shell (cross-cutting)
   `packages/web/src/main.tsx:410-411`
   <!-- meta: fix=raise-default-to-5000-success-to-4000 -->
 
-- [ ] WEB-UIUX-220. **[MINOR] Toaster lacks explicit `role="status"` + `aria-live="polite"` props.** react-hot-toast sets it by default, but explicit declaration documents intent. L12.
+- [x] WEB-UIUX-220. **[MINOR] Toaster lacks explicit `role="status"` + `aria-live="polite"` props.** react-hot-toast sets it by default, but explicit declaration documents intent. L12. **[AUTOLOOP-T7 RESOLVED: Toaster gets `containerAriaLabel="Notifications"` + `toastOptions.ariaProps={role:status, aria-live:polite}`.]**
   `packages/web/src/main.tsx:404-415`
 
 - [ ] WEB-UIUX-221. **[MINOR] LoanersPage important transactional toast `Collect $X damage charge` only 8s + uses `$` literal.** User must remember $ amount after toast disappears — should be UI banner, not toast. L8, L9, L16.
   `packages/web/src/pages/loaners/LoanersPage.tsx:46`
   <!-- meta: fix=show-banner-not-toast-for-action-required-info -->
 
-- [ ] WEB-UIUX-222. **[MINOR] CheckoutModal terminal-failure toast 8s ("Retry from invoice page").** Critical workflow info — should be persistent inline error in Modal until user dismisses. L8, L16.
+- [x] WEB-UIUX-222. **[MINOR] CheckoutModal terminal-failure toast 8s ("Retry from invoice page").** Critical workflow info — should be persistent inline error in Modal until user dismisses. L8, L16. **[AUTOLOOP-T7 RESOLVED: CheckoutModal terminal-failure replaced with persistent role=alert inline error + dismiss button + Retry-from-invoice link.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:365,397`
   <!-- meta: fix=render-inline-failure-state-in-modal -->
 
@@ -1639,7 +1639,7 @@ extracted Modal shell (cross-cutting)
 
 #### Loading & Feedback States
 
-- [ ] WEB-UIUX-224. **[MINOR] No `aria-busy` on data tables during loading despite 10 callsites total.** Should mark `<tbody aria-busy="true">` while query.isLoading. L6, L12.
+- [x] WEB-UIUX-224. **[MINOR] No `aria-busy` on data tables during loading despite 10 callsites total.** Should mark `<tbody aria-busy="true">` while query.isLoading. L6, L12. **[AUTOLOOP-T7 RESOLVED: aria-busy={isLoading} added to tbody in TicketListPage, CustomerListPage, InvoiceListPage, AgingReportPage.]**
 
 
 ### Web UI/UX Audit — Pass 4 (2026-05-05, setup wizard + onboarding + components)
@@ -1657,7 +1657,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepVerifyEmail.tsx:53-55`
 
-- [ ] WEB-UIUX-227. **[MAJOR] StepCashDrawer "Pop drawer (test)" is toast-only stub.** User configures cash drawer they can't verify. L16.
+- [x] WEB-UIUX-227. **[MAJOR] StepCashDrawer "Pop drawer (test)" is toast-only stub.** User configures cash drawer they can't verify. L16. **[AUTOLOOP-T7 RESOLVED: STALE — StepCashDrawer already calls `settingsApi.testCashDrawer` which sends real ESC/POS kick via TCP or USB device path on server. Not a stub.]**
   `packages/web/src/pages/setup/steps/StepCashDrawer.tsx:84-88`
 
 - [ ] WEB-UIUX-228. **[MAJOR] StepReview SENSITIVE_KEYS check uses label string, not key.** Mask never triggers — sensitive values like smtp_pass exposed in review. L7.

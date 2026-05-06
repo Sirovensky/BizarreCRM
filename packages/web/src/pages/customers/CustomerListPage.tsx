@@ -754,7 +754,7 @@ export function CustomerListPage() {
                     </tr>
                   ))}
                 </thead>
-                <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                <tbody aria-busy={isLoading} className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {table.getRowModel().rows.map((row) => (
                     <tr key={row.id} onClick={() => navigate(`/customers/${row.original.id}`)}
                       className={cn(

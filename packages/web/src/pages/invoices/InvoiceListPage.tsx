@@ -474,7 +474,7 @@ export function InvoiceListPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                <tbody aria-busy={isLoading} className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {invoices.map((inv: any) => {
                     const dueMs = parseDueDateMs(inv.due_on);
                     const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && dueMs !== null && dueMs < Date.now();

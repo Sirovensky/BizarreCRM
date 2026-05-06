@@ -293,6 +293,15 @@
     .animate-spin { animation: none !important; }
     .animate-pulse { animation: none !important; }
   }
+
+  /* WEB-UIUX-208: Apply Bebas Neue display font globally to h1 and h2 so
+   * the brand display typeface renders across the entire app without per-file
+   * edits. `font-sans` (Jost) is kept as the fallback to maintain readability
+   * if the web font hasn't loaded yet. Components that intentionally need a
+   * different heading style can override with a local `font-sans` utility. */
+  h1, h2 {
+    font-family: 'Bebas Neue', theme('fontFamily.sans');
+  }
 }
 
 /* Component classes — outside @layer to prevent Tailwind purging */

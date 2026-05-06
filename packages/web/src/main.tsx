@@ -284,6 +284,7 @@ createRoot(document.getElementById('root')!).render(
           <Toaster
             position="top-right"
             gutter={8}
+            containerAriaLabel="Notifications"
             toastOptions={{
               className: '!bg-white !text-surface-900 dark:!bg-surface-800 dark:!text-surface-100 !shadow-lg !border !border-surface-200 dark:!border-surface-700',
               // Default; overridden per-type below.
@@ -291,6 +292,7 @@ createRoot(document.getElementById('root')!).render(
               success: { duration: 3000 },
               error: { duration: 6000 },
               loading: { duration: Infinity },
+              ariaProps: { role: 'status', 'aria-live': 'polite' },
             }}
           />
           {/* D4-10: cap concurrent visible toasts to avoid UI avalanche from
