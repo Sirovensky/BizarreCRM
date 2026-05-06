@@ -39,14 +39,14 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
   const missingFields = checkMandatoryFields(pending);
   const isBlocked = missingFields.length > 0;
 
-  const mandatoryRows: Array<[string, string]> = [];
-  if (pending.store_name) mandatoryRows.push(['Store name', pending.store_name]);
-  if (pending.theme) mandatoryRows.push(['Theme', pending.theme]);
-  if (pending.store_address) mandatoryRows.push(['Address', pending.store_address]);
-  if (pending.store_phone) mandatoryRows.push(['Phone', pending.store_phone]);
-  if (pending.store_email) mandatoryRows.push(['Email', pending.store_email]);
-  if (pending.store_timezone) mandatoryRows.push(['Timezone', pending.store_timezone]);
-  if (pending.store_currency) mandatoryRows.push(['Currency', pending.store_currency]);
+  const mandatoryRows: Array<[keyof PendingWrites, string, string]> = [];
+  if (pending.store_name) mandatoryRows.push(['store_name', 'Store name', pending.store_name]);
+  if (pending.theme) mandatoryRows.push(['theme', 'Theme', pending.theme]);
+  if (pending.store_address) mandatoryRows.push(['store_address', 'Address', pending.store_address]);
+  if (pending.store_phone) mandatoryRows.push(['store_phone', 'Phone', pending.store_phone]);
+  if (pending.store_email) mandatoryRows.push(['store_email', 'Email', pending.store_email]);
+  if (pending.store_timezone) mandatoryRows.push(['store_timezone', 'Timezone', pending.store_timezone]);
+  if (pending.store_currency) mandatoryRows.push(['store_currency', 'Currency', pending.store_currency]);
 
   const extraRows: Array<[string, string]> = [];
   if (completedCards.has('notifications')) extraRows.push(['Customer notifications', 'Configured']);
@@ -111,11 +111,11 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
             Store info
           </h3>
           <dl className="space-y-1.5">
-            {mandatoryRows.map(([label, value]) => (
-              <div key={label} className="flex justify-between gap-4 text-sm">
+            {mandatoryRows.map(([key, label, value]) => (
+              <div key={key} className="flex justify-between gap-4 text-sm">
                 <dt className="text-surface-500 dark:text-surface-400">{label}</dt>
                 <dd className="text-right font-medium text-surface-900 dark:text-surface-100">
-                  {SENSITIVE_KEYS.has(label as keyof PendingWrites) ? '••••••' : value}
+                  {SENSITIVE_KEYS.has(key) ? '••••••' : value}
                 </dd>
               </div>
             ))}

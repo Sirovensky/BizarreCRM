@@ -60,7 +60,6 @@ interface TierDef {
   subtitle: string;
   examples: string;
   headerClass: string;
-  partsCost: number;
 }
 
 const SERVICES: ServiceDef[] = [
@@ -78,7 +77,6 @@ const TIERS: TierDef[] = [
     subtitle: '0-2 yr models',
     examples: 'iPhone 14/15/16 series, S22-S24, Pixel 8/9',
     headerClass: 'bg-primary-500 text-primary-950',
-    partsCost: 40,
   },
   {
     letter: 'b',
@@ -86,7 +84,6 @@ const TIERS: TierDef[] = [
     subtitle: '3-5 yr models',
     examples: 'iPhone 11-13, S20-S21, Pixel 5-7',
     headerClass: 'bg-primary-200 text-primary-900',
-    partsCost: 30,
   },
   {
     letter: 'c',
@@ -95,7 +92,6 @@ const TIERS: TierDef[] = [
     examples: 'iPhone X / earlier, S10 / earlier',
     headerClass:
       'bg-surface-200 text-surface-700 dark:bg-surface-700 dark:text-surface-200',
-    partsCost: 20,
   },
 ];
 
@@ -241,17 +237,6 @@ export function StepRepairPricing({
     const clamped = clampDollars(raw);
     setValues((prev) => ({ ...prev, [k]: clamped }));
     onUpdate({ [k]: clamped } as Partial<PendingWrites>);
-  };
-
-  /** Average labor across the 5 services for this tier, minus a fixed parts-cost
-   *  assumption — gives the user a back-of-envelope "profit per repair" hint. */
-  const profitFor = (tier: TierDef): number => {
-    const sum = SERVICES.reduce((acc, svc) => {
-      const v = Number.parseInt(values[pricingKey(tier.letter, svc.key)] ?? '0', 10);
-      return acc + (Number.isNaN(v) ? 0 : v);
-    }, 0);
-    const avg = sum / SERVICES.length;
-    return Math.max(0, Math.round(avg - tier.partsCost));
   };
 
   const handleApplyMedians = () => {
@@ -454,10 +439,10 @@ export function StepRepairPricing({
               </div>
               <div className="shrink-0 text-right text-xs font-semibold">
                 <span className="inline-flex items-center gap-1">
-                  <Calculator className="h-3.5 w-3.5" aria-hidden="true" />≈ ${profitFor(tier)}
+                  <Calculator className="h-3.5 w-3.5" aria-hidden="true" />Profit varies
                 </span>
                 <p className="mt-0.5 text-[10px] font-normal uppercase tracking-wide opacity-75">
-                  profit / repair
+                  by parts cost
                 </p>
               </div>
             </div>

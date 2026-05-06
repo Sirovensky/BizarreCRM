@@ -45,10 +45,11 @@ export function StepWelcome({ pending, onUpdate, onNext, onSkip }: StepProps) {
       <div className="space-y-6 rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
         {/* Store name (editable, pre-filled from signup) */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">
+          <label htmlFor="store-name" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">
             Store name <span className="text-red-500">*</span>
           </label>
           <input
+            id="store-name"
             type="text"
             value={storeName}
             onChange={(e) => onUpdate({ store_name: e.target.value })}

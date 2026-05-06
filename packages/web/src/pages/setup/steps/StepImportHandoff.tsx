@@ -66,7 +66,7 @@ export function StepImportHandoff({ pending, onUpdate, onNext, onBack, onSkip }:
                 'focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
                 isSel
                   ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 ring-2 ring-primary-500/20'
-                  : 'border-surface-200 dark:border-surface-700 hover:border-primary-400',
+                  : 'border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 hover:border-primary-400',
               ].join(' ')}
             >
               <Icon className={`h-8 w-8 ${isSel ? 'text-primary-700 dark:text-primary-300' : 'text-primary-600 dark:text-primary-400'}`} />

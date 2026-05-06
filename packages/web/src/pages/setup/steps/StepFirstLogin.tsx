@@ -76,7 +76,7 @@ export function StepFirstLogin({ onNext }: StepProps): JSX.Element {
 
         {/* Default-credentials warning */}
         <div
-          role="status"
+          role="alert"
           className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20"
         >
           <p className="text-sm text-amber-900 dark:text-amber-200">

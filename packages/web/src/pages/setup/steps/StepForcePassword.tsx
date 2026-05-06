@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import { Eye, EyeOff, Loader2, Lock } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { api } from '@/api/client';
+import { assessSignupPassword } from '@/utils/passwordSecurity';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -20,18 +21,6 @@ import type { StepProps } from '../wizardTypes';
  * route accepts snake_case (`current_password`, `new_password`).
  */
 
-type Strength = 'too_short' | 'weak' | 'strong';
-
-function computeStrength(pwd: string): Strength {
-  if (pwd.length < 10) return 'too_short';
-  const hasUpper = /[A-Z]/.test(pwd);
-  const hasLower = /[a-z]/.test(pwd);
-  const hasDigit = /[0-9]/.test(pwd);
-  const hasSpecial = /[^A-Za-z0-9]/.test(pwd);
-  if (hasUpper && hasLower && hasDigit && hasSpecial) return 'strong';
-  return 'weak';
-}
-
 export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -40,13 +29,11 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const strength = computeStrength(pwd);
+  const strength = assessSignupPassword(pwd);
   const mismatch = confirm.length > 0 && pwd !== confirm;
-  const tooShort = strength === 'too_short';
   const canSubmit =
     !submitting &&
     pwd.length >= 10 &&
-    !tooShort &&
     confirm.length > 0 &&
     pwd === confirm;
 
@@ -81,23 +68,18 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
     }
   };
 
-  const strengthLabel: Record<Strength, string> = {
-    too_short: 'Too short',
-    weak: 'Add stronger characters',
-    strong: 'Strong',
-  };
-
-  const strengthBars = (() => {
-    if (strength === 'too_short') return ['bg-red-500', 'bg-surface-200', 'bg-surface-200'];
-    if (strength === 'weak') return ['bg-yellow-500', 'bg-yellow-500', 'bg-surface-200'];
-    return ['bg-green-500', 'bg-green-500', 'bg-green-500'];
-  })();
-
-  const strengthTextClass: Record<Strength, string> = {
-    too_short: 'text-red-600 dark:text-red-400',
-    weak: 'text-yellow-700 dark:text-yellow-400',
-    strong: 'text-green-700 dark:text-green-400',
-  };
+  // 5 pips, scores 0-4. Color per score level.
+  const SCORE_COLORS = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-lime-500', 'bg-green-500'] as const;
+  const strengthBars = Array.from({ length: 5 }, (_, i) =>
+    strength.score === 0 || i >= strength.score ? 'bg-surface-200 dark:bg-surface-700' : SCORE_COLORS[strength.score]
+  );
+  const strengthTextClass = [
+    'text-red-600 dark:text-red-400',
+    'text-orange-600 dark:text-orange-400',
+    'text-amber-600 dark:text-amber-400',
+    'text-lime-700 dark:text-lime-400',
+    'text-green-700 dark:text-green-400',
+  ][strength.score];
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -152,7 +134,7 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
             </button>
           </div>
 
-          {/* Strength meter */}
+          {/* Strength meter — 5 pips, scores 0-4 */}
           <div className="mt-2 flex gap-1">
             {strengthBars.map((cls, i) => (
               <span
@@ -161,8 +143,8 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
               />
             ))}
           </div>
-          <p className={`mt-1 text-xs font-medium ${strengthTextClass[strength]}`}>
-            {pwd.length === 0 ? 'At least 10 characters' : strengthLabel[strength]}
+          <p className={`mt-1 text-xs font-medium ${strengthTextClass}`}>
+            {pwd.length === 0 ? 'At least 10 characters' : strength.label}
           </p>
         </div>
 

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { useEscClose } from '@/hooks/useEscClose';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /**
  * "Skip wizard" button available at every wizard phase. Shows a confirm dialog
@@ -18,10 +20,19 @@ interface SkipToDashboardProps {
 export function SkipToDashboard({ onSkip, disabled, label = 'Skip wizard' }: SkipToDashboardProps) {
   const [confirming, setConfirming] = useState(false);
 
+  useEscClose(() => setConfirming(false), confirming);
+  const dialogRef = useFocusTrap(confirming);
+
   if (confirming) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/5">
-        <p className="text-sm text-amber-900 dark:text-amber-200">
+      <div
+        ref={dialogRef as React.RefObject<HTMLDivElement>}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="skip-dialog-title"
+        className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/5"
+      >
+        <p id="skip-dialog-title" className="text-sm text-amber-900 dark:text-amber-200">
           Are you sure? You can always finish setup later from <strong>Settings &rarr; Store</strong>, but
           some features won't work their best until you do (SMS notifications, tax calculations, receipts).
         </p>

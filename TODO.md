@@ -1660,21 +1660,21 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-227. **[MAJOR] StepCashDrawer "Pop drawer (test)" is toast-only stub.** User configures cash drawer they can't verify. L16. **[AUTOLOOP-T7 RESOLVED: STALE — StepCashDrawer already calls `settingsApi.testCashDrawer` which sends real ESC/POS kick via TCP or USB device path on server. Not a stub.]**
   `packages/web/src/pages/setup/steps/StepCashDrawer.tsx:84-88`
 
-- [ ] WEB-UIUX-228. **[MAJOR] StepReview SENSITIVE_KEYS check uses label string, not key.** Mask never triggers — sensitive values like smtp_pass exposed in review. L7.
+- [x] WEB-UIUX-228. **[MAJOR] StepReview SENSITIVE_KEYS check uses label string, not key.** Mask never triggers — sensitive values like smtp_pass exposed in review. L7. **[AUTOLOOP-T8 RESOLVED: StepReview mandatoryRows now [key,label,value]; SENSITIVE_KEYS.has() receives the underlying key, not label.]**
   `packages/web/src/pages/setup/steps/StepReview.tsx:115-122`
   <!-- meta: fix=iterate-by-key-not-label -->
 
 - [ ] WEB-UIUX-229. **[MAJOR] StepRepairPricing preview tabs label "coming soon" but interactive.** Confused for broken. L16.
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:367-481`
 
-- [ ] WEB-UIUX-230. **[MAJOR] StepRepairPricing profit-per-repair badge uses hardcoded $40/$30/$20 parts cost.** Misleading anchor for new shop owners. L14.
+- [x] WEB-UIUX-230. **[MAJOR] StepRepairPricing profit-per-repair badge uses hardcoded $40/$30/$20 parts cost.** Misleading anchor for new shop owners. L14. **[AUTOLOOP-T8 RESOLVED: StepRepairPricing profit badge replaced with "Profit varies / by parts cost"; profitFor() + hardcoded $40/$30/$20 removed.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:199-206`
 
 - [ ] WEB-UIUX-231. **[MAJOR] CommissionPeriodLock single-click locks period (irreversible) with no confirm.** L16.
   `packages/web/src/components/team/CommissionPeriodLock.tsx:158-175`
   <!-- meta: fix=two-step-or-modal-confirm -->
 
-- [ ] WEB-UIUX-232. **[MAJOR] QcSignOffModal backdrop click closes — loses signature/photo/checklist work.** L5.
+- [x] WEB-UIUX-232. **[MAJOR] QcSignOffModal backdrop click closes — loses signature/photo/checklist work.** L5. **[AUTOLOOP-T8 RESOLVED: QcSignOffModal backdrop+Esc+X+Cancel route through `safeClose` which window.confirms when hasChanges (signature/photo/checklist/notes).]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:184-187`
   <!-- meta: fix=confirm-discard-if-touched -->
 
@@ -1684,45 +1684,45 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Setup Wizard A11y / Components
 
-- [ ] WEB-UIUX-234. **[MAJOR] SetupPage missing `<main>` landmark, `<h1>`, skip link.** Screen readers land on plain region. L12.
+- [x] WEB-UIUX-234. **[MAJOR] SetupPage missing `<main>` landmark, `<h1>`, skip link.** Screen readers land on plain region. L12. **[AUTOLOOP-T8 RESOLVED: SetupPage adds <main id=main-content>, sr-only <h1>Setup wizard</h1>, focus-visible Skip-to-content link.]**
   `packages/web/src/pages/setup/SetupPage.tsx:362-373`
 
 - [ ] WEB-UIUX-235. **[MAJOR] WizardBreadcrumb decorative — no `aria-current="step"`, no `<nav>` landmark.** SR users get 3 unrelated label strings. L12.
   `packages/web/src/pages/setup/components/WizardBreadcrumb.tsx:67-103`
 
-- [ ] WEB-UIUX-236. **[MAJOR] SkipToDashboard confirm panel not real dialog — no focus trap, no Esc.** L12.
+- [x] WEB-UIUX-236. **[MAJOR] SkipToDashboard confirm panel not real dialog — no focus trap, no Esc.** L12. **[AUTOLOOP-T8 RESOLVED: SkipToDashboard confirm panel gets role=dialog + aria-modal + aria-labelledby + useEscClose + useFocusTrap.]**
   `packages/web/src/pages/setup/SkipToDashboard.tsx:21-46`
 
 - [ ] WEB-UIUX-237. **[MAJOR] All wizard step Continue/Back buttons hand-rolled. Hover variants drift: hover:bg-primary-400 vs primary-500 vs primary-700.** L4, L9.
   20+ wizard step files
   <!-- meta: fix=migrate-to-canonical-Button-component -->
 
-- [ ] WEB-UIUX-238. **[MAJOR] StepWelcome label has no `htmlFor` linking to input id.** Click target only via proximity. L7, L12.
+- [x] WEB-UIUX-238. **[MAJOR] StepWelcome label has no `htmlFor` linking to input id.** Click target only via proximity. L7, L12. **[AUTOLOOP-T8 RESOLVED: StepWelcome label/input linked via htmlFor="store-name" + id="store-name".]**
   `packages/web/src/pages/setup/steps/StepWelcome.tsx:48-59`
 
 - [ ] WEB-UIUX-239. **[MINOR] StepFirstLogin/StepSignup primary button `hover:bg-primary-500` (no visible hover).** Same color as default. L8.
   `packages/web/src/pages/setup/steps/StepFirstLogin.tsx:154`, `StepSignup.tsx:382`, `StepForcePassword.tsx:220`
 
-- [ ] WEB-UIUX-240. **[MINOR] StepStoreInfo validation hides errors when field empty.** User can't tell what's blocking submit. L8.
+- [x] WEB-UIUX-240. **[MINOR] StepStoreInfo validation hides errors when field empty.** User can't tell what's blocking submit. L8. **[AUTOLOOP-T8 RESOLVED: StepStoreInfo `field.length > 0` empty-field guards removed; validators always surface errors for required fields.]**
   `packages/web/src/pages/setup/steps/StepStoreInfo.tsx:36-53`
 
 - [ ] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** Audit gap. L5.
   `packages/web/src/pages/setup/steps/StepShopType.tsx:106-109`
 
-- [ ] WEB-UIUX-242. **[MINOR] StepImportHandoff cards have no explicit bg — invisible boundaries in dark mode unless hovered.** L10.
+- [x] WEB-UIUX-242. **[MINOR] StepImportHandoff cards have no explicit bg — invisible boundaries in dark mode unless hovered.** L10. **[AUTOLOOP-T8 RESOLVED: StepImportHandoff unselected cards get bg-white + dark:bg-surface-800 so boundaries are always visible.]**
   `packages/web/src/pages/setup/steps/StepImportHandoff.tsx:62-70`
 
 - [ ] WEB-UIUX-243. **[MINOR] 6+ wizard step files have empty `<div className="mb-6 flex justify-center">`.** Leftover from removed brand logo. L9.
   `StepFirstLogin.tsx:60-62`, `StepSignup.tsx:213-214`, `StepForcePassword.tsx:104-105`, `StepVerifyEmail.tsx:114-115`, `StepDone.tsx:67-68`
 
-- [ ] WEB-UIUX-244. **[MINOR] StepFirstLogin default-credentials warning is `role="status"` (polite) — should be omitted or `role="alert"`.** L12.
+- [x] WEB-UIUX-244. **[MINOR] StepFirstLogin default-credentials warning is `role="status"` (polite) — should be omitted or `role="alert"`.** L12. **[AUTOLOOP-T8 RESOLVED: StepFirstLogin default-credentials warning role=status → role=alert (assertive announcement).]**
   `packages/web/src/pages/setup/steps/StepFirstLogin.tsx:78-86`
 
 - [ ] WEB-UIUX-245. **[MINOR] StepForcePassword strength heuristic rates passphrases "weak".** "correct horse battery staple" → weak. L8.
   `packages/web/src/pages/setup/steps/StepForcePassword.tsx:25-33`
   <!-- meta: fix=use-zxcvbn-or-length-bonus -->
 
-- [ ] WEB-UIUX-246. **[MINOR] StepSignup + StepForcePassword use different password strength scales.** L3.
+- [x] WEB-UIUX-246. **[MINOR] StepSignup + StepForcePassword use different password strength scales.** L3. **[AUTOLOOP-T8 RESOLVED: StepSignup + StepForcePassword now share assessSignupPassword from passwordSecurity.ts; unified 0-4 scale + 5 pips.]**
   Files: StepSignup.tsx:37-50 vs StepForcePassword.tsx:25-33
   <!-- meta: fix=extract-shared-gradePassword-helper -->
 

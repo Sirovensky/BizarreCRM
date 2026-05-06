@@ -24,30 +24,10 @@ import { Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
 import { validateEmail, validateShopSlug } from '@/services/validationService';
 import { signupApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+import { assessSignupPassword } from '@/utils/passwordSecurity';
 import type { StepProps } from '../wizardTypes';
 
 type SlugStatus = 'idle' | 'invalid' | 'checking' | 'available' | 'taken';
-
-interface PasswordStrength {
-  score: 0 | 1 | 2 | 3;
-  label: 'Too short' | 'Weak' | 'Fair' | 'Strong';
-  colorClass: string;
-}
-
-function gradePassword(pw: string): PasswordStrength {
-  if (pw.length < 10) {
-    return { score: 0, label: 'Too short', colorClass: 'bg-red-500' };
-  }
-  let signals = 0;
-  if (/[a-z]/.test(pw)) signals++;
-  if (/[A-Z]/.test(pw)) signals++;
-  if (/\d/.test(pw)) signals++;
-  if (/[^A-Za-z0-9]/.test(pw)) signals++;
-  if (pw.length >= 14) signals++;
-  if (signals >= 4) return { score: 3, label: 'Strong', colorClass: 'bg-green-500' };
-  if (signals >= 3) return { score: 2, label: 'Fair', colorClass: 'bg-amber-500' };
-  return { score: 1, label: 'Weak', colorClass: 'bg-orange-500' };
-}
 
 /** Capitalise hyphen-separated slug into a display name fallback. */
 function slugToShopName(slug: string): string {
@@ -124,7 +104,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     };
   }, [slug]);
 
-  const strength = gradePassword(password);
+  const strength = assessSignupPassword(password);
   const nameErr = name.trim().length < 2 ? 'Enter your name' : null;
   const emailErr = email.length > 0 ? validateEmail(email) : 'Email is required';
   const passwordErr = password.length < 10 ? 'Password must be at least 10 characters' : null;
@@ -206,11 +186,11 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     }
   };
 
-  // Strength bar segments — three pips that fill as score climbs.
+  // Strength bar segments — five pips (scores 0-4) that fill as score climbs.
+  const SCORE_COLOR = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-lime-500', 'bg-green-500'] as const;
   const pipClass = (idx: number): string => {
-    if (strength.score === 0) return 'bg-surface-200 dark:bg-surface-700';
-    if (idx < strength.score) return strength.colorClass;
-    return 'bg-surface-200 dark:bg-surface-700';
+    if (strength.score === 0 || idx >= strength.score) return 'bg-surface-200 dark:bg-surface-700';
+    return SCORE_COLOR[strength.score];
   };
 
   return (
@@ -299,23 +279,27 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          {/* Strength indicator (mirrors Step 2 self-host pattern) */}
+          {/* Strength indicator — 5 pips, scores 0-4 */}
           <div className="mt-2 flex gap-1">
             <span className={`h-1 flex-1 rounded-full ${pipClass(0)}`} />
             <span className={`h-1 flex-1 rounded-full ${pipClass(1)}`} />
             <span className={`h-1 flex-1 rounded-full ${pipClass(2)}`} />
+            <span className={`h-1 flex-1 rounded-full ${pipClass(3)}`} />
+            <span className={`h-1 flex-1 rounded-full ${pipClass(4)}`} />
           </div>
           <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">
             Min 10 characters · strength:{' '}
             <span
               className={
-                strength.score === 3
+                strength.score >= 4
                   ? 'text-green-600 font-medium'
-                  : strength.score === 2
-                    ? 'text-amber-600 font-medium'
-                    : strength.score === 1
-                      ? 'text-orange-600 font-medium'
-                      : 'text-red-600 font-medium'
+                  : strength.score === 3
+                    ? 'text-lime-600 font-medium'
+                    : strength.score === 2
+                      ? 'text-amber-600 font-medium'
+                      : strength.score === 1
+                        ? 'text-orange-600 font-medium'
+                        : 'text-red-600 font-medium'
               }
             >
               {strength.label}

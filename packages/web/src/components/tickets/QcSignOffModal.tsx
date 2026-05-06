@@ -150,6 +150,25 @@ export function QcSignOffModal({
   const allPassed = items.length > 0 && items.every((i) => passedMap[i.id]);
   const canSubmit = allPassed && workingPhotoFile && signatureDrawn;
 
+  // Guard close when the tech has started filling in the form.
+  const hasChanges =
+    signatureDrawn ||
+    workingPhotoFile !== null ||
+    Object.values(passedMap).some(Boolean) ||
+    notes.trim().length > 0;
+
+  const safeClose = () => {
+    if (
+      hasChanges &&
+      !window.confirm(
+        'You have unsaved QC progress (signature, photo, or checklist). Close anyway?',
+      )
+    ) {
+      return;
+    }
+    onClose();
+  };
+
   const signMut = useMutation({
     mutationFn: async () => {
       if (!workingPhotoFile) throw new Error('Working photo required');
@@ -188,16 +207,17 @@ export function QcSignOffModal({
   });
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') safeClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasChanges, onClose]);
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="presentation"
-      onClick={onClose}
+      onClick={safeClose}
     >
       <div
         role="dialog"
@@ -216,7 +236,7 @@ export function QcSignOffModal({
           </h2>
           <button
             aria-label="Close"
-            onClick={onClose}
+            onClick={safeClose}
             className="rounded p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
           >
             <X className="h-5 w-5" />
@@ -337,7 +357,7 @@ export function QcSignOffModal({
 
             <div className="flex justify-end gap-2">
               <button
-                onClick={onClose}
+                onClick={safeClose}
                 className="rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
               >
                 Cancel

@@ -247,9 +247,9 @@ export function SetupPage() {
   // ── Guards ──────────────────────────────────────────────────────
   if (checkingStatus) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-50 dark:bg-surface-900">
+      <main className="flex min-h-screen items-center justify-center bg-surface-50 dark:bg-surface-900">
         <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-      </div>
+      </main>
     );
   }
   // If the wizard is already complete, redirect — UNLESS the user is currently
@@ -360,6 +360,14 @@ export function SetupPage() {
 
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
+      {/* Skip-to-content link — visible on keyboard focus, hidden otherwise */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-700 focus:shadow-md dark:focus:bg-surface-800 dark:focus:text-primary-400"
+      >
+        Skip to content
+      </a>
+
       {/* Top bar — brand + skip only. Step counter intentionally removed:
           the per-step WizardBreadcrumb pill below already shows current
           phase + prev/next neighbors with consistent body-order numbering. */}
@@ -372,8 +380,11 @@ export function SetupPage() {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      {/* Main landmark — screen readers land here via the skip link */}
+      <main id="main-content" className="mx-auto max-w-5xl px-6 py-8">
+        {/* Visually-hidden page title so screen readers announce the region */}
+        <h1 className="sr-only">Setup wizard</h1>
+
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {error}
@@ -386,7 +397,7 @@ export function SetupPage() {
           <WizardBreadcrumb currentPhase={phase} />
         </div>
         {renderStep()}
-      </div>
+      </main>
     </div>
   );
 }

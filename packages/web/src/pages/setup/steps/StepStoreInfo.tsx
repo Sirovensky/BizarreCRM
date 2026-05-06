@@ -49,12 +49,12 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack, onSkip }: Ste
   }, [onUpdate, pending.store_email, prefillEmail]);
 
   // Errors are computed on every render so the UI reflects the latest value instantly.
-  // A field only shows an error once it has been touched (non-empty) — empty fields
-  // are caught by canAdvance, not shown as errors while the user hasn't typed yet.
+  // All fields (including empty ones) always show their error so users can see
+  // what is blocking submit — WEB-UIUX-240.
   const errors = {
-    address: address.length > 0 ? validateStoreAddress(address) : null,
-    phone:   phone.length > 0   ? validatePhoneInternational(phone) : null,
-    email:   email.length > 0   ? validateEmail(email) : null,
+    address: validateStoreAddress(address),
+    phone:   validatePhoneInternational(phone),
+    email:   validateEmail(email),
     timezone: validateTimezone(timezone),
     currency: validateCurrency(currency),
   };
