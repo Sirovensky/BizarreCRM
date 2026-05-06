@@ -53,16 +53,29 @@ export function DefectReporterButton({
   const [description, setDescription] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoPreviewRef = useRef<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
   // WEB-UIUX-283: trap focus inside modal while open; hook restores focus to
   // the trigger button automatically when the trap deactivates (Esc or close).
   const dialogRef = useFocusTrap(open);
 
+  // Revoke a blob URL immediately and clear the ref.
+  const revokePreview = () => {
+    if (photoPreviewRef.current) {
+      URL.revokeObjectURL(photoPreviewRef.current);
+      photoPreviewRef.current = null;
+    }
+  };
+
+  // Clean up on unmount.
+  useEffect(() => revokePreview, []);
+
   const reset = () => {
     setDefectType('doa');
     setDescription('');
     setPhotoFile(null);
+    revokePreview();
     setPhotoPreview(null);
   };
 
@@ -113,7 +126,10 @@ export function DefectReporterButton({
       return;
     }
     setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    revokePreview();
+    const url = URL.createObjectURL(file);
+    photoPreviewRef.current = url;
+    setPhotoPreview(url);
   };
 
   // WEB-FX-003: Esc-to-close.
@@ -229,6 +245,7 @@ export function DefectReporterButton({
                   <button
                     onClick={() => {
                       setPhotoFile(null);
+                      revokePreview();
                       setPhotoPreview(null);
                     }}
                     className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"

@@ -50,7 +50,6 @@ export function TrialBanner() {
   // Trial expired (trial_ends_at exists but is in the past).
   // Dismissible: users who accept staying on Free shouldn't be nagged forever.
   if (trialEndsAt && !trialActive && days !== null && days <= 0) {
-    if (expiredDismissed) return null;
     return (
       <div className="relative z-0 flex items-center justify-center gap-2 bg-red-600 px-4 py-2 text-sm text-white">
         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -60,14 +59,6 @@ export function TrialBanner() {
           className="btn btn-xs ml-2 bg-white/20 font-semibold text-white hover:bg-white/30"
         >
           Upgrade to Pro
-        </button>
-        <button
-          type="button"
-          onClick={dismissExpired}
-          aria-label="Dismiss trial expired notice"
-          className="btn-icon btn-xs ml-1 !text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-        >
-          <X className="h-4 w-4" />
         </button>
       </div>
     );

@@ -84,7 +84,19 @@ export function QcSignOffModal({
   const [failReason, setFailReason] = useState('');
   const [workingPhotoFile, setWorkingPhotoFile] = useState<File | null>(null);
   const [workingPhotoPreview, setWorkingPhotoPreview] = useState<string | null>(null);
+  const workingPhotoPreviewRef = useRef<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Revoke the current working-photo blob URL and clear the ref.
+  const revokeWorkingPreview = () => {
+    if (workingPhotoPreviewRef.current) {
+      URL.revokeObjectURL(workingPhotoPreviewRef.current);
+      workingPhotoPreviewRef.current = null;
+    }
+  };
+
+  // Clean up on unmount.
+  useEffect(() => revokeWorkingPreview, []);
 
   // Signature canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -169,7 +181,9 @@ export function QcSignOffModal({
       return;
     }
     setWorkingPhotoFile(file);
+    revokeWorkingPreview();
     const url = URL.createObjectURL(file);
+    workingPhotoPreviewRef.current = url;
     setWorkingPhotoPreview(url);
   };
 
@@ -397,6 +411,7 @@ export function QcSignOffModal({
                   <button
                     onClick={() => {
                       setWorkingPhotoFile(null);
+                      revokeWorkingPreview();
                       setWorkingPhotoPreview(null);
                     }}
                     className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"

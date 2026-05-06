@@ -6,6 +6,46 @@ export const IMAGE_UPLOAD_FORMAT_LABEL = 'JPEG, PNG, WebP, or GIF';
 export const IMAGE_UPLOAD_FORMAT_ERROR =
   `Use ${IMAGE_UPLOAD_FORMAT_LABEL}. HEIC/HEIF, TIFF, and DNG/RAW are not supported yet; convert to JPEG before uploading.`;
 
+// Receipt uploads additionally allow PDF documents.
+export const RECEIPT_UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+export type ReceiptUploadMimeType = (typeof RECEIPT_UPLOAD_MIME_TYPES)[number];
+export const RECEIPT_UPLOAD_ACCEPT = RECEIPT_UPLOAD_MIME_TYPES.join(',');
+export const RECEIPT_UPLOAD_FORMAT_LABEL = 'JPEG, PNG, WebP, or PDF';
+export const RECEIPT_UPLOAD_FORMAT_ERROR =
+  `Use ${RECEIPT_UPLOAD_FORMAT_LABEL}. Other formats are not supported.`;
+export const RECEIPT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+export function isSupportedReceiptMime(mime: string | undefined | null): mime is ReceiptUploadMimeType {
+  return RECEIPT_UPLOAD_MIME_TYPES.includes((mime || '').trim().toLowerCase() as ReceiptUploadMimeType);
+}
+
+export async function validateReceiptFile(file: File, label?: string): Promise<string | null> {
+  const tag = label || `"${file.name}"` || 'Receipt';
+  const declaredMime = file.type.trim().toLowerCase();
+  if (!isSupportedReceiptMime(declaredMime)) {
+    return `${tag}: ${RECEIPT_UPLOAD_FORMAT_ERROR}`;
+  }
+  if (file.size <= 0) return `${tag}: file is empty`;
+  if (file.size > RECEIPT_UPLOAD_MAX_BYTES) {
+    return `${tag}: file exceeds the 10 MB size limit`;
+  }
+  // Magic-byte sniff to guard against mismatched extensions/MIME declarations.
+  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (declaredMime === 'application/pdf') {
+    // PDF magic: %PDF (25 50 44 46)
+    if (!(head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46)) {
+      return `${tag}: file does not appear to be a valid PDF`;
+    }
+  } else {
+    // Reuse existing image sniff logic for image/* types.
+    const sniffed = await sniffImageMime(file);
+    if (!sniffed || sniffed !== declaredMime) {
+      return `${tag}: file contents do not match the declared image type`;
+    }
+  }
+  return null;
+}
+
 export const GENERAL_IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const SMALL_IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 export const INLINE_LOGO_MAX_BYTES = 500_000;

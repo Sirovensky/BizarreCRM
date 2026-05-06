@@ -3460,7 +3460,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-752. **[MINOR] PIN modal lockout uses sessionStorage scoped per-tab → multi-tab brute force (10 attempts in 2 tabs).** Server catches but UI message misleading. L16. **[AUTOLOOP-T34 RESOLVED: PinModal lockout switched from sessionStorage to localStorage; cross-tab lockout shared, blocking multi-tab brute force.]**
   `packages/web/src/components/shared/PinModal.tsx:21-50`
 
-- [ ] WEB-UIUX-753. **[MINOR] TrialBanner expired state dismissible — silenced forever (key on trialEndsAt which doesn't change).** Should be non-dismissible. L8, L16.
+- [x] WEB-UIUX-753. **[MINOR] TrialBanner expired state dismissible — silenced forever (key on trialEndsAt which doesn't change).** Should be non-dismissible. L8, L16. **[AUTOLOOP-T35 RESOLVED: TrialBanner expired branch removed expiredDismissed guard + X close button; permanently visible until upgrade.]**
   `packages/web/src/components/shared/TrialBanner.tsx:52-74`
 
 #### ED13: File Upload Chaos
@@ -3469,32 +3469,32 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/main.tsx`
   <!-- meta: fix=window-addEventListener-dragover-drop-preventDefault -->
 
-- [ ] WEB-UIUX-755. **[BLOCKER] ReceiptSettings logo upload accepts SVG (image/svg+xml) — no magic-byte sniff.** XSS surface via persisted `receipt_logo` data URI when consumed by mobile/email clients. L16.
+- [x] WEB-UIUX-755. **[BLOCKER] ReceiptSettings logo upload accepts SVG (image/svg+xml) — no magic-byte sniff.** XSS surface via persisted `receipt_logo` data URI when consumed by mobile/email clients. L16. **[AUTOLOOP-T35 RESOLVED: STALE — IMAGE_UPLOAD_MIME_TYPES already excludes svg+xml; sniff:true magic-byte enforced in LogoUploadRow.]**
   `packages/web/src/pages/settings/ReceiptSettings.tsx:70-82`
   `packages/web/src/pages/settings/InvoiceSettings.tsx:135`
 
 - [ ] WEB-UIUX-756. **[MAJOR] PhotoCapturePage single multipart POST of all photos — connection drop = entire batch fails.** Re-upload 200MB on cellular. No chunking, no resumable, no AbortController. L4, L8.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:94-123`
 
-- [ ] WEB-UIUX-757. **[MAJOR] CommunicationPage `handleImageSelect` has ZERO pre-validation while QuickSmsAttachmentButton has 5MB+MIME guards.** 20MB photo blasts straight to server, generic "Upload failed" toast. L7, L8.
+- [x] WEB-UIUX-757. **[MAJOR] CommunicationPage `handleImageSelect` has ZERO pre-validation while QuickSmsAttachmentButton has 5MB+MIME guards.** 20MB photo blasts straight to server, generic "Upload failed" toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: STALE — handleImageSelect already calls validateImageFile with SMALL_IMAGE_UPLOAD_MAX_BYTES (5MB) + MIME check matching QuickSmsAttachmentButton.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:1469-1485` vs `QuickSmsAttachmentButton.tsx:32-55`
 
 - [ ] WEB-UIUX-758. **[MAJOR] HEIC blind spot — PhotoCapturePage uses `file.type.startsWith('image/')` so HEIC accepted but Chrome/Firefox 404 thumbnails.** L7, L11.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:60-70`
 
-- [ ] WEB-UIUX-759. **[MAJOR] QcSignOffModal + DefectReporterButton `URL.createObjectURL` blobs NEVER `revokeObjectURL`-ed — leaks until tab close.** L15.
+- [x] WEB-UIUX-759. **[MAJOR] QcSignOffModal + DefectReporterButton `URL.createObjectURL` blobs NEVER `revokeObjectURL`-ed — leaks until tab close.** L15. **[AUTOLOOP-T35 RESOLVED: QcSignOffModal + DefectReporterButton track blob URLs in refs; revoked before each replacement + on unmount via useEffect cleanup.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
   `packages/web/src/components/tickets/DefectReporterButton.tsx:86-91`
 
 - [ ] WEB-UIUX-760. **[MAJOR] InventoryListPage CSV import casts to `unknown as ImportInventoryItem[]` — no required-column validation, no errors-CSV download.** CustomerListPage does this right. L7, L8.
   `packages/web/src/pages/inventory/InventoryListPage.tsx:377-390`
 
-- [ ] WEB-UIUX-761. **[MAJOR] ExpensesPage receipt upload `accept="image/*,application/pdf"` — no size cap, no MIME allow-list, no magic-byte sniff.** 50MB PDF → 413 → generic toast. L7, L8.
+- [x] WEB-UIUX-761. **[MAJOR] ExpensesPage receipt upload `accept="image/*,application/pdf"` — no size cap, no MIME allow-list, no magic-byte sniff.** 50MB PDF → 413 → generic toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: ExpensesPage upload uses RECEIPT_UPLOAD_MIME_TYPES + validateReceiptFile (10 MB cap, JPEG/PNG/WebP/PDF allowlist + magic-byte sniff).]**
   `packages/web/src/pages/expenses/ExpensesPage.tsx:308-314`
 
 - [ ] WEB-UIUX-762. **[MINOR] CustomerListPage / InventoryListPage CSV `readAsText` no size cap, no encoding declaration.** 200MB CSV hangs renderer; Windows-1252/Shift_JIS exports show mojibake. L15.
 
-- [ ] WEB-UIUX-763. **[MINOR] CommunicationPage `safeMediaUrl` accepts any http(s) URL → leaks Referer to attacker.example.** No `referrerpolicy="no-referrer"` on rendered img/a. L16.
+- [x] WEB-UIUX-763. **[MINOR] CommunicationPage `safeMediaUrl` accepts any http(s) URL → leaks Referer to attacker.example.** No `referrerpolicy="no-referrer"` on rendered img/a. L16. **[AUTOLOOP-T35 RESOLVED: CommunicationPage MMS media adds referrerPolicy="no-referrer" on imgs + rel="noreferrer noopener" on anchors. Referer leak closed.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:2120-2145`
 
 #### ED14: Tax/Pricing/Discount Chaos
@@ -3502,25 +3502,25 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-764. **[BLOCKER] Discount stacking has NO canonical order — single cart-wide `discount` slot.** No model for "10% off + $5 off + member 20%" with sequence/basis. Subtle base-vs-net errors. L7, L13.
   `packages/web/src/pages/unified-pos/store.ts:101-103,235-237`
 
-- [ ] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13.
+- [ ] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13. **[AUTOLOOP-T35 BLOCKED: tax_exempt flag spans server schema + customer form + POS auto-apply logic; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1123,1191,1253-1254`
 
 - [ ] WEB-UIUX-766. **[BLOCKER] Discount cap permission gate not implemented — cashier can apply $9999 discount on $50 sale.** `pos_max_cashier_discount_pct` setting missing. L16.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:880-888`
 
-- [ ] WEB-UIUX-767. **[BLOCKER] Group/auto-apply discount silently flips when customer changes mid-cart.** Switch to customer with `group_auto_apply=true` → cart total drops 10-20% silently. L6, L8.
+- [x] WEB-UIUX-767. **[BLOCKER] Group/auto-apply discount silently flips when customer changes mid-cart.** Switch to customer with `group_auto_apply=true` → cart total drops 10-20% silently. L6, L8. **[AUTOLOOP-T35 RESOLVED: CustomerSelector group_auto_apply useEffect fires toast.success showing old→new total on first activation; deduped on re-renders.]**
   `packages/web/src/pages/unified-pos/CustomerSelector.tsx:91-102`
 
 - [ ] WEB-UIUX-768. **[MAJOR] No multi-jurisdiction tax breakdown — single `Tax (8.875%)` line.** Settings supports list but UI surfaces only one. CA/FL receipts require local rate broken out. L7, L9.
   `packages/web/src/pages/unified-pos/totals.ts:94`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:464-466`
 
-- [ ] WEB-UIUX-769. **[MAJOR] Refund line cannot be entered — clamp at parse hides use case.** Trade-in credits, returns can't be expressed at POS. L5, L7.
+- [ ] WEB-UIUX-769. **[MAJOR] Refund line cannot be entered — clamp at parse hides use case.** Trade-in credits, returns can't be expressed at POS. L5, L7. **[AUTOLOOP-T35 BLOCKED: dedicated trade-in/return modal needed for refund lines; conflicts with returns flow if patched at stepper.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:599-603`
 
 - [ ] WEB-UIUX-770. **[MAJOR] Tip/gratuity not implemented + no rounding-mode selector.** No tip-on-card flow, no Canada/Switzerland 5¢ rounding. L5, L7.
 
-- [ ] WEB-UIUX-771. **[MAJOR] Tax-rate change updates cart silently mid-checkout — no banner.** "Your total is $108.88" → "$109.13" between cashier saying it and tap to charge. L6, L8.
+- [x] WEB-UIUX-771. **[MAJOR] Tax-rate change updates cart silently mid-checkout — no banner.** "Your total is $108.88" → "$109.13" between cashier saying it and tap to charge. L6, L8. **[AUTOLOOP-T35 RESOLVED: LeftPanel useRef+useEffect tracks prev taxRate; fires toast.warning with old%/new%/updated total on mid-session change.]**
   `packages/web/src/hooks/useDefaultTaxRate.ts:18-22`
 
 - [ ] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11.

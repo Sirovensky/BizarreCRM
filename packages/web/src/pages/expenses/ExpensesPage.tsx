@@ -8,9 +8,8 @@ import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
 import {
-  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
-  IMAGE_UPLOAD_ACCEPT,
-  validateImageFile,
+  RECEIPT_UPLOAD_ACCEPT,
+  validateReceiptFile,
 } from '@/utils/imageUploadPolicy';
 
 // FF-012: previously the form pre-filled `new Date().toISOString().slice(0,10)`
@@ -159,10 +158,7 @@ export function ExpensesPage() {
       setReceiptFile(null);
       return;
     }
-    const error = await validateImageFile(file, {
-      maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
-      label: `"${file.name}"`,
-    });
+    const error = await validateReceiptFile(file, `"${file.name}"`);
     if (error) {
       toast.error(error);
       setReceiptFile(null);
@@ -329,12 +325,12 @@ export function ExpensesPage() {
             {/* WEB-FK-014: receipt upload — attaches after save, uses expenseReceipts route */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
-                Receipt image
+                Receipt (JPEG, PNG, WebP, or PDF — max 10 MB)
               </label>
               <input
                 ref={receiptInputRef}
                 type="file"
-                accept={IMAGE_UPLOAD_ACCEPT}
+                accept={RECEIPT_UPLOAD_ACCEPT}
                 onChange={handleReceiptFile}
                 className="w-full text-sm text-surface-700 dark:text-surface-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-surface-100 file:text-surface-700 dark:file:bg-surface-700 dark:file:text-surface-300 hover:file:bg-surface-200 dark:hover:file:bg-surface-600"
               />

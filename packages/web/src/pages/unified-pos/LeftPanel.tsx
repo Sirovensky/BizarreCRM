@@ -990,6 +990,22 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
   const totals = useTotals();
   const taxRate = useDefaultTaxRate();
 
+  // WEB-UIUX-771: fire a warning toast when the tax rate changes mid-session
+  // so the cashier is not surprised by a silently-updated cart total.
+  const prevTaxRateRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevTaxRateRef.current !== null && prevTaxRateRef.current !== taxRate) {
+      const oldRate = +(prevTaxRateRef.current * 100).toFixed(4);
+      const newRate = +(taxRate * 100).toFixed(4);
+      const newTotal = totals.total;
+      toast(`Tax rate updated: ${oldRate}% → ${newRate}%. New total: ${formatCurrency(newTotal)}`, {
+        icon: '⚠️',
+        duration: 6000,
+      });
+    }
+    prevTaxRateRef.current = taxRate;
+  }, [taxRate]); // intentional: only watch taxRate; totals.total is informational snapshot
+
   // Collapsed bar
   if (collapsed) {
     return (

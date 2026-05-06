@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, User, Users, UserPlus, UserX } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
+import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
+import { computePosTotals } from './totals';
 import { useUnifiedPosStore } from './store';
 import type { CustomerResult } from './types';
 
@@ -46,7 +50,8 @@ interface CustomerSelectorProps {
 }
 
 export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSelectorProps = {}) {
-  const { customer, setCustomer, setMemberDiscountApplied } = useUnifiedPosStore();
+  const { customer, setCustomer, setMemberDiscountApplied, cartItems, discount, memberDiscountApplied } = useUnifiedPosStore();
+  const taxRate = useDefaultTaxRate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -87,7 +92,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Auto-apply member discount when customer changes
+  // Auto-apply member discount when customer changes; toast when discount flips on.
   useEffect(() => {
     if (
       customer &&
@@ -95,11 +100,28 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
       customer.group_discount_pct &&
       customer.group_discount_pct > 0
     ) {
+      if (!memberDiscountApplied) {
+        const oldTotal = computePosTotals({
+          cartItems,
+          discount,
+          customer,
+          memberDiscountApplied: false,
+          taxRate,
+        }).total;
+        const newTotal = computePosTotals({
+          cartItems,
+          discount,
+          customer,
+          memberDiscountApplied: true,
+          taxRate,
+        }).total;
+        toast.success(`Group discount applied: ${formatCurrency(oldTotal)} → ${formatCurrency(newTotal)}`);
+      }
       setMemberDiscountApplied(true);
     } else {
       setMemberDiscountApplied(false);
     }
-  }, [customer, setMemberDiscountApplied]);
+  }, [customer, setMemberDiscountApplied, cartItems, discount, taxRate, memberDiscountApplied]);
 
   const selectCustomer = (c: CustomerResult) => {
     setCustomer(c);
