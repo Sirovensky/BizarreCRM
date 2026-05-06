@@ -11,7 +11,7 @@
  * type=receipt shows payment info; otherwise renders as work order.
  * All receipt content is driven by the 26 receipt_cfg_* toggles in store_config.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
@@ -116,24 +116,25 @@ function getPrintLocationId(document: PrintDocument | undefined): number | undef
 }
 
 /**
- * Only allow logo URLs that are relative paths or https://.
- * PDF6 fix: also reject data:image/svg+xml (SVG can carry script via inline
- * handlers / <script> elements) and any explicit data:/javascript:/file: URI.
- * Bare protocol-relative URLs are rejected too — upstream code can still send
- * them if a shop owner tries to work around this, but the print page will
- * silently not render the image rather than loading something we can't vet.
+ * Only allow logo URLs that are same-origin (relative path or same-origin
+ * absolute) or safe base64 raster data: URIs (PNG/JPEG/GIF/WebP).
+ * WEB-UIUX-527: external https:// URLs are rejected — server settings can
+ * store an attacker-controlled URL that causes print pages to exfiltrate the
+ * viewer's IP via an image fetch to an external host.
+ * SVG data: URIs remain blocked (can carry inline script).
  */
 function isSafeLogoUrl(url: string | null | undefined): boolean {
   if (!url) return false;
-  const trimmed = url.trim().toLowerCase();
+  const trimmed = url.trim();
   if (!trimmed) return false;
-  // Block anything that isn't a relative path or explicit https://
-  if (trimmed.startsWith('data:')) return false;
-  if (trimmed.startsWith('javascript:')) return false;
-  if (trimmed.startsWith('file:')) return false;
-  if (trimmed.startsWith('blob:')) return false;
-  if (trimmed.startsWith('//')) return false; // protocol-relative
-  return url.startsWith('/') || url.startsWith('https://');
+  // Only allow same-origin relative paths or safe inline data: images.
+  // External https:// URLs are rejected: an attacker-controlled logo URL
+  // stored in server settings causes print pages to exfiltrate the user's
+  // IP via an image fetch to an external host (WEB-UIUX-527).
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return true;
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(trimmed)) return true;
+  if (typeof window !== 'undefined' && trimmed.startsWith(window.location.origin + '/')) return true;
+  return false;
 }
 
 /**
@@ -200,7 +201,9 @@ function money(v: number | null | undefined) {
 
 function BarcodeBlock({ value, width = 1.5 }: { value: string; width?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const [barcodeError, setBarcodeError] = useState(false);
   useEffect(() => {
+    setBarcodeError(false);
     if (svgRef.current && value) {
       try {
         JsBarcode(svgRef.current, value, {
@@ -212,11 +215,19 @@ function BarcodeBlock({ value, width = 1.5 }: { value: string; width?: number })
           margin: 4,
           background: 'transparent',
         });
-      } catch {
-        // invalid barcode value — ignore
+      } catch (err) {
+        console.error('[BarcodeBlock] JsBarcode failed for value:', value, err);
+        setBarcodeError(true);
       }
     }
   }, [value, width]);
+  if (barcodeError) {
+    return (
+      <div style={{ textAlign: 'center', marginTop: 8, padding: '6px 8px', border: '1px dashed #999', color: '#666', fontSize: 10 }}>
+        Barcode unavailable ({value})
+      </div>
+    );
+  }
   return <div style={{ textAlign: 'center', marginTop: 8 }}><svg ref={svgRef} /></div>;
 }
 
@@ -238,7 +249,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
   const logoUrl = cfgText('receipt_logo');
   const disclaimer = warrantyDisclaimer(config);
 
-  const s: React.CSSProperties = { fontFamily: "'Courier New', monospace", fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
+  const s: React.CSSProperties = { fontFamily: '"Courier New", "Courier", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", monospace', fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
   const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
   const thick: React.CSSProperties = { borderTop: '2px solid #000', margin: '4px 0' };
   const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between' };
@@ -284,7 +295,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       )}
 
       {/* Ticket meta */}
-      <div>Date: {formatDateTime(ticket.created_at)}</div>
+      <div>Date: {formatDateTime(ticket.created_at, undefined, cfgText('timezone') || undefined)}</div>
       <div>Ticket #: {ticket.order_id}</div>
       {cfg('receipt_cfg_employee_name') && ticket.created_by_name && (
         <div>Prepared By: {ticket.created_by_name}</div>
@@ -304,7 +315,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
 
       {/* Devices */}
       {devices.map((d: PrintDevice, i: number) => (
-        <div key={i} style={{ marginBottom: 6 }}>
+        <div key={i} className="receipt-item" style={{ marginBottom: 6 }}>
           <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
 
           {/* Service line */}
@@ -558,7 +569,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
             <td style={labelCell}>Order #</td>
             <td style={{ ...valueCell, fontWeight: 'bold', fontSize: 12 }}>{ticket.order_id}</td>
             <td style={labelCell}>Date</td>
-            <td style={valueCell}>{formatDateTime(ticket.created_at)}</td>
+            <td style={valueCell}>{formatDateTime(ticket.created_at, undefined, cfgText('timezone') || undefined)}</td>
             <td style={labelCell}>Status</td>
             <td style={{ ...valueCell, fontWeight: 'bold', borderRight: 'none' }}>{ticket.status_name || 'Open'}</td>
           </tr>
@@ -715,7 +726,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
                   <tr key={i}>
                     <td style={{ ...labelCell, width: 80, fontSize: 8, color: '#888' }}>
                       {n.user_first_name || 'Tech'}
-                      <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at) : ''}</div>
+                      <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at, undefined, cfgText('timezone') || undefined) : ''}</div>
                     </td>
                     <td style={{ ...valueCell, borderRight: 'none', whiteSpace: 'pre-wrap' }}>
                       {/* WEB-S4-033: use DOMPurify (already imported) instead of a
@@ -872,7 +883,7 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
           {customer.email && <div>Email: {customer.email}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div>Date: {formatDateTime(ticket.created_at)}</div>
+          <div>Date: {formatDateTime(ticket.created_at, undefined, cfgText('timezone') || undefined)}</div>
           <div>Status: <strong>{ticket.status_name || 'Open'}</strong></div>
           {invoicePaymentTerms && <div>Terms: {invoicePaymentTerms.replace(/_/g, ' ')}</div>}
         </div>
@@ -989,7 +1000,7 @@ function ThermalInvoiceReceipt({ invoice, config, size }: {
   const logoUrl = cfgText('receipt_logo');
   const disclaimer = warrantyDisclaimer(config);
 
-  const s: React.CSSProperties = { fontFamily: "'Courier New', monospace", fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
+  const s: React.CSSProperties = { fontFamily: '"Courier New", "Courier", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", monospace', fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
   const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
   const thick: React.CSSProperties = { borderTop: '2px solid #000', margin: '4px 0' };
   const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 8 };
@@ -1011,7 +1022,7 @@ function ThermalInvoiceReceipt({ invoice, config, size }: {
       )}
       <div style={thick} />
       <div style={{ ...center, fontWeight: 'bold' }}>INVOICE - {invoice.order_id}</div>
-      <div>Date: {formatDateTime(invoice.created_at)}</div>
+      <div>Date: {formatDateTime(invoice.created_at, undefined, cfgText('timezone') || undefined)}</div>
       {invoice.due_on && <div>Due: {formatDate(invoice.due_on)}</div>}
       <div>Status: {invoice.status}</div>
       {invoice.ticket_id && <div>Ticket: #{invoice.ticket_id}</div>}
@@ -1130,7 +1141,7 @@ function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config:
           {invoice.customer_email && <div>Email: {invoice.customer_email}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div>Date: {formatDateTime(invoice.created_at)}</div>
+          <div>Date: {formatDateTime(invoice.created_at, undefined, cfgText('timezone') || undefined)}</div>
           {invoice.due_on && <div>Due: {formatDate(invoice.due_on)}</div>}
           <div>Status: <strong>{invoice.status}</strong></div>
           {invoice.ticket_id && <div>Ticket: #{invoice.ticket_id}</div>}
@@ -1363,6 +1374,10 @@ ${pageCss[size] || pageCss.receipt80}
   tr { page-break-inside: avoid; }
   thead { display: table-header-group; }
   tfoot { display: table-footer-group; }
+  /* WEB-UIUX-519: prevent thermal receipt device/item blocks from splitting
+     across auto-cut boundaries on 58mm rolls. Each .receipt-item div stays
+     whole; orphans/widows clamp avoids a lone header line on a new cut. */
+  .receipt-item { page-break-inside: avoid; break-inside: avoid; orphans: 2; widows: 2; }
 }
 `;
 

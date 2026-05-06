@@ -23,6 +23,18 @@ import { formatTicketId } from '@/utils/format';
 const MAX_DIMENSION = 2048;
 const JPEG_QUALITY = 0.85;
 
+/**
+ * WEB-UIUX-517: Format a Date as a human-readable timestamp suitable for
+ * burning into the photo overlay. Example: "2026-05-06  14:32:07"
+ */
+function formatTimestamp(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
 async function normalizeOrientation(file: File): Promise<Blob> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -37,6 +49,33 @@ async function normalizeOrientation(file: File): Promise<Blob> {
       canvas.height = Math.round(h * scale);
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // WEB-UIUX-517: Burn capture timestamp into the bottom-right corner so
+      // repair evidence photos carry a visible chain-of-custody timestamp even
+      // after EXIF is stripped by the canvas re-encode above.
+      // Font scales with image size so it remains legible on both thumbnails
+      // and full-res exports (floor at 14px, cap at 36px).
+      const fontSize = Math.min(36, Math.max(14, Math.round(canvas.width * 0.022)));
+      const label = formatTimestamp(new Date());
+      const padding = Math.round(fontSize * 0.6);
+      ctx.font = `bold ${fontSize}px monospace`;
+      const textWidth = ctx.measureText(label).width;
+      const boxW = textWidth + padding * 2;
+      const boxH = fontSize + padding * 1.2;
+      const boxX = canvas.width - boxW - padding;
+      const boxY = canvas.height - boxH - padding;
+
+      // Semi-transparent dark background for legibility over any image content
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, Math.round(fontSize * 0.25));
+      ctx.fill();
+
+      // White text
+      ctx.fillStyle = '#ffffff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, boxX + padding, boxY + boxH / 2);
+
       canvas.toBlob(
         (blob) => resolve(blob ?? file),
         'image/jpeg',

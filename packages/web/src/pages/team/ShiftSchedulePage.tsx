@@ -8,7 +8,9 @@
  * Drag-drop is intentionally NOT implemented in v1 — too much overhead for an
  * MVP. The CRUD is in place so a follow-up can layer dnd on top.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useMemo, useState } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscClose } from '@/hooks/useEscClose';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -305,7 +307,7 @@ export function ShiftSchedulePage() {
       </div>
 
       {showNew && (
-        <NewShiftModal onClose={() => setShowNew(false)}>
+        <NewShiftModal open={showNew} onClose={() => setShowNew(false)}>
           <div className="bg-white dark:bg-surface-900 rounded-lg shadow-xl max-w-md w-full p-5 text-surface-900 dark:text-surface-100" onClick={(e) => e.stopPropagation()}>
             <h2 id="new-shift-title" className="text-lg font-bold mb-4">New shift</h2>
             <div className="space-y-3">
@@ -384,17 +386,17 @@ export function ShiftSchedulePage() {
 function NewShiftModal({
   children,
   onClose,
+  open,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClose: () => void;
+  open: boolean;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const trapRef = useFocusTrap(open, { initialFocusSelector: 'input,select' });
+  useEscClose(onClose, open);
   return (
     <div
+      ref={trapRef as RefObject<HTMLDivElement>}
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-shift-title"

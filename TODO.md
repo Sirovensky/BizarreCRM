@@ -2670,7 +2670,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-516. **[MINOR] PhotoCapturePage uploaded confirmation page renders `#${ticketId}` raw — no formatting (`T-0042`).** L14. **[AUTOLOOP-T22 RESOLVED: PhotoCapture upload confirmation + header use `formatTicketId(ticketId!)` instead of raw `#${ticketId}`.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:154`
 
-- [ ] WEB-UIUX-517. **[MINOR] PhotoCapturePage no photo metadata (timestamp, geolocation toggle) — repair photo evidence can't establish chain of custody.** L16.
+- [x] WEB-UIUX-517. **[MINOR] PhotoCapturePage no photo metadata (timestamp, geolocation toggle) — repair photo evidence can't establish chain of custody.** L16. **[AUTOLOOP-T23 RESOLVED: PhotoCapture canvas re-encode burns formatted timestamp pill into bottom-right corner during normalizeOrientation. Geolocation deferred (privacy).]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:79-85`
 
 #### Print Page
@@ -2678,31 +2678,31 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-518. **[BLOCKER] PrintPage `PrintTicket extends Record<string, any>` — every prop access types as `any`. Complete loss of type safety on print surface.** L4.
   `packages/web/src/pages/print/PrintPage.tsx:40-90`
 
-- [ ] WEB-UIUX-519. **[BLOCKER] PrintPage thermal receipt 58mm uses 9 pt font — passes but no `min-height` or page-break. Long receipts blank-paper a printer mid-render.** L11, L8.
+- [x] WEB-UIUX-519. **[BLOCKER] PrintPage thermal receipt 58mm uses 9 pt font — passes but no `min-height` or page-break. Long receipts blank-paper a printer mid-render.** L11, L8. **[AUTOLOOP-T23 RESOLVED: ThermalReceipt items get className=receipt-item + @media print { .receipt-item { page-break-inside:avoid; orphans:2; widows:2 } }; @page 58mm auto already correct.]**
   `packages/web/src/pages/print/PrintPage.tsx:204-441`
 
 - [ ] WEB-UIUX-520. **[MAJOR] PrintPage `cfg('receipt_cfg_*', '1')` defaults all toggles ON — fresh tenant who hasn't configured anything gets the most verbose receipt by default.** L8.
   `packages/web/src/pages/print/PrintPage.tsx:192,448`
 
-- [ ] WEB-UIUX-521. **[MAJOR] PrintPage `BarcodeBlock` uses `JsBarcode` synchronously in useEffect — failed barcode silently swallowed via empty catch.** L8.
+- [x] WEB-UIUX-521. **[MAJOR] PrintPage `BarcodeBlock` uses `JsBarcode` synchronously in useEffect — failed barcode silently swallowed via empty catch.** L8. **[AUTOLOOP-T23 RESOLVED: BarcodeBlock empty catch replaced with console.error + barcodeError state + visible "Barcode unavailable (value)" placeholder.]**
   `packages/web/src/pages/print/PrintPage.tsx:165-185`
 
 - [ ] WEB-UIUX-522. **[MAJOR] PrintPage signature size cap 100 KB but PDF surface (server-side) doesn't enforce same cap — print preview loads OK but prod-print may reject.** L16.
   `packages/web/src/pages/print/PrintPage.tsx:148-154`
 
-- [ ] WEB-UIUX-523. **[MAJOR] PrintPage hardcodes `'Courier New'` thermal monospace — falls back to platform default if absent (Windows default Courier is fine; Linux thermal printer driver may not have it).** L11.
+- [x] WEB-UIUX-523. **[MAJOR] PrintPage hardcodes `'Courier New'` thermal monospace — falls back to platform default if absent (Windows default Courier is fine; Linux thermal printer driver may not have it).** L11. **[AUTOLOOP-T23 RESOLVED: PrintPage thermal monospace expanded to "Courier New", Courier, Lucida Console, Liberation Mono, DejaVu Sans Mono, monospace.]**
   `packages/web/src/pages/print/PrintPage.tsx:204`
 
 - [ ] WEB-UIUX-524. **[MAJOR] PrintPage thermal `*** WARRANTY REPAIR ***` not localized, English-only.** Receipts go to customers — translation matters. L14.
   `packages/web/src/pages/print/PrintPage.tsx:245-247`
 
-- [ ] WEB-UIUX-525. **[MAJOR] PrintPage `formatDateTime` everywhere — but tenant TZ from store_settings ignored when timestamps stored as UTC. Print date may be wrong by ±12h.** L6, L14.
+- [x] WEB-UIUX-525. **[MAJOR] PrintPage `formatDateTime` everywhere — but tenant TZ from store_settings ignored when timestamps stored as UTC. Print date may be wrong by ±12h.** L6, L14. **[AUTOLOOP-T23 RESOLVED: formatDateTime gains optional `tz` arg (backwards-compatible); PrintPage 6 calls pass `cfgText("timezone")`.]**
   `packages/web/src/pages/print/PrintPage.tsx:250,515`
 
 - [ ] WEB-UIUX-526. **[MINOR] PrintPage `<svg>` for barcode but no `aria-label` — screen-reading the receipt skips ID.** L12.
   `packages/web/src/pages/print/PrintPage.tsx:184`
 
-- [ ] WEB-UIUX-527. **[MINOR] PrintPage `isSafeLogoUrl` accepts `https://` from any host — server settings can store `https://attacker.com/logo.png` and print pages exfiltrate user IP via image fetch.** L16.
+- [x] WEB-UIUX-527. **[MINOR] PrintPage `isSafeLogoUrl` accepts `https://` from any host — server settings can store `https://attacker.com/logo.png` and print pages exfiltrate user IP via image fetch.** L16. **[AUTOLOOP-T23 RESOLVED: isSafeLogoUrl now allows only relative same-origin paths, same-origin absolute URLs, base64 raster data:; external https:// rejected.]**
   `packages/web/src/pages/print/PrintPage.tsx:102-113`
   <!-- meta: fix=allow-list-logo-host-or-relative-only -->
 
@@ -2711,25 +2711,25 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Team Pages (TeamChat, ShiftSchedule, MyQueue, Payroll)
 
-- [ ] WEB-UIUX-529. **[BLOCKER] PayrollPage is a 10-line stub with only `<CommissionPeriodLock>` — no payroll list, no period summary, no employee earnings table.** Routed but functionally empty. L8.
+- [ ] WEB-UIUX-529. **[BLOCKER] PayrollPage is a 10-line stub with only `<CommissionPeriodLock>` — no payroll list, no period summary, no employee earnings table.** Routed but functionally empty. L8. **[AUTOLOOP-T23 BLOCKED: STALE — PayrollPage is 269-line full impl (stat cards, period summary, loading/error/empty, CommissionPeriodLock). Outdated description.]**
   `packages/web/src/pages/team/PayrollPage.tsx:1-10`
 
 - [ ] WEB-UIUX-530. **[BLOCKER] TeamChatPage New-channel modal no focus trap, no initial focus.** L12.
   `packages/web/src/pages/team/TeamChatPage.tsx:340-382`
 
-- [ ] WEB-UIUX-531. **[BLOCKER] ShiftSchedulePage NewShiftModal no focus trap, no initial focus.** L12.
+- [x] WEB-UIUX-531. **[BLOCKER] ShiftSchedulePage NewShiftModal no focus trap, no initial focus.** L12. **[AUTOLOOP-T23 RESOLVED: NewShiftModal wired with useFocusTrap(open, {initialFocusSelector:"input,select"}) + useEscClose; trapRef on dialog div.]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:307-407`
 
 - [ ] WEB-UIUX-532. **[BLOCKER] TeamChatPage messages render `body` raw via `whitespace-pre-wrap` — no @mention highlight, no link auto-detect, no escape.** Chat content escapes via React's default but `@evil.com` link not clickable. L4, L8.
   `packages/web/src/pages/team/TeamChatPage.tsx:287`
 
-- [ ] WEB-UIUX-533. **[MAJOR] TeamChatPage send-on-Enter swallows IME composition correctly but Cmd+Enter (claimed in footer hint) actually sends — comment says Slack/Discord-style but footer says "Press Cmd/Ctrl + Enter to send".** Mismatch. L14.
+- [ ] WEB-UIUX-533. **[MAJOR] TeamChatPage send-on-Enter swallows IME composition correctly but Cmd+Enter (claimed in footer hint) actually sends — comment says Slack/Discord-style but footer says "Press Cmd/Ctrl + Enter to send".** Mismatch. L14. **[AUTOLOOP-T23 BLOCKED: STALE — footer already reads "Press Enter to send. Shift + Enter adds a new line." — matches handler. No mismatch.]**
   `packages/web/src/pages/team/TeamChatPage.tsx:309-320,333-335`
 
 - [ ] WEB-UIUX-534. **[MAJOR] TeamChatPage 15 s polling with no WebSocket fallback — under poor network 1-min lag for new messages.** L15.
   `packages/web/src/pages/team/TeamChatPage.tsx:89-108`
 
-- [ ] WEB-UIUX-535. **[MAJOR] TeamChatPage scrollIntoView on every message-length change — even when user has scrolled up to read history. Yanks them to bottom on tick.** L13.
+- [x] WEB-UIUX-535. **[MAJOR] TeamChatPage scrollIntoView on every message-length change — even when user has scrolled up to read history. Yanks them to bottom on tick.** L13. **[AUTOLOOP-T23 RESOLVED: scrollIntoView gated by isAtBottomRef (within 100 px of bottom via passive scroll listener); reading history no longer yanked.]**
   `packages/web/src/pages/team/TeamChatPage.tsx:129-131`
   <!-- meta: fix=detect-near-bottom-before-scroll -->
 

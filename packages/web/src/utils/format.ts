@@ -132,17 +132,19 @@ export function formatDate(iso: string | null | undefined, localeOverride?: stri
   });
 }
 
-export function formatDateTime(iso: string | null | undefined, localeOverride?: string): string {
+export function formatDateTime(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString(localeOverride ?? _locale, {
+  const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  });
+  };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleString(localeOverride ?? _locale, opts);
 }
 
 // @audit-fixed (WEB-FF-003 / Fixer-DD 2026-04-25): short date+time used widely

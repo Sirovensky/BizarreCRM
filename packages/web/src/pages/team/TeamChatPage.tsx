@@ -71,6 +71,8 @@ export function TeamChatPage() {
   const [showNew, setShowNew] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   const { data: channelsData } = useQuery({
     queryKey: ['team-chat', 'channels'],
@@ -126,8 +128,22 @@ export function TeamChatPage() {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [selectedChannelId, refetchMessages]);
 
+  // Track whether the user is near the bottom so auto-scroll doesn't yank
+  // them away when they scroll up to read history (WEB-UIUX-535).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages.length]);
 
   // WEB-FX-003: Esc dismisses the New-channel modal.
@@ -258,7 +274,7 @@ export function TeamChatPage() {
         </aside>
 
         <section className="bg-white rounded-lg shadow border border-surface-200 flex flex-col overflow-hidden dark:bg-surface-900 dark:border-surface-700">
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
             {messages.length > 0 && hasOlder && (
               <div className="flex justify-center pb-2">
                 <button
