@@ -204,23 +204,28 @@ export function AutomationDetailPage() {
             {actionConfigSummary(rule.action_type, rule.action_config, statusList, userList)}
           </p>
         </div>
-        <div className="p-5">
-          <h2 className="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-3">Raw Config</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-surface-400 mb-1">Trigger config</p>
-              <pre className="text-xs bg-surface-50 dark:bg-surface-800 rounded p-2 overflow-x-auto text-surface-700 dark:text-surface-300">
-                {JSON.stringify(rule.trigger_config, null, 2)}
-              </pre>
-            </div>
-            <div>
-              <p className="text-xs text-surface-400 mb-1">Action config</p>
-              <pre className="text-xs bg-surface-50 dark:bg-surface-800 rounded p-2 overflow-x-auto text-surface-700 dark:text-surface-300">
-                {JSON.stringify(rule.action_config, null, 2)}
-              </pre>
+        <details className="group">
+          <summary className="flex items-center gap-2 p-5 cursor-pointer select-none text-xs font-semibold text-surface-400 uppercase tracking-wider hover:text-surface-600 dark:hover:text-surface-300 list-none">
+            <span className="inline-block transition-transform group-open:rotate-90">▶</span>
+            Show technical details
+          </summary>
+          <div className="px-5 pb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-surface-400 mb-1">Trigger config</p>
+                <pre className="text-xs bg-surface-50 dark:bg-surface-800 rounded p-2 overflow-x-auto text-surface-700 dark:text-surface-300">
+                  {JSON.stringify(rule.trigger_config, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <p className="text-xs text-surface-400 mb-1">Action config</p>
+                <pre className="text-xs bg-surface-50 dark:bg-surface-800 rounded p-2 overflow-x-auto text-surface-700 dark:text-surface-300">
+                  {JSON.stringify(rule.action_config, null, 2)}
+                </pre>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
       </div>
 
       {/* Edit modal */}

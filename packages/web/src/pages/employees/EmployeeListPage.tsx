@@ -614,7 +614,15 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
     <>
       <tr
         onClick={onToggle}
-        className="cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="cursor-pointer transition-colors hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-surface-800/50"
       >
         <td className="px-4 py-3">
           {isExpanded

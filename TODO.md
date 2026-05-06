@@ -1411,13 +1411,13 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-167. **[MINOR] ConditionsTab GripVertical icon shown without functional drag-and-drop.** Misleading affordance — only chevron up/down works. L1. **[AUTOLOOP-T4 RESOLVED: GripVertical import + JSX removed from ConditionsTab; chevron up/down reorder retained.]**
   `packages/web/src/pages/settings/ConditionsTab.tsx:284`
 
-- [ ] WEB-UIUX-168. **[NIT] DangerZoneTab line 73 has `disabled:cursor-not-allowed` duplicated in className.** L13.
+- [x] WEB-UIUX-168. **[NIT] DangerZoneTab line 73 has `disabled:cursor-not-allowed` duplicated in className.** L13. **[AUTOLOOP-T5 RESOLVED: removed duplicate `disabled:cursor-not-allowed` token from DangerZoneTab line 73 button.]**
   `packages/web/src/pages/settings/DangerZoneTab.tsx:73`
 
 - [ ] WEB-UIUX-169. **[NIT] AutomationsTab toast emoji `🔍` (cross-platform inconsistent).** Brand uses Lucide icons. L14.
   `packages/web/src/pages/settings/AutomationsTab.tsx:633`
 
-- [ ] WEB-UIUX-170. **[NIT] AutomationDetailPage shows raw `<pre>` JSON dump.** Useful for engineers, scary for shop owners. L1, L14.
+- [x] WEB-UIUX-170. **[NIT] AutomationDetailPage shows raw `<pre>` JSON dump.** Useful for engineers, scary for shop owners. L1, L14. **[AUTOLOOP-T5 RESOLVED: AutomationDetailPage raw JSON pre wrapped in `<details>` "Show technical details"; collapsed by default.]**
   `packages/web/src/pages/settings/AutomationDetailPage.tsx:207-223`
 
 #### Super-Admin / Marketing / Billing
@@ -1425,7 +1425,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [ ] WEB-UIUX-171. **[MAJOR] Impersonate confirm uses `bg-amber-600` (warning tone) for cross-tenant access escalation.** Should be danger-red — operation is logged to audit and creates legal liability. L9, L16.
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:401-405,325-326`
 
-- [ ] WEB-UIUX-172. **[MAJOR] CustomerPayPage shows amount + invoice ref but NEVER displays merchant name/logo/address.** Public payment link via SMS — customer has zero phishing-protection signals. Trust gap. L16.
+- [x] WEB-UIUX-172. **[MAJOR] CustomerPayPage shows amount + invoice ref but NEVER displays merchant name/logo/address.** Public payment link via SMS — customer has zero phishing-protection signals. Trust gap. L16. **[AUTOLOOP-T5 RESOLVED: paymentLinks public GET returns merchant_name/phone/address from store_config; CustomerPayPage renders prominent merchant header.]**
   `packages/web/src/pages/billing/CustomerPayPage.tsx:131-187`
   <!-- meta: fix=server-expose-tenant_name-tenant_logo-render-prominent -->
 
@@ -1433,45 +1433,45 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/billing/AgingReportPage.tsx:130-148`
   <!-- meta: fix=move-to-sticky-toolbar-above-table -->
 
-- [ ] WEB-UIUX-175. **[MAJOR] Aging-report missing select-all checkbox in thead.** Clearing 50+ overdue invoices is dominant workflow. L5.
+- [x] WEB-UIUX-175. **[MAJOR] Aging-report missing select-all checkbox in thead.** Clearing 50+ overdue invoices is dominant workflow. L5. **[AUTOLOOP-T5 RESOLVED: AgingReportPage thead select-all checkbox added with indeterminate state via ref; toggles all visible filtered IDs.]**
   `packages/web/src/pages/billing/AgingReportPage.tsx:154`
 
 - [ ] WEB-UIUX-176. **[MAJOR] Campaigns Run-now confirm button NOT disabled while count is loading.** Can dispatch to "unknown" recipients before count returns — TCPA-safety story collapses. L6, L8.
   `packages/web/src/pages/marketing/CampaignsPage.tsx:386-405`
 
-- [ ] WEB-UIUX-177. **[MAJOR] Campaigns row action stack is 6 vertical buttons.** "Run now" dominates, "Delete" one tab-stop away. Flat hierarchy. L1, L2.
+- [x] WEB-UIUX-177. **[MAJOR] Campaigns row action stack is 6 vertical buttons.** "Run now" dominates, "Delete" one tab-stop away. Flat hierarchy. L1, L2. **[AUTOLOOP-T5 RESOLVED: CampaignsPage row collapsed from 6 inline buttons to Run now+Edit + overflow menu; Delete in red destructive style.]**
   `packages/web/src/pages/marketing/CampaignsPage.tsx:268-342`
   <!-- meta: fix=primary-CTA-plus-overflow-MenuButton -->
 
 - [ ] WEB-UIUX-178. **[MAJOR] Dunning per-step Trash button has no confirm — single-click delete loses sequence draft.** No autosave either. L6, L16.
   `packages/web/src/pages/billing/DunningPage.tsx:272-280`
 
-- [ ] WEB-UIUX-179. **[MAJOR] PaymentLinks Cancel button single-click cancels link without confirm.** Customer mid-checkout hits dead-end. L6, L16.
+- [x] WEB-UIUX-179. **[MAJOR] PaymentLinks Cancel button single-click cancels link without confirm.** Customer mid-checkout hits dead-end. L6, L16. **[AUTOLOOP-T5 RESOLVED: PaymentLinks Cancel button gated behind `window.confirm("Cancel this payment link? ...")` before mutate.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:309-318`
 
 - [ ] WEB-UIUX-180. **[MAJOR] DunningPage step row hard-codes `grid-cols-[auto_1fr_1fr_auto]`.** Selects squish to ~80px on 375px viewport, options truncate without ellipsis. L11.
   `packages/web/src/pages/billing/DunningPage.tsx:232`
 
-- [ ] WEB-UIUX-181. **[MAJOR] TenantsListPage table no mobile card layout — 7 cols horizontal-scroll trap.** Touch users won't discover rightmost action. L11.
+- [x] WEB-UIUX-181. **[MAJOR] TenantsListPage table no mobile card layout — 7 cols horizontal-scroll trap.** Touch users won't discover rightmost action. L11. **[AUTOLOOP-T5 RESOLVED: TenantsListPage adds md:hidden card grid + hidden md:block table; mobile users get full-width tappable cards.]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:517-542`
 
 - [ ] WEB-UIUX-182. **[MAJOR] NpsTrendPage chart has no aria-label, no SR table fallback.** Pure `<div>` bars with `style={{height}}`. Owners using SR get nothing. L12.
   `packages/web/src/pages/marketing/NpsTrendPage.tsx:115-146`
 
-- [ ] WEB-UIUX-183. **[MAJOR] DunningPage step editor selects have no `<label>` or `aria-label`.** SR announces "select, Email" with no field context. L7, L12.
+- [x] WEB-UIUX-183. **[MAJOR] DunningPage step editor selects have no `<label>` or `aria-label`.** SR announces "select, Email" with no field context. L7, L12. **[AUTOLOOP-T5 RESOLVED: DunningPage step-editor selects get `aria-label="Step N action"` / `"Step N template"`.]**
   `packages/web/src/pages/billing/DunningPage.tsx:235-270`
 
 - [ ] WEB-UIUX-184. **[MAJOR] EmployeeListPage ExpandedRow fires 3 separate queries when employee.detail already returns clock_entries + commissions.** N+1 the audit-fix removed for the list, but expand path still does it. L15.
   `packages/web/src/pages/employees/EmployeeListPage.tsx:319-339`
 
-- [ ] WEB-UIUX-185. **[MAJOR] EmployeeListPage `<tr onClick>` row expand has no role/tabIndex/keydown.** Keyboard users can't expand rows. L12.
+- [x] WEB-UIUX-185. **[MAJOR] EmployeeListPage `<tr onClick>` row expand has no role/tabIndex/keydown.** Keyboard users can't expand rows. L12. **[AUTOLOOP-T5 RESOLVED: EmployeeRow tr gets tabIndex=0, onKeyDown Enter/Space → toggle, aria-expanded, focus-visible ring.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:614-617`
 
 - [ ] WEB-UIUX-186. **[MINOR] PaymentLinks expiry date stamps `T23:59:59` browser-local.** EST merchant creating "expires today" produces UTC timestamp PST customer experiences as early-expired. L7, L14.
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:236-241,134-141`
   <!-- meta: fix=show-tz-helper-text-or-explicit-time-picker -->
 
-- [ ] WEB-UIUX-187. **[MINOR] PaymentLinks customer/invoice ID inputs are bare numeric — no picker.** Typo only caught after submit. L7.
+- [x] WEB-UIUX-187. **[MINOR] PaymentLinks customer/invoice ID inputs are bare numeric — no picker.** Typo only caught after submit. L7. **[AUTOLOOP-T5 RESOLVED: PaymentLinks customer/invoice ID inputs get blur-time validation, red-border error, helper text + browse-list links.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:208-227`
 
 - [ ] WEB-UIUX-188. **[MINOR] DepositCollect amount input uses dollars but server uses cents — silent rounding drift.** `100.005` → server may round to `10000` cents (lose 0.5¢). L16.

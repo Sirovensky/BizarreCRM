@@ -50,6 +50,7 @@ export function PaymentLinksPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'paid' | 'cancelled'>('all');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
+  const [idErrors, setIdErrors] = useState<{ customer_id?: string; invoice_id?: string }>({});
 
   // AUDIT-WEB-006: feature flag — payment links must be disabled at the
   // generation point until a live checkout provider is configured.
@@ -85,6 +86,7 @@ export function PaymentLinksPage() {
     onSuccess: () => {
       toast.success('Payment request created');
       setForm(EMPTY_FORM);
+      setIdErrors({});
       setShowForm(false);
       qc.invalidateQueries({ queryKey: ['payment-links'] });
     },
@@ -120,6 +122,19 @@ export function PaymentLinksPage() {
       return 'error';
     }
     return n;
+  };
+
+  const validateIdField = (field: 'customer_id' | 'invoice_id', label: string) => {
+    const raw = form[field].trim();
+    if (!raw) {
+      setIdErrors((e) => ({ ...e, [field]: undefined }));
+      return;
+    }
+    if (!/^\d+$/.test(raw) || parseInt(raw, 10) <= 0) {
+      setIdErrors((e) => ({ ...e, [field]: `${label} must be a positive whole number` }));
+    } else {
+      setIdErrors((e) => ({ ...e, [field]: undefined }));
+    }
   };
 
   const handleCreate = () => {
@@ -167,7 +182,7 @@ export function PaymentLinksPage() {
         {canManagePaymentLinks && paymentLinksEnabled ? (
           <button type="button"
             className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
-            onClick={() => setShowForm((s) => !s)}
+            onClick={() => { setShowForm((s) => !s); setIdErrors({}); }}
           >
             {showForm ? 'Close form' : 'New payment request'}
           </button>
@@ -205,26 +220,68 @@ export function PaymentLinksPage() {
       {canManagePaymentLinks && paymentLinksEnabled && showForm ? (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3 dark:border-surface-700 dark:bg-surface-900">
           <div className="grid grid-cols-2 gap-3">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="\d*"
-              aria-label="Customer ID (optional)"
-              placeholder="Customer ID (optional)"
-              value={form.customer_id}
-              onChange={(e) => setForm((f) => ({ ...f, customer_id: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="\d*"
-              aria-label="Invoice ID (optional)"
-              placeholder="Invoice ID (optional)"
-              value={form.invoice_id}
-              onChange={(e) => setForm((f) => ({ ...f, invoice_id: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
-            />
+            <div className="space-y-1">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d*"
+                aria-label="Customer ID (optional)"
+                aria-describedby="customer-id-hint"
+                placeholder="Customer ID (optional)"
+                value={form.customer_id}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, customer_id: e.target.value }));
+                  setIdErrors((err) => ({ ...err, customer_id: undefined }));
+                }}
+                onBlur={() => validateIdField('customer_id', 'Customer ID')}
+                className={`w-full rounded-md border px-3 py-2 text-sm dark:bg-surface-800 dark:text-surface-50 ${
+                  idErrors.customer_id
+                    ? 'border-red-400 dark:border-red-500'
+                    : 'border-gray-300 dark:border-surface-700'
+                }`}
+              />
+              {idErrors.customer_id ? (
+                <p id="customer-id-hint" className="text-xs text-red-600 dark:text-red-400">{idErrors.customer_id}</p>
+              ) : (
+                <p id="customer-id-hint" className="text-xs text-surface-500 dark:text-surface-400">
+                  Enter customer ID number from Customers list.{' '}
+                  <a href="/customers" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary-600">
+                    Browse customers ↗
+                  </a>
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d*"
+                aria-label="Invoice ID (optional)"
+                aria-describedby="invoice-id-hint"
+                placeholder="Invoice ID (optional)"
+                value={form.invoice_id}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, invoice_id: e.target.value }));
+                  setIdErrors((err) => ({ ...err, invoice_id: undefined }));
+                }}
+                onBlur={() => validateIdField('invoice_id', 'Invoice ID')}
+                className={`w-full rounded-md border px-3 py-2 text-sm dark:bg-surface-800 dark:text-surface-50 ${
+                  idErrors.invoice_id
+                    ? 'border-red-400 dark:border-red-500'
+                    : 'border-gray-300 dark:border-surface-700'
+                }`}
+              />
+              {idErrors.invoice_id ? (
+                <p id="invoice-id-hint" className="text-xs text-red-600 dark:text-red-400">{idErrors.invoice_id}</p>
+              ) : (
+                <p id="invoice-id-hint" className="text-xs text-surface-500 dark:text-surface-400">
+                  Enter invoice ID number from Invoices list.{' '}
+                  <a href="/billing/invoices" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary-600">
+                    Browse invoices ↗
+                  </a>
+                </p>
+              )}
+            </div>
             <input
               type="number"
               step="0.01"
@@ -309,7 +366,11 @@ export function PaymentLinksPage() {
                     {canManagePaymentLinks && row.status === 'active' ? (
                       <button type="button"
                         className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
-                        onClick={() => cancelMutation.mutate(row.id)}
+                        onClick={() => {
+                          if (window.confirm('Cancel this payment link? Customer can no longer pay using this URL.')) {
+                            cancelMutation.mutate(row.id);
+                          }
+                        }}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
                         aria-label={`Cancel payment request ${row.token.slice(0, 8)}`}
                       >

@@ -287,6 +287,17 @@ publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => 
     row.status = 'expired';
   }
 
+  // WEB-UIUX-172: include merchant identity so the public page shows
+  // phishing-protection signals (name, address, phone).
+  const storeConfigRows = await req.asyncDb.all<{ key: string; value: string }>(
+    `SELECT key, value FROM store_config WHERE key IN ('store_name','store_phone','store_address')`,
+  );
+  const storeConfig: Record<string, string> = {};
+  for (const r of storeConfigRows) storeConfig[r.key] = r.value ?? '';
+  row.merchant_name    = storeConfig['store_name']    ?? null;
+  row.merchant_phone   = storeConfig['store_phone']   ?? null;
+  row.merchant_address = storeConfig['store_address'] ?? null;
+
   res.json({ success: true, data: row });
 }));
 

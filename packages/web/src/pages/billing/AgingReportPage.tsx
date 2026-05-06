@@ -4,7 +4,7 @@
  * WEB-W3-017: per-row Send Reminder + bulk Send Reminder wired to
  *   invoiceApi.bulkAction('send_reminder', [id]).
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -93,6 +93,34 @@ export function AgingReportPage() {
     }
   };
 
+  // Select-all helpers
+  const allIds = filteredInvoices.map((inv) => inv.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const someSelected = !allSelected && allIds.some((id) => selected.has(id));
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
   const totalDueCents = data
     ? BUCKET_ORDER.reduce((sum, k) => sum + (data.buckets[k]?.total_cents ?? 0), 0)
     : 0;
@@ -151,7 +179,17 @@ export function AgingReportPage() {
         <table className="w-full text-sm text-surface-900 dark:text-surface-100">
           <thead className="bg-surface-50 text-surface-600 dark:bg-surface-800 dark:text-surface-300">
             <tr>
-              <th className="w-8 px-3 py-2" />
+              <th className="w-8 px-3 py-2">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  disabled={allIds.length === 0}
+                  aria-label="Select all invoices"
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-40"
+                />
+              </th>
               <th className="px-3 py-2 text-left">Invoice</th>
               <th className="px-3 py-2 text-left">Customer</th>
               <th className="px-3 py-2 text-left">Due</th>

@@ -159,13 +159,11 @@ interface TenantRowProps {
   tenant: SuperAdminTenant;
 }
 
-function TenantRow({ tenant }: TenantRowProps) {
+// Shared impersonation logic extracted so both TenantRow (table) and
+// TenantCard (mobile) can use it without duplicating the mutation setup.
+function useTenantImpersonation(tenant: SuperAdminTenant) {
   const navigate = useNavigate();
   const completeLogin = useAuthStore((s) => s.completeLogin);
-  // WEB-FG-003 / FIXED-by-Fixer-U 2026-04-25 — gate impersonation behind a
-  // typed-slug confirmation + required reason field so accidental clicks
-  // can't silently log an operator in as a tenant admin and the server
-  // audit log gets attribution ("ticket #1234, customer support").
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [typedSlug, setTypedSlug] = useState('');
   const [reason, setReason] = useState('');
@@ -185,11 +183,7 @@ function TenantRow({ tenant }: TenantRowProps) {
         toast.error('No token returned from impersonation');
         return;
       }
-      // Store impersonation session for banner
       setImpersonationSession({ tenant_slug: data.tenant_slug });
-      // Store the tenant access token and set auth state.
-      // completeLogin expects (accessToken, refreshToken, user) — pass empty refresh token
-      // since impersonation tokens have no refresh (15-min TTL).
       const targetUser = data.target_user;
       const validRole = (['admin', 'manager', 'technician', 'cashier'] as const).includes(
         targetUser.role as 'admin' | 'manager' | 'technician' | 'cashier',
@@ -221,6 +215,17 @@ function TenantRow({ tenant }: TenantRowProps) {
       toast.error(msg ?? 'Impersonation failed');
     },
   });
+
+  return { confirmOpen, setConfirmOpen, typedSlug, setTypedSlug, reason, setReason, closeConfirm, impersonateMutation };
+}
+
+function TenantRow({ tenant }: TenantRowProps) {
+  // WEB-FG-003 / FIXED-by-Fixer-U 2026-04-25 — gate impersonation behind a
+  // typed-slug confirmation + required reason field so accidental clicks
+  // can't silently log an operator in as a tenant admin and the server
+  // audit log gets attribution ("ticket #1234, customer support").
+  const { confirmOpen, setConfirmOpen, typedSlug, setTypedSlug, reason, setReason, closeConfirm, impersonateMutation } =
+    useTenantImpersonation(tenant);
 
   const statusColors: Record<string, string> = {
     active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -419,6 +424,86 @@ function ImpersonateConfirmModal({
   );
 }
 
+// WEB-UIUX-181: mobile card for the tenants list — rendered on small screens
+// instead of the 7-column table which creates a horizontal-scroll trap.
+function TenantCard({ tenant }: TenantRowProps) {
+  const { confirmOpen, setConfirmOpen, typedSlug, setTypedSlug, reason, setReason, closeConfirm, impersonateMutation } =
+    useTenantImpersonation(tenant);
+
+  const statusColors: Record<string, string> = {
+    active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    suspended: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    deleted: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    trial: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  };
+
+  return (
+    <div className="rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 p-4 flex flex-col gap-3">
+      {/* Header row: name + status badge */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-semibold text-surface-900 dark:text-surface-100 text-sm truncate">{tenant.name}</div>
+          <div className="text-xs text-surface-400 font-mono mt-0.5 truncate">{tenant.slug}</div>
+        </div>
+        <span className={cn('shrink-0 px-2 py-0.5 rounded-full text-xs font-medium', statusColors[tenant.status] ?? 'bg-surface-100 text-surface-600')}>
+          {tenant.status}
+        </span>
+      </div>
+
+      {/* Key fields */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-surface-500 dark:text-surface-400">
+        <div>
+          <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">Email</span>
+          <span className="truncate block">{tenant.admin_email}</span>
+        </div>
+        <div>
+          <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">Plan</span>
+          <span>{tenant.plan}</span>
+        </div>
+        <div>
+          <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">DB Size</span>
+          <span>{tenant.db_size_mb} MB</span>
+        </div>
+        <div>
+          <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">Created</span>
+          <span>{new Date(tenant.created_at).toLocaleDateString()}</span>
+        </div>
+      </div>
+
+      {/* Action */}
+      <div className="pt-1 border-t border-surface-100 dark:border-surface-700">
+        <button
+          onClick={() => setConfirmOpen(true)}
+          disabled={impersonateMutation.isPending || tenant.status !== 'active'}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          title={tenant.status !== 'active' ? `Cannot impersonate: tenant is ${tenant.status}` : 'Log in as tenant admin'}
+        >
+          {impersonateMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <LogIn className="h-3.5 w-3.5" />
+          )}
+          Log in as
+        </button>
+      </div>
+
+      {confirmOpen && (
+        <ImpersonateConfirmModal
+          tenantSlug={tenant.slug}
+          tenantName={tenant.name}
+          typedSlug={typedSlug}
+          reason={reason}
+          onTypedSlugChange={setTypedSlug}
+          onReasonChange={setReason}
+          onCancel={closeConfirm}
+          onConfirm={() => impersonateMutation.mutate(reason.trim())}
+          submitting={impersonateMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
 export function TenantsListPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
     () => Boolean(superAdminTokenStore.get()),
@@ -593,7 +678,18 @@ export function TenantsListPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800">
+        <div>
+          {/* Mobile card list — hidden at md+ */}
+          <div className="md:hidden grid grid-cols-1 gap-3 mb-4">
+            {tenants.length === 0 ? (
+              <p className="text-center text-sm text-surface-400 py-12">No tenants found.</p>
+            ) : (
+              tenants.map((t) => <TenantCard key={t.id} tenant={t} />)
+            )}
+          </div>
+
+          {/* Desktop table — hidden below md */}
+          <div className="hidden md:block rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -625,6 +721,48 @@ export function TenantsListPage() {
               Showing {showingStart}-{showingEnd} of {totalTenants}
             </div>
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {visiblePages.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setPage(pageNumber)}
+                  className={cn(
+                    'inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors',
+                    pageNumber === currentPage
+                      ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
+                      : 'border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700',
+                  )}
+                  aria-current={pageNumber === currentPage ? 'page' : undefined}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          </div>
+
+          {/* Mobile pagination — visible below md */}
+          <div className="md:hidden flex flex-col gap-3 border-t border-surface-100 dark:border-surface-700 px-1 py-3 text-sm text-surface-500 dark:text-surface-400">
+            <div>Showing {showingStart}-{showingEnd} of {totalTenants}</div>
+            <div className="flex items-center gap-1 flex-wrap">
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}

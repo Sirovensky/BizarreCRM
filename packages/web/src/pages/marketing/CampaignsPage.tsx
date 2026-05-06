@@ -13,6 +13,7 @@ import {
   CircleCheck,
   CircleSlash,
   Pencil,
+  MoreVertical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
@@ -103,6 +104,8 @@ export function CampaignsPage() {
   // immediately to potentially thousands of recipients, and Delete is final.
   const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
+  // WEB-UIUX-177: overflow menu open state (campaign id or null)
+  const [openOverflow, setOpenOverflow] = useState<number | null>(null);
   // WEB-FK-017 (Fixer-TTT 2026-04-25): keep a handle on the in-flight Run-now
   // recipient-count preview so cancelling the confirm dialog (or clicking
   // Run-now on a different campaign) aborts the previous request instead of
@@ -265,14 +268,9 @@ export function CampaignsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => preview.mutate(campaign)}
-                      disabled={preview.isPending}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-surface-200 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800"
-                    >
-                      <Eye className="h-3 w-3" /> Preview
-                    </button>
+                  {/* WEB-UIUX-177: inline primary actions + overflow ⋮ menu for secondary/destructive */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Primary: Run now */}
                     <button
                       onClick={async () => {
                         // Open confirm dialog with a recipient-count preview so the
@@ -300,45 +298,77 @@ export function CampaignsPage() {
                     >
                       <Play className="h-3 w-3" /> Run now
                     </button>
-                    {campaign.status === 'draft' || campaign.status === 'paused' ? (
-                      <button
-                        onClick={() => updateStatus.mutate({ id: campaign.id, status: 'active' })}
-                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                      >
-                        <CircleCheck className="h-3 w-3" /> Activate
-                      </button>
-                    ) : campaign.status === 'active' ? (
-                      <button
-                        onClick={() => updateStatus.mutate({ id: campaign.id, status: 'paused' })}
-                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                      >
-                        <Pause className="h-3 w-3" /> Pause
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => updateStatus.mutate({ id: campaign.id, status: 'draft' })}
-                        disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                      >
-                        <CircleSlash className="h-3 w-3" /> Restore
-                      </button>
-                    )}
-                    {/* WEB-S6-021: edit button — opens the create modal pre-populated */}
+                    {/* Primary: Edit (WEB-S6-021) */}
                     <button
                       onClick={() => setEditingCampaign(campaign)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-surface-200 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800 text-surface-600 dark:text-surface-300"
                     >
                       <Pencil className="h-3 w-3" /> Edit
                     </button>
-                    <button
-                      onClick={() => setDeleteConfirm(campaign)}
-                      disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                    >
-                      <Trash2 className="h-3 w-3" /> Delete
-                    </button>
+                    {/* Overflow ⋮ menu: Preview, status toggle, Delete */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenOverflow((prev) => (prev === campaign.id ? null : campaign.id))}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-surface-200 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800 text-surface-500"
+                        aria-label="More actions"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                      {openOverflow === campaign.id && (
+                        <>
+                          {/* Click-outside backdrop */}
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOpenOverflow(null)}
+                          />
+                          <div className="absolute right-0 top-9 z-20 w-44 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 shadow-lg py-1">
+                            {/* Preview */}
+                            <button
+                              onClick={() => { preview.mutate(campaign); setOpenOverflow(null); }}
+                              disabled={preview.isPending}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                            >
+                              <Eye className="h-3.5 w-3.5" /> Preview
+                            </button>
+                            {/* Status toggle */}
+                            {campaign.status === 'draft' || campaign.status === 'paused' ? (
+                              <button
+                                onClick={() => { updateStatus.mutate({ id: campaign.id, status: 'active' }); setOpenOverflow(null); }}
+                                disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                              >
+                                <CircleCheck className="h-3.5 w-3.5" /> Activate
+                              </button>
+                            ) : campaign.status === 'active' ? (
+                              <button
+                                onClick={() => { updateStatus.mutate({ id: campaign.id, status: 'paused' }); setOpenOverflow(null); }}
+                                disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                              >
+                                <Pause className="h-3.5 w-3.5" /> Pause
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { updateStatus.mutate({ id: campaign.id, status: 'draft' }); setOpenOverflow(null); }}
+                                disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                              >
+                                <CircleSlash className="h-3.5 w-3.5" /> Restore
+                              </button>
+                            )}
+                            {/* Destructive separator */}
+                            <div className="my-1 border-t border-surface-100 dark:border-surface-700" />
+                            <button
+                              onClick={() => { setDeleteConfirm(campaign); setOpenOverflow(null); }}
+                              disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

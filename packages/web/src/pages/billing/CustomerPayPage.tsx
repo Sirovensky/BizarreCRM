@@ -26,6 +26,10 @@ interface PublicLink {
   status: 'active' | 'paid' | 'expired' | 'cancelled';
   invoice_order_id?: string | null;
   amount_due?: number | null;
+  /** WEB-UIUX-172: merchant identity for phishing-protection signals */
+  merchant_name?: string | null;
+  merchant_phone?: string | null;
+  merchant_address?: string | null;
 }
 
 type ViewState =
@@ -124,12 +128,38 @@ export function CustomerPayPage() {
     loadLink();
   }, [loadLink]);
 
+  // WEB-UIUX-172: extract merchant info from the loaded link (any state that carries a link).
+  const merchantLink =
+    view.kind === 'ready' || view.kind === 'paying' || view.kind === 'paid' || view.kind === 'checkout_unavailable'
+      ? view.link
+      : null;
+  const merchantName    = merchantLink?.merchant_name    || null;
+  const merchantPhone   = merchantLink?.merchant_phone   || null;
+  const merchantAddress = merchantLink?.merchant_address || null;
+
   return (
     <div className="min-h-screen bg-surface-50 px-4 py-12 text-surface-900 dark:bg-surface-950 dark:text-surface-100">
       <div className="mx-auto max-w-md space-y-6">
         <header className="text-center">
-          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Payment Request</h1>
-          <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">Review your balance</p>
+          {merchantName ? (
+            <>
+              <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">{merchantName}</h1>
+              {merchantAddress ? (
+                <p className="mt-0.5 text-sm text-surface-500 dark:text-surface-400">{merchantAddress}</p>
+              ) : null}
+              {merchantPhone ? (
+                <p className="text-sm text-surface-500 dark:text-surface-400">
+                  <a href={`tel:${merchantPhone}`} className="hover:underline">{merchantPhone}</a>
+                </p>
+              ) : null}
+              <p className="mt-2 text-base font-medium text-surface-700 dark:text-surface-300">Payment Request</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Payment Request</h1>
+              <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">Review your balance</p>
+            </>
+          )}
         </header>
 
         <div className="rounded-lg border border-surface-200 bg-white p-6 shadow-sm dark:border-surface-800 dark:bg-surface-900">
@@ -212,7 +242,18 @@ export function CustomerPayPage() {
         </div>
 
         <p className="text-center text-xs text-surface-400 dark:text-surface-500">
-          Having trouble? Call the shop and reference this page.
+          Having trouble?{' '}
+          {merchantPhone ? (
+            <>
+              Call{' '}
+              <a href={`tel:${merchantPhone}`} className="hover:underline">
+                {merchantPhone}
+              </a>{' '}
+              and reference this page.
+            </>
+          ) : (
+            'Call the shop and reference this page.'
+          )}
         </p>
       </div>
     </div>

@@ -244,6 +244,7 @@ export function DunningPage() {
               </div>
               <div className="flex items-center gap-2">
                 <select
+                  aria-label={`Step ${idx + 1} action`}
                   value={step.action}
                   onChange={(e) => setSteps((prev) => prev.map((s, i) =>
                     i === idx ? { ...s, action: e.target.value } : s
@@ -257,6 +258,7 @@ export function DunningPage() {
                 </select>
                 {(step.action === 'email' || step.action === 'sms') && (
                   <select
+                    aria-label={`Step ${idx + 1} template`}
                     value={step.template_id ?? DEFAULT_TEMPLATE_ID}
                     onChange={(e) => setSteps((prev) => prev.map((s, i) =>
                       i === idx ? { ...s, template_id: e.target.value } : s
