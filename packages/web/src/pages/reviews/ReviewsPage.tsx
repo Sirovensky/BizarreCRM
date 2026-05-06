@@ -8,6 +8,7 @@ import { crmApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
+import { formatDate } from '@/utils/format';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -287,7 +288,7 @@ export function ReviewsPage() {
                         <span className="text-xs text-surface-400">· {r.ticket_order_id}</span>
                       )}
                       <span className="text-xs text-surface-400">
-                        · {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        · {formatDate(r.created_at)}
                       </span>
                     </div>
 
@@ -301,7 +302,7 @@ export function ReviewsPage() {
                           Your reply
                           {r.responded_at && (
                             <span className="ml-1 font-normal text-surface-400">
-                              · {new Date(r.responded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              · {formatDate(r.responded_at)}
                             </span>
                           )}
                         </p>

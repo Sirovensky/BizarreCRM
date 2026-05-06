@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { X, MessageSquare, ChevronDown, Loader2, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -24,6 +24,7 @@ interface QuickSmsModalProps {
 
 export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: QuickSmsModalProps) {
   const phone = toPhone || customer.phone || customer.mobile || '';
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [recipient, setRecipient] = useState(phone);
   const [message, setMessage] = useState('');
   // SCAN-1164: dropped the dead `selectedTemplate` state — only the setter
@@ -33,13 +34,44 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   const [showTemplates, setShowTemplates] = useState(false);
   const MAX_CHARS = 160;
 
-  // SCAN-1164: Escape-to-close. Matches sibling modals (PinModal, etc.).
+  // Focus trap + focus restore (SCAN-1164 / WEB-UIUX-23)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+
+    // Move focus into dialog on mount (textarea has autoFocus; this is a fallback)
+    if (dialog) {
+      const firstFocusable = dialog.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }
+
+    const FOCUSABLE =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !dialog) return;
+
+      const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusables.length === 0) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    window.addEventListener('keydown', trapFocus);
+    return () => {
+      window.removeEventListener('keydown', trapFocus);
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   const { data: tplData } = useQuery({
@@ -107,6 +139,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-sms-title"

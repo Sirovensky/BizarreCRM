@@ -2,22 +2,55 @@ import { X, Check, Sparkles } from 'lucide-react';
 import { usePlanStore } from '@/stores/planStore';
 import { FEATURE_NAMES, PLAN_DEFINITIONS } from '@bizarre-crm/shared';
 import { api } from '@/api/client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Button } from './Button';
 
 export function UpgradeModal() {
   const { upgradeModalOpen, upgradeModalFeature, closeUpgradeModal, plan } = usePlanStore();
   const [loading, setLoading] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape key
+  // Focus trap + focus restore (WEB-UIUX-23)
   useEffect(() => {
     if (!upgradeModalOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeUpgradeModal();
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+
+    // Move focus into dialog on mount
+    if (dialog) {
+      const firstFocusable = dialog.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }
+
+    const FOCUSABLE =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeUpgradeModal(); return; }
+      if (e.key !== 'Tab' || !dialog) return;
+
+      const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusables.length === 0) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    window.addEventListener('keydown', trapFocus);
+    return () => {
+      window.removeEventListener('keydown', trapFocus);
+      previouslyFocused?.focus();
+    };
   }, [upgradeModalOpen, closeUpgradeModal]);
 
   if (!upgradeModalOpen) return null;
@@ -82,6 +115,7 @@ export function UpgradeModal() {
       onClick={closeUpgradeModal}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="upgrade-modal-title"

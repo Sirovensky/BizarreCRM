@@ -394,7 +394,7 @@ export function StocktakePage() {
                           {c.variance}
                         </td>
                         <td className="px-3 py-2 text-xs text-surface-500">
-                          {new Date(c.counted_at).toLocaleTimeString()}
+                          {formatDateTime(c.counted_at)}
                         </td>
                       </tr>
                     ))}

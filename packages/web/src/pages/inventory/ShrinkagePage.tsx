@@ -12,6 +12,7 @@ import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { InventoryItemPicker } from '@/components/inventory/InventoryItemPicker';
+import { formatDateTime } from '@/utils/format';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -255,7 +256,7 @@ export function ShrinkagePage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                 <td className="px-3 py-2 text-xs text-surface-500">
-                  {new Date(r.reported_at).toLocaleString()}
+                  {formatDateTime(r.reported_at)}
                 </td>
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.name}</div>

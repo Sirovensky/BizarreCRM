@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 interface AbcItem {
   id: number;
@@ -256,7 +256,7 @@ export function AbcAnalysisPage() {
                 </td>
                 <td className="text-right px-3 py-2">{i.in_stock}</td>
                 <td className="px-3 py-2 text-xs text-surface-500">
-                  {i.last_sold_at ? new Date(i.last_sold_at).toLocaleDateString() : 'Never'}
+                  {i.last_sold_at ? formatDate(i.last_sold_at) : 'Never'}
                 </td>
               </tr>
             ))}

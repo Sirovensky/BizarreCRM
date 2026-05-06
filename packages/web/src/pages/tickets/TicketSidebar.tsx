@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { ticketApi, voiceApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
-import { formatDate, formatDateTime, formatPhone, timeAgo } from '@/utils/format';
+import { formatDate, formatDateTime, formatPhone, formatTicketId, timeAgo } from '@/utils/format';
 import { safeColor } from '@/utils/safeColor';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
@@ -70,12 +70,6 @@ function PhoneActionRow({ phone, customerName, ticketId, onSms }: { phone: strin
 }
 
 // ─── Linked Tickets Card (ENR-T8) ──────────────────────────────────
-
-function formatTicketId(orderId: string | number) {
-  const str = String(orderId);
-  if (str.startsWith('T-')) return str;
-  return `T-${str.padStart(4, '0')}`;
-}
 
 function isRequestCanceled(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;

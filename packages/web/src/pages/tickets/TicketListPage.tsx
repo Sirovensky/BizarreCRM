@@ -18,7 +18,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
-import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
+import { formatCurrency, formatDate, formatTicketId, timeAgo } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 
@@ -58,12 +58,6 @@ const SORT_COLUMNS: Record<SortColumn, string> = {
 const EMPTY_STATUSES: TicketStatus[] = [];
 
 // ─── Helpers ────────────────────────────────────────────────────────
-function formatTicketId(orderId: string | number) {
-  const str = String(orderId);
-  if (str.startsWith('T-')) return str;
-  return `T-${str.padStart(4, '0')}`;
-}
-
 function finiteProgressPercent(numerator: unknown, denominator: unknown): number {
   const current = Number(numerator);
   const total = Number(denominator);

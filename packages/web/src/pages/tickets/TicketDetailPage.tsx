@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 // user's sidebar. Reader is `Sidebar.RecentViews`.
 import { recentViewsKey } from '@/components/layout/Sidebar';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
+import { formatTicketId } from '@/utils/format';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 import { TicketActions } from './TicketActions';
@@ -36,12 +37,6 @@ import { TicketHandoffModal } from '@/components/team/TicketHandoffModal';
 import { CheckCircle2 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-function formatTicketId(orderId: string | number) {
-  const str = String(orderId);
-  if (str.startsWith('T-')) return str;
-  return `T-${str.padStart(4, '0')}`;
-}
 
 function isRequestCanceled(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;

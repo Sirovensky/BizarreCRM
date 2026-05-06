@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
 import { confirm } from '@/stores/confirmStore';
+import { formatDate } from '@/utils/format';
 import { InventoryItemPicker } from '@/components/inventory/InventoryItemPicker';
 
 interface SerialRow {
@@ -273,10 +274,10 @@ export function SerialNumbersPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-xs text-surface-500">
-                    {new Date(s.received_at).toLocaleDateString()}
+                    {formatDate(s.received_at)}
                   </td>
                   <td className="px-3 py-2 text-xs text-surface-500">
-                    {s.sold_at ? new Date(s.sold_at).toLocaleDateString() : '—'}
+                    {formatDate(s.sold_at)}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex min-w-[220px] flex-col gap-1">

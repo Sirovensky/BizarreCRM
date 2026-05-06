@@ -144,7 +144,7 @@ export function PerformanceReviewsPage() {
 
         <section className="space-y-4">
           {selectedUserId && (
-            <div className="bg-white rounded-lg shadow border p-4">
+            <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 p-4">
               <h2 className="text-sm font-semibold text-gray-800 mb-2">New review</h2>
               <div className="flex items-center gap-1 mb-2">
                 {[1, 2, 3, 4, 5].map((n) => (
@@ -188,7 +188,7 @@ export function PerformanceReviewsPage() {
           )}
 
           {selectedUserId && (
-            <div className="bg-white rounded-lg shadow border">
+            <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700">
               <div className="px-4 py-3 border-b text-sm font-semibold text-gray-800">
                 Past reviews ({pagination ? pagination.total : reviews.length})
               </div>
@@ -257,7 +257,7 @@ export function PerformanceReviewsPage() {
           )}
 
           {!selectedUserId && (
-            <div className="bg-white rounded-lg shadow border p-12 text-center text-gray-500">
+            <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 p-12 text-center text-gray-500 dark:text-surface-400">
               Pick an employee to view their reviews.
             </div>
           )}

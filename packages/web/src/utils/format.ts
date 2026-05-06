@@ -164,6 +164,14 @@ export function formatNumber(n: number | null | undefined): string {
   return new Intl.NumberFormat(_locale).format(Number(n));
 }
 
+// ─── Ticket ID ──────────────────────────────────────────────────────────────
+
+/** Formats a ticket/order ID as "T-XXXX". Already-prefixed strings pass through. */
+export function formatTicketId(orderId: string | number): string {
+  const str = String(orderId);
+  return str.startsWith('T-') ? str : `T-${str.padStart(4, '0')}`;
+}
+
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {

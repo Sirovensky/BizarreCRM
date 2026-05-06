@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/utils/cn';
+import { formatTicketId } from '@/utils/format';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
@@ -14,14 +15,6 @@ import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 import { formatApiError } from '@/utils/apiError';
 import { confirm } from '@/stores/confirmStore';
 import type { Ticket, TicketStatus, TicketDevice } from '@bizarre-crm/shared';
-
-// ─── Helpers ────────────────────────────────────────────────────────
-
-function formatTicketId(orderId: string | number) {
-  const str = String(orderId);
-  if (str.startsWith('T-')) return str;
-  return `T-${str.padStart(4, '0')}`;
-}
 
 // ─── Status Dropdown ────────────────────────────────────────────────
 

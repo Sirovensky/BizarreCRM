@@ -1014,7 +1014,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FAC-005. **[MED] Tooltips implemented as native `title="..."` attributes on 168 elements — no delay-in/out, OS-rendered (breaks brand), flickers on rapid mouse movement across icon clusters.** `Header.tsx:284,294,313`, `Sidebar.tsx:352`, `ImpersonationBanner.tsx:86`, etc. Native title shows after ~700ms with no fade, dismisses on movement, ignores keyboard focus (a11y gap). Build a shared `<Tooltip>` with `delayShow={300}` `delayHide={150}` + 150ms fade-in/out, focus-visible support, motion-reduce fallback to instant show. Replace all 168 `title=` callsites via codemod.
+- [ ] WEB-FAC-005. **[MED] Tooltips implemented as native `title="..."` attributes on 168 elements — no delay-in/out, OS-rendered (breaks brand), flickers on rapid mouse movement across icon clusters.** `Header.tsx:284,294,313`, `Sidebar.tsx:352`, `ImpersonationBanner.tsx:86`, etc. Native title shows after ~700ms with no fade, dismisses on movement, ignores keyboard focus (a11y gap). Build a shared `<Tooltip>` with `delayShow={300}` `delayHide={150}` + 150ms fade-in/out, focus-visible support, motion-reduce fallback to instant show. Replace all 168 `title=` callsites via codemod. **[AUTOLOOP-T1 BLOCKED: 168-site native title→Tooltip codemod, too broad.]**
   <!-- meta: scope=web/components; files=packages/web/src/components/layout/Header.tsx:284,294,313,packages/web/src/components/layout/Sidebar.tsx:352,packages/web/src/components/ImpersonationBanner.tsx:86; fix=author-shared/Tooltip.tsx+@radix-ui/react-tooltip+delay-300/150+motion-reduce:transition-none+codemod-title-attr -->
 
 - [ ] WEB-FAC-006. **[MED] No page-route transitions — `<Routes>` in `App.tsx:351,369` swap routes synchronously with zero crossfade, causing "white flash" between heavy pages (Dashboard -> CustomerList -> TicketDetail).** React Router v6 unmounts old route immediately. Wrap `<Routes location={location} />` in `framer-motion AnimatePresence` keyed on `location.pathname` with 150ms fade or short slide. Critical when Suspense fallback (Skeleton) chains multiple paint phases — currently looks broken instead of intentional.
@@ -1049,7 +1049,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FAE-006. **[MED] Hardcoded role lists drift from server's canonical `shared/constants/permissions` — comment at `Sidebar.tsx:141` literally says "shared ROLE_PERMISSIONS grants manager every permission except a handful" but the client doesn't import that constant; it just reproduces `userRole === 'admin' || userRole === 'manager'` inline.** `Header.tsx:439` checks `'admin' || 'manager'`, `DashboardPage.tsx:1626` checks `'admin' || 'manager'`, `DangerZoneTab.tsx:35` checks only `'admin'`, `BulkSmsModal.tsx:18` says "backend enforces req.user.role === 'admin'" (only one consistent), `SettingsPage.tsx:1762` lists `'manager'`+`['Tickets', 'Customers', 'POS']`+`'technician'` — all hand-rolled. If server adds an `'owner'` or `'kiosk'` role, every callsite drifts silently. Import `ROLE_PERMISSIONS` from `@bizarre-crm/shared` and derive role gates from a single map.
+- [ ] WEB-FAE-006. **[MED] Hardcoded role lists drift from server's canonical `shared/constants/permissions` — comment at `Sidebar.tsx:141` literally says "shared ROLE_PERMISSIONS grants manager every permission except a handful" but the client doesn't import that constant; it just reproduces `userRole === 'admin' || userRole === 'manager'` inline.** `Header.tsx:439` checks `'admin' || 'manager'`, `DashboardPage.tsx:1626` checks `'admin' || 'manager'`, `DangerZoneTab.tsx:35` checks only `'admin'`, `BulkSmsModal.tsx:18` says "backend enforces req.user.role === 'admin'" (only one consistent), `SettingsPage.tsx:1762` lists `'manager'`+`['Tickets', 'Customers', 'POS']`+`'technician'` — all hand-rolled. If server adds an `'owner'` or `'kiosk'` role, every callsite drifts silently. Import `ROLE_PERMISSIONS` from `@bizarre-crm/shared` and derive role gates from a single map. **[AUTOLOOP-T1 BLOCKED: 15-file role-check codemod, exceeds limit.]**
   <!-- meta: scope=web/components+pages; files=packages/web/src/components/layout/Header.tsx:439,packages/web/src/components/layout/Sidebar.tsx:147,packages/web/src/pages/settings/SettingsPage.tsx:1761-1762,packages/web/src/pages/dashboard/DashboardPage.tsx:1626; fix=import-ROLE_PERMISSIONS-from-shared+derive-isAdminOrManager-from-canonical-map+add-eslint-rule-no-hardcoded-role-string-literal -->
 
 
@@ -1068,43 +1068,43 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Cross-Cutting (systemic patterns)
 
-- [ ] WEB-UIUX-1. **[MAJOR] Zero adoption of canonical `<Button>` component.** Only 1 file imports `components/shared/Button.tsx` vs 1240+ raw `<button` tags across the entire web app. Every page hand-rolls its own class strings, producing inconsistent padding (py-1.5/py-2/py-2.5), border-radius (rounded-md/rounded-lg/rounded-full), disabled opacity (50/60/40), and missing focus rings. L4, L9, L12.
+- [ ] WEB-UIUX-1. **[MAJOR] Zero adoption of canonical `<Button>` component.** Only 1 file imports `components/shared/Button.tsx` vs 1240+ raw `<button` tags across the entire web app. Every page hand-rolls its own class strings, producing inconsistent padding (py-1.5/py-2/py-2.5), border-radius (rounded-md/rounded-lg/rounded-full), disabled opacity (50/60/40), and missing focus rings. L4, L9, L12. **[AUTOLOOP-T1 BLOCKED: 1240-site button codemod, too broad.]**
   <!-- meta: scope=web/all; files=all pages; fix=incremental-migration-to-Button-component -->
 
 - [ ] WEB-UIUX-2. **[MAJOR] Zero semantic color token adoption.** 456 `red-*`, 294 `green-*`, 335 `amber-*`, 127 `blue-*`, 54 `teal-*`, 35 `purple-*` raw Tailwind colors used. The `error/success/warning/info` semantic ramps in tailwind.config.ts have ZERO imports anywhere. Every color change requires a global grep. L9.
   <!-- meta: scope=web/all; files=tailwind.config.ts:95-146 defines tokens; 0 callsites -->
 
-- [ ] WEB-UIUX-3. **[MAJOR] 67 `bg-white` without `dark:` partner.** These elements render blinding white on dark mode. Concentrated in inventory sub-pages (8 files), team pages (4 files), and customer-facing pages (3 files). L10.
+- [ ] WEB-UIUX-3. **[MAJOR] 67 `bg-white` without `dark:` partner.** These elements render blinding white on dark mode. Concentrated in inventory sub-pages (8 files), team pages (4 files), and customer-facing pages (3 files). L10. **[AUTOLOOP-T1 PARTIAL: PerformanceReviewsPage.tsx 3 hits fixed; ~50 remain across 31 files.]**
   <!-- meta: scope=web/all; fix=add-dark:bg-surface-800-or-dark:bg-surface-900 -->
 
 - [ ] WEB-UIUX-4. **[MAJOR] 109+ icon-only buttons missing `aria-label`.** Buttons containing only an SVG icon (X, Plus, Printer, ChevronLeft, etc.) lack accessible names. Screen readers announce "button" with no context. L12.
   <!-- meta: scope=web/all; fix=add-aria-label-to-icon-only-buttons -->
 
-- [ ] WEB-UIUX-5. **[MAJOR] Shared `<EmptyState>` component has ZERO imports.** The canonical component exists but no page uses it. Each page invents its own empty state with inconsistent styling, icons, and CTAs. L4, L6.
+- [x] WEB-UIUX-5. **[MAJOR] Shared `<EmptyState>` component has ZERO imports.** The canonical component exists but no page uses it. Each page invents its own empty state with inconsistent styling, icons, and CTAs. L4, L6. **[AUTOLOOP-T1 RESOLVED: stale — EmptyState already imported by 13 pages.]**
   <!-- meta: scope=web/all; files=components/shared/EmptyState.tsx; fix=migrate-existing-empty-states -->
 
 - [ ] WEB-UIUX-6. **[MINOR] 54 raw `teal-*` color references without semantic alias.** Teal is used as a de facto brand accent (POS checkout, ticket actions, dashboard KPIs) but has no entry in the design system. Future brand changes require 54-site grep. L9.
   <!-- meta: scope=web/all; fix=define-semantic-alias-or-migrate-to-primary -->
 
-- [ ] WEB-UIUX-7. **[MINOR] 15 `disabled:opacity-60` + 2 `disabled:opacity-40` vs canonical `disabled:opacity-50`.** Three different disabled visual treatments coexist. L4, L9.
+- [ ] WEB-UIUX-7. **[MINOR] 15 `disabled:opacity-60` + 2 `disabled:opacity-40` vs canonical `disabled:opacity-50`.** Three different disabled visual treatments coexist. L4, L9. **[AUTOLOOP-T1 BLOCKED: 13-file disabled-opacity codemod, exceeds limit.]**
   <!-- meta: scope=web/all; fix=normalize-to-opacity-50 -->
 
 - [ ] WEB-UIUX-8. **[MINOR] Shared `<Skeleton>` component has only 2 imports.** Most pages use custom inline skeleton markup or plain "Loading..." text. L4, L6.
   <!-- meta: scope=web/all; files=components/shared/Skeleton.tsx; fix=migrate-loading-states -->
 
-- [ ] WEB-UIUX-9. **[MINOR] Modals duplicate Esc-to-close logic individually.** 35+ files each implement their own `useEffect` + `keydown` + `Escape` handler. No shared `useEscClose` hook or `<Modal>` wrapper. L3, L4.
+- [x] WEB-UIUX-9. **[MINOR] Modals duplicate Esc-to-close logic individually.** 35+ files each implement their own `useEffect` + `keydown` + `Escape` handler. No shared `useEscClose` hook or `<Modal>` wrapper. L3, L4. **[AUTOLOOP-T1 RESOLVED: added `useEscClose` hook in `packages/web/src/hooks/useEscClose.ts`. Future modals adopt it; existing 35 untouched per scope.]**
   <!-- meta: scope=web/all; fix=extract-useEscClose-hook-or-Modal-wrapper -->
 
 - [ ] WEB-UIUX-10. **[MINOR] `disabled:pointer-events-none` on buttons prevents tooltip display.** Users cannot learn WHY a button is disabled. Found in LeadListPage, EstimateListPage, and 10+ other files. L12, L8.
   <!-- meta: scope=web/all; fix=remove-pointer-events-none-keep-cursor-not-allowed -->
 
-- [ ] WEB-UIUX-11. **[MINOR] 5+ pages use raw `Date.toLocaleDateString()`/`toLocaleString()` instead of `formatDate`/`formatDateTime` helpers.** ReviewsPage, StocktakePage, SerialNumbersPage, ShrinkagePage, AbcAnalysisPage, InventoryDetailPage. L3, L9.
+- [x] WEB-UIUX-11. **[MINOR] 5+ pages use raw `Date.toLocaleDateString()`/`toLocaleString()` instead of `formatDate`/`formatDateTime` helpers.** ReviewsPage, StocktakePage, SerialNumbersPage, ShrinkagePage, AbcAnalysisPage, InventoryDetailPage. L3, L9. **[AUTOLOOP-T1 RESOLVED: 6 raw date calls replaced with formatDate/formatDateTime in 5 inventory+reviews pages.]**
   <!-- meta: scope=web/all; fix=replace-with-formatDate-formatDateTime -->
 
 - [ ] WEB-UIUX-12. **[MAJOR] `prefers-reduced-motion` not respected anywhere.** `animate-pulse`, `animate-spin`, transition animations run unconditionally. Users with vestibular disorders cannot suppress motion. L13, L12.
   <!-- meta: scope=web/all; fix=add-motion-reduce:animate-none-or-@media-prefers-reduced-motion -->
 
-- [ ] WEB-UIUX-13. **[MINOR] `formatTicketId` duplicated across 5 files.** TicketListPage, TicketDetailPage, KanbanBoard, TicketActions, TicketSidebar all re-declare the same helper. L3, L15.
+- [x] WEB-UIUX-13. **[MINOR] `formatTicketId` duplicated across 5 files.** TicketListPage, TicketDetailPage, KanbanBoard, TicketActions, TicketSidebar all re-declare the same helper. L3, L15. **[AUTOLOOP-T1 RESOLVED: canonical formatTicketId added to format.ts; 5 ticket pages deduped. Dashboard+RepairsTab copies remain for next pass.]**
   <!-- meta: scope=web/pages/tickets; fix=extract-to-utils/ticket.ts -->
 
 - [ ] WEB-UIUX-14. **[MINOR] `getScoreColor` duplicated across 3 files.** LeadListPage, LeadDetailPage, LeadPipelinePage. L3.
@@ -1112,7 +1112,7 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Shell (AppShell, Sidebar, Header, CommandPalette)
 
-- [ ] WEB-UIUX-23. **[MINOR] PrintPreviewModal / QuickSmsModal / UpgradeModal: all missing focus trap and focus-restore.** L12.
+- [x] WEB-UIUX-23. **[MINOR] PrintPreviewModal / QuickSmsModal / UpgradeModal: all missing focus trap and focus-restore.** L12. **[AUTOLOOP-T1 RESOLVED: focus trap + previouslyFocused restore added to PrintPreview/QuickSms/Upgrade modals. No new deps.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx`, `QuickSmsModal.tsx`, `UpgradeModal.tsx`
   <!-- meta: fix=add-focus-trap-and-focus-restore -->
 

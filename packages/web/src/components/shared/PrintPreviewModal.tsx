@@ -14,6 +14,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
   const { getSetting } = useSettings();
   const navigate = useNavigate();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const defaultSize = getSetting('receipt_default_size', 'receipt80');
 
   const handlePrint = useCallback((type: 'workorder' | 'receipt') => {
@@ -66,17 +67,51 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
 
   const sizeLabel = defaultSize === 'receipt80' ? '80mm' : defaultSize === 'receipt58' ? '58mm' : 'Letter';
 
-  // Close on Escape key
+  // Focus trap + focus restore
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+
+    // Move focus into the dialog on mount
+    if (dialog) {
+      const firstFocusable = dialog.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }
+
+    const FOCUSABLE =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !dialog) return;
+
+      const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusables.length === 0) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      document.removeEventListener('keydown', trapFocus);
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="print-preview-title"

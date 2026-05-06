@@ -5,7 +5,7 @@ import { GripVertical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency, timeAgo } from '@/utils/format';
+import { formatCurrency, formatTicketId, timeAgo } from '@/utils/format';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 import { confirm } from '@/stores/confirmStore';
 
@@ -41,11 +41,6 @@ interface KanbanColumn {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
-
-function formatTicketId(orderId: string | number): string {
-  const str = String(orderId);
-  return str.startsWith('T-') ? str : `T-${str.padStart(4, '0')}`;
-}
 
 function daysSince(iso: string): number {
   const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
