@@ -79,8 +79,13 @@ export function QcSignOffModal({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    // Scale internal resolution for retina/HiDPI screens.
+    canvas.width = 600 * dpr;
+    canvas.height = 140 * dpr;
+    ctx.scale(dpr, dpr);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, 600, 140);
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -89,9 +94,11 @@ export function QcSignOffModal({
 
   const getPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    // Return logical (CSS-pixel) coordinates; ctx.scale(dpr, dpr) handles the
+    // mapping to physical pixels automatically.
     return {
-      x: ((e.clientX - rect.left) / rect.width) * e.currentTarget.width,
-      y: ((e.clientY - rect.top) / rect.height) * e.currentTarget.height,
+      x: (e.clientX - rect.left) * (rect.width  > 0 ? 600 / rect.width  : 1),
+      y: (e.clientY - rect.top)  * (rect.height > 0 ? 140 / rect.height : 1),
     };
   };
 
@@ -126,7 +133,8 @@ export function QcSignOffModal({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Use logical dimensions (600×140) — ctx.scale(dpr,dpr) is already in effect.
+    ctx.fillRect(0, 0, 600, 140);
     setSignatureDrawn(false);
   };
 
@@ -323,14 +331,12 @@ export function QcSignOffModal({
               <div className="overflow-hidden rounded-lg border border-surface-300 bg-white dark:border-surface-600">
                 <canvas
                   ref={canvasRef}
-                  width={600}
-                  height={140}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
                   onPointerLeave={onPointerUp}
-                  className="w-full touch-none"
-                  style={{ height: 140, cursor: 'crosshair' }}
+                  className="touch-none"
+                  style={{ width: 600, height: 140, cursor: 'crosshair' }}
                 />
               </div>
               <button

@@ -5,8 +5,9 @@ import {
 } from 'recharts';
 import { reportApi } from '@/api/endpoints';
 import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { CHART_PALETTE, CHART_TOOLTIP_STYLE, CHART_AXIS_TICK_FILL } from './chartColors';
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const CHART_COLORS = CHART_PALETTE;
 
 interface CustomerAcquisitionData {
   rows: { month: string; new_customers: number; acquisition_source: string }[];
@@ -75,10 +76,10 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyChart} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: CHART_AXIS_TICK_FILL }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: CHART_AXIS_TICK_FILL }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(value: number) => [value, 'New Customers']}
                 />
                 <Bar dataKey="new_customers" radius={[4, 4, 0, 0]}>

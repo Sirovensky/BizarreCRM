@@ -8,7 +8,7 @@
  * notification is fired (server side).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, X, Loader2, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -18,6 +18,7 @@ import {
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // WEB-FD-012 (Fixer-426B 2026-04-26): typed response for benchApi.defects.report.
 interface DefectReportResponse {
@@ -52,6 +53,10 @@ export function DefectReporterButton({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
+
+  // WEB-UIUX-283: trap focus inside modal while open; hook restores focus to
+  // the trigger button automatically when the trap deactivates (Esc or close).
+  const dialogRef = useFocusTrap(open);
 
   const reset = () => {
     setDefectType('doa');
@@ -133,6 +138,7 @@ export function DefectReporterButton({
           onClick={() => setOpen(false)}
         >
           <div
+            ref={dialogRef as RefObject<HTMLDivElement>}
             role="dialog"
             aria-modal="true"
             aria-labelledby="defect-report-title"

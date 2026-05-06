@@ -248,7 +248,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <button
             onClick={() => resumeMut.mutate()}
             disabled={resumeMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Play className="h-4 w-4" /> Resume
           </button>

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Smartphone, Hash, DollarSign, Wrench } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
@@ -30,6 +31,7 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
   const { rows } = data;
   const totalRepairs = rows.reduce((sum, r) => sum + r.repair_count, 0);
   const totalPartsCost = rows.reduce((sum, r) => sum + r.total_parts_cost, 0);
+  const maxRepairs = useMemo(() => Math.max(...rows.map((x) => x.repair_count), 1), [rows]);
 
   return (
     <div className="space-y-6">
@@ -72,7 +74,6 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const maxRepairs = Math.max(...rows.map((x) => x.repair_count), 1);
                   const pct = (r.repair_count / maxRepairs) * 100;
                   const avgPartsCostPerRepair = r.repair_count > 0 ? r.total_parts_cost / r.repair_count : 0;
                   const margin = r.avg_ticket_total > 0

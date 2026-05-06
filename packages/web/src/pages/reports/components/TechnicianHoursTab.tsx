@@ -6,8 +6,9 @@ import {
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
 import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { CHART_PALETTE, CHART_COLOR_PRIMARY, CHART_COLOR_SUCCESS, CHART_TOOLTIP_STYLE, CHART_AXIS_TICK_FILL } from './chartColors';
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const CHART_COLORS = CHART_PALETTE;
 
 interface TechnicianHoursData {
   rows: {
@@ -78,23 +79,23 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} barCategoryGap="20%">
                 <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#9ca3af' }} />
-                <YAxis yAxisId="hours" orientation="left" tick={{ fontSize: 12, fill: '#9ca3af' }} label={{ value: 'Hours', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#9ca3af' }} />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: CHART_AXIS_TICK_FILL }} />
+                <YAxis yAxisId="hours" orientation="left" tick={{ fontSize: 12, fill: CHART_AXIS_TICK_FILL }} label={{ value: 'Hours', angle: -90, position: 'insideLeft', fontSize: 11, fill: CHART_AXIS_TICK_FILL }} />
                 {/* @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): hardcoded "$" → formatCurrency for tenant currency */}
-                <YAxis yAxisId="revenue" orientation="right" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} label={{ value: 'Revenue', angle: 90, position: 'insideRight', fontSize: 11, fill: '#9ca3af' }} />
+                <YAxis yAxisId="revenue" orientation="right" tick={{ fontSize: 12, fill: CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} label={{ value: 'Revenue', angle: 90, position: 'insideRight', fontSize: 11, fill: CHART_AXIS_TICK_FILL }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(value: number, name: string) => {
                     if (name === 'hours') return [`${value}h`, 'Hours Logged'];
                     return [formatCurrency(value), 'Revenue'];
                   }}
                 />
-                <Bar yAxisId="hours" dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} name="hours">
+                <Bar yAxisId="hours" dataKey="hours" fill={CHART_COLOR_PRIMARY} radius={[4, 4, 0, 0]} name="hours">
                   {chartData.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.6} />
                   ))}
                 </Bar>
-                <Bar yAxisId="revenue" dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} name="revenue">
+                <Bar yAxisId="revenue" dataKey="revenue" fill={CHART_COLOR_SUCCESS} radius={[4, 4, 0, 0]} name="revenue">
                   {chartData.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}

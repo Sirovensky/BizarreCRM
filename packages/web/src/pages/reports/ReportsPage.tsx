@@ -19,6 +19,14 @@ import {
 import { reportApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import {
+  CHART_PALETTE,
+  CHART_COLOR_PRIMARY,
+  CHART_COLOR_WARNING,
+  CHART_COLOR_DANGER,
+  CHART_COLOR_MUTED,
+  CHART_TOOLTIP_STYLE,
+} from './components/chartColors';
 import { WarrantyClaimsTab } from './components/WarrantyClaimsTab';
 import { DeviceModelsTab } from './components/DeviceModelsTab';
 import { PartsUsageTab } from './components/PartsUsageTab';
@@ -477,8 +485,8 @@ function SalesTab({
                       <XAxis dataKey="period" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       {/* @audit-fixed: chart axis was hardcoded "$" — now uses formatCurrency to honor store currency */}
                       <YAxis tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
-                      <Tooltip contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }} formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label: string) => `${label} (click to view invoices)`} />
-                      <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label: string) => `${label} (click to view invoices)`} />
+                      <Line type="monotone" dataKey="revenue" stroke={CHART_COLOR_PRIMARY} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -677,7 +685,7 @@ interface TechWorkloadItem {
   revenue_this_month: number;
 }
 
-const WORKLOAD_COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899'];
+const WORKLOAD_COLORS = CHART_PALETTE.slice(0, 6);
 
 function TechWorkloadChart() {
   // WEB-FF-015 (Fixer-B17 2026-04-25): query previously destructured only
@@ -718,10 +726,10 @@ function TechWorkloadChart() {
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
-              <Tooltip contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }} />
-              <Bar dataKey="Open" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="In Progress" stackId="a" fill="#f59e0b" />
-              <Bar dataKey="Waiting Parts" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+              <Bar dataKey="Open" stackId="a" fill={CHART_COLOR_PRIMARY} radius={[0, 0, 0, 0]} />
+              <Bar dataKey="In Progress" stackId="a" fill={CHART_COLOR_WARNING} />
+              <Bar dataKey="Waiting Parts" stackId="a" fill={CHART_COLOR_DANGER} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -1058,7 +1066,7 @@ interface InsightsData {
   popular_services: { name: string; count: number }[];
 }
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1'];
+const CHART_COLORS = CHART_PALETTE;
 
 function InsightsTab({
   from,
@@ -1174,7 +1182,7 @@ function InsightsTab({
                     <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                     <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                      contentStyle={CHART_TOOLTIP_STYLE}
                       formatter={(value: number) => [value, 'Repairs']}
                     />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
@@ -1210,10 +1218,10 @@ function InsightsTab({
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
                       />
-                      <Bar dataKey="previous" fill="#d1d5db" radius={[4, 4, 0, 0]} name="Previous Period" />
-                      <Bar dataKey="current" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Current Period" />
+                      <Bar dataKey="previous" fill={CHART_COLOR_MUTED} radius={[4, 4, 0, 0]} name="Previous Period" />
+                      <Bar dataKey="current" fill={CHART_COLOR_PRIMARY} radius={[4, 4, 0, 0]} name="Current Period" />
                     </BarChart>
                   ) : (
                     <BarChart data={repairs_by_month} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
@@ -1221,10 +1229,10 @@ function InsightsTab({
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
                         formatter={(value: number) => [value, 'Tickets']}
                       />
-                      <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="count" fill={CHART_COLOR_PRIMARY} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   )}
                 </ResponsiveContainer>
@@ -1247,7 +1255,7 @@ function InsightsTab({
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: REPORT_CHART_AXIS_TICK_FILL }} angle={-20} textAnchor="end" height={60} />
                     <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                      contentStyle={CHART_TOOLTIP_STYLE}
                       formatter={(value: number) => [value, 'Count']}
                     />
                     <Bar dataKey="count" radius={[4, 4, 0, 0]}>
@@ -1286,11 +1294,11 @@ function InsightsTab({
                       <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
                         formatter={(value: number) => [formatCurrency(value)]}
                       />
-                      <Bar dataKey="previous" fill="#d1d5db" radius={[0, 4, 4, 0]} name="Previous Period" />
-                      <Bar dataKey="current" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Current Period" />
+                      <Bar dataKey="previous" fill={CHART_COLOR_MUTED} radius={[0, 4, 4, 0]} name="Previous Period" />
+                      <Bar dataKey="current" fill={CHART_COLOR_PRIMARY} radius={[0, 4, 4, 0]} name="Current Period" />
                     </BarChart>
                   ) : (
                     <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
@@ -1298,7 +1306,7 @@ function InsightsTab({
                       <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
                         formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                       />
                       <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>

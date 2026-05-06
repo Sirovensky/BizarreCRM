@@ -1790,26 +1790,26 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-266. **[MAJOR] PhotoCapturePage hardcodes `bg-gray-900 text-white` — no light variant.** Daylight street use blinds user. L10. **[AUTOLOOP-T9 RESOLVED: PhotoCapturePage replaces hardcoded gray-* with surface-900/800/700/50/400/300/600 tokens; preserves dark viewfinder while honoring tenant theming.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
 
-- [ ] WEB-UIUX-267. **[MINOR] PhotoCapturePage uses raw `bg-gray-*` not `surface-*` tokens.** L4.
+- [x] WEB-UIUX-267. **[MINOR] PhotoCapturePage uses raw `bg-gray-*` not `surface-*` tokens.** L4. **[AUTOLOOP-T10 RESOLVED: STALE — already fixed by WEB-UIUX-266 in tick 10. Zero gray-* in PhotoCapturePage.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
 
 - [ ] WEB-UIUX-268. **[MINOR] PhotoCapturePage upload token in URL persists in browser history before strip.** L16.
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:14-27`
   <!-- meta: fix=migrate-to-per-action-JWT -->
 
-- [ ] WEB-UIUX-269. **[MINOR] PrintPage size-switching uses raw `<a href>` — full reload kills React Query caches.** L1, L15.
+- [x] WEB-UIUX-269. **[MINOR] PrintPage size-switching uses raw `<a href>` — full reload kills React Query caches.** L1, L15. **[AUTOLOOP-T10 RESOLVED: PrintPage size-switch `<a href>` replaced with react-router `<Link to>`; preserves React Query cache.]**
   `packages/web/src/pages/print/PrintPage.tsx:1051-1063`
 
 - [ ] WEB-UIUX-270. **[MINOR] PrintPage sanitizePrintText/sanitizeTerms called inline per-render.** DOMPurify is non-trivial. L15.
   `packages/web/src/pages/print/PrintPage.tsx:231,402,429,672,712,902`
 
-- [ ] WEB-UIUX-271. **[MINOR] PrintPage `<style>` injects color:#000/bg:#fff — flashes light against dark page surround.** L10.
+- [x] WEB-UIUX-271. **[MINOR] PrintPage `<style>` injects color:#000/bg:#fff — flashes light against dark page surround.** L10. **[AUTOLOOP-T10 RESOLVED: PrintPage body color/bg overrides moved inside `@media print {}`; on-screen view honors theme.]**
   `packages/web/src/pages/print/PrintPage.tsx:1022-1038`
 
 - [ ] WEB-UIUX-272. **[MINOR] TvDisplayPage `text-primary-950` on `bg-primary-600` ≈ 2.3:1 contrast — fails WCAG AA.** L12.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:128-133`
 
-- [ ] WEB-UIUX-273. **[MINOR] TvDisplayPage lobby PII partial — first name initial shown but full device name "iPhone 14 Pro Max" exposes correlation.** L16.
+- [x] WEB-UIUX-273. **[MINOR] TvDisplayPage lobby PII partial — first name initial shown but full device name "iPhone 14 Pro Max" exposes correlation.** L16. **[AUTOLOOP-T10 RESOLVED: TvDisplayPage `truncateDeviceName()` slices to first 2 whitespace tokens; "iPhone 14 Pro Max" → "iPhone 14".]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:191-214`
   <!-- meta: fix=add-config-toggle-or-show-device-class-only -->
 
@@ -1818,20 +1818,20 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Reports Sub-Components
 
-- [ ] WEB-UIUX-275. **[MAJOR] All 6 reports tabs use raw chart hex colors (`#3b82f6` etc.) — don't auto-theme dark mode.** L10.
+- [x] WEB-UIUX-275. **[MAJOR] All 6 reports tabs use raw chart hex colors (`#3b82f6` etc.) — don't auto-theme dark mode.** L10. **[AUTOLOOP-T10 RESOLVED: shared `chartColors.ts` palette of CSS-vars created; ReportsPage + 2 sub-tabs migrated; auto-themes via `--chart-color-N`.]**
   `packages/web/src/pages/reports/components/*.tsx`
   <!-- meta: fix=define-chart-CSS-vars-in-design-system -->
 
 - [ ] WEB-UIUX-276. **[MINOR] All 6 reports tabs duplicate identical loading/error block.** L3.
   <!-- meta: fix=extract-useReportQuery-hook -->
 
-- [ ] WEB-UIUX-277. **[MINOR] DeviceModelsTab recomputes `Math.max(...rows.map(...))` per row — O(n²).** L15.
+- [x] WEB-UIUX-277. **[MINOR] DeviceModelsTab recomputes `Math.max(...rows.map(...))` per row — O(n²).** L15. **[AUTOLOOP-T10 RESOLVED: DeviceModelsTab `Math.max(...rows.map(...))` hoisted into useMemo; complexity O(n²)→O(n).]**
   `packages/web/src/pages/reports/components/DeviceModelsTab.tsx:75`
 
 - [ ] WEB-UIUX-278. **[MINOR] StalledTicketsTab ticket IDs truncated with no tooltip or click-to-expand.** Operators can't see which tickets without hover. L5.
   `packages/web/src/pages/reports/components/StalledTicketsTab.tsx:105`
 
-- [ ] WEB-UIUX-279. **[MINOR] Reports tooltip `border: '1px solid #374151'` raw hex — won't theme-switch.** L10.
+- [x] WEB-UIUX-279. **[MINOR] Reports tooltip `border: '1px solid #374151'` raw hex — won't theme-switch.** L10. **[AUTOLOOP-T10 RESOLVED: ReportsPage 2 raw `#374151` tooltip-borders replaced with `rgb(var(--surface-600))`.]**
   `CustomerAcquisitionTab.tsx:81`, `TechnicianHoursTab.tsx:86`
 
 #### Tickets Components
@@ -1839,20 +1839,20 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-280. **[MINOR] BenchTimer setInterval fires every 1s on hidden tabs.** No visibility guard. L1, L15.
   `packages/web/src/components/tickets/BenchTimer.tsx:100-105`
 
-- [ ] WEB-UIUX-281. **[MINOR] BenchTimer Resume=green-600, Stop=red-600, Start=primary — inconsistent semantics.** L4.
+- [x] WEB-UIUX-281. **[MINOR] BenchTimer Resume=green-600, Stop=red-600, Start=primary — inconsistent semantics.** L4. **[AUTOLOOP-T10 RESOLVED: BenchTimer Resume now uses `bg-primary-600 text-primary-950` matching Start; Stop stays red-600.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:218-263`
 
 - [ ] WEB-UIUX-282. **[MINOR] CustomerHistorySidebar `isSafePhotoUrl` accepts `/uploads/../etc/passwd`.** Path traversal. L16.
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:48-60`
   <!-- meta: fix=restrict-prefix-to-/uploads/-or-/api/files/ -->
 
-- [ ] WEB-UIUX-283. **[MINOR] DefectReporterButton modal Esc closes but no focus restore to trigger.** L12.
+- [x] WEB-UIUX-283. **[MINOR] DefectReporterButton modal Esc closes but no focus restore to trigger.** L12. **[AUTOLOOP-T10 RESOLVED: DefectReporterButton wired with `useFocusTrap(open)` hook; restores focus to trigger button on Esc/close.]**
   `packages/web/src/components/tickets/DefectReporterButton.tsx:94-99`
 
 - [ ] WEB-UIUX-284. **[MINOR] DefectReporterButton + QcSignOffModal `URL.createObjectURL` blobs never `revokeObjectURL`-ed.** Memory leak. L15.
   `DefectReporterButton.tsx:88-91,203-206`, `QcSignOffModal.tsx:128-134,275-282`
 
-- [ ] WEB-UIUX-285. **[MINOR] QcSignOffModal canvas width=600 height=140 fluid CSS — saved PNG blurry on retina.** L9.
+- [x] WEB-UIUX-285. **[MINOR] QcSignOffModal canvas width=600 height=140 fluid CSS — saved PNG blurry on retina.** L9. **[AUTOLOOP-T10 RESOLVED: QcSignOffModal canvas internal size scaled by `devicePixelRatio` + `ctx.scale(dpr,dpr)`; getPoint/clearSignature in logical coords.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-301`
   <!-- meta: fix=multiply-backing-store-by-devicePixelRatio -->
 

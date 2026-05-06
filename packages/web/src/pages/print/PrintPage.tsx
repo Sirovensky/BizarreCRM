@@ -12,7 +12,7 @@
  * All receipt content is driven by the 26 receipt_cfg_* toggles in store_config.
  */
 import { useEffect, useRef } from 'react';
-import { useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { invoiceApi, ticketApi, settingsApi } from '@/api/endpoints';
@@ -1334,12 +1334,14 @@ export function PrintPage() {
   const maxWidth = isLabel ? '500px' : isThermal ? '400px' : '750px';
   const cssBody = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { color: #000; background: #fff; }
 ${pageCss[size] || pageCss.receipt80}
 @media screen {
   body { padding: 1rem; max-width: ${maxWidth}; margin: 0 auto; }
 }
 @media print {
+  /* WEB-UIUX-271: color/bg scoped to print so screen view inherits the
+     surrounding dark-theme instead of flashing white before the dialog. */
+  body { color: #000; background: #fff; }
   .print-buttons { display: none !important; }
   /* Fixer-WW (WEB-FH-025): keep table rows whole at page breaks and repeat
      the header on each page so long letter-sized invoice prints don't split
@@ -1366,10 +1368,10 @@ ${pageCss[size] || pageCss.receipt80}
           const typeParam = isReceiptType ? '&type=receipt' : '';
           const printPath = isInvoicePrint ? 'invoice' : 'ticket';
           return (
-            <a key={s} href={`/print/${printPath}/${id}?size=${s}${typeParam}`}
+            <Link key={s} to={`/print/${printPath}/${id}?size=${s}${typeParam}`}
               style={{ padding: '0.25rem 0.75rem', border: '1px solid #333', borderRadius: 4, textDecoration: 'none', fontWeight: s === size ? 'bold' : 'normal', background: s === size ? '#333' : 'transparent', color: s === size ? '#fff' : '#333' }}>
               {label}
-            </a>
+            </Link>
           );
         })}
         <button onClick={() => window.print()} style={{ padding: '0.25rem 1rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', marginLeft: 'auto' }}>

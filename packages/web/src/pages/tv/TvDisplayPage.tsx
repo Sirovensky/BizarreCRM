@@ -317,6 +317,15 @@ export function TvDisplayPage() {
   );
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────
+// WEB-UIUX-273: reduce PII correlation on public lobby screen.
+// Full model string ("iPhone 14 Pro Max") lets bystanders fingerprint a customer;
+// brand + generation ("iPhone 14") is enough for visual identification.
+function truncateDeviceName(name: string): string {
+  const tokens = name.trim().split(/\s+/);
+  return tokens.slice(0, 2).join(' ');
+}
+
 // ─── Ticket Card ────────────────────────────────────────────────────
 function TicketCard({ ticket }: { ticket: TvTicket }) {
   const orderId = typeof ticket.order_id === 'string'
@@ -353,7 +362,7 @@ function TicketCard({ ticket }: { ticket: TvTicket }) {
               key={i}
               className="mr-2 mt-1 inline-block rounded-lg bg-surface-700/60 px-2.5 py-1 text-sm text-surface-300"
             >
-              {d}
+              {truncateDeviceName(d)}
             </span>
           ))
         ) : (
