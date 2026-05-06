@@ -484,6 +484,12 @@ function pm2(args: string[], opts?: { timeout?: number }): { ok: boolean; stdout
     encoding: 'utf8',
     timeout: opts?.timeout ?? 30_000,
     shell: process.platform === 'win32',
+    // windowsHide: PM2 on Windows is `pm2.cmd`, a CMD batch shim. With
+    // `shell: true` we route through cmd.exe which allocates a fresh
+    // console window for every spawn unless this flag is set. The
+    // ServerControlPage polls service status every 10s and this would
+    // pop a visible cmd window each time.
+    windowsHide: true,
   });
   return { ok: r.status === 0, stdout: r.stdout || '', stderr: r.stderr || '', code: r.status };
 }
@@ -573,14 +579,14 @@ router.get('/service/auto-start', (_req: Request, res: Response) => {
       mechanism = 'systemd';
       const user = process.env.USER || process.env.LOGNAME || '';
       if (user) {
-        const r = spawnSync('systemctl', ['is-enabled', `pm2-${user}`], { encoding: 'utf8' });
+        const r = spawnSync('systemctl', ['is-enabled', `pm2-${user}`], { encoding: 'utf8', windowsHide: true });
         raw = (r.stdout || r.stderr || '').trim();
         enabled = r.status === 0 && raw === 'enabled';
       }
     } else if (process.platform === 'darwin') {
       mechanism = 'launchd';
       const user = process.env.USER || process.env.LOGNAME || '';
-      const r = spawnSync('launchctl', ['list'], { encoding: 'utf8' });
+      const r = spawnSync('launchctl', ['list'], { encoding: 'utf8', windowsHide: true });
       raw = r.stdout || '';
       const re = new RegExp(`pm2[\\.\\-]${user}|com\\.pm2\\.${user}|local\\.PM2`, 'i');
       enabled = re.test(raw);
@@ -589,6 +595,7 @@ router.get('/service/auto-start', (_req: Request, res: Response) => {
       const r = spawnSync('schtasks', ['/Query', '/TN', 'BizarreCRM-PM2', '/FO', 'LIST', '/V'], {
         encoding: 'utf8',
         shell: true,
+        windowsHide: true,
       });
       raw = r.stdout || '';
       const m = raw.match(/^\s*(?:Status|Scheduled Task State)\s*:\s*(.+)$/mi);

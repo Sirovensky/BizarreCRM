@@ -335,7 +335,11 @@ function buildLogCorroboration(repoRoot) {
  */
 function runPm2(args) {
   return new Promise((resolve) => {
-    const proc = spawn('pm2', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // windowsHide: prevents Windows from popping a visible console
+    // window every time the watchdog calls `pm2 restart` / `pm2 stop`.
+    // PM2 on Windows is `pm2.cmd` so without this the operator sees a
+    // brief cmd-window flash on every wedge restart.
+    const proc = spawn('pm2', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let out = '';
     let err = '';
     proc.stdout.on('data', (c) => {

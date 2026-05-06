@@ -932,10 +932,12 @@ export function listDrives(): { path: string; label: string; free: number; total
   try {
     if (isWin) {
       // D3-1: spawnSync (shell:false) — fixed command, no user input.
+      // windowsHide so the powershell.exe spawn doesn't pop a visible
+      // console window every time the dashboard polls disk space.
       const res = spawnSync(
         'powershell',
         ['-NoProfile', '-Command', 'Get-PSDrive -PSProvider FileSystem | Select-Object Name,Free,Used,Root | ConvertTo-Csv -NoTypeInformation'],
-        { encoding: 'utf8', timeout: 10000, shell: false },
+        { encoding: 'utf8', timeout: 10000, shell: false, windowsHide: true },
       );
       const out = res.status === 0 ? (res.stdout || '') : '';
       return out.split('\n').slice(1).filter((l: string) => l.trim()).map((line: string) => {

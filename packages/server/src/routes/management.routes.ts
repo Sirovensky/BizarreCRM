@@ -344,7 +344,7 @@ const GIT_SHA: string = (() => {
   if (envSha && /^[a-f0-9]{7,40}$/i.test(envSha)) return envSha.slice(0, 12);
   try {
     const cwd = path.resolve(__dirname, '..', '..', '..', '..');
-    const out = execSync('git rev-parse --short=12 HEAD', { cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 })
+    const out = execSync('git rev-parse --short=12 HEAD', { cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000, windowsHide: true })
       .toString()
       .trim();
     if (/^[a-f0-9]{7,40}$/i.test(out)) return out;

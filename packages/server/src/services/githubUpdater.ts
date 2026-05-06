@@ -104,6 +104,12 @@ async function git(args: string[], timeout = 10_000): Promise<string> {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     timeout,
+    // windowsHide: prevents Windows from allocating a visible console
+    // window for the spawned git.exe child. Without this, every git
+    // fetch in the github-updater poll loop pops a cmd-style window
+    // for ~50ms and immediately closes — visually distracting and
+    // breaks the operator's full-screen apps.
+    windowsHide: true,
   });
   return stdout.trim();
 }

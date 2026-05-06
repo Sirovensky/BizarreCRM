@@ -5,7 +5,6 @@ import {
   RotateCw,
   Skull,
   Globe,
-  FileText,
   ToggleLeft,
   ToggleRight,
   Shield,
@@ -454,13 +453,10 @@ export function ServerControlPage() {
             <Globe className="w-3.5 h-3.5" />
             Open CRM in Browser
           </button>
-          <button
-            onClick={() => getAPI().system.openLogFile()}
-            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            View Server Logs
-          </button>
+          {/* "View Server Logs" button removed — logs have a dedicated page
+              in the sidebar (route /server-logs). Duplicating it here
+              created two paths to the same screen and confused operators
+              about which to use. */}
           <button
             onClick={() =>
               setConfirmAction({
