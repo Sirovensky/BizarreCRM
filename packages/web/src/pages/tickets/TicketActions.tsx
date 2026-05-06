@@ -118,8 +118,8 @@ function HeaderStatusDropdown({
 
 // ─── Actions Dropdown ───────────────────────────────────────────────
 
-function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDuplicate }: {
-  onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void; onHandoff: () => void; onDuplicate: () => void;
+function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDuplicate, hasOpenPayments }: {
+  onDelete: () => void; onMerge: () => void; onCloneWarranty: () => void; onHandoff: () => void; onDuplicate: () => void; hasOpenPayments?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -161,8 +161,12 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDupl
               <ArrowRightLeft className="h-4 w-4" /> Hand off…
             </button>
             <hr className="my-1 border-surface-200 dark:border-surface-700" />
-            <button onClick={() => { onDelete(); setOpen(false); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30">
+            <button
+              onClick={() => { if (!hasOpenPayments) { onDelete(); setOpen(false); } }}
+              disabled={hasOpenPayments}
+              title={hasOpenPayments ? 'Refund payments first' : undefined}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
+            >
               <Trash2 className="h-4 w-4" /> Delete
             </button>
           </div>
@@ -208,6 +212,7 @@ export interface TicketActionsProps {
   onCloneWarranty: () => void;
   onDuplicate: () => void;
   onHandoff: () => void;
+  hasOpenPayments?: boolean;
   activeTab: 'overview' | 'notes' | 'photos' | 'parts';
   setActiveTab: (tab: 'overview' | 'notes' | 'photos' | 'parts') => void;
   notesCount: number;
@@ -230,6 +235,7 @@ export function TicketActions({
   onCloneWarranty,
   onDuplicate,
   onHandoff,
+  hasOpenPayments,
   activeTab,
   setActiveTab,
   notesCount,
@@ -287,6 +293,7 @@ export function TicketActions({
               onCloneWarranty={onCloneWarranty}
               onDuplicate={onDuplicate}
               onHandoff={onHandoff}
+              hasOpenPayments={hasOpenPayments}
             />
           </div>
         </div>

@@ -2983,7 +2983,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-611. **[MINOR] GiftCardDetailPage transactions table no `overflow-x-auto` or mobile card layout.** Overflow on 360px viewport. L11. **[AUTOLOOP-T27 RESOLVED: GiftCardDetailPage tx table wrapped in `<div className="overflow-x-auto">`.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:304-328`
 
-- [ ] WEB-UIUX-612. **[MINOR] GiftCardDetailPage local DetailSkeleton + bespoke "Gift card not found" + "No transactions yet" all bypass canonical Skeleton + EmptyState.** L4.
+- [x] WEB-UIUX-612. **[MINOR] GiftCardDetailPage local DetailSkeleton + bespoke "Gift card not found" + "No transactions yet" all bypass canonical Skeleton + EmptyState.** L4. **[AUTOLOOP-T28 RESOLVED: GiftCardDetailPage local DetailSkeleton replaced with shared SkeletonCard+SkeletonTable; not-found and no-tx use canonical EmptyState (AlertCircle / ReceiptText icons).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:159-167,199-211,301-302`
 
 
@@ -2991,7 +2991,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### ED1: Checkout → Mistake → Delete → Refund
 
-- [ ] WEB-UIUX-613. **[BLOCKER usability] SuccessScreen has NO undo/cancel/refund button.** Cashier just hit checkmark, realizes mistake, only options are Print/View Invoice/View Ticket/New Sale. Must mentally translate "I made a mistake" into "navigate to invoice → click Credit Note OR Void". L1, L4.
+- [x] WEB-UIUX-613. **[BLOCKER usability] SuccessScreen has NO undo/cancel/refund button.** Cashier just hit checkmark, realizes mistake, only options are Print/View Invoice/View Ticket/New Sale. Must mentally translate "I made a mistake" into "navigate to invoice → click Credit Note OR Void". L1, L4. **[AUTOLOOP-T28 RESOLVED: SuccessScreen Refund/Void button added; navigates to /invoices/${invoiceId} (Credit Note flow). Hidden when card declined or no invoiceId.]**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:407-446`
   <!-- meta: fix=add-Issue-Refund-Cancel-sale-button-routes-to-credit-note-modal -->
 
@@ -2999,36 +2999,36 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:627-637,321-336`
   <!-- meta: fix=pre-compute-paidAmount+invoice.status-pass-server-403-verbatim -->
 
-- [ ] WEB-UIUX-615. **[BLOCKER] No client-side enforcement of refund-before-delete order.** Delete button unconditionally rendered regardless of invoice state. Server 403's after typed-id confirm. L8, L12.
+- [x] WEB-UIUX-615. **[BLOCKER] No client-side enforcement of refund-before-delete order.** Delete button unconditionally rendered regardless of invoice state. Server 403's after typed-id confirm. L8, L12. **[AUTOLOOP-T28 RESOLVED: TicketDetail/Actions disable Delete when hasOpenPayments=paidAmount>0; native tooltip "Refund payments first".]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:503,TicketActions.tsx:171-174`
 
 - [ ] WEB-UIUX-616. **[MAJOR] Void invoice silently zeros `amount_paid` even when cash was physically collected.** Confirm dialog never warns about financial-reporting impact. Cashier expects refund, gets ledger destruction. L8, L4.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:807-817`
 
-- [ ] WEB-UIUX-617. **[MAJOR] Soft-deleted ticket leaves dangling "Ticket #X" link in InvoiceDetailPage.** Click → "Ticket Not Found". State drift unmarked. L6, L14.
+- [x] WEB-UIUX-617. **[MAJOR] Soft-deleted ticket leaves dangling "Ticket #X" link in InvoiceDetailPage.** Click → "Ticket Not Found". State drift unmarked. L6, L14. **[AUTOLOOP-T28 RESOLVED: server JOIN tickets surfaces is_deleted; InvoiceDetail type extended; ticket link renders muted "(deleted)" text instead of broken link.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420,687-698,839-845`
 
 - [ ] WEB-UIUX-618. **[MAJOR] Server auto-voids invoice on ticket delete invisibly — confirm dialog doesn't enumerate side effects.** L7, L11.
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:630`
 
-- [ ] WEB-UIUX-619. **[MAJOR] Delete confirm shows ticket order ID but no customer/device/invoice context — typed-id requireTyping is theatre.** L12, L13.
+- [x] WEB-UIUX-619. **[MAJOR] Delete confirm shows ticket order ID but no customer/device/invoice context — typed-id requireTyping is theatre.** L12, L13. **[AUTOLOOP-T28 RESOLVED: ticket Delete confirm enriched with customer name + device list + invoice total context block above warning.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:633-634`
 
 - [ ] WEB-UIUX-620. **[MAJOR] 5s undo window for delete-with-cascade too short.** Same window used for void invoice — heavy cascades, often dismissed by other toasts. L4, L11.
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:327`
 
-- [ ] WEB-UIUX-621. **[MAJOR] No combined "Cancel Sale" wizard.** 4-step manual sequence: refund → navigate → delete → confirm. Each abandonable mid-flow → inconsistent intermediate state. L8, L4.
+- [ ] WEB-UIUX-621. **[MAJOR] No combined "Cancel Sale" wizard.** 4-step manual sequence: refund → navigate → delete → confirm. Each abandonable mid-flow → inconsistent intermediate state. L8, L4. **[AUTOLOOP-T28 BLOCKED: requires-feature-implementation — Cancel Sale wizard is multi-step UI feature.]**
 
 - [ ] WEB-UIUX-622. **[MINOR] Credit Note modal max field has no per-payment-row indicator showing which payment will be marked VOIDED.** L11.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:763-778`
 
-- [ ] WEB-UIUX-623. **[MINOR] Credit Note copy doesn't say "this does NOT restore stock — use Void to restore stock".** Asymmetry with Void confirm. L5.
+- [x] WEB-UIUX-623. **[MINOR] Credit Note copy doesn't say "this does NOT restore stock — use Void to restore stock".** Asymmetry with Void confirm. L5. **[AUTOLOOP-T28 RESOLVED: Credit Note modal gets amber-styled hint warning "does NOT restore stock — use Void instead".]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
 
 - [ ] WEB-UIUX-624. **[MINOR] After credit-note success, no "send refund receipt" prompt mirroring post-payment receipt prompt.** Customer walks away with no proof of refund. L5.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-175`
 
-- [ ] WEB-UIUX-625. **[MINOR] Voided-payment detection relies on substring search of `[VOIDED]` inside free-text notes column.** Off-by-one math: running total INCLUDES voided payments. L13, L14.
+- [x] WEB-UIUX-625. **[MINOR] Voided-payment detection relies on substring search of `[VOIDED]` inside free-text notes column.** Off-by-one math: running total INCLUDES voided payments. L13, L14. **[AUTOLOOP-T28 RESOLVED: payment-row reduce callback skips notes-`[VOIDED]` entries before adding to running total.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:485,488`
 
 #### ED2: Split-Tender Partial Refund
@@ -3037,13 +3037,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
   `packages/server/src/routes/invoices.routes.ts:1162-1318`
 
-- [ ] WEB-UIUX-627. **[BLOCKER] Credit-note never inserts payment-out row, never decrements gift-card balance, never calls BlockChyp reverse.** Paper-only ledger adjustment — physical money never moves. Z-report still shows original cash sale. L8, L13, L16.
+- [ ] WEB-UIUX-627. **[BLOCKER] Credit-note never inserts payment-out row, never decrements gift-card balance, never calls BlockChyp reverse.** Paper-only ledger adjustment — physical money never moves. Z-report still shows original cash sale. L8, L13, L16. **[AUTOLOOP-T28 BLOCKED: requires-server-side-payment-integration — credit-note ledger row, gift-card balance, BlockChyp reverse cross-cutting backend.]**
   `packages/server/src/routes/invoices.routes.ts:1213-1257`
 
 - [ ] WEB-UIUX-628. **[BLOCKER] No `/blockchyp/refund` endpoint exists at all.** Even with UI, server has no path to settle card refund through terminal. L5, L16.
   `packages/server/src/routes/blockchyp.routes.ts`
 
-- [ ] WEB-UIUX-629. **[BLOCKER] `/blockchyp/void-payment` is a no-op — never calls BlockChyp reverse, just appends "[VOIDED]" to notes string.** Card transaction stays captured upstream. L16, L13.
+- [x] WEB-UIUX-629. **[BLOCKER] `/blockchyp/void-payment` is a no-op — never calls BlockChyp reverse, just appends "[VOIDED]" to notes string.** Card transaction stays captured upstream. L16, L13. **[AUTOLOOP-T28 RESOLVED: STALE — /blockchyp/void-payment already calls voidCharge() (real BlockChyp reverse) at blockchyp.routes.ts:503–662 with full failure handling.]**
   `packages/server/src/routes/blockchyp.routes.ts:482-543`
 
 - [ ] WEB-UIUX-630. **[BLOCKER] Web frontend never calls `giftCardApi.redeem` — gift cards cannot be used at POS at all.** PAYMENT_METHODS hardcoded to Cash/Card/Other. L1, L5.

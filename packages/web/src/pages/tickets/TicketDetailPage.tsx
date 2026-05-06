@@ -15,7 +15,7 @@ import { recentViewsKey } from '@/components/layout/Sidebar';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
-import { formatTicketId } from '@/utils/format';
+import { formatTicketId, formatCurrency } from '@/utils/format';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 import { TicketActions } from './TicketActions';
@@ -554,6 +554,7 @@ export function TicketDetailPage() {
   interface PaymentMin { amount?: number | string | null; [key: string]: unknown }
   const allParts = devices.flatMap((d) => ((d as unknown as { parts?: PartMin[]; device_name?: string }).parts || []).map((p) => ({ ...p, deviceName: (d as unknown as { device_name?: string }).device_name })));
   const paidAmount = (invoice?.payments as PaymentMin[] | undefined)?.reduce((sum: number, p) => sum + Number(p.amount ?? 0), 0) || 0;
+  const hasOpenPayments = paidAmount > 0;
   const dueAmount = (ticket?.total || 0) - paidAmount;
   const totalCost = allParts.reduce((sum: number, p) => sum + ((p.cost_price || 0) * (p.quantity || 0)), 0);
   const estimatedProfit = (ticket?.total || 0) - totalCost;
@@ -627,6 +628,7 @@ export function TicketDetailPage() {
         isChangingStatus={changeStatusMut.isPending}
         onChangeStatus={(sId) => changeStatusMut.mutate(beginStatusMutation(sId))}
         onDelete={() => setShowDeleteConfirm(true)}
+        hasOpenPayments={hasOpenPayments}
         onMerge={() => {
           if (currentUser?.role !== 'admin') { toast.error('Only admins can merge tickets'); return; }
           setShowMerge(true);
@@ -772,7 +774,35 @@ export function TicketDetailPage() {
     <ConfirmDialog
       open={showDeleteConfirm}
       title={`Delete Ticket ${ticket ? `T-${String(ticket.order_id).padStart(4, '0')}` : ''}`}
-      message="This ticket will be removed from all views. All associated notes, photos, and parts will no longer be accessible."
+      message={
+        <div className="space-y-2">
+          {ticket && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dt className="text-surface-400 dark:text-surface-500">Customer</dt>
+              <dd className="font-medium text-surface-700 dark:text-surface-200">
+                {customer
+                  ? `${customer.first_name} ${customer.last_name}`
+                  : <span className="italic text-surface-400">Walk-in</span>}
+              </dd>
+              <dt className="text-surface-400 dark:text-surface-500">Device(s)</dt>
+              <dd className="font-medium text-surface-700 dark:text-surface-200">
+                {devices.length > 0
+                  ? devices.map((d) => (d as unknown as { device_name?: string }).device_name).filter(Boolean).join(', ')
+                  : <span className="italic text-surface-400">None</span>}
+              </dd>
+              <dt className="text-surface-400 dark:text-surface-500">Invoice total</dt>
+              <dd className="font-medium text-surface-700 dark:text-surface-200">
+                {ticket.total != null
+                  ? formatCurrency(ticket.total)
+                  : <span className="italic text-surface-400">—</span>}
+              </dd>
+            </dl>
+          )}
+          <p className="text-sm text-surface-500 dark:text-surface-400">
+            This ticket will be removed from all views. All associated notes, photos, and parts will no longer be accessible.
+          </p>
+        </div>
+      }
       confirmLabel="Delete"
       danger
       requireTyping

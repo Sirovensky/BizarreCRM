@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift, ReceiptText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+import { SkeletonCard, SkeletonTable } from '@/components/shared/Skeleton';
+import { EmptyState } from '@/components/shared/EmptyState';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
 import { formatDate, formatCurrency as formatCurrencyShared, dollarsFromMaybeCents } from '@/utils/format';
 
@@ -158,18 +160,6 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
   );
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function DetailSkeleton() {
-  return (
-    <div className="animate-pulse space-y-4">
-      <div className="h-8 w-48 bg-surface-100 dark:bg-surface-800 rounded" />
-      <div className="h-32 bg-surface-100 dark:bg-surface-800 rounded-xl" />
-      <div className="h-64 bg-surface-100 dark:bg-surface-800 rounded-xl" />
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TX_PAGE_SIZE = 50;
@@ -203,7 +193,10 @@ export function GiftCardDetailPage() {
         <button onClick={() => navigate('/gift-cards')} className="flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 mb-6">
           <ArrowLeft className="h-4 w-4" /> Gift Cards
         </button>
-        <DetailSkeleton />
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonTable rows={5} cols={4} />
+        </div>
       </div>
     );
   }
@@ -214,10 +207,13 @@ export function GiftCardDetailPage() {
         <button onClick={() => navigate('/gift-cards')} className="flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 mb-6">
           <ArrowLeft className="h-4 w-4" /> Gift Cards
         </button>
-        <div className="flex flex-col items-center justify-center py-20">
-          <AlertCircle className="h-10 w-10 text-red-400 mb-3" />
-          <p className="text-sm text-surface-500">Gift card not found</p>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          title="Gift card not found"
+          description="This gift card may have been removed or the link is invalid."
+          actionLabel="Back to Gift Cards"
+          onAction={() => navigate('/gift-cards')}
+        />
       </div>
     );
   }
@@ -325,7 +321,11 @@ export function GiftCardDetailPage() {
               )}
             </div>
             {txs.length === 0 ? (
-              <p className="text-sm text-surface-500 text-center py-10">No transactions yet</p>
+              <EmptyState
+                icon={ReceiptText}
+                title="No transactions yet"
+                description="Transactions will appear here once the card is used or reloaded."
+              />
             ) : (
               <>
                 <div className="overflow-x-auto">

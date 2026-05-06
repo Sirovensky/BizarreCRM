@@ -81,11 +81,13 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
       loc.id AS loc_id, loc.name AS loc_name, loc.address_line AS loc_address_line,
       loc.city AS loc_city, loc.state AS loc_state, loc.postcode AS loc_postcode,
       loc.country AS loc_country, loc.phone AS loc_phone, loc.email AS loc_email,
-      loc.timezone AS loc_timezone
+      loc.timezone AS loc_timezone,
+      t.is_deleted AS ticket_is_deleted
     FROM invoices inv
     LEFT JOIN customers c ON c.id = inv.customer_id
     LEFT JOIN users u ON u.id = inv.created_by
     LEFT JOIN locations loc ON loc.id = inv.location_id
+    LEFT JOIN tickets t ON t.id = inv.ticket_id
     WHERE inv.id = ?
   `, id);
   if (!invoice) return null;

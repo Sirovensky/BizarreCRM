@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail, AlertTriangle, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
@@ -425,6 +425,18 @@ export function SuccessScreen() {
           >
             <FileText className="h-4 w-4" />
             View Invoice
+          </button>
+        )}
+        {/* WEB-UIUX-613: Refund / Void — navigates to the invoice detail page
+            where the existing Credit Note flow lives. Hidden when card declined
+            (no successful charge to refund) and when invoiceId is unavailable. */}
+        {invoiceId && !cardDeclined && (
+          <button
+            onClick={handleViewInvoice}
+            className="btn btn-md border border-red-300 !px-5 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+          >
+            <Undo2 className="h-4 w-4" />
+            Refund / Void
           </button>
         )}
         {ticketId && (

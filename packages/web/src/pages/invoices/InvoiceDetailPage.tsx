@@ -425,9 +425,11 @@ export function InvoiceDetailPage() {
                   <p className="text-sm text-surface-500">Due: {formatDate(invoice.due_on)}</p>
                 )}
                 {invoice.ticket_id && (
-                  <Link to={`/tickets/${invoice.ticket_id}`} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
-                    Ticket #{invoice.ticket_id}
-                  </Link>
+                  invoice.ticket_is_deleted
+                    ? <span className="text-sm text-surface-400 dark:text-surface-500">Ticket #{invoice.ticket_id} <span className="italic">(deleted)</span></span>
+                    : <Link to={`/tickets/${invoice.ticket_id}`} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                        Ticket #{invoice.ticket_id}
+                      </Link>
                 )}
               </div>
             </div>
@@ -496,7 +498,10 @@ export function InvoiceDetailPage() {
                     const isVoided = p.notes?.includes('[VOIDED]');
                     const runningTotal = invoice.payments
                       .slice(0, idx + 1)
-                      .reduce((sum: number, pay: any) => sum + Number(pay.amount), 0);
+                      .reduce((sum: number, pay: any) => {
+                        if (pay.notes?.includes('[VOIDED]')) return sum;
+                        return sum + Number(pay.amount);
+                      }, 0);
                     return (
                       <div key={p.id} className="relative flex gap-3">
                         {/* Timeline dot */}
@@ -830,7 +835,11 @@ export function InvoiceDetailPage() {
                 }
               />
             </div>
-            <div className="flex gap-3 mt-6">
+            {/* WEB-UIUX-623: stock-restore warning */}
+            <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-4">
+              Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
+            </p>
+            <div className="flex gap-3 mt-4">
               <button onClick={() => setShowCreditNote(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Cancel
               </button>

@@ -44,6 +44,7 @@ export interface InvoiceDetail {
   order_id: string;
   customer_id: number;
   ticket_id?: number | null;
+  ticket_is_deleted?: number | null;
   location_id?: number | null;
   status: string;
   subtotal: number;
