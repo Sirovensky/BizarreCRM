@@ -873,7 +873,7 @@ export const posApi = {
   // the field misled callers into thinking they could query the service
   // catalog from POS. If/when the server supports a `service` filter, add
   // it back as a real param.
-  products: (params?: { keyword?: string; category?: string; show_out_of_stock?: string }, signal?: AbortSignal) =>
+  products: (params?: { keyword?: string; category?: string; show_out_of_stock?: string; limit?: number }, signal?: AbortSignal) =>
     api.get('/pos/products', { params, signal }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer

@@ -115,6 +115,9 @@ interface UnifiedPosState {
   // UI
   activeTab: 'repairs' | 'products' | 'misc';
   setActiveTab: (tab: 'repairs' | 'products' | 'misc') => void;
+  // WEB-UIUX-795: barcode pre-fill for MiscTab when a scan has no catalogue match
+  pendingMiscName: string | null;
+  setPendingMiscName: (name: string | null) => void;
   showCheckout: boolean;
   setShowCheckout: (show: boolean) => void;
   showSuccess: CheckoutSuccessPayload | null;
@@ -248,6 +251,8 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
 
   activeTab: 'repairs',
   setActiveTab: (activeTab) => set({ activeTab }),
+  pendingMiscName: null,
+  setPendingMiscName: (pendingMiscName) => set({ pendingMiscName }),
   showCheckout: false,
   setShowCheckout: (showCheckout) => set({ showCheckout }),
   showSuccess: null,

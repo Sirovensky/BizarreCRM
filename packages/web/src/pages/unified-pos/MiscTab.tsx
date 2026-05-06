@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Package } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -13,12 +13,22 @@ const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3
 // ─── MiscTab ────────────────────────────────────────────────────────
 
 export function MiscTab() {
-  const { addMisc, cartItems } = useUnifiedPosStore();
+  const { addMisc, cartItems, pendingMiscName, setPendingMiscName } = useUnifiedPosStore();
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [taxable, setTaxable] = useState(true);
+
+  // WEB-UIUX-795: when a barcode scan had no catalogue match the POS page
+  // sets pendingMiscName and switches to this tab. Consume it here so the
+  // cashier immediately sees the scanned code in the name field.
+  useEffect(() => {
+    if (pendingMiscName) {
+      setName(pendingMiscName);
+      setPendingMiscName(null);
+    }
+  }, [pendingMiscName, setPendingMiscName]);
 
   const miscItems = cartItems.filter((c): c is MiscCartItem => c.type === 'misc');
 

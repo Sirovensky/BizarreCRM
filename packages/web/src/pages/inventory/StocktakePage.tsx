@@ -21,6 +21,7 @@ import {
   ScanBarcode,
 } from 'lucide-react';
 import { api } from '@/api/client';
+import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime, formatCurrency } from '@/utils/format';
 // WEB-FB-007 (Fixer-KKK 2026-04-25): swapped native window.confirm for the
@@ -163,18 +164,28 @@ export function StocktakePage() {
     e.preventDefault();
     const q = scanInput.trim();
     if (!q) return;
-    // Look up the item by SKU/UPC via the existing inventory list endpoint.
+    // WEB-UIUX-793: digits-only 8+ char input is a barcode — use the exact
+    // lookupBarcode endpoint so a LIKE-match on a longer product name never
+    // silently wins over the true UPC hit.
+    const isBarcode = /^\d{8,}$/.test(q);
     try {
-      const res = await api.get('/inventory', { params: { keyword: q, pagesize: 1 } });
-      const items = res.data.data?.items || [];
-      if (items.length === 0) {
+      let item: { id: number; name: string } | undefined;
+      if (isBarcode) {
+        const res = await inventoryApi.lookupBarcode(q);
+        item = res.data?.data ?? undefined;
+      } else {
+        const res = await api.get('/inventory', { params: { keyword: q, pagesize: 1 } });
+        const items = res.data.data?.items || [];
+        item = items[0];
+      }
+      if (!item) {
         toast.error(`No item matching "${q}"`);
         return;
       }
-      const item = items[0];
+      const existingCount = detailData?.counts.find((c) => c.inventory_item_id === item.id);
       const counted = manualCountedQty
         ? parseInt(manualCountedQty, 10)
-        : item.in_stock + 1; // quick-scan default: increment
+        : (existingCount ? existingCount.counted_qty + 1 : 1); // quick-scan: increment physical count by 1
       scanMut.mutate({ inventory_item_id: item.id, counted_qty: counted });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Lookup failed');

@@ -43,6 +43,7 @@ export function ProductsTab() {
       keyword: debouncedKeyword || undefined,
       category: category || undefined,
       show_out_of_stock: showOutOfStock ? '1' : '0',
+      limit: 20,
     }),
     staleTime: 30000,
   });

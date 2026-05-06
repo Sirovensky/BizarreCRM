@@ -524,14 +524,30 @@ export function EstimateListPage() {
   const handleBulkDelete = useCallback(async () => {
     if (anyMutationPending || selectedIds.size === 0) return;
 
-    const ids = [...selectedIds];
+    const selectedEstimates = estimates.filter((e) => selectedIds.has(e.id));
+    const convertedEstimates = selectedEstimates.filter((e) => e.status === 'converted');
+    const deletableEstimates = selectedEstimates.filter((e) => e.status !== 'converted');
+
+    const ids = deletableEstimates.map((e) => e.id);
     const total = ids.length;
+    const skippedCount = convertedEstimates.length;
     const labelById = new Map(
       estimates.map((estimate) => [estimate.id, formatEstimateLabel(estimate.id, estimate)]),
     );
 
+    if (total === 0) {
+      toast.error(
+        `${skippedCount} converted estimate${skippedCount !== 1 ? 's' : ''} cannot be deleted — they are linked to tickets.`,
+      );
+      return;
+    }
+
+    const confirmMessage = skippedCount > 0
+      ? `${skippedCount} converted estimate${skippedCount !== 1 ? 's' : ''} skipped — only ${total} draft/sent/approved/rejected will be deleted.`
+      : `Delete ${total} estimate${total !== 1 ? 's' : ''}?`;
+
     try {
-      if (!await confirm(`Delete ${total} estimate${total !== 1 ? 's' : ''}?`, { danger: true })) {
+      if (!await confirm(confirmMessage, { danger: true })) {
         return;
       }
     } catch (err) {
@@ -543,6 +559,13 @@ export function EstimateListPage() {
     const failures: BulkDeleteFailure[] = [];
     let deletedCount = 0;
     setIsBulkDeleting(true);
+
+    if (skippedCount > 0) {
+      toast.error(
+        `${skippedCount} converted estimate${skippedCount !== 1 ? 's' : ''} skipped — linked tickets would be orphaned.`,
+        { duration: 6000 },
+      );
+    }
 
     try {
       for (const id of ids) {
@@ -559,7 +582,12 @@ export function EstimateListPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['estimates'] });
-      setSelectedIds(new Set(failures.map((failure) => failure.id)));
+      // Keep converted IDs selected (they were skipped) plus any failed deletable IDs
+      const retainIds = new Set([
+        ...convertedEstimates.map((e) => e.id),
+        ...failures.map((failure) => failure.id),
+      ]);
+      setSelectedIds(retainIds);
       toast.dismiss(loadingToastId);
 
       if (failures.length === 0) {

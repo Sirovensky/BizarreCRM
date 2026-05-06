@@ -734,6 +734,15 @@ router.put(
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
+    // WEB-UIUX-801: block edits to locked estimates (approved/signed/converted)
+    const LOCKED_STATUSES = ['approved', 'signed', 'converted'];
+    if (LOCKED_STATUSES.includes(existing.status)) {
+      throw new AppError(
+        `Estimate is locked (status: ${existing.status}). Create a revision instead.`,
+        409,
+      );
+    }
+
     const { customer_id, status, discount, notes, valid_until, line_items } = req.body;
 
     // V11: validate discount bounds if supplied (non-negative, <= 999999.99).

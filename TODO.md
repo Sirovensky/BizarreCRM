@@ -3582,59 +3582,59 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED16: Barcode/Scanner Input
 
-- [ ] WEB-UIUX-791. **[BLOCKER] Stocktake "quick-scan default" sets counted_qty to `expected + 1` not actual physical count.** Scanning 5 units of `in_stock=3` → counted_qty=4, not 5. STOCKTAKE MATH WRONG. L7, L13.
+- [x] WEB-UIUX-791. **[BLOCKER] Stocktake "quick-scan default" sets counted_qty to `expected + 1` not actual physical count.** Scanning 5 units of `in_stock=3` → counted_qty=4, not 5. STOCKTAKE MATH WRONG. L7, L13. **[AUTOLOOP-T37 RESOLVED: handleScan finds existing counted row + counted_qty++; if no row, starts at 1. Manual entry unchanged.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-177`
 
 - [ ] WEB-UIUX-792. **[MAJOR] POS global scan handler bails on Enter only checks 2 modals (CheckoutModal, SuccessScreen).** DeviceTemplateNudge, UpsellPrompt, PinModal etc. don't block. Phantom line items added to next sale. L5, L11.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:138-144`
 
-- [ ] WEB-UIUX-793. **[MAJOR] Scanner "first match wins" silently picks wrong item on multi-match.** Server `name LIKE %12345%` matches "iPhone 12345 mAh battery" before exact UPC. `lookupBarcode` exact endpoint exists but unused. L1, L8.
+- [x] WEB-UIUX-793. **[MAJOR] Scanner "first match wins" silently picks wrong item on multi-match.** Server `name LIKE %12345%` matches "iPhone 12345 mAh battery" before exact UPC. `lookupBarcode` exact endpoint exists but unused. L1, L8. **[AUTOLOOP-T37 RESOLVED: digits-only 8+ char input routes to inventoryApi.lookupBarcode (exact) in StocktakePage + LeftPanel + UnifiedPosPage scanners.]**
   Multiple scan paths: `UnifiedPosPage.tsx:166`, `LeftPanel.tsx:453`, `StocktakePage.tsx:173`
 
 - [ ] WEB-UIUX-794. **[MAJOR] POS detection threshold `100ms/char` too lenient for fast typists (40+ wpm = ~75ms/char).** Fast-typed `1234⏎` qualifies as scan, silently adds wrong product. L1, L7.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:190-198`
 
-- [ ] WEB-UIUX-795. **[MAJOR] Scan-no-match toasts but ZERO recovery path.** Scanned barcode lost, not pre-filled into "Quick add" form, not logged. Cashier must re-scan or re-type. L4, L8.
+- [x] WEB-UIUX-795. **[MAJOR] Scan-no-match toasts but ZERO recovery path.** Scanned barcode lost, not pre-filled into "Quick add" form, not logged. Cashier must re-scan or re-type. L4, L8. **[AUTOLOOP-T37 RESOLVED: scan-no-match toast adds Quick Add button → sets pendingMiscName + switches to Misc tab + MiscTab pre-fills barcode.]**
 
 - [ ] WEB-UIUX-796. **[MAJOR] Two scans 200ms apart: second aborts first's API call. First scan's product NEVER added.** No queue, no toast-on-loss. L11, L8.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:160-163`
 
-- [ ] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13.
+- [ ] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1318-1492`
 
 - [ ] WEB-UIUX-798. **[MAJOR] Four independent scan implementations with no shared abstraction — diverge in all behaviors.** Multi-match, in-flight guard, audio, no-match recovery, modal context — all different across 4 paths. L3, L4.
 
-- [ ] WEB-UIUX-799. **[MAJOR] `posApi.products` no LIMIT — short numeric scan (e.g. "1") returns all matching items.** 10k-item inventory = MB+ payload. Client takes [0]. L15.
+- [x] WEB-UIUX-799. **[MAJOR] `posApi.products` no LIMIT — short numeric scan (e.g. "1") returns all matching items.** 10k-item inventory = MB+ payload. Client takes [0]. L15. **[AUTOLOOP-T37 RESOLVED: posApi.products gains `limit` param; all 4 call sites pass limit:20 (ProductsTab, LeftPanel ×2, UnifiedPosPage).]**
 
 - [ ] WEB-UIUX-800. **[MINOR] Scan flash "Scan detected!" set BEFORE API call.** 404/500 still shows green flash + concurrent red toast. L8.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:157-158`
 
 #### ED17: Estimate→Ticket→Invoice Chain
 
-- [ ] WEB-UIUX-801. **[BLOCKER] Estimate edits silently mutate post-conversion source-of-truth.** `approved` (signed!) estimate has line items rewritten in place. Customer doesn't know what they signed. L13, L16.
+- [x] WEB-UIUX-801. **[BLOCKER] Estimate edits silently mutate post-conversion source-of-truth.** `approved` (signed!) estimate has line items rewritten in place. Customer doesn't know what they signed. L13, L16. **[AUTOLOOP-T37 RESOLVED: client estimateContentLocked includes approved; locked banner for approved/signed/converted; server PUT /:id returns 409 for those statuses.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:127-136,289,403-409`
 
 - [ ] WEB-UIUX-802. **[BLOCKER] No signature artifact rendered anywhere on web estimate detail.** No `signed_at`, no signature image, no "signed by …". Web operator can rewrite mobile-signed estimate without warning. L13, L16.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
-- [ ] WEB-UIUX-803. **[BLOCKER] Bulk delete on EstimateList allows deleting `converted` rows.** Orphans linked tickets. Confirm doesn't enumerate. L13, L16.
+- [x] WEB-UIUX-803. **[BLOCKER] Bulk delete on EstimateList allows deleting `converted` rows.** Orphans linked tickets. Confirm doesn't enumerate. L13, L16. **[AUTOLOOP-T37 RESOLVED: handleBulkDelete splits selection (converted skipped + deletable); confirm names skipped count; toast explains skip count.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
 - [ ] WEB-UIUX-804. **[MAJOR] No back-link from Ticket→Estimate.** `ticket.estimate_id` never read or rendered. Ticket is orphan after conversion. L5, L13.
 
-- [ ] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13.
+- [ ] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
 
 - [ ] WEB-UIUX-806. **[MAJOR] Version history shows version numbers but NOT signature/approval lineage.** No `total_at_signing`, no signed-version indicator. Operator can't tell which version was signed. L13, L11.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:27-31,510-552`
 
-- [ ] WEB-UIUX-807. **[MAJOR] Convert-to-ticket allowed on stale/expired estimates without warning.** `draft` estimate (never sent/approved/signed) → billable ticket no friction. L5, L7.
+- [x] WEB-UIUX-807. **[MAJOR] Convert-to-ticket allowed on stale/expired estimates without warning.** `draft` estimate (never sent/approved/signed) → billable ticket no friction. L5, L7. **[AUTOLOOP-T37 RESOLVED: Convert button shows window.confirm friction warning when estimate status is draft/expired (customer hasnt signed/approved).]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
 
 - [ ] WEB-UIUX-808. **[MAJOR] Print on EstimateDetail uses `window.print()` of LIVE DOM.** Post-edit numbers + original `created_at` + `order_id` — customer can argue printout doesn't match what they signed. L13.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:248-254`
 
-- [ ] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13.
+- [ ] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13. **[AUTOLOOP-T37 BLOCKED: PrintPage has no /print/estimate/:id route; adding estimateId prop has no target. Needs backend-rendered estimate print page.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:100-120`
 
 - [ ] WEB-UIUX-810. **[MAJOR] Stage-skip allowed: estimate→invoice WITHOUT going through ticket approval.** `Generate Invoice` only checks `!ticket.invoice_id`, not approved-estimate gate. L5, L16.

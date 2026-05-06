@@ -13,7 +13,7 @@ import { ReturnModal } from './ReturnModal';
 import { readTrainingSessionId, startTrainingSession, TrainingModeBanner } from './TrainingModeBanner';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
-import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
+import { ticketApi, customerApi, posApi, deviceTemplateApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { X } from 'lucide-react';
 
@@ -108,6 +108,7 @@ export function UnifiedPosPage() {
     cartItems,
     sourceTicketId,
     setActiveTab,
+    setPendingMiscName,
     customer,
     discount,
     discountReason,
@@ -224,13 +225,18 @@ export function UnifiedPosPage() {
         setScanFlash(true);
         scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1200);
 
-        // Search and add to cart — cancel any in-flight lookup first
+        // Search and add to cart — cancel any in-flight lookup first.
+        // WEB-UIUX-793: digits-only 8+ char input is a barcode — use the exact
+        // lookupBarcode endpoint so a LIKE-match never silently picks the wrong item.
         scanAbortRef.current?.abort();
         const ac = new AbortController();
         scanAbortRef.current = ac;
-        posApi.products({ keyword: code }, ac.signal).then((res) => {
+        const isBarcode = /^\d{8,}$/.test(code);
+        const lookupPromise = isBarcode
+          ? inventoryApi.lookupBarcode(code).then((res) => res.data?.data ?? null)
+          : posApi.products({ keyword: code, limit: 20 }, ac.signal).then((res) => (res.data?.data?.items || [])[0] ?? null);
+        lookupPromise.then((found) => {
           if (ac.signal.aborted) return;
-          const found = (res.data?.data?.items || [])[0];
           if (found) {
             addProduct({
               type: 'product',
@@ -245,7 +251,27 @@ export function UnifiedPosPage() {
             });
             toast.success(`Scanned: ${found.name}`);
           } else {
-            toast.error(`No item found for barcode: ${code}`);
+            // WEB-UIUX-795: offer a recovery path — switch to Misc tab and
+            // pre-fill the scanned barcode as the item name so the cashier
+            // can complete a quick-add without retyping the code.
+            toast(
+              (t) => (
+                <span className="flex items-center gap-3">
+                  <span>No item found for barcode: <strong>{code}</strong></span>
+                  <button
+                    className="shrink-0 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                    onClick={() => {
+                      toast.dismiss(t.id);
+                      setPendingMiscName(code);
+                      setActiveTab('misc');
+                    }}
+                  >
+                    Quick add
+                  </button>
+                </span>
+              ),
+              { icon: '⚠️', duration: 8000 },
+            );
           }
         }).catch((err) => { if (!ac.signal.aborted) toast.error('Barcode search failed'); void err; });
 
@@ -269,7 +295,7 @@ export function UnifiedPosPage() {
       window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(scanFlashTimerRef.current);
     };
-  }, [addProduct]);
+  }, [addProduct, setPendingMiscName, setActiveTab]);
   const ticketParam = searchParams.get('ticket');
   const customerParam = searchParams.get('customer') || searchParams.get('customer_id');
   const sandboxParam = searchParams.get('sandbox');

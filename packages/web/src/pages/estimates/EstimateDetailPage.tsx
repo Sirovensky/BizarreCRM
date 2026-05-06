@@ -426,6 +426,7 @@ export function EstimateDetailPage() {
   const color = STATUS_COLORS[estimate.status] || '#6b7280';
   const lineItems: any[] = estimate.line_items || [];
   const estimateContentLocked =
+    estimate.status === 'approved' ||
     estimate.status === 'signed' ||
     estimate.status === 'converted' ||
     estimate.status === 'rejected';
@@ -522,7 +523,13 @@ export function EstimateDetailPage() {
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
               onClick={async () => {
-                try { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }
+                try {
+                  const isStale = estimate.status === 'draft' || estimate.status === 'expired';
+                  const msg = isStale
+                    ? `Convert this ${estimate.status} estimate to a ticket? Customer hasn't signed/approved this quote.`
+                    : 'Convert this estimate to a ticket?';
+                  if (await confirm(msg)) convertMut.mutate();
+                }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending || isExpired}
@@ -579,6 +586,21 @@ export function EstimateDetailPage() {
           >
             Re-quote
           </button>
+        </div>
+      )}
+
+      {estimateContentLocked && (estimate.status === 'approved' || estimate.status === 'signed') && (
+        <div className="mb-6 rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 dark:border-surface-700 dark:bg-surface-800/60">
+          <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
+            This estimate is locked because it was <span className="capitalize">{estimate.status}</span>. Create a revision instead.
+          </p>
+        </div>
+      )}
+      {estimateContentLocked && estimate.status === 'converted' && (
+        <div className="mb-6 rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 dark:border-surface-700 dark:bg-surface-800/60">
+          <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
+            This estimate is locked because it was converted. Create a revision instead.
+          </p>
         </div>
       )}
 

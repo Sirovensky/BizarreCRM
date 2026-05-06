@@ -196,7 +196,7 @@ function UnifiedSearchBar() {
 
       // Search products/inventory by name or SKU
       try {
-        const prodRes = await posApi.products({ keyword: q });
+        const prodRes = await posApi.products({ keyword: q, limit: 20 });
         if (isCancelled) return;
         const prods = prodRes.data?.data?.items || [];
         for (const p of (prods as ApiProductRow[]).slice(0, 3)) {
@@ -450,8 +450,17 @@ function BarcodeSearch() {
     scanInFlightRef.current = true;
 
     try {
-      const res = await posApi.products({ keyword: code });
-      const found = res.data?.data?.items?.[0] as ApiProductRow | undefined;
+      // WEB-UIUX-793: digits-only 8+ char input is a barcode — use the exact
+      // lookupBarcode endpoint so a LIKE-match never silently picks the wrong item.
+      const isBarcode = /^\d{8,}$/.test(code);
+      let found: ApiProductRow | undefined;
+      if (isBarcode) {
+        const res = await inventoryApi.lookupBarcode(code);
+        found = res.data?.data as ApiProductRow | undefined;
+      } else {
+        const res = await posApi.products({ keyword: code, limit: 20 });
+        found = res.data?.data?.items?.[0] as ApiProductRow | undefined;
+      }
       if (found) {
         // WEB-FH-004: clamp at available stock for non-service items.
         const isService = found.item_type === 'service';
