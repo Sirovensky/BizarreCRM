@@ -36,7 +36,22 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
     };
   }, [ticketId]);
 
-  if (!tech || !tech.visible || !tech.first_name) return null;
+  if (!tech) {
+    return (
+      <div
+        aria-label="Loading technician info"
+        aria-busy="true"
+        className="rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4 flex items-center gap-3 min-h-[68px] animate-pulse"
+      >
+        <div className="w-12 h-12 rounded-full bg-surface-200 dark:bg-surface-700 shrink-0" />
+        <div className="space-y-2 flex-1">
+          <div className="h-2.5 bg-surface-200 dark:bg-surface-700 rounded w-1/3" />
+          <div className="h-3 bg-surface-200 dark:bg-surface-700 rounded w-2/3" />
+        </div>
+      </div>
+    );
+  }
+  if (!tech.visible || !tech.first_name) return null;
 
   const initials = tech.first_name.slice(0, 1).toUpperCase();
 

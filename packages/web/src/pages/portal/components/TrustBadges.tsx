@@ -30,7 +30,25 @@ export function TrustBadges(): React.ReactElement | null {
     };
   }, []);
 
-  if (!config) return null;
+  if (!config) {
+    return (
+      <div
+        aria-label="Loading shop information"
+        aria-busy="true"
+        className="rounded-lg bg-gradient-to-br from-surface-50 to-primary-50 dark:from-surface-800 dark:to-primary-900/30 border border-surface-200 dark:border-surface-700 p-4 space-y-3 min-h-[96px] animate-pulse"
+      >
+        <div className="h-3 bg-surface-200 dark:bg-surface-700 rounded w-1/2" />
+        <div className="flex gap-2">
+          <div className="h-6 bg-surface-200 dark:bg-surface-700 rounded-full w-24" />
+          <div className="h-6 bg-surface-200 dark:bg-surface-700 rounded-full w-20" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-2.5 bg-surface-200 dark:bg-surface-700 rounded w-3/4" />
+          <div className="h-2.5 bg-surface-200 dark:bg-surface-700 rounded w-1/2" />
+        </div>
+      </div>
+    );
+  }
 
   const address = [
     config.store_address,

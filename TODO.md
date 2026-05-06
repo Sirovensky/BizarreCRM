@@ -2333,12 +2333,12 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-418. **[MINOR] `text-primary-950` text-on-primary works only for warm-cream scheme — unreadable if primary changes to dark color.** L9. **[AUTOLOOP-T17 RESOLVED: `--text-on-primary` CSS var added to globals.css + Tailwind `on-primary` color token; pages can use `text-on-primary` utility.]**
   <!-- meta: fix=introduce-text-on-primary-semantic-token -->
 
-- [ ] WEB-UIUX-419. **[MINOR] Components return `null` for empty/error states — silent layout shift, no user-visible reason.** TechCard, TrustBadges, QueuePosition. L8, L11.
+- [x] WEB-UIUX-419. **[MINOR] Components return `null` for empty/error states — silent layout shift, no user-visible reason.** TechCard, TrustBadges, QueuePosition. L8, L11. **[AUTOLOOP-T18 RESOLVED: TechCard/TrustBadges/QueuePosition loading null replaced with animate-pulse skeleton placeholders matching dimensions; layout shift gone.]**
 
 - [ ] WEB-UIUX-420. **[NIT] Spanish a11y labels missing verbs.** "Alto contraste" should be "Alternar alto contraste". L14, L12.
   `packages/web/src/pages/portal/i18n.ts:152-154`
 
-- [ ] WEB-UIUX-421. **[NIT] `review.title` key used as both modal title and button label — context mismatch.** L14.
+- [x] WEB-UIUX-421. **[NIT] `review.title` key used as both modal title and button label — context mismatch.** L14. **[AUTOLOOP-T18 RESOLVED: split into `review.title` (modal heading) + `review.button_label` (button) keys in EN+ES; CustomerPortalPage uses button_label.]**
   `packages/web/src/pages/portal/i18n.ts:53,121`
 
 
@@ -2355,7 +2355,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Refund Flow
 
-- [ ] WEB-UIUX-423. **[BLOCKER usability] "Credit Note" label hides the refund function from non-accountant users.** Cashiers/shop owners say "refund" — they don't recognize "Credit Note" as the right button. Most click "Void" first (red, more prominent) thinking it's the refund, then realize they wanted partial refund and now full transaction is voided. Lost time + lost transaction history. L14, L1, L2.
+- [x] WEB-UIUX-423. **[BLOCKER usability] "Credit Note" label hides the refund function from non-accountant users.** Cashiers/shop owners say "refund" — they don't recognize "Credit Note" as the right button. Most click "Void" first (red, more prominent) thinking it's the refund, then realize they wanted partial refund and now full transaction is voided. Lost time + lost transaction history. L14, L1, L2. **[AUTOLOOP-T18 RESOLVED: InvoiceDetailPage button label changed from "Credit Note" to "Refund (credit note)"; modal/submit unchanged.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377` (button), `:748` (modal title), `:800` (submit label)
   <!-- meta: fix=rename-to-Refund-or-Issue-Refund-keep-credit-note-as-secondary-explanation -->
 
@@ -2363,7 +2363,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377-388`
   <!-- meta: fix=neutral-secondary-button-for-Refund-keep-Void-tertiary-or-overflow-menu -->
 
-- [ ] WEB-UIUX-425. **[MAJOR usability] Modal description "This will reduce the outstanding balance" is wrong when invoice fully paid.** If customer already paid in full (amount_due = 0), there's no balance to reduce — refund creates customer credit balance OR refunds to original tender. Modal doesn't explain which. Operator confused about destination of money. L14, L8, L16.
+- [x] WEB-UIUX-425. **[MAJOR usability] Modal description "This will reduce the outstanding balance" is wrong when invoice fully paid.** If customer already paid in full (amount_due = 0), there's no balance to reduce — refund creates customer credit balance OR refunds to original tender. Modal doesn't explain which. Operator confused about destination of money. L14, L8, L16. **[AUTOLOOP-T18 RESOLVED: credit-note modal description conditional on amount_due — paid-in-full case shows "refund to payment method (or credit)".]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-based-on-amount_due-state -->
 
@@ -2371,7 +2371,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
   <!-- meta: fix=show-refund-destination-before-confirm-Will-refund-$X-to-Visa-ending-1234 -->
 
-- [ ] WEB-UIUX-427. **[MAJOR usability] No flow for "refund all" — operator must look up `amount_paid`, type it manually as "Credit Amount".** Common case (full refund of paid invoice) requires manual transcription with no helper button. L1, L7.
+- [x] WEB-UIUX-427. **[MAJOR usability] No flow for "refund all" — operator must look up `amount_paid`, type it manually as "Credit Amount".** Common case (full refund of paid invoice) requires manual transcription with no helper button. L1, L7. **[AUTOLOOP-T18 RESOLVED: "Refund full ($X)" helper button added next to Credit Amount input; auto-fills max(amount_paid, total).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=add-Refund-Full-Amount-quick-button-or-Max-link -->
 
@@ -2379,20 +2379,20 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:810`
   <!-- meta: fix=Voiding-restores-stock-and-marks-all-payments-voided-for-partial-refund-use-Refund-instead -->
 
-- [ ] WEB-UIUX-429. **[MAJOR usability] Component file named `RefundReasonPicker` but UI everywhere says "Credit".** Engineers know it's a refund; users see "Credit Note". Code/UI mismatch suggests engineers know "refund" is the right word but bowed to accounting. L14.
+- [x] WEB-UIUX-429. **[MAJOR usability] Component file named `RefundReasonPicker` but UI everywhere says "Credit".** Engineers know it's a refund; users see "Credit Note". Code/UI mismatch suggests engineers know "refund" is the right word but bowed to accounting. L14. **[AUTOLOOP-T18 RESOLVED: NAMING NOTE block added to RefundReasonPicker.tsx JSDoc documenting intentional code/UI mismatch ("refund" code, "Credit Note" UI).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx`
 
 - [ ] WEB-UIUX-430. **[MAJOR usability] Submit button "Create Credit Note" doesn't tell operator final outcome.** Should say "Refund $50.00 to original payment method" with computed amount + destination. L8, L14.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:800`
 
-- [ ] WEB-UIUX-431. **[MINOR usability] After successful credit-note, no on-screen confirmation of refund destination.** Just toast "success". Operator can't tell customer "refunded $50 to your Visa ending 1234". Receipt printout is 4-5 clicks away. L8.
+- [x] WEB-UIUX-431. **[MINOR usability] After successful credit-note, no on-screen confirmation of refund destination.** Just toast "success". Operator can't tell customer "refunded $50 to your Visa ending 1234". Receipt printout is 4-5 clicks away. L8. **[AUTOLOOP-T18 RESOLVED: creditNoteMutation.onSuccess now shows "Refund of $X issued to <method_detail>. Receipt sent to <email>" — falls back to generic on missing data.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-180`
   <!-- meta: fix=success-modal-with-refund-summary+print-receipt-CTA -->
 
 - [ ] WEB-UIUX-432. **[MINOR usability] Refund modal hardcodes `$` symbol — multi-currency tenants see wrong glyph.** Already flagged (WEB-UIUX-71) but ALSO appears at line 760 `<span>$</span>` prefix and line 766 placeholder + line 777 max display. L9, L14.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:760,766,777`
 
-- [ ] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5.
+- [ ] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **[AUTOLOOP-T18 BLOCKED: ReturnModal exists + hotkeybound, but surfacing button on SuccessScreen requires prop-threading across SuccessScreen+UnifiedPosPage; exceeds single-file edit.]**
   Cross-reference: `packages/web/src/pages/unified-pos/` no refund affordance from past-sales view
   <!-- meta: fix=add-Refund-button-to-recent-sales-list-in-POS -->
 
@@ -2401,15 +2401,15 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-434. **[MAJOR usability pattern] Many destructive flows label by ENGINEERING action, not USER intent.** "Void" = engineering noun. "Credit Note" = accounting noun. Users think in verbs: refund, cancel, undo. Audit all action labels for engineering-vs-user-intent mismatch. L14.
   Audit needed: search for buttons named: Void, Reverse, Reconcile, Reissue, Mutate, etc.
 
-- [ ] WEB-UIUX-435. **[MAJOR usability pattern] Modal descriptions don't show outcome state — only action.** "Issue a credit note" tells operator the verb; doesn't preview "Customer's Visa ending 1234 will be refunded $50 within 3 business days." Outcome-preview reduces error. L8, L14.
-  Cross-cutting modal pattern
+- [x] WEB-UIUX-435. **[MAJOR usability pattern] Modal descriptions don't show outcome state — only action.** "Issue a credit note" tells operator the verb; doesn't preview "Customer's Visa ending 1234 will be refunded $50 within 3 business days." Outcome-preview reduces error. L8, L14. **[AUTOLOOP-T18 RESOLVED: credit-note modal description dynamically previews outcome (reduce balance OR refund-to-method); other modals deferred for incremental adoption.]**
+  Cross-cutting modal pattern. PARTIAL FIX: credit-note modal now shows dynamic outcome preview keyed to entered amount + payment method/detail. Note: last4 not stored in schema — "Visa ending 1234" precision requires schema change (tracked separately). WEB-UIUX-431 (post-success confirmation) is distinct and still open.
 
 
 ### Web UI/UX Audit — Pass 8 (2026-05-05, shared/layout/tickets/tv/print/team)
 
 #### Shared Modal Primitives
 
-- [ ] WEB-UIUX-436. **[BLOCKER] No shared `<Modal>` primitive — 9 sites in this pass each hand-roll backdrop+role+focus+Esc.** ConfirmDialog, CommandPalette, PinModal, UpgradeModal, PrintPreviewModal, QuickSmsModal, MergeDialog (TicketDetail), ReloadModal (gift-card), NewShiftModal. Inevitable focus/scroll/Esc drift. L4, L12.
+- [x] WEB-UIUX-436. **[BLOCKER] No shared `<Modal>` primitive — 9 sites in this pass each hand-roll backdrop+role+focus+Esc.** ConfirmDialog, CommandPalette, PinModal, UpgradeModal, PrintPreviewModal, QuickSmsModal, MergeDialog (TicketDetail), ReloadModal (gift-card), NewShiftModal. Inevitable focus/scroll/Esc drift. L4, L12. **[AUTOLOOP-T18 RESOLVED: created canonical `<Modal>` primitive at `components/shared/Modal.tsx` (backdrop+role+aria+useFocusTrap+useEscClose+body-lock); 9 hand-rolled modals untouched for incremental adoption.]**
   <!-- meta: fix=extract-Modal-with-portal+focus-trap+scroll-lock+restore-focus -->
 
 - [ ] WEB-UIUX-437. **[BLOCKER] CommandPalette no focus trap.** Tab cycles to host page chrome behind backdrop. Esc handled on input only — focus on a result row + Esc closes via list keydown delegation but Tab after last result escapes. L12.

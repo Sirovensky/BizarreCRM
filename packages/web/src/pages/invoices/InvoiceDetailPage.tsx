@@ -22,7 +22,7 @@ import {
   RefundReasonPicker,
   type RefundReasonCode,
 } from '@/components/billing/RefundReasonPicker';
-import type { InvoiceDetail } from '@/types/invoice';
+import type { InvoiceDetail, InvoicePayment } from '@/types/invoice';
 
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -172,10 +172,21 @@ export function InvoiceDetailPage() {
         note: d.note,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Credit note created');
+      // WEB-UIUX-431: build an informative refund destination message when
+      // card info is available so operators can relay it to the customer.
+      const cardPayment = invoice?.payments?.find(
+        (p) => p.method_detail && !p.notes?.includes('[VOIDED]'),
+      );
+      const refundDest = cardPayment?.method_detail ?? null;
+      const customerEmail = invoice?.customer_email ?? null;
+      let msg = `Refund of ${formatCurrency(variables.amount)} issued`;
+      if (refundDest) msg += ` to ${refundDest}`;
+      if (customerEmail) msg += `. Receipt sent to ${customerEmail}`;
+      if (!refundDest && !customerEmail) msg = 'Credit note created';
+      toast.success(msg);
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', reason: null, note: '' });
     },
@@ -375,7 +386,7 @@ export function InvoiceDetailPage() {
             </button>
             {canCreateCreditNote && (
               <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
-                <CreditCard className="h-4 w-4" /> Credit Note
+                <CreditCard className="h-4 w-4" /> Refund (credit note)
               </button>
             )}
             {/* WEB-W2-017: Tip-adjust removed — BlockChyp SDK does not expose
@@ -749,12 +760,47 @@ export function InvoiceDetailPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {/* WEB-UIUX-435: outcome-preview — show what will happen, not just what the action is */}
             <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-              Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.
+              {(() => {
+                const enteredAmount = parseFloat(creditNoteForm.amount);
+                const displayAmount = !isNaN(enteredAmount) && enteredAmount > 0
+                  ? formatCurrency(enteredAmount)
+                  : null;
+                if (Number(invoice.amount_due) > 0) {
+                  // Partially unpaid — credit reduces balance
+                  return displayAmount
+                    ? `${displayAmount} will be deducted from the outstanding balance on invoice ${invoice.order_id}.`
+                    : `A credit will be applied to the outstanding balance on invoice ${invoice.order_id}.`;
+                }
+                // Fully paid — refund goes back to original payment method
+                const payments: InvoicePayment[] = invoice.payments ?? [];
+                const latestPayment = payments
+                  .filter((p) => p.method !== 'credit_note')
+                  .sort((a, b) => b.amount - a.amount)[0];
+                const methodLabel = latestPayment
+                  ? `${latestPayment.method_detail || latestPayment.method}`
+                  : null;
+                if (displayAmount && methodLabel) {
+                  return `${displayAmount} will be refunded to the ${methodLabel} used for this invoice, typically within 3–5 business days.`;
+                } else if (displayAmount) {
+                  return `${displayAmount} will be refunded to the original payment method, typically within 3–5 business days.`;
+                }
+                return "The credit will be refunded to the original payment method (or as store credit if unavailable).";
+              })()}
             </p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Credit Amount</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Credit Amount</label>
+                  <button
+                    type="button"
+                    onClick={() => setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) })}
+                    className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                  >
+                    Refund full ({formatCurrency(maxCreditNoteAmount)})
+                  </button>
+                </div>
                 <div className="relative">
                   <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
                   <input

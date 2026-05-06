@@ -3,6 +3,14 @@
  * §52 idea 6. The parent wires the selected reason into its existing
  * call to the refunds endpoint (refunds.routes.ts is NOT edited by this
  * agent — the integration is purely frontend).
+ *
+ * NAMING NOTE (WEB-UIUX-429):
+ * The file/component name uses the industry/backend term "Refund" because
+ * it maps directly to the refunds endpoint and RefundReasonCode enum.
+ * The UI surfaces this as "Credit Note" (accounting terminology preferred
+ * by the product/UX team). This intentional mismatch keeps backend types
+ * and UI copy decoupled; if UX ever standardises on one term, only the
+ * REASONS labels (below) or the file name need updating — not both.
  */
 import { useState } from 'react';
 

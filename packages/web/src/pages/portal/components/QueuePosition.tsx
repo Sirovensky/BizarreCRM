@@ -57,7 +57,18 @@ export function QueuePosition({ ticketId }: QueuePositionProps): React.ReactElem
     };
   }, [ticketId]);
 
-  if (!queue) return null;
+  if (!queue) {
+    return (
+      <div
+        aria-label="Loading queue position"
+        aria-busy="true"
+        className="rounded-lg bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 p-3 min-h-[52px] animate-pulse space-y-2"
+      >
+        <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded w-2/3" />
+        <div className="h-2.5 bg-primary-200 dark:bg-primary-800 rounded w-1/2" />
+      </div>
+    );
+  }
   if (!queue.enabled) return null;
 
   if (queue.closed || queue.position === 0) {
