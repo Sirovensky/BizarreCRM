@@ -53,6 +53,7 @@ import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
+import superAdminManagementRoutes from './super-admin-management.routes.js';
 import {
   getBackupSettings as backupGetSettings,
   updateBackupSettings as backupUpdateSettings,
@@ -542,6 +543,15 @@ router.post('/login/2fa-verify', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════
 
 router.use(superAdminAuth);
+
+// Mount the super-admin management sub-router (env editor, log viewer,
+// system info, disk space, service control, watchdog events) at
+// /management. Inherits superAdminAuth + req.superAdmin from the parent
+// router so individual route files don't re-authenticate. These were
+// previously Electron IPC handlers; ported here to give the browser SPA
+// feature parity with the desktop dashboard.
+// (Static import — see top of file for the import statement.)
+router.use('/management', superAdminManagementRoutes);
 
 // POST /logout
 router.post('/logout', (req, res) => {
