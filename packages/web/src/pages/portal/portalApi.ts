@@ -47,6 +47,19 @@ portalClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Clear stale portal tokens on any 401/403 from a portal endpoint
+portalClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401 || status === 403) {
+      sessionStorage.removeItem('portal_token');
+      clearPortalSecurityTokens();
+    }
+    return Promise.reject(error);
+  },
+);
+
 export interface QuickTrackResponse {
   token: string;
   csrf_token?: string;

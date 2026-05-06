@@ -47,7 +47,7 @@ export function FaqTooltip({ text, children }: FaqTooltipProps): React.ReactElem
         <span
           id={tooltipId}
           role="tooltip"
-          className="absolute top-full left-0 mt-1 z-10 w-56 rounded-md bg-surface-900 dark:bg-surface-700 text-white text-xs p-2 shadow-lg"
+          className="absolute top-full left-0 mt-1 z-10 w-56 rounded-md bg-surface-900 text-surface-50 dark:bg-surface-100 dark:text-surface-900 text-xs p-2 shadow-lg"
         >
           {text}
         </span>

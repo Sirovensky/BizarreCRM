@@ -19,14 +19,26 @@ interface QueuePositionProps {
   ticketId: number;
 }
 
-function ordinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+const ORDINAL_SUFFIXES: Record<string, Partial<Record<Intl.LDMLPluralRule, string>>> = {
+  en: { one: 'st', two: 'nd', few: 'rd', other: 'th' },
+  // Spanish uses "º" (masculine ordinal indicator) with no distinction by category.
+  es: { one: 'º', two: 'º', few: 'º', other: 'º' },
+};
+
+function ordinal(n: number, locale: string): string {
+  const lang = locale.slice(0, 2).toLowerCase();
+  const suffixes = ORDINAL_SUFFIXES[lang];
+  if (!suffixes) {
+    // For unsupported locales, return the plain number with no suffix.
+    return String(n);
+  }
+  const category = new Intl.PluralRules(locale, { type: 'ordinal' }).select(n);
+  const suffix = suffixes[category] ?? '';
+  return n + suffix;
 }
 
 export function QueuePosition({ ticketId }: QueuePositionProps): React.ReactElement | null {
-  const { t } = usePortalI18n();
+  const { t, locale } = usePortalI18n();
   const [queue, setQueue] = useState<QueueData | null>(null);
 
   useEffect(() => {
@@ -68,7 +80,7 @@ export function QueuePosition({ ticketId }: QueuePositionProps): React.ReactElem
       className="rounded-lg bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 p-3"
     >
       <div className="text-sm font-medium text-primary-900 dark:text-primary-100">
-        {t('queue.position', { n: ordinal(queue.position) })}
+        {t('queue.position', { n: ordinal(queue.position, locale) })}
       </div>
       {queue.eta_hours_min !== undefined && queue.eta_hours_max !== undefined ? (
         <div className="text-xs text-primary-700 dark:text-primary-300 mt-1">

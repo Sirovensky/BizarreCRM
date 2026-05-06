@@ -298,6 +298,25 @@ export function useWebSocket() {
       pingTimerRef.current = null;
     }
   }, []);
+
+  // WEB-UIUX-342: extracted so both auth-success and visibilitychange can
+  // start the heartbeat without duplicating the interval body.
+  const startHeartbeat = useCallback(() => {
+    stopHeartbeat();
+    lastMessageAtRef.current = Date.now();
+    pingTimerRef.current = setInterval(() => {
+      const sock = wsRef.current;
+      if (!sock || sock.readyState !== WebSocket.OPEN) return;
+      // Watchdog: if the socket has been silent past PONG_TIMEOUT_MS
+      // the connection is half-open. Force-close so onclose fires
+      // and scheduleReconnect kicks in.
+      if (Date.now() - lastMessageAtRef.current > PONG_TIMEOUT_MS) {
+        try { sock.close(4000, 'heartbeat-timeout'); } catch { /* ignore */ }
+        return;
+      }
+      try { sock.send(JSON.stringify({ type: 'ping', t: Date.now() })); } catch { /* ignore */ }
+    }, PING_INTERVAL_MS);
+  }, [stopHeartbeat]);
   // Stable ref so connect() can call scheduleReconnect() without a circular
   // useCallback dependency or capturing a stale closure value.
   const scheduleReconnectRef = useRef<() => void>(() => { /* populated below */ });
@@ -392,29 +411,9 @@ export function useWebSocket() {
             backoffRef.current = INITIAL_BACKOFF; // Reset backoff on successful auth
             // Start heartbeat now that we are authed. Server replies with
             // {type:'pong'} which is treated as any other message above.
-            stopHeartbeat();
-            lastMessageAtRef.current = Date.now();
-            pingTimerRef.current = setInterval(() => {
-              const sock = wsRef.current;
-              if (!sock || sock.readyState !== WebSocket.OPEN) return;
-              // WEB-FAD-009 (Fixer-C3 2026-04-25): skip heartbeat while tab
-              // is hidden — incoming events are throttled by the browser
-              // anyway and the outgoing ping wastes battery on phones.
-              // Reset lastMessageAtRef so the watchdog doesn't trip the
-              // moment the tab becomes visible again.
-              if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-                lastMessageAtRef.current = Date.now();
-                return;
-              }
-              // Watchdog: if the socket has been silent past PONG_TIMEOUT_MS
-              // the connection is half-open. Force-close so onclose fires
-              // and scheduleReconnect kicks in.
-              if (Date.now() - lastMessageAtRef.current > PONG_TIMEOUT_MS) {
-                try { sock.close(4000, 'heartbeat-timeout'); } catch { /* ignore */ }
-                return;
-              }
-              try { sock.send(JSON.stringify({ type: 'ping', t: Date.now() })); } catch { /* ignore */ }
-            }, PING_INTERVAL_MS);
+            // WEB-UIUX-342: heartbeat is paused (stopped) while tab is
+            // hidden and resumed on visibilitychange — see handler below.
+            startHeartbeat();
           } else {
             // Auth explicitly rejected — stop reconnecting until auth changes.
             authRejectedRef.current = true;
@@ -496,7 +495,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [hasAuthSessionHint, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [hasAuthSessionHint, setConnected, setLastMessage, startHeartbeat, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const { setWsOffline } = useWsStore();
 
@@ -540,7 +539,21 @@ export function useWebSocket() {
     // another tab. Check for the non-secret cookie-session hint when returning
     // to visible, then clear the auth-reject latch and attempt to reconnect.
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible' || wsRef.current) return;
+      // WEB-UIUX-342: pause heartbeat immediately when tab goes hidden to
+      // avoid waking the radio on battery-powered devices every 30 s.
+      if (document.visibilityState === 'hidden') {
+        stopHeartbeat();
+        return;
+      }
+
+      // Tab became visible.
+      // If the socket is still open, just restart the heartbeat — no reconnect needed.
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        startHeartbeat();
+        return;
+      }
+
+      // Socket is gone — reconnect path (existing logic).
       if (authRejectedRef.current) {
         if (!hasAuthSessionHint()) return;
         authRejectedRef.current = false;

@@ -2079,13 +2079,13 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/utils/format.ts:60-66`
   <!-- meta: fix=rate-limit-or-single-warning -->
 
-- [ ] WEB-UIUX-342. **[NIT] `useWebSocket` heartbeat sends ping every 30s on idle dashboards — battery drain.** L15.
+- [x] WEB-UIUX-342. **[NIT] `useWebSocket` heartbeat sends ping every 30s on idle dashboards — battery drain.** L15. **[AUTOLOOP-T14 RESOLVED: useWebSocket heartbeat now stops on tab hidden, resumes on visible — battery saved on background tabs.]**
   `packages/web/src/hooks/useWebSocket.ts:420-440`
 
 - [ ] WEB-UIUX-343. **[NIT] `buildInvalidationMap` rebuilds on every `useWebSocket` mount — should be module-scope const.** L15.
   `packages/web/src/hooks/useWebSocket.ts:75-255,291`
 
-- [ ] WEB-UIUX-344. **[NIT] `useDismissible` per-user dismiss keys not wiped after timeout — only on logout.** Shared kiosk = sticky banners. L16.
+- [x] WEB-UIUX-344. **[NIT] `useDismissible` per-user dismiss keys not wiped after timeout — only on logout.** Shared kiosk = sticky banners. L16. **[AUTOLOOP-T14 RESOLVED: useDismissible stores `{dismissedAt}` JSON; TTL-based expiry (default 24h, configurable). Shared kiosks self-clear.]**
   `packages/web/src/hooks/useDismissible.ts:35-72`
 
 #### A11y + Misc
@@ -2098,7 +2098,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Portal — Customer-Facing
 
-- [ ] WEB-UIUX-346. **[BLOCKER] LanguageSwitcher writes `dark` class to `document.body` not `<html>`.** Tailwind `darkMode: 'class'` selector compiles against `<html class="dark">` — toggle may be no-op. L10.
+- [x] WEB-UIUX-346. **[BLOCKER] LanguageSwitcher writes `dark` class to `document.body` not `<html>`.** Tailwind `darkMode: 'class'` selector compiles against `<html class="dark">` — toggle may be no-op. L10. **[AUTOLOOP-T14 RESOLVED: LanguageSwitcher applyTheme now toggles dark on `document.documentElement` (matches Tailwind darkMode:class on `<html>`).]**
   `packages/web/src/pages/portal/components/LanguageSwitcher.tsx:27-29`
   <!-- meta: fix=use-document.documentElement.classList.toggle -->
 
@@ -2106,46 +2106,46 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:386-390`
   <!-- meta: fix=compute-luminance-pick-text-color -->
 
-- [ ] WEB-UIUX-348. **[MAJOR] Widget "Track My Repair" error block has no `role="alert"`/`aria-live`.** SR users silent on validation failure. L12, L8.
+- [x] WEB-UIUX-348. **[MAJOR] Widget "Track My Repair" error block has no `role="alert"`/`aria-live`.** SR users silent on validation failure. L12, L8. **[AUTOLOOP-T14 RESOLVED: CustomerPortalPage Track widget error block gets role="alert".]**
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:320-322`
 
 - [ ] WEB-UIUX-349. **[MAJOR] LanguageSwitcher 6 buttons (EN/ES/A-/A+/contrast/dark) lack `focus-visible:ring`.** Keyboard users no focus indicator. L12.
   `packages/web/src/pages/portal/components/LanguageSwitcher.tsx:116-166`
 
-- [ ] WEB-UIUX-350. **[MAJOR] PhotoGallery has no full-size lightbox view.** 96x96 thumbnails only — customers can't inspect repair work. L5.
+- [x] WEB-UIUX-350. **[MAJOR] PhotoGallery has no full-size lightbox view.** 96x96 thumbnails only — customers can't inspect repair work. L5. **[AUTOLOOP-T14 RESOLVED: PhotoGallery click-to-Lightbox added; role=dialog, prev/next ArrowKey, Esc/click-outside close, photo counter. Zero new deps.]**
   `packages/web/src/pages/portal/components/PhotoGallery.tsx:128-148`
 
 - [ ] WEB-UIUX-351. **[MAJOR] StatusTimeline still uses raw `bg-gray-*`/`text-gray-*`/`border-gray-*` not `surface-*` tokens.** L9, L10.
   `packages/web/src/pages/portal/components/StatusTimeline.tsx:59,69-91`
 
-- [ ] WEB-UIUX-352. **[MINOR] Auto-prompt review modal opens automatically 2.5s after pickup with sessionStorage gate.** Pushy. Should be user-initiated toast with CTA. L5, L14.
+- [x] WEB-UIUX-352. **[MINOR] Auto-prompt review modal opens automatically 2.5s after pickup with sessionStorage gate.** Pushy. Should be user-initiated toast with CTA. L5, L14. **[AUTOLOOP-T14 RESOLVED: CustomerPortalPage 2.5s auto-open replaced with toast CTA "Leave a review →"; modal opens only on click.]**
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:519-528`
 
 - [ ] WEB-UIUX-353. **[MINOR] Token tail leaks last 6 chars in toast — enumerable info, no benefit.** L16.
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:73,88,93`
   <!-- meta: fix=use-server-supplied-correlation-id -->
 
-- [ ] WEB-UIUX-354. **[MINOR] `clearPortalSecurityTokens` not called on inner-request 401/403.** Widget keeps bad portal_token until handleReset. L16, L6.
+- [x] WEB-UIUX-354. **[MINOR] `clearPortalSecurityTokens` not called on inner-request 401/403.** Widget keeps bad portal_token until handleReset. L16, L6. **[AUTOLOOP-T14 RESOLVED: portalClient axios response interceptor calls `clearPortalSecurityTokens()` on 401/403; stale portal_token cleared.]**
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:269-294`
 
 - [ ] WEB-UIUX-355. **[MINOR] FaqTooltip `mousedown` outside-close — keyboard Tab can't close popover.** L12.
   `packages/web/src/pages/portal/components/FaqTooltip.tsx:20-29`
   <!-- meta: fix=add-focusin-document-listener -->
 
-- [ ] WEB-UIUX-356. **[MINOR] FaqTooltip `bg-surface-900 dark:bg-surface-700` — dark variant LIGHTER than dark page bg.** Tooltip floats incorrectly. L10.
+- [x] WEB-UIUX-356. **[MINOR] FaqTooltip `bg-surface-900 dark:bg-surface-700` — dark variant LIGHTER than dark page bg.** Tooltip floats incorrectly. L10. **[AUTOLOOP-T14 RESOLVED: FaqTooltip dark variant inverted to `bg-surface-100 text-surface-900` for light bubble on dark page.]**
   `packages/web/src/pages/portal/components/FaqTooltip.tsx:50`
 
 - [ ] WEB-UIUX-357. **[MINOR] PhotoGallery alt text identical for every photo: "Repair photo".** SR repeats same string. L12.
   `packages/web/src/pages/portal/components/PhotoGallery.tsx:138`
   <!-- meta: fix=encode-before-after+order+date-in-alt -->
 
-- [ ] WEB-UIUX-358. **[MINOR] QueuePosition `ordinal()` only handles English ("4th").** Spanish locale renders English ordinals. L14, L12.
+- [x] WEB-UIUX-358. **[MINOR] QueuePosition `ordinal()` only handles English ("4th").** Spanish locale renders English ordinals. L14, L12. **[AUTOLOOP-T14 RESOLVED: QueuePosition uses `Intl.PluralRules(locale, type:ordinal)` + per-locale suffix map (en st/nd/rd/th, es º, fallback plain number).]**
   `packages/web/src/pages/portal/components/QueuePosition.tsx:22-26,71`
 
 - [ ] WEB-UIUX-359. **[MINOR] CustomerPortalPage progress bar div has no `role="progressbar"`/`aria-valuenow`.** L12.
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:393-407`
 
-- [ ] WEB-UIUX-360. **[MINOR] CustomerPortalPage ResizeObserver postMessages parent on every pixel change — no throttle.** Floods host frame. L15.
+- [x] WEB-UIUX-360. **[MINOR] CustomerPortalPage ResizeObserver postMessages parent on every pixel change — no throttle.** Floods host frame. L15. **[AUTOLOOP-T14 RESOLVED: CustomerPortalPage ResizeObserver postMessage debounced to 100 ms; clearTimeout on cleanup.]**
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:133-142,260-267`
 
 - [ ] WEB-UIUX-361. **[MINOR] LanguageSwitcher `applyContrast` writes body class but no CSS imported in this file.** Silent no-op if portal-enrichment.css not bundled with route. L9.

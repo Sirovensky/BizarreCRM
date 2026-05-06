@@ -25,7 +25,7 @@ function applyContrast(mode: ContrastMode): void {
 }
 
 function applyTheme(theme: Theme): void {
-  document.body.classList.toggle('dark', theme === 'dark');
+  document.documentElement.classList.toggle('dark', theme === 'dark');
 }
 
 function readInitialFontScale(): number {

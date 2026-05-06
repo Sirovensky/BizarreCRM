@@ -129,16 +129,24 @@ export function CustomerPortalPage() {
     return () => window.removeEventListener('message', onMessage);
   }, [isWidget]);
 
-  // Send height to parent for widget auto-resize
+  // Send height to parent for widget auto-resize (throttled — at most once per 100 ms)
   useEffect(() => {
     if (!isWidget) return;
     const target = parentOrigin ?? '*';
+    let rafId: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
-      const height = document.documentElement.scrollHeight;
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height }, target);
+      if (rafId !== null) return;
+      rafId = setTimeout(() => {
+        rafId = null;
+        const height = document.documentElement.scrollHeight;
+        window.parent.postMessage({ type: 'bizarre-portal-resize', height }, target);
+      }, 100);
     });
     observer.observe(document.body);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) clearTimeout(rafId);
+    };
   }, [isWidget, parentOrigin]);
 
   if (auth.isLoading) {
@@ -257,13 +265,22 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
 
   // Auto-resize iframe — use captured parent origin, fall back to '*' only if
   // handshake hasn't arrived yet (e.g., same-origin embed without init message).
+  // Throttled — postMessage fires at most once per 100 ms during resize.
   useEffect(() => {
     const target = parentOrigin ?? '*';
+    let rafId: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
-      window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, target);
+      if (rafId !== null) return;
+      rafId = setTimeout(() => {
+        rafId = null;
+        window.parent.postMessage({ type: 'bizarre-portal-resize', height: document.documentElement.scrollHeight }, target);
+      }, 100);
     });
     observer.observe(document.body);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) clearTimeout(rafId);
+    };
   }, [parentOrigin]);
 
   async function handleTrack(e: React.FormEvent) {
@@ -318,7 +335,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
         </div>
 
         {error && (
-          <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-3 py-2 text-xs text-red-700 dark:text-red-300">{error}</div>
+          <div role="alert" className="mb-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-3 py-2 text-xs text-red-700 dark:text-red-300">{error}</div>
         )}
 
         <form onSubmit={handleTrack} className="space-y-3">
@@ -515,17 +532,32 @@ function TicketDetailWithEnrichment({
     };
   }, [ticketId]);
 
-  // Auto-prompt for review once, after pickup (closed ticket).
+  // Prompt for review once, after pickup (closed ticket) — user-initiated only.
+  // Shows a non-intrusive toast with a CTA instead of auto-opening the modal.
   useEffect(() => {
     if (!isClosed) return;
     const reviewedKey = `portal_reviewed_${ticketId}`;
     if (sessionStorage.getItem(reviewedKey)) return;
-    const timer = setTimeout(() => {
-      setReviewOpen(true);
-      sessionStorage.setItem(reviewedKey, '1');
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [isClosed, ticketId]);
+    sessionStorage.setItem(reviewedKey, '1');
+    toast(
+      (toastInstance) => (
+        <span className="flex items-center gap-3">
+          <span>{t('review.toast_cta')}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setReviewOpen(true);
+              toast.dismiss(toastInstance.id);
+            }}
+            className="shrink-0 rounded bg-primary-600 hover:bg-primary-700 text-primary-950 px-2 py-1 text-xs font-semibold"
+          >
+            {t('review.leave_review')}
+          </button>
+        </span>
+      ),
+      { duration: 8000 },
+    );
+  }, [isClosed, ticketId, t]);
 
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
