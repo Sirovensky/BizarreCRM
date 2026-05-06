@@ -4,6 +4,7 @@ import { UserCheck, UserPlus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+import { useEscClose } from '@/hooks/useEscClose';
 
 /**
  * Conversation assignee dropdown — audit §51.1.
@@ -30,14 +31,6 @@ interface AssignmentRow {
   assigned_at: string;
 }
 
-async function fetchAssignment(phone: string): Promise<AssignmentRow | null> {
-  const res = await api.get<{ success: boolean; data: AssignmentRow[] }>(
-    '/inbox/conversations',
-  );
-  const rows = res.data.data || [];
-  return rows.find((r) => r.phone === phone) ?? null;
-}
-
 async function fetchUsers(): Promise<UserRow[]> {
   const res = await api.get<{ success: boolean; data: UserRow[] }>('/settings/users');
   return (res.data as any).data ?? [];
@@ -53,11 +46,25 @@ export function ConversationAssignee({ phone, className }: ConversationAssigneeP
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  const { data: assignment } = useQuery({
-    queryKey: ['inbox-assignment', phone],
-    queryFn: () => fetchAssignment(phone),
+  // WEB-UIUX-379: close popover on Escape key
+  useEscClose(() => setOpen(false), open);
+
+  // WEB-UIUX-367: Use a shared queryKey so all per-row ConversationAssignee
+  // instances share a single cached GET /inbox/conversations response instead
+  // of each firing its own request (N+1). staleTime avoids refetches within a
+  // 30-second window even after a mutation invalidation races in another tab.
+  const { data: allConversations } = useQuery({
+    queryKey: ['inbox-conversations'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: AssignmentRow[] }>(
+        '/inbox/conversations',
+      );
+      return res.data.data || [];
+    },
     enabled: !!phone,
+    staleTime: 30_000,
   });
+  const assignment = allConversations?.find((r) => r.phone === phone) ?? null;
 
   const { data: users } = useQuery({
     queryKey: ['inbox-users-for-assign'],
@@ -69,7 +76,6 @@ export function ConversationAssignee({ phone, className }: ConversationAssigneeP
     mutationFn: (userId: number | null) =>
       api.patch(`/inbox/conversation/${encodeURIComponent(phone)}/assign`, { user_id: userId }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['inbox-assignment', phone] });
       qc.invalidateQueries({ queryKey: ['inbox-conversations'] });
       setOpen(false);
       toast.success('Conversation assigned');

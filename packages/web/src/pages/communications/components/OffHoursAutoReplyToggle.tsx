@@ -49,6 +49,7 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['store-config-inbox'],
@@ -61,7 +62,15 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
     }
   }, [config, editing]);
 
-  const enabled = config?.auto_reply_enabled === '1' || config?.auto_reply_enabled === 'true';
+  // Reset optimistic state once the server value arrives after mutation
+  useEffect(() => {
+    if (config !== undefined) {
+      setOptimisticEnabled(null);
+    }
+  }, [config]);
+
+  const serverEnabled = config?.auto_reply_enabled === '1' || config?.auto_reply_enabled === 'true';
+  const enabled = optimisticEnabled !== null ? optimisticEnabled : serverEnabled;
 
   const saveMut = useMutation({
     mutationFn: updateConfig,
@@ -69,12 +78,18 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
       qc.invalidateQueries({ queryKey: ['store-config-inbox'] });
       toast.success('Saved');
     },
-    onError: () => toast.error('Failed to save'),
+    onError: () => {
+      // Revert optimistic state on error
+      setOptimisticEnabled(null);
+      toast.error('Failed to save');
+    },
   });
 
   function toggle() {
+    const next = !enabled;
+    setOptimisticEnabled(next);
     saveMut.mutate({
-      auto_reply_enabled: enabled ? '0' : '1',
+      auto_reply_enabled: next ? '1' : '0',
     });
   }
 

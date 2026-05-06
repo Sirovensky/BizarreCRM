@@ -20,10 +20,10 @@ interface SentimentBadgeProps {
 }
 
 const EMOJI: Record<Sentiment, string> = {
-  angry: 'angry',
-  happy: 'happy',
-  neutral: '—',
-  urgent: 'urgent',
+  angry: '😠',
+  happy: '😊',
+  neutral: '😐',
+  urgent: '🚨',
 };
 
 const LABEL: Record<Sentiment, string> = {

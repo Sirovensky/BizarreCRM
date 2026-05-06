@@ -1,0 +1,51 @@
+/*
+ * portal-enrichment.css
+ * Supplemental styles for the Customer Portal's accessibility controls.
+ * Body/HTML classes are toggled by LanguageSwitcher (applyContrast / applyTheme).
+ * Font scaling is applied via --portal-font-scale on :root.
+ */
+
+/* ── Font scaling ────────────────────────────────────────────────── */
+:root {
+  --portal-font-scale: 1;
+}
+
+/* Apply the scale to all text inside the portal wrapper. */
+body {
+  font-size: calc(1rem * var(--portal-font-scale));
+}
+
+/* ── High-contrast mode ──────────────────────────────────────────── */
+body.portal-high-contrast {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+body.portal-high-contrast a,
+body.portal-high-contrast button {
+  color: #ffff00 !important;
+  text-decoration: underline;
+}
+
+body.portal-high-contrast button {
+  border: 2px solid #ffff00 !important;
+  background-color: #000 !important;
+}
+
+body.portal-high-contrast input,
+body.portal-high-contrast select,
+body.portal-high-contrast textarea {
+  background-color: #000 !important;
+  color: #fff !important;
+  border: 2px solid #fff !important;
+}
+
+body.portal-high-contrast img {
+  filter: contrast(1.4) brightness(1.1);
+}
+
+/* Ensure focus rings remain visible in high-contrast mode */
+body.portal-high-contrast :focus-visible {
+  outline: 3px solid #ffff00 !important;
+  outline-offset: 2px;
+}

@@ -8,6 +8,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { usePortalI18n, type Locale } from '../i18n';
+import './portal-enrichment.css';
 
 type ContrastMode = 'normal' | 'high';
 type Theme = 'light' | 'dark';

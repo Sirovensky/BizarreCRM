@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw, X, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -39,8 +40,11 @@ function truncate(s: string, len: number) {
   return s.length > len ? s.slice(0, len) + '…' : s;
 }
 
+const PAGE_SIZE = 10;
+
 export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
   const qc = useQueryClient();
+  const [showAll, setShowAll] = useState(false);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['inbox-retry-queue'],
@@ -91,7 +95,7 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
         </div>
       ) : (
         <ul className="divide-y divide-surface-100 dark:divide-surface-700">
-          {failed.slice(0, 10).map((r) => (
+          {(showAll ? failed : failed.slice(0, PAGE_SIZE)).map((r) => (
             <li key={r.id} className="py-2 text-[11px]">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -132,6 +136,14 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
             </li>
           ))}
         </ul>
+        {failed.length > PAGE_SIZE && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="mt-2 w-full text-center text-[11px] text-primary-600 hover:underline dark:text-primary-400"
+          >
+            {showAll ? `Show first ${PAGE_SIZE}` : `Show all ${failed.length}`}
+          </button>
+        )}
       )}
     </div>
   );

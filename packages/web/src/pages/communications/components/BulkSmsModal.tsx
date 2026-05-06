@@ -100,11 +100,13 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      // Gate Esc while in preview — closing would silently discard the
+      // 5-min confirmation_token and force the user to re-preview.
+      if (e.key === 'Escape' && !preview) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, preview]);
 
   if (!open) return null;
 
@@ -114,7 +116,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       aria-modal="true"
       aria-labelledby="bulk-sms-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+      onClick={preview ? undefined : onClose}
     >
       <div
         className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
@@ -139,11 +141,14 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <label className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300">
               Segment
             </label>
-            <div className="space-y-1">
+            <div role="radiogroup" aria-label="Recipient segment" className="space-y-1">
               {SEGMENTS.map((s) => (
                 <button
                   key={s.value}
                   type="button"
+                  role="radio"
+                  aria-checked={segment === s.value}
+                  tabIndex={segment === s.value ? 0 : -1}
                   onClick={() => {
                     setSegment(s.value);
                     setPreview(null);

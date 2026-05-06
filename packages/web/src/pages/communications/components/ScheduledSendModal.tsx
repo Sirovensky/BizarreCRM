@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, type RefObject } from 'react';
 import { X, CalendarClock, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /**
  * Scheduled send modal — audit §51 preamble.
@@ -41,6 +42,8 @@ export function ScheduledSendModal({
   toPhone,
   body,
 }: ScheduledSendModalProps) {
+  const dialogRef = useFocusTrap(open);
+
   const defaultWhen = useMemo(() => toLocalIsoInput(addMinutes(60)), []);
   const [when, setWhen] = useState(defaultWhen);
   const [sending, setSending] = useState(false);
@@ -110,6 +113,7 @@ export function ScheduledSendModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef as RefObject<HTMLDivElement>}
         className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >

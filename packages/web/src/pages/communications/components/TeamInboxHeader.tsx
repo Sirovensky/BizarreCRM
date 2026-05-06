@@ -105,7 +105,7 @@ export function TeamInboxHeader({
         {sla && sla.total_inbound > 0 && (
           <div
             title={`Avg first response — ${sla.responded}/${sla.total_inbound} replied in last ${sla.window_days}d`}
-            className="hidden items-center gap-0.5 text-[10px] text-surface-500 md:flex"
+            className="flex items-center gap-0.5 text-[10px] text-surface-500"
           >
             <Clock className="h-2.5 w-2.5" />
             {sla.avg_first_response_minutes}m avg

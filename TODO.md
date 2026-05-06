@@ -2148,7 +2148,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-360. **[MINOR] CustomerPortalPage ResizeObserver postMessages parent on every pixel change — no throttle.** Floods host frame. L15. **[AUTOLOOP-T14 RESOLVED: CustomerPortalPage ResizeObserver postMessage debounced to 100 ms; clearTimeout on cleanup.]**
   `packages/web/src/pages/portal/CustomerPortalPage.tsx:133-142,260-267`
 
-- [ ] WEB-UIUX-361. **[MINOR] LanguageSwitcher `applyContrast` writes body class but no CSS imported in this file.** Silent no-op if portal-enrichment.css not bundled with route. L9.
+- [x] WEB-UIUX-361. **[MINOR] LanguageSwitcher `applyContrast` writes body class but no CSS imported in this file.** Silent no-op if portal-enrichment.css not bundled with route. L9. **[AUTOLOOP-T15 RESOLVED: created portal-enrichment.css with portal-high-contrast rules + font-scale; imported in LanguageSwitcher.]**
   `packages/web/src/pages/portal/components/LanguageSwitcher.tsx:5-7,23-25`
 
 #### Communications Components
@@ -2156,59 +2156,59 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-362. **[BLOCKER] BulkSmsModal no focus trap, no initial focus.** Esc wired, Tab can land outside. L12.
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:111-128`
 
-- [ ] WEB-UIUX-363. **[BLOCKER] ScheduledSendModal no focus trap.** L12.
+- [x] WEB-UIUX-363. **[BLOCKER] ScheduledSendModal no focus trap.** L12. **[AUTOLOOP-T15 RESOLVED: ScheduledSendModal wired with useFocusTrap(open); dialog ref attached.]**
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx:104-123`
 
 - [ ] WEB-UIUX-364. **[MAJOR] BulkSmsModal "Send to N" destructive but no typing-to-confirm for count > 50.** L16, L8.
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:215-222`
 
-- [ ] WEB-UIUX-365. **[MAJOR] BulkSmsModal segment buttons not `radiogroup`/`role="radio"`.** Mutually exclusive but SR doesn't know. L12.
+- [x] WEB-UIUX-365. **[MAJOR] BulkSmsModal segment buttons not `radiogroup`/`role="radio"`.** Mutually exclusive but SR doesn't know. L12. **[AUTOLOOP-T15 RESOLVED: BulkSmsModal segment buttons wrapped in role=radiogroup; each button gets role=radio + aria-checked + roving tabIndex.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:142-164`
 
 - [ ] WEB-UIUX-366. **[MAJOR] CannedResponseHotkeys binds Cmd+1..3 (macOS browser tab switch shortcut).** Conflicts with browser native. L1, L13.
   `packages/web/src/pages/communications/components/CannedResponseHotkeys.tsx:58-60`
   <!-- meta: fix=use-Ctrl-only-or-Alt-1..3 -->
 
-- [ ] WEB-UIUX-367. **[MAJOR] ConversationAssignee fetches ALL conversations to find one row's assignee.** N+1 — repeats per row. L15.
+- [x] WEB-UIUX-367. **[MAJOR] ConversationAssignee fetches ALL conversations to find one row's assignee.** N+1 — repeats per row. L15. **[AUTOLOOP-T15 RESOLVED: ConversationAssignee shares queryKey=["inbox-conversations"] + 30s staleTime; N HTTP requests collapse to 1 cached fetch.]**
   `packages/web/src/pages/communications/components/ConversationAssignee.tsx:33-39`
   <!-- meta: fix=add-/inbox/conversation/:phone-or-prop-drill-list -->
 
 - [ ] WEB-UIUX-368. **[MAJOR] ConversationTags fetches all conversations per phone — same N+1 as 367.** L15.
   `packages/web/src/pages/communications/components/ConversationTags.tsx:34-40`
 
-- [ ] WEB-UIUX-369. **[MAJOR] SentimentBadge `EMOJI` map values are LITERAL TEXT 'angry'/'happy' — renders "angry Angry" inside pill.** L9, L4.
+- [x] WEB-UIUX-369. **[MAJOR] SentimentBadge `EMOJI` map values are LITERAL TEXT 'angry'/'happy' — renders "angry Angry" inside pill.** L9, L4. **[AUTOLOOP-T15 RESOLVED: SentimentBadge EMOJI map values switched from literal text "angry"/"happy" to actual glyphs 😠/😊/🚨/😐.]**
   `packages/web/src/pages/communications/components/SentimentBadge.tsx:22-27,61`
   <!-- meta: fix=use-actual-emoji-glyphs-or-remove-prefix-span -->
 
 - [ ] WEB-UIUX-370. **[MAJOR] ScheduledSendModal validates date in component-local TZ but submits via `toISOString()`.** No TZ name shown. L14, L16.
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx:66-85`
 
-- [ ] WEB-UIUX-371. **[MINOR] BulkSmsModal backdrop click during preview discards 5-min confirmation_token.** L8, L5.
+- [x] WEB-UIUX-371. **[MINOR] BulkSmsModal backdrop click during preview discards 5-min confirmation_token.** L8, L5. **[AUTOLOOP-T15 RESOLVED: BulkSmsModal backdrop click + Esc key gated on `!preview`; confirmation_token preserved during preview state.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117,121`
 
 - [ ] WEB-UIUX-372. **[MINOR] ConversationTags suggestions only render `tags.length === 0`.** Once 1 tag exists, no more suggestions. L5.
   `packages/web/src/pages/communications/components/ConversationTags.tsx:124`
 
-- [ ] WEB-UIUX-373. **[MINOR] FailedSendRetryList truncated to first 10 with no "show more".** L5.
+- [x] WEB-UIUX-373. **[MINOR] FailedSendRetryList truncated to first 10 with no "show more".** L5. **[AUTOLOOP-T15 RESOLVED: FailedSendRetryList showAll toggle button appears when queue >10; "Show all N" / "Show first 10" toggle.]**
   `packages/web/src/pages/communications/components/FailedSendRetryList.tsx:94`
 
 - [ ] WEB-UIUX-374. **[MINOR] FailedSendRetryList "attempt #${retry_count + 1}" reads "attempt #1" before any retry.** L14.
   `packages/web/src/pages/communications/components/FailedSendRetryList.tsx:109-111`
 
-- [ ] WEB-UIUX-375. **[MINOR] OffHoursAutoReplyToggle `mutate` fires before local state knows — visual switch flickers.** L13, L6.
+- [x] WEB-UIUX-375. **[MINOR] OffHoursAutoReplyToggle `mutate` fires before local state knows — visual switch flickers.** L13, L6. **[AUTOLOOP-T15 RESOLVED: OffHoursAutoReplyToggle optimisticEnabled state updates instantly on click; reverts on mutation error. Flicker gone.]**
   `packages/web/src/pages/communications/components/OffHoursAutoReplyToggle.tsx:74-78`
   <!-- meta: fix=optimistic-update-with-onMutate-rollback-onError -->
 
 - [ ] WEB-UIUX-376. **[MINOR] QuickSmsAttachmentButton preview blob URL not revoked on parent unmount mid-upload.** L15.
   `packages/web/src/pages/communications/components/QuickSmsAttachmentButton.tsx:76-79,61`
 
-- [ ] WEB-UIUX-377. **[MINOR] TeamInboxHeader avg-SLA pill `hidden md:flex`.** Mobile operators see no SLA pulse. L11.
+- [x] WEB-UIUX-377. **[MINOR] TeamInboxHeader avg-SLA pill `hidden md:flex`.** Mobile operators see no SLA pulse. L11. **[AUTOLOOP-T15 RESOLVED: TeamInboxHeader avg-SLA pill `hidden md:flex` → `flex`; visible on all viewports.]**
   `packages/web/src/pages/communications/components/TeamInboxHeader.tsx:106-113`
 
 - [ ] WEB-UIUX-378. **[MINOR] TemplateAnalyticsCard table missing `<caption>` for SR.** L12.
   `packages/web/src/pages/communications/components/TemplateAnalyticsCard.tsx:67-105`
 
-- [ ] WEB-UIUX-379. **[MINOR] ConversationAssignee popover no Esc handler.** L12.
+- [x] WEB-UIUX-379. **[MINOR] ConversationAssignee popover no Esc handler.** L12. **[AUTOLOOP-T15 RESOLVED: ConversationAssignee popover wired with useEscClose(open, ...); Esc closes popover.]**
   `packages/web/src/pages/communications/components/ConversationAssignee.tsx:99-138`
 
 #### Voice
