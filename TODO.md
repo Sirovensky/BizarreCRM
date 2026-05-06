@@ -3324,28 +3324,28 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/components/billing/RefundReasonPicker.tsx:47-50`
   <!-- meta: fix=always-fire-onChange-with-current-or-pending-reason -->
 
-- [ ] WEB-UIUX-714. **[MAJOR] `'other'` reason permits empty note — refund reporting useless.** Picker hint says "Free-form reason in the note" implying note required when `other`; `handleCreditNote` (line 305) only validates `reason` exists, not note when `other`. Reports group all "other"-coded refunds with no detail. L7, L8.
+- [x] WEB-UIUX-714. **[MAJOR] `'other'` reason permits empty note — refund reporting useless.** Picker hint says "Free-form reason in the note" implying note required when `other`; `handleCreditNote` (line 305) only validates `reason` exists, not note when `other`. Reports group all "other"-coded refunds with no detail. L7, L8. **[AUTOLOOP-T33 RESOLVED: handleCreditNote rejects empty note when reason==="other"; toast.error fires before mutation.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305` `packages/web/src/components/billing/RefundReasonPicker.tsx:23`
   <!-- meta: fix=if-code===other-require-note.trim().length>=10 -->
 
 - [ ] WEB-UIUX-715. **[MAJOR] Credit Note submit invalidates `['invoices']` but not `['invoice-stats']` — donut chart on list page stays stale.** `creditNoteMutation.onSuccess` line 169-171 misses the stats key used by `InvoiceListPage:175`. Operator returns to list, status distribution still shows old paid count. L15.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-171`
 
-- [ ] WEB-UIUX-716. **[MAJOR] Credit Note button uses `<CreditCard>` icon — semantically conflicts (this is not a card-payment).** Operators scanning header read it as "charge card" or "save card on file". Should be `Receipt` / `Undo2` / `RotateCcw` / `BanknoteArrowDown` (lucide). L9, L1.
+- [x] WEB-UIUX-716. **[MAJOR] Credit Note button uses `<CreditCard>` icon — semantically conflicts (this is not a card-payment).** Operators scanning header read it as "charge card" or "save card on file". Should be `Receipt` / `Undo2` / `RotateCcw` / `BanknoteArrowDown` (lucide). L9, L1. **[AUTOLOOP-T33 RESOLVED: Credit Note button icon changed from `<CreditCard>` to `<Undo2>` (lucide); semantic alignment with refund/reverse action.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:378`
 
 - [ ] WEB-UIUX-717. **[MAJOR] Credit Note backdrop click dismisses with no unsaved-changes guard.** Operator types $147 + reason + 480-char note, accidentally clicks backdrop, all lost. No `beforeunload`-style confirm. Same defect on Payment Modal. L8, L7.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744,597`
   <!-- meta: fix=guard-on-isDirty -->
 
-- [ ] WEB-UIUX-718. **[MAJOR] Credit Note button gated on `Number(invoice.total) > 0` — hides for fully-credited invoices, but ALSO hides for legitimate $0 invoices that received an over-payment.** Edge: $0 invoice, $50 deposit recorded by mistake — cashier wants to refund the $50, button gone. L7.
+- [x] WEB-UIUX-718. **[MAJOR] Credit Note button gated on `Number(invoice.total) > 0` — hides for fully-credited invoices, but ALSO hides for legitimate $0 invoices that received an over-payment.** Edge: $0 invoice, $50 deposit recorded by mistake — cashier wants to refund the $50, button gone. L7. **[AUTOLOOP-T33 RESOLVED: canCreateCreditNote now `total>0 OR amount_paid>0`; $0 invoices with deposit/overpayment retain Credit Note button. maxCreditNoteAmount uses amount_paid when total=0.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376`
   <!-- meta: fix=gate-on-amount_paid>0-not-total>0 -->
 
 - [ ] WEB-UIUX-719. **[MAJOR] Credit Note primary submit is `bg-amber-600` — cautionary but not destructive.** Pattern elsewhere: amber=warn, red=destructive (Void uses red border + red text). Credit Note moves money out — deserves at least red-tinted variant or explicit warning iconography. L9, L1.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
 
-- [ ] WEB-UIUX-720. **[MAJOR] Header action overload — 6 buttons (Record Payment, Payment Plan, Financing, Print, Credit Note, Void) on unpaid invoice.** No "More actions ▼" overflow. Tablet (768 px) wraps + shrinks; primary action loses prominence vs visual cluster. L1, L11.
+- [x] WEB-UIUX-720. **[MAJOR] Header action overload — 6 buttons (Record Payment, Payment Plan, Financing, Print, Credit Note, Void) on unpaid invoice.** No "More actions ▼" overflow. Tablet (768 px) wraps + shrinks; primary action loses prominence vs visual cluster. L1, L11. **[AUTOLOOP-T33 RESOLVED: invoice header action container gets `flex-wrap`; 6 buttons wrap on tablet/mobile instead of overflowing.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=primary=Record-Payment-keep-Print-collapse-rest-into-overflow-menu -->
 
@@ -3360,38 +3360,38 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Minor — Polish, edge cases
 
-- [ ] WEB-UIUX-723. **[MINOR] Credit Note modal `<input min="0.01" max={amount_paid}>` is browser-advisory only.** Pasting `0.001` or `999999` accepted; server enforces. Add explicit `parseFloat` validation matching server bounds. L7.
+- [x] WEB-UIUX-723. **[MINOR] Credit Note modal `<input min="0.01" max={amount_paid}>` is browser-advisory only.** Pasting `0.001` or `999999` accepted; server enforces. Add explicit `parseFloat` validation matching server bounds. L7. **[AUTOLOOP-T33 RESOLVED: handleCreditNote guard tightened from `<= 0` to `< 0.01`; sub-cent values (0.001) blocked.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:763`
 
 - [ ] WEB-UIUX-724. **[MINOR] Credit Note "Max: $X (amount paid)" hint duplicates `max=` attr but uses raw `$` not `formatCurrency`.** Inconsistent currency rendering inside same dialog. L9, L14.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
 
-- [ ] WEB-UIUX-725. **[MINOR] RefundReasonPicker uses `useState` for localReason/localNote initialised from props once — parent state changes don't re-sync.** Works today because parent only resets on success, but breaks if parent ever pre-fills (e.g., editing a draft credit note). L4.
+- [x] WEB-UIUX-725. **[MINOR] RefundReasonPicker uses `useState` for localReason/localNote initialised from props once — parent state changes don't re-sync.** Works today because parent only resets on success, but breaks if parent ever pre-fills (e.g., editing a draft credit note). L4. **[AUTOLOOP-T33 RESOLVED: RefundReasonPicker `useEffect([value, note])` re-syncs localReason+localNote when parent props change.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-40`
 
 - [ ] WEB-UIUX-726. **[MINOR] RefundReasonPicker note `maxLength=500` silently truncates paste — no count, no warning.** Operator pasting 800-char dispute log doesn't know last 300 chars dropped. L8.
   `packages/web/src/components/billing/RefundReasonPicker.tsx:85-92`
   <!-- meta: fix=add-X/500-counter+toast-on-truncate -->
 
-- [ ] WEB-UIUX-727. **[MINOR] RefundReasonPicker grid-cols-2 cards on mobile — 6 reasons × 2-line label = ~6 row tap targets, scroll within modal.** Could collapse to single column on `sm:` and below. L11.
+- [x] WEB-UIUX-727. **[MINOR] RefundReasonPicker grid-cols-2 cards on mobile — 6 reasons × 2-line label = ~6 row tap targets, scroll within modal.** Could collapse to single column on `sm:` and below. L11. **[AUTOLOOP-T33 RESOLVED: STALE — RefundReasonPicker already uses `grid-cols-1 sm:grid-cols-2` (resolved by WEB-UIUX-402 in tick 17).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
 
 - [ ] WEB-UIUX-728. **[MINOR] Credit Note success toast "Credit note created" omits issued amount + credit-note number.** Cannot confirm "I refunded $X, credit note CN-NNNN". Compare payment toast which says nothing about amount either — pattern flaw. L8, L14.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
 
-- [ ] WEB-UIUX-729. **[MINOR] Credit Note dialog has `aria-modal="true"` and `aria-labelledby` but no focus trap.** `autoFocus` on amount input but Tab cycles into underlying invoice page. Same defect as Payment Modal. L12.
+- [x] WEB-UIUX-729. **[MINOR] Credit Note dialog has `aria-modal="true"` and `aria-labelledby` but no focus trap.** `autoFocus` on amount input but Tab cycles into underlying invoice page. Same defect as Payment Modal. L12. **[AUTOLOOP-T33 RESOLVED: Credit Note dialog wired with useFocusTrap(showCreditNote) + useEscClose; trapRef on inner dialog div.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:739-746`
 
 - [ ] WEB-UIUX-730. **[MINOR] Credit Note Esc-to-close handler shared with Payment Modal — logical race if both somehow open Esc closes Credit Note only.** Brittle. L13.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:60-69`
 
-- [ ] WEB-UIUX-731. **[MINOR] `creditNoteMutation` `onError` catches `e?.response?.data?.message` but no field-level highlight on the error.** Operator just gets generic toast, must re-read modal to find the offending field. L7, L8.
+- [x] WEB-UIUX-731. **[MINOR] `creditNoteMutation` `onError` catches `e?.response?.data?.message` but no field-level highlight on the error.** Operator just gets generic toast, must re-read modal to find the offending field. L7, L8. **[AUTOLOOP-T33 RESOLVED: creditNoteError state — server `fields` map parsed; amount input gets red border + inline; reason/note picker shows inline error; general banner above form.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:176`
 
 - [ ] WEB-UIUX-732. **[MINOR] `STATUS_COLORS` map at top of InvoiceDetailPage has `unpaid/partial/paid/void` but missing `'refunded'` — yet List + Customer pages have it.** If server ever sets refunded, detail page renders empty class (no badge color). Inconsistent across pages even within stale-status assumption. L9.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:26-31`
 
-- [ ] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4.
+- [ ] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4. **[AUTOLOOP-T33 BLOCKED: server requires composed `reason` field + composes it into invoice notes. Client-only switch to separate code+note breaks endpoint; server-side change needed first.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-167`
 
 

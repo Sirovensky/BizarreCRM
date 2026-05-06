@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscClose } from '@/hooks/useEscClose';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
@@ -49,6 +51,15 @@ export function InvoiceDetailPage() {
     reason: RefundReasonCode | null;
     note: string;
   }>({ amount: '', reason: null, note: '' });
+  // WEB-UIUX-731: field-level error state for credit note form.
+  // Populated from server error.response.data.fields (e.g. { amount: 'msg' })
+  // or a generic fallback; cleared on any form change or successful mutation.
+  const [creditNoteError, setCreditNoteError] = useState<{
+    amount?: string;
+    reason?: string;
+    note?: string;
+    _general?: string;
+  }>({});
   const [emailReceiptSending, setEmailReceiptSending] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
@@ -67,11 +78,10 @@ export function InvoiceDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [showPayment]);
 
-  const handleCreditNoteDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
-    event.stopPropagation();
-    setShowCreditNote(false);
-  };
+  // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
+  // useFocusTrap returns a ref that must be attached to the inner dialog div.
+  const creditNoteDialogRef = useFocusTrap(showCreditNote);
+  useEscClose(() => setShowCreditNote(false), showCreditNote);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -189,8 +199,20 @@ export function InvoiceDetailPage() {
       toast.success(msg);
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', reason: null, note: '' });
+      setCreditNoteError({});
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create credit note'),
+    onError: (e: any) => {
+      const serverMsg: string = e?.response?.data?.message || 'Failed to create credit note';
+      // WEB-UIUX-731: parse server-side field errors when available.
+      // Server may return { fields: { amount?: string, reason?: string, note?: string } }
+      const serverFields: Record<string, string> | undefined = e?.response?.data?.fields;
+      if (serverFields && typeof serverFields === 'object' && Object.keys(serverFields).length > 0) {
+        setCreditNoteError(serverFields as { amount?: string; reason?: string; note?: string });
+      } else {
+        setCreditNoteError({ _general: serverMsg });
+      }
+      toast.error(serverMsg);
+    },
   });
 
   // Tip adjustment — wires the existing /blockchyp/adjust-tip endpoint.
@@ -239,11 +261,15 @@ export function InvoiceDetailPage() {
   if (!isValidId) return <div className="text-center py-20 text-surface-400">Invalid Invoice ID</div>;
   if (!invoice) return <div className="text-center py-20 text-surface-400">Invoice not found</div>;
 
+  // WEB-UIUX-718: for $0 invoices with deposits/overpayments, amount_paid is
+  // the refundable amount (not capped by total which is 0).
   const maxCreditNoteAmount = Math.max(
     0,
-    Math.min(Number(invoice.amount_paid) || 0, Number(invoice.total) || 0),
+    Number(invoice.total) > 0
+      ? Math.min(Number(invoice.amount_paid) || 0, Number(invoice.total) || 0)
+      : Number(invoice.amount_paid) || 0,
   );
-  const canCreateCreditNote = invoice.status !== 'void' && maxCreditNoteAmount > 0;
+  const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
 
   const handlePay = async () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
@@ -315,7 +341,7 @@ export function InvoiceDetailPage() {
 
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
-    if (!amount || amount <= 0) return toast.error('Enter a valid amount');
+    if (!amount || amount < 0.01) return toast.error('Minimum credit note amount is 0.01');
     if (amount > maxCreditNoteAmount) {
       // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
       return toast.error(
@@ -323,6 +349,9 @@ export function InvoiceDetailPage() {
       );
     }
     if (!creditNoteForm.reason) return toast.error('Select a reason');
+    if (creditNoteForm.reason === 'other' && !creditNoteForm.note.trim()) {
+      return toast.error('Please enter a note when selecting "Other" as the reason');
+    }
     const invoiceId = invoice.order_id;
     const typed = window.prompt(
       `Type the invoice number "${invoiceId}" to confirm Credit Note of ${formatCurrency(amount)}.`,
@@ -368,7 +397,7 @@ export function InvoiceDetailPage() {
               {invoice.status}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
               <>
                 {/* FA-L4 — offer the "split into installments" wizard for
@@ -395,7 +424,7 @@ export function InvoiceDetailPage() {
             </button>
             {canCreateCreditNote && (
               <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
-                <CreditCard className="h-4 w-4" /> Refund (credit note)
+                <Undo2 className="h-4 w-4" /> Refund (credit note)
               </button>
             )}
             {/* WEB-W2-017: Tip-adjust removed — BlockChyp SDK does not expose
@@ -649,7 +678,7 @@ export function InvoiceDetailPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}
         >
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          <div ref={creditNoteDialogRef as React.RefObject<HTMLDivElement>} className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h2 id="record-payment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
             <div className="space-y-4">
               <div>
@@ -792,13 +821,12 @@ export function InvoiceDetailPage() {
           aria-modal="true"
           aria-labelledby="credit-note-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onKeyDown={handleCreditNoteDialogKeyDown}
           onClick={(e) => { if (e.target === e.currentTarget) setShowCreditNote(false); }}
         >
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
-              <button aria-label="Close" onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -855,12 +883,18 @@ export function InvoiceDetailPage() {
               })()}
             </div>
             <div className="space-y-4">
+              {/* WEB-UIUX-731: general server error banner (when no specific field is flagged) */}
+              {creditNoteError._general && (
+                <p role="alert" className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                  {creditNoteError._general}
+                </p>
+              )}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Credit Amount</label>
                   <button
                     type="button"
-                    onClick={() => setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) })}
+                    onClick={() => { setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}
                     className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
                   >
                     Refund full ({formatCurrency(maxCreditNoteAmount)})
@@ -872,35 +906,50 @@ export function InvoiceDetailPage() {
                     id="credit-amount"
                     type="number" step="0.01" min="0.01" max={maxCreditNoteAmount}
                     value={creditNoteForm.amount}
-                    onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
+                    onChange={(e) => { setCreditNoteForm({ ...creditNoteForm, amount: e.target.value }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}
                     placeholder={maxCreditNoteAmount.toFixed(2)}
-                    aria-invalid={creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount) ? true : undefined}
-                    aria-describedby="credit-amount-label"
-                    className="input w-full pl-12"
+                    aria-invalid={(creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)) || !!creditNoteError.amount ? true : undefined}
+                    aria-describedby={creditNoteError.amount ? 'credit-amount-error' : 'credit-amount-label'}
+                    className={`input w-full pl-12${creditNoteError.amount ? ' border-red-500 dark:border-red-500 ring-1 ring-red-500' : ''}`}
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-surface-400 mt-1">
-                  Max credit: {formatCurrency(maxCreditNoteAmount)}
-                </p>
+                {/* WEB-UIUX-731: field-level error for amount, replaces helper text when present */}
+                {creditNoteError.amount ? (
+                  <p id="credit-amount-error" role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.amount}</p>
+                ) : (
+                  <p className="text-xs text-surface-400 mt-1">
+                    Max credit: {formatCurrency(maxCreditNoteAmount)}
+                  </p>
+                )}
               </div>
               {/* FA-L8 — structured reason picker replaces the free-text
                   textarea so credit notes/refunds can be grouped by cause
                   in reporting, while still accepting a free-form note. */}
-              <RefundReasonPicker
-                value={creditNoteForm.reason}
-                note={creditNoteForm.note}
-                onChange={(code, note) =>
-                  setCreditNoteForm((prev) => ({ ...prev, reason: code, note }))
-                }
-              />
+              <div>
+                <RefundReasonPicker
+                  value={creditNoteForm.reason}
+                  note={creditNoteForm.note}
+                  onChange={(code, note) => {
+                    setCreditNoteForm((prev) => ({ ...prev, reason: code, note }));
+                    setCreditNoteError((prev) => ({ ...prev, reason: undefined, note: undefined }));
+                  }}
+                />
+                {/* WEB-UIUX-731: field-level errors for reason / note */}
+                {creditNoteError.reason && (
+                  <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.reason}</p>
+                )}
+                {creditNoteError.note && (
+                  <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.note}</p>
+                )}
+              </div>
             </div>
             {/* WEB-UIUX-623: stock-restore warning */}
             <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-4">
               Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
             </p>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowCreditNote(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+              <button onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Cancel
               </button>
               <button

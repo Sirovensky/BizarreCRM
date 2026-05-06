@@ -12,7 +12,7 @@
  * and UI copy decoupled; if UX ever standardises on one term, only the
  * REASONS labels (below) or the file name need updating — not both.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type RefundReasonCode =
   | 'defective'
@@ -46,6 +46,8 @@ export function RefundReasonPicker({
 }: RefundReasonPickerProps) {
   const [localReason, setLocalReason] = useState<RefundReasonCode | null>(value);
   const [localNote, setLocalNote] = useState(note);
+
+  useEffect(() => { setLocalReason(value); setLocalNote(note); }, [value, note]);
 
   const handleReasonChange = (code: RefundReasonCode) => {
     setLocalReason(code);
