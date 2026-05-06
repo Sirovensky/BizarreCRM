@@ -374,6 +374,26 @@ client.interceptors.response.use(
       toast.error((serverMsg ?? 'Server error — please try again.') + refId);
     }
 
+    // WEB-UIUX-903: surface a global toast for plain 403 (permission-denied)
+    // responses on non-auth, non-tier-gate endpoints so a demoted user clicking
+    // a manager-only button no longer hits a silent dead-end. Auth (/auth/) and
+    // upgrade_required 403s already returned early above. Callers that render
+    // their own 403 UI (e.g. inline banner on a settings page) can opt out via
+    // `{ skipGlobal403Toast: true }` on the request config — same pattern as
+    // skipGlobal500Toast.
+    const skipGlobal403 = (originalRequest as { skipGlobal403Toast?: boolean })
+      ?.skipGlobal403Toast === true;
+    if (status === 403 && !skipGlobal403) {
+      const serverMsg =
+        typeof error.response?.data?.message === 'string'
+          ? error.response.data.message
+          : null;
+      toast.error(
+        serverMsg ?? "You don't have permission for this action.",
+        { id: 'global-403' },
+      );
+    }
+
     // WEB-FO-001: surface 409 Conflict on mutating requests so concurrent
     // edits don't silently overwrite a co-worker. Last-write-wins races on
     // tickets/invoices were producing "the status pill jumps under your

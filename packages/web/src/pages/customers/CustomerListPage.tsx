@@ -39,6 +39,7 @@ import toast from 'react-hot-toast';
 import { customerApi, settingsApi, onboardingApi } from '@/api/endpoints';
 import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { useHasRole } from '@/hooks/useHasRole';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
@@ -63,6 +64,10 @@ export function CustomerListPage() {
   const [searchInput, setSearchInput] = useState(keyword);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id?: number; name?: string }>({ open: false });
+  const [exportConfirm, setExportConfirm] = useState(false);
+
+  // WEB-UIUX-901: Export is PII-sensitive — restrict to admin/manager only.
+  const canExport = useHasRole(['admin', 'manager']);
 
   // Advanced filters
   const [showFilters, setShowFilters] = useState(false);
@@ -304,9 +309,11 @@ export function CustomerListPage() {
   // CSV Export
   // @audit-fixed: was exporting only current page (LIMIT bug). Now fetches all matching customers
   // by paging through the API at 250/req until exhausted, so the CSV is the FULL filtered set.
+  // WEB-UIUX-901: export is role-gated (admin/manager) and requires PII-warning confirmation.
   const [exporting, setExporting] = useState(false);
   const handleExport = async () => {
     if (exporting) return;
+    setExportConfirm(false);
     setExporting(true);
     try {
       const headers = ['id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'organization', 'city', 'state'];
@@ -583,10 +590,13 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting} title={hasFilters ? `Exporting ${pagination?.total ?? '?'} filtered rows. Clear filters first to export all.` : 'Export customers as CSV'} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {exporting ? 'Exporting...' : 'Export'}
-          </button>
+          {/* WEB-UIUX-901: only admin/manager may export PII */}
+          {canExport && (
+            <button onClick={() => setExportConfirm(true)} disabled={exporting} title="Export customers as CSV — admin/manager only" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting ? 'Exporting...' : 'Export'}
+            </button>
+          )}
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
           </button>
@@ -892,6 +902,22 @@ export function CustomerListPage() {
           </div>
         </div>
       )}
+
+      {/* WEB-UIUX-901: PII export warning — shown before CSV download starts */}
+      <ConfirmDialog
+        open={exportConfirm}
+        title="Export customer data?"
+        message={
+          <span>
+            This CSV contains <strong>personally identifiable information</strong> (names, emails,
+            phone numbers). Only share or store it in accordance with your privacy policy.
+            Ensure you have a legitimate reason to export this data.
+          </span>
+        }
+        confirmLabel="Export CSV"
+        onConfirm={handleExport}
+        onCancel={() => setExportConfirm(false)}
+      />
 
       <ConfirmDialog
         open={deleteConfirm.open}

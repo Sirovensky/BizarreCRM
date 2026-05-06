@@ -3,6 +3,11 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem, CustomerResult, RepairDrillState, TicketMeta } from './types';
 import { useAuthStore } from '@/stores/authStore';
 
+// WEB-UIUX-899: cashier PIN verifications expire after 10 minutes of idle
+// so a second staff member cannot reuse a previous verification at an
+// unattended register.
+const POS_PIN_TTL_MS = 10 * 60 * 1000;
+
 // Discriminated union for the POS checkout success payload.
 // Server route: POST /pos/checkout-with-ticket
 // The client merges the server data with a `mode` field before storing.
@@ -149,8 +154,16 @@ interface UnifiedPosState {
   // Server-side PIN gate (WEB-W1-P0): set true after PinModal verifies
   // the user's PIN so the X-Pos-Pin-Verified header can be sent to the
   // server. Consumed (set back to false) after the API call completes.
+  // WEB-UIUX-899: posPinVerifiedAt records when the PIN was verified so
+  // isPosPinVerified() can enforce a 10-minute idle TTL — preventing a
+  // second staff member from reusing a previous cashier's verification.
   posPinVerified: boolean;
+  posPinVerifiedAt: number | null;
   setPosPinVerified: (verified: boolean) => void;
+  /** Returns true only if the PIN was verified AND the verification is
+   *  still within POS_PIN_TTL_MS (10 min). Use this everywhere instead
+   *  of reading posPinVerified directly. */
+  isPosPinVerified: () => boolean;
 
   // Reset everything
   clearDraft: () => void;
@@ -281,7 +294,18 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   showSuccess: null,
   setShowSuccess: (showSuccess) => set({ showSuccess }),
   posPinVerified: false,
-  setPosPinVerified: (posPinVerified) => set({ posPinVerified }),
+  posPinVerifiedAt: null,
+  setPosPinVerified: (posPinVerified) => set({
+    posPinVerified,
+    // WEB-UIUX-899: stamp the verification time so isPosPinVerified() can
+    // enforce the 10-minute TTL; clear the timestamp when resetting.
+    posPinVerifiedAt: posPinVerified ? Date.now() : null,
+  }),
+  isPosPinVerified: () => {
+    const { posPinVerified, posPinVerifiedAt } = get();
+    if (!posPinVerified || posPinVerifiedAt === null) return false;
+    return Date.now() - posPinVerifiedAt < POS_PIN_TTL_MS;
+  },
 
   clearDraft: () => set({
     customer: null,
@@ -295,6 +319,7 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     activeTab: 'repairs',
     showCheckout: false,
     posPinVerified: false,
+    posPinVerifiedAt: null,
     // WEB-FH-001 / WEB-FH-002: cart fully reset → drop idempotency key so
     // the next sale doesn't accidentally collide with the previous one.
     checkoutIdempotencyKey: null,
@@ -312,6 +337,7 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     showCheckout: false,
     showSuccess: null,
     posPinVerified: false,
+    posPinVerifiedAt: null,
     // WEB-FH-001 / WEB-FH-002: cart fully reset → drop idempotency key so
     // the next sale doesn't accidentally collide with the previous one.
     checkoutIdempotencyKey: null,

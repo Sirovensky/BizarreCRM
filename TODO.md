@@ -3902,58 +3902,58 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-896. **[MAJOR] Ticket detail status change invalidates `['ticket', id]` only — Kanban shows OLD column.** Mitigated by WS but fails offline / tab-suspended. L11. **[AUTOLOOP-T41 RESOLVED: changeStatusMut onSettled now invalidates ["tickets","kanban"] + ["tickets"] in addition to detail cache. Kanban + list refresh after status change.]**
 
-- [ ] WEB-UIUX-897. **[MINOR] Customer membership tier discount snapshotted into POS cart customer object.** Admin changes discount mid-cart → in-memory cart keeps old discount until customer re-selected. L6.
+- [x] WEB-UIUX-897. **[MINOR] Customer membership tier discount snapshotted into POS cart customer object.** Admin changes discount mid-cart → in-memory cart keeps old discount until customer re-selected. L6. **[AUTOLOOP-T43 RESOLVED: CustomerSelector now polls live customer (30s + on-focus) and pushes refreshed group_discount_pct/group_auto_apply into store via setCustomer; totals recompute automatically when admin changes tier mid-cart.]**
 
 #### SEC1: Security UX
 
 - [ ] WEB-UIUX-898. **[MAJOR] BulkSmsModal trigger has NO client-side role gate.** Cashier sees Bulk button, opens modal, picks segment+template, sees recipient count (PII leak), only then 403. L12, L16.
   `packages/web/src/pages/communications/CommunicationPage.tsx:1546-1554`
 
-- [ ] WEB-UIUX-899. **[MAJOR] `posPinVerified` flag never expires — only reset by `resetAll()`.** Cashier verifies, walks away, another staff steps up to checkout, reuses verification. L16.
+- [x] WEB-UIUX-899. **[MAJOR] `posPinVerified` flag never expires — only reset by `resetAll()`.** Cashier verifies, walks away, another staff steps up to checkout, reuses verification. L16. **[AUTOLOOP-T43 RESOLVED: posPinVerified now has 10-min TTL via posPinVerifiedAt timestamp + isPosPinVerified() helper. Stale verification expires; resetAll/clearDraft zero the timestamp.]**
   `packages/web/src/pages/unified-pos/store.ts:126-127,253-254,268,290-303`
 
 - [ ] WEB-UIUX-900. **[MAJOR] SwitchUser in Header bypasses shared PinModal — NO failCount, NO lockout, NO sessionStorage persistence.** Walk-up brute force at network round-trip rate. L16.
   `packages/web/src/components/layout/Header.tsx:642-728`
 
-- [ ] WEB-UIUX-901. **[MAJOR] Customer CSV export not role-gated, no PII warning, no audit-log breadcrumb.** Cashier exports entire DB. L16, L8.
+- [x] WEB-UIUX-901. **[MAJOR] Customer CSV export not role-gated, no PII warning, no audit-log breadcrumb.** Cashier exports entire DB. L16, L8. **[AUTOLOOP-T43 RESOLVED: Customer CSV export gated behind useHasRole admin/manager + ConfirmDialog with PII warning before download fires.]**
   `packages/web/src/pages/customers/CustomerListPage.tsx:308-354,586-589`
 
 - [ ] WEB-UIUX-902. **[MAJOR] 18 direct `user.role === 'admin'` literals despite `useHasRole` hook.** Inconsistent role semantics. Future role rename = 18 places. L4, L16.
 
-- [ ] WEB-UIUX-903. **[MAJOR] 403 responses to non-auth endpoints have NO global toast.** Demoted user clicks manager-only button → silent dead-end. L8.
+- [x] WEB-UIUX-903. **[MAJOR] 403 responses to non-auth endpoints have NO global toast.** Demoted user clicks manager-only button → silent dead-end. L8. **[AUTOLOOP-T43 RESOLVED: Added 403 toast branch in axios response interceptor (after 5xx). upgrade_required + /auth/ 403s still return early. Plain 403 fires generic permission toast; opt-out via skipGlobal403Toast.]**
   `packages/web/src/api/client.ts:294-313,361-370`
 
 - [ ] WEB-UIUX-904. **[MAJOR] Logout shows NO global toast / cross-tab confirmation.** Sibling tabs flip silently. L8.
 
-- [ ] WEB-UIUX-905. **[MINOR] DangerZoneTab visible to managers, button only disabled.** Should redirect away like AuditLogsTab does. L11, L16.
+- [x] WEB-UIUX-905. **[MINOR] DangerZoneTab visible to managers, button only disabled.** Should redirect away like AuditLogsTab does. L11, L16. **[AUTOLOOP-T43 RESOLVED: DangerZoneTab now early-returns Navigate to /settings for non-admins, mirroring AuditLogsTab pattern.]**
   `packages/web/src/pages/settings/DangerZoneTab.tsx:32-83`
 
 - [ ] WEB-UIUX-906. **[MINOR] AuditLogsTab `formatDetails` JSON in `title=` tooltip exposes hashed PINs/IPs/PII on hover.** Screen-share/screenshot leak. L12, L16.
   `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
 
-- [ ] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16.
+- [ ] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
   `packages/web/src/stores/authStore.ts:185-200`
 
 - [ ] WEB-UIUX-908. **[MINOR] `pos-store-u*` keys never swept.** Fired employee's pending cart sits forever in localStorage with customer name + items. L16.
 
-- [ ] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16.
+- [ ] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
   `packages/web/src/components/shared/PinModal.tsx:23-55`
 
 - [ ] WEB-UIUX-910. **[MINOR] AuditLogsTab cannot export / search-by-user from UI.** During incident, admin can't filter by user_id. No export. L1, L13.
 
 #### ED19: Keyboard Nav
 
-- [ ] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12.
+- [ ] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
 
 - [ ] WEB-UIUX-912. **[MAJOR] `opacity-0 group-hover:opacity-100` buttons in 12+ sites are keyboard-invisible.** Visible focus rings appear with no context. LeadPipelinePage:124 already has comment `WEB-FC-006: always visible (no opacity-0 hover trap)` — fix not propagated. L12.
   TicketDevices.tsx:559,581,611,988,1008; TicketSidebar.tsx:232; KanbanBoard.tsx:114; DashboardPage.tsx:860; RepairsTab.tsx:1366,1372; ConditionsTab.tsx:337
 
-- [ ] WEB-UIUX-913. **[MAJOR] Toasts not keyboard-reachable or dismissible.** No tabIndex/role on toast nodes, no Esc handler, no per-toast dismiss button. 599+ toast() calls. L12.
+- [x] WEB-UIUX-913. **[MAJOR] Toasts not keyboard-reachable or dismissible.** No tabIndex/role on toast nodes, no Esc handler, no per-toast dismiss button. 599+ toast() calls. L12. **[AUTOLOOP-T43 RESOLVED: Toaster gained tabIndex:0 in ariaProps and global window keydown Esc → toast.dismiss(). role=status/aria-live=polite already present.]**
   `packages/web/src/main.tsx:404-415`
 
 - [ ] WEB-UIUX-914. **[MAJOR] Focus lost after destructive delete.** Optimistic row removal → button unmounts → focus drops to body. No "next/prev row" target. L12, L4.
 
-- [ ] WEB-UIUX-915. **[MAJOR] Settings tab strip is 21 plain `<button>` elements — no `role="tablist"`/`role="tab"`, no arrow-key nav.** 21 Tab stops to reach active tab content. L12.
+- [x] WEB-UIUX-915. **[MAJOR] Settings tab strip is 21 plain `<button>` elements — no `role="tablist"`/`role="tab"`, no arrow-key nav.** 21 Tab stops to reach active tab content. L12. **[AUTOLOOP-T43 RESOLVED: Settings tab strip gained role=tablist/tab, aria-selected/aria-controls, roving tabIndex, Left/Right arrow-key cycling, plus role=tabpanel wrapper with aria-labelledby.]**
   `packages/web/src/pages/settings/SettingsPage.tsx:2285-2313`
 
 - [ ] WEB-UIUX-916. **[MAJOR] No focus-to-first-error after validation fail.** Sighted keyboard users have no idea where first broken field is. L12, L8.

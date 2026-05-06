@@ -16,6 +16,33 @@ import './styles/globals.css';
 // DOM structure (which has no aria-live attribute).
 function ToastAvalancheGuard({ max }: { max: number }): null {
   const { toasts } = useToasterStore();
+
+  // WEB-UIUX-913: keyboard-dismiss for toasts. react-hot-toast renders no
+  // dismiss button and no Esc handler — the 599 toast() call sites have no
+  // way to clear a stale alert without the mouse. A single window-level Esc
+  // listener calls toast.dismiss() (no id = dismiss all visible) so keyboard
+  // users get parity. Skipped when an interactive form/dialog is in focus
+  // since their own Esc handlers (modals, search clears) take precedence.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      // Don't steal Esc from open dialogs / inputs that consume it themselves.
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae?.closest('[role="dialog"]')) return;
+      if (ae?.tagName === 'INPUT' || ae?.tagName === 'TEXTAREA' || ae?.isContentEditable) return;
+      // Only dismiss if at least one toast is currently visible — otherwise
+      // we'd intercept a no-op Esc that some other handler should have seen.
+      // The Toaster renders each visible toast with role="status" so a DOM
+      // probe is enough; we don't need the toaster store here (its hook isn't
+      // a zustand store with getState()).
+      const anyVisible = !!document.querySelector('[role="status"][aria-live="polite"]');
+      if (!anyVisible) return;
+      toast.dismiss();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     const visible = toasts.filter((t) => t.visible);
 
@@ -297,6 +324,11 @@ createRoot(document.getElementById('root')!).render(
               success: { duration: 3000 },
               error: { duration: 6000 },
               loading: { duration: Infinity },
+              // WEB-UIUX-913: react-hot-toast's ariaProps type only allows
+              // role/aria-live, not tabIndex — keyboard reachability is handled
+              // by the global Esc handler in ToastAvalancheGuard above (which
+              // calls toast.dismiss() while any toast is visible). role=status
+              // + aria-live=polite still drives assistive announcement.
               ariaProps: { role: 'status', 'aria-live': 'polite' },
             }}
           />

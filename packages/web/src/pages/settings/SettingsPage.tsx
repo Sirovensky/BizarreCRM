@@ -2095,6 +2095,29 @@ function SettingsPageInner() {
     scrollRef.current?.scrollBy({ left: dir === 'left' ? -200 : 200, behavior: 'smooth' });
   };
 
+  // Roving tabindex arrow-key handler for the tab strip
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const tabs = filteredTabs;
+      const next =
+        e.key === 'ArrowLeft'
+          ? (currentIndex - 1 + tabs.length) % tabs.length
+          : (currentIndex + 1) % tabs.length;
+      const nextTab = tabs[next];
+      if (!nextTab) return;
+      // Focus the button element for the next tab
+      const buttons = scrollRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+      buttons?.[next]?.focus();
+      // Activate next tab unless it is locked
+      if (!isTabLocked(nextTab)) {
+        void setActiveTab(nextTab.key);
+      }
+    },
+    [filteredTabs, isTabLocked, setActiveTab]
+  );
+
   return (
     <div>
       {/* Settings search palette — mounted once; opened programmatically.
@@ -2160,17 +2183,25 @@ function SettingsPageInner() {
         )}
         <div
           ref={scrollRef}
+          role="tablist"
+          aria-label="Settings sections"
           className={cn(
             'flex-1 min-w-0 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 overflow-x-auto flex gap-0.5',
           )}
           style={{ scrollbarWidth: 'none' }}
         >
-          {filteredTabs.map((tab) => {
+          {filteredTabs.map((tab, idx) => {
             const Icon = tab.icon;
             const locked = isTabLocked(tab);
+            const isActive = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`settings-panel-${tab.key}`}
+                id={`settings-tab-${tab.key}`}
+                tabIndex={isActive ? 0 : -1}
                 onClick={() => {
                   if (locked && tab.proFeature) {
                     openUpgradeModal(tab.proFeature);
@@ -2178,9 +2209,10 @@ function SettingsPageInner() {
                   }
                   void setActiveTab(tab.key);
                 }}
+                onKeyDown={(e) => handleTabKeyDown(e, idx)}
                 className={cn(
                   'btn btn-xs rounded-md whitespace-nowrap shrink-0',
-                  activeTab === tab.key
+                  isActive
                     ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                     : locked
                       ? 'text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-400'
@@ -2210,6 +2242,11 @@ function SettingsPageInner() {
       </div>
 
       {/* Tab Content */}
+      <div
+        role="tabpanel"
+        id={`settings-panel-${activeTab}`}
+        aria-labelledby={`settings-tab-${activeTab}`}
+      >
       <Suspense fallback={<LoadingState />}>
         {activeTab === 'setup-progress' && (
           <div className="space-y-4">
@@ -2247,6 +2284,7 @@ function SettingsPageInner() {
         {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
         {activeTab === 'danger-zone' && <DangerZoneTab />}
       </Suspense>
+      </div>
     </div>
   );
 }

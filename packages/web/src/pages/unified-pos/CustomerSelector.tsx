@@ -92,6 +92,54 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // WEB-UIUX-897: refresh the in-cart customer's group_discount_pct +
+  // group_auto_apply from the server periodically so an admin tier change
+  // mid-cart actually flows into the live cart (totals, member-discount
+  // toggle). Without this poll the cart object is a snapshot from the moment
+  // the customer was selected — totals stay stale until the operator
+  // re-selects them. We skip the synthetic walk-in (id=0) since that row
+  // isn't a real customer record.
+  useEffect(() => {
+    if (!customer || !customer.id) return;
+    let cancelled = false;
+    async function refresh() {
+      if (!customer || !customer.id) return;
+      try {
+        const res = await customerApi.get(customer.id);
+        if (cancelled) return;
+        const fresh = (res?.data as { data?: Partial<CustomerResult> })?.data;
+        if (!fresh) return;
+        const groupChanged =
+          fresh.group_discount_pct !== customer.group_discount_pct ||
+          fresh.group_auto_apply !== customer.group_auto_apply ||
+          fresh.group_name !== customer.group_name ||
+          fresh.group_discount_type !== customer.group_discount_type;
+        if (groupChanged) {
+          // Merge fresh fields into the existing cart customer rather than
+          // replacing wholesale — keeps any non-server-side fields (e.g. the
+          // walk-in synthetic flag, locally-attached notes) intact.
+          setCustomer({ ...customer, ...fresh } as CustomerResult);
+        }
+      } catch {
+        // Network blip — leave the cached customer; next tick will retry.
+      }
+    }
+    // Refresh once immediately on selection in case the snapshot from search
+    // is older than the most recent admin edit, then again on a 30s cadence
+    // and on tab refocus (operator returns from another tab/window).
+    refresh();
+    const interval = setInterval(refresh, 30_000);
+    function onVisible() {
+      if (document.visibilityState === 'visible') refresh();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-apply member discount when customer changes; toast when discount flips on.
   useEffect(() => {
     if (

@@ -13,6 +13,7 @@
 // are needed because success NAVIGATES the user away (their tenant is gone).
 
 import { useEffect, useMemo, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Loader2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHasRole } from '@/hooks/useHasRole';
@@ -35,6 +36,15 @@ export function DangerZoneTab() {
   // literal with the shared `useHasRole` hook (matches `<PermissionBoundary>`).
   const isAdmin = useHasRole('admin');
   const [open, setOpen] = useState(false);
+
+  // WEB-UIUX-905: managers / cashiers should never see this tab — even with the
+  // termination button disabled, the page shape leaks "this shop has a delete
+  // button" + "only admin can do it" details that aren't theirs to see. Mirror
+  // the AuditLogsTab pattern: hard-redirect non-admins back to the Settings
+  // index instead of rendering the disabled card.
+  if (!isAdmin) {
+    return <Navigate to="/settings" replace />;
+  }
 
   return (
     <div className="max-w-3xl">
