@@ -72,7 +72,14 @@ export function InventoryCreatePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error('Name is required');
-    if (!form.retail_price) return toast.error('Retail price is required');
+    const parsedRetailPrice = parseFloat(form.retail_price);
+    if (!form.retail_price || isNaN(parsedRetailPrice)) return toast.error('Retail price is required');
+    if (parsedRetailPrice <= 0) {
+      const confirmed = window.confirm(
+        'Retail price is $0.00. Is this intentional (e.g. gift or promotional item)?'
+      );
+      if (!confirmed) return;
+    }
     mutation.mutate({
       ...form,
       item_type: form.item_type as 'product' | 'part' | 'service',

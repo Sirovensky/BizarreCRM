@@ -248,6 +248,7 @@ export function GiftCardDetailPage() {
                 </span>
                 <button
                   onClick={() => setShowCode((v) => !v)}
+                  aria-pressed={showCode}
                   className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
                   title={showCode ? 'Hide code' : 'Show full code'}
                 >
@@ -327,7 +328,8 @@ export function GiftCardDetailPage() {
               <p className="text-sm text-surface-500 text-center py-10">No transactions yet</p>
             ) : (
               <>
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+              <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
                       <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Date</th>
@@ -352,6 +354,7 @@ export function GiftCardDetailPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between px-5 py-3 border-t border-surface-100 dark:border-surface-800">
                     <button

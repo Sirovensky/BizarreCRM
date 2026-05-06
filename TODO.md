@@ -2920,21 +2920,21 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-592. **[MAJOR usability] InventoryDetailPage "Adjust Stock" inline panel not modal — no focus trap, no Esc, no auto-focus.** Tab cycles through underlying form. L12, L7. **[AUTOLOOP-T26 RESOLVED: InventoryDetailPage Adjust Stock inline panel replaced with canonical `<Modal>` (focus trap + Esc + auto-focus + body-scroll-lock + aria-labelledby).]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:346-382`
 
-- [ ] WEB-UIUX-593. **[MAJOR usability] InventoryDetailPage handleAdjust uses `parseInt('+5')` — returns NaN in older engines, silently truncates `5.5` to `5`.** L7.
+- [x] WEB-UIUX-593. **[MAJOR usability] InventoryDetailPage handleAdjust uses `parseInt('+5')` — returns NaN in older engines, silently truncates `5.5` to `5`.** L7. **[AUTOLOOP-T27 RESOLVED: handleAdjust uses Number+isFinite+isInteger; non-integer (5.5) shows toast error instead of silent truncation.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:127-131`
 
 - [ ] WEB-UIUX-594. **[MAJOR usability] handlePrintBarcode opens `window.open('')` without checking for popup-blocker rejection.** Click does nothing, no toast. L8, L16.
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:144-159`
   <!-- meta: fix=if-printWindow-null-toast.error-allow-popups -->
 
-- [ ] WEB-UIUX-595. **[MAJOR usability] InventoryCreatePage `retail_price="0"` passes truthy validation — user can submit free product accidentally.** L7.
+- [x] WEB-UIUX-595. **[MAJOR usability] InventoryCreatePage `retail_price="0"` passes truthy validation — user can submit free product accidentally.** L7. **[AUTOLOOP-T27 RESOLVED: retail_price now `parseFloat>0` guard + window.confirm prompt for explicit $0 (gift/promotional).]**
   `packages/web/src/pages/inventory/InventoryCreatePage.tsx:73`
   <!-- meta: fix=parseFloat>0-with-explicit-error -->
 
 - [ ] WEB-UIUX-596. **[MAJOR usability] InventoryCreatePage all errors via toast — no inline FormError, no aria-invalid.** L7, L8, L12.
   `packages/web/src/pages/inventory/InventoryCreatePage.tsx:70-86`
 
-- [ ] WEB-UIUX-597. **[MAJOR usability] InventoryListPage Bulk Price `pct === -100` passes (`pct < -100` strict) — accidentally zeros all prices.** L7, L16.
+- [x] WEB-UIUX-597. **[MAJOR usability] InventoryListPage Bulk Price `pct === -100` passes (`pct < -100` strict) — accidentally zeros all prices.** L7, L16. **[AUTOLOOP-T27 RESOLVED: Bulk Price `pct < -100` → `pct <= -100` (rejects -100). Confirm dialog for pct <= -50.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:330`
   <!-- meta: fix=use-pct<=-100-or-explicit-error-Use-Delete-instead -->
 
@@ -2942,31 +2942,31 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/inventory/InventoryListPage.tsx:947,1029,1109,1158,1244,1531,1750`
   <!-- meta: fix=extract-Modal-primitive-saves-~400-lines -->
 
-- [ ] WEB-UIUX-599. **[MAJOR] InventoryListPage modal `autoFocus` on input but no focus trap — Tab cycles to underlying page.** L12.
+- [x] WEB-UIUX-599. **[MAJOR] InventoryListPage modal `autoFocus` on input but no focus trap — Tab cycles to underlying page.** L12. **[AUTOLOOP-T27 RESOLVED: BulkPrice + ImportCSV inline modals wired with useFocusTrap + useEscClose.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1530-1690`
 
 - [ ] WEB-UIUX-600. **[MAJOR usability] InventoryListPage 8 header buttons + Tools bar = button overload on tablet.** No "More actions ▼" overflow. L1, L11.
   `packages/web/src/pages/inventory/InventoryListPage.tsx:425-470,492-502`
 
-- [ ] WEB-UIUX-601. **[MINOR] InventoryDetailPage Cancel during edit reverts to stale item silently — no unsaved-changes warning.** L7, L8.
+- [x] WEB-UIUX-601. **[MINOR] InventoryDetailPage Cancel during edit reverts to stale item silently — no unsaved-changes warning.** L7, L8. **[AUTOLOOP-T27 RESOLVED: originalFormRef snapshot + isDirty diff; Cancel calls window.confirm("Discard unsaved changes?") when dirty.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:195`
 
 - [ ] WEB-UIUX-602. **[MINOR usability] InventoryListPage "Order All on Supplier Sites" opens 1st link sync without confirmation.** Accidental click jumps off-app. L8, L16.
   `packages/web/src/pages/inventory/InventoryListPage.tsx:712-720`
 
-- [ ] WEB-UIUX-603. **[MINOR] InventoryListPage Bulk Price preview only first 20 items — no "...30 more" disclosure.** L8.
+- [x] WEB-UIUX-603. **[MINOR] InventoryListPage Bulk Price preview only first 20 items — no "...30 more" disclosure.** L8. **[AUTOLOOP-T27 RESOLVED: BulkPrice preview shows "...and N more" disclosure when items >20.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:998`
 
 - [ ] WEB-UIUX-604. **[MINOR] InventoryListPage Receive playBeep creates new AudioContext per scan — leak after ~6 scans.** L8, L15.
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1695-1708`
 
-- [ ] WEB-UIUX-605. **[MINOR] InventoryDetailPage Stock Movements caps at max-h-96 with no "View all" link.** L8.
+- [x] WEB-UIUX-605. **[MINOR] InventoryDetailPage Stock Movements caps at max-h-96 with no "View all" link.** L8. **[AUTOLOOP-T27 RESOLVED: Stock Movements showAllMovements toggle removes max-h-96 cap; "View all N movements"/"Show less" button when >5.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:402`
 
 - [ ] WEB-UIUX-606. **[MINOR] InventoryCreatePage type="service" code paths still exist despite "service option removed" comment.** Dead conditional rendering. L4.
   `packages/web/src/pages/inventory/InventoryCreatePage.tsx:76,116-122,188`
 
-- [ ] WEB-UIUX-607. **[MINOR] InventoryListPage debounce `searchTimerRef`+`setTimeout` not cleaned on unmount — fires `setParam` after unmount.** L7, L1.
+- [x] WEB-UIUX-607. **[MINOR] InventoryListPage debounce `searchTimerRef`+`setTimeout` not cleaned on unmount — fires `setParam` after unmount.** L7, L1. **[AUTOLOOP-T27 RESOLVED: searchTimerRef gets useEffect unmount cleanup `clearTimeout(searchTimerRef.current)`.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:66-67,170-174`
 
 #### Gift Card Detail
@@ -2974,13 +2974,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-608. **[MAJOR usability] GiftCardDetailPage ReloadModal disabled-button check uses `!amount` — `"abc"` is truthy so button stays enabled, throws inside mutationFn.** L7, L8.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-104,143-150`
 
-- [ ] WEB-UIUX-609. **[MINOR] GiftCardDetailPage code-toggle button missing `aria-pressed`.** L12.
+- [x] WEB-UIUX-609. **[MINOR] GiftCardDetailPage code-toggle button missing `aria-pressed`.** L12. **[AUTOLOOP-T27 RESOLVED: code-toggle button gains `aria-pressed={showCode}` for SR.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:237-243`
 
 - [ ] WEB-UIUX-610. **[MINOR] GiftCardDetailPage masked code `****1234` cramped — no separator like `**** **** **** 1234`.** L9.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:235`
 
-- [ ] WEB-UIUX-611. **[MINOR] GiftCardDetailPage transactions table no `overflow-x-auto` or mobile card layout.** Overflow on 360px viewport. L11.
+- [x] WEB-UIUX-611. **[MINOR] GiftCardDetailPage transactions table no `overflow-x-auto` or mobile card layout.** Overflow on 360px viewport. L11. **[AUTOLOOP-T27 RESOLVED: GiftCardDetailPage tx table wrapped in `<div className="overflow-x-auto">`.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:304-328`
 
 - [ ] WEB-UIUX-612. **[MINOR] GiftCardDetailPage local DetailSkeleton + bespoke "Gift card not found" + "No transactions yet" all bypass canonical Skeleton + EmptyState.** L4.

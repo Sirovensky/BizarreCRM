@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Package, Pencil, Save, X, Plus, Minus, Loader2, TrendingUp, TrendingDown, Printer, History, MapPin } from 'lucide-react';
@@ -42,8 +42,10 @@ export function InventoryDetailPage() {
   const [adjustNotes, setAdjustNotes] = useState('');
   const [showAdjust, setShowAdjust] = useState(false);
   const [form, setForm] = useState<InventoryFormItem | null>(null);
+  const originalFormRef = useRef<InventoryFormItem | null>(null);
   const [barcodeUrl, setBarcodeUrl] = useState<string | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [showAllMovements, setShowAllMovements] = useState(false);
   const currencySymbol = formatCurrencySymbol();
 
   const { data, isLoading } = useQuery({
@@ -58,6 +60,7 @@ export function InventoryDetailPage() {
     const loadedItem = data?.data?.data?.item;
     if (loadedItem && !form) {
       setForm(loadedItem);
+      originalFormRef.current = loadedItem;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]); // intentional: only seed form on first load (guarded by !form)
@@ -123,14 +126,28 @@ export function InventoryDetailPage() {
 
   const f = form || item;
 
+  const isDirty = (() => {
+    if (!form || !originalFormRef.current) return false;
+    const orig = originalFormRef.current;
+    return Object.keys(form).some(
+      (k) => String(form[k] ?? '') !== String(orig[k] ?? ''),
+    );
+  })();
+
+  const handleCancelEdit = () => {
+    if (isDirty && !window.confirm('Discard unsaved changes?')) return;
+    setEditMode(false);
+    setForm(item);
+  };
+
   const handleSave = () => {
     if (!form) return;
     updateMutation.mutate(form);
   };
 
   const handleAdjust = () => {
-    const qty = parseInt(adjustQty);
-    if (!adjustQty || isNaN(qty)) return toast.error('Enter a valid quantity');
+    const qty = Number(adjustQty);
+    if (!adjustQty || !Number.isFinite(qty) || !Number.isInteger(qty)) return toast.error('Enter a whole number quantity');
     adjustMutation.mutate({ quantity: qty, type: adjustType, notes: adjustNotes });
   };
 
@@ -196,7 +213,7 @@ export function InventoryDetailPage() {
           <div className="flex items-center gap-2">
             {editMode ? (
               <>
-                <button type="button" aria-label="Cancel edit" onClick={() => { setEditMode(false); setForm(item); }} className="px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                <button type="button" aria-label="Cancel edit" onClick={handleCancelEdit} className="px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
                 <button type="button" onClick={handleSave} disabled={updateMutation.isPending} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
@@ -217,7 +234,7 @@ export function InventoryDetailPage() {
                     Adjust Stock
                   </button>
                 )}
-                <button type="button" onClick={() => { setForm(item); setEditMode(true); }} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={() => { originalFormRef.current = item; setForm(item); setEditMode(true); }} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
                   <Pencil className="h-4 w-4" /> Edit
                 </button>
               </>
@@ -407,28 +424,38 @@ export function InventoryDetailPage() {
             {movements.length === 0 ? (
               <p className="text-xs text-surface-400 italic">No stock movements recorded</p>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {movements.map((m: any) => (
-                  <div key={m.id} className="flex items-start gap-2 text-sm border-b border-surface-100 dark:border-surface-800 pb-2 last:border-0">
-                    <span className={cn('mt-0.5 flex-shrink-0', m.quantity > 0 ? 'text-green-500' : 'text-red-500')}>
-                      {m.quantity > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{m.type.replace(/_/g, ' ')}</span>
-                        <span className={cn('font-mono font-bold', m.quantity > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
-                          {m.quantity > 0 ? '+' : ''}{m.quantity}
-                        </span>
-                      </div>
-                      {m.notes && <div className="text-xs text-surface-500 dark:text-surface-400 truncate">{m.notes}</div>}
-                      <div className="text-xs text-surface-400">
-                        {m.user_name && <span>{m.user_name} · </span>}
-                        {formatDateTime(m.created_at)}
+              <>
+                <div className={cn('space-y-2 overflow-y-auto', showAllMovements ? '' : 'max-h-96')}>
+                  {movements.map((m: any) => (
+                    <div key={m.id} className="flex items-start gap-2 text-sm border-b border-surface-100 dark:border-surface-800 pb-2 last:border-0">
+                      <span className={cn('mt-0.5 flex-shrink-0', m.quantity > 0 ? 'text-green-500' : 'text-red-500')}>
+                        {m.quantity > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{m.type.replace(/_/g, ' ')}</span>
+                          <span className={cn('font-mono font-bold', m.quantity > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+                            {m.quantity > 0 ? '+' : ''}{m.quantity}
+                          </span>
+                        </div>
+                        {m.notes && <div className="text-xs text-surface-500 dark:text-surface-400 truncate">{m.notes}</div>}
+                        <div className="text-xs text-surface-400">
+                          {m.user_name && <span>{m.user_name} · </span>}
+                          {formatDateTime(m.created_at)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                {movements.length > 5 && (
+                  <button
+                    onClick={() => setShowAllMovements(v => !v)}
+                    className="mt-3 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline focus:outline-none"
+                  >
+                    {showAllMovements ? 'Show less' : `View all ${movements.length} movements`}
+                  </button>
+                )}
+              </>
             )}
           </div>
 

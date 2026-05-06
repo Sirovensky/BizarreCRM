@@ -10,6 +10,8 @@ import { cn } from '@/utils/cn';
 import { parseCsvLine } from '@/utils/csv';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
 import { formatCurrency } from '@/utils/format';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscClose } from '@/hooks/useEscClose';
 
 // CROSS3: "service" tab removed — services are non-stockable labor and
 // live in the `repair_services` table, not `inventory_items`. Existing
@@ -64,6 +66,7 @@ export function InventoryListPage() {
   const keyword = searchParams.get('keyword') || '';
   const [searchInput, setSearchInput] = useState(keyword);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); }, []);
 
   // Advanced filters state
   const [showFilters, setShowFilters] = useState(false);
@@ -324,14 +327,23 @@ export function InventoryListPage() {
     bulkMutation.mutate({ ids: Array.from(selectedIds), action });
   };
 
-  const handlePriceUpdate = () => {
+  const handlePriceUpdate = async () => {
     const pct = parseFloat(priceAdjustPct);
     if (isNaN(pct)) { toast.error('Enter a valid percentage'); return; }
-    if (pct < -100 || pct > 500) { toast.error('Adjustment must be between -100% and +500%'); return; }
+    if (pct <= -100 || pct > 500) { toast.error('Adjustment must be between -100% and +500%'); return; }
     // WEB-FH-012: require an audit reason. Mirrors the adjustStock note flow
     // so compliance can answer "why did margin drop on these SKUs?".
     const reason = priceAdjustReason.trim();
     if (reason.length < 3) { toast.error('Enter a reason for the price change'); return; }
+    // WEB-UIUX-597: warn on deep discounts (≥50% reduction) to prevent
+    // accidental near-zero pricing — user must explicitly confirm.
+    if (pct <= -50) {
+      const ok = await confirm(
+        `This will reduce prices by ${Math.abs(pct)}%. Are you sure?`,
+        { danger: true }
+      );
+      if (!ok) return;
+    }
     bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct, reason });
     setShowBulkPriceModal(false);
     setPriceAdjustPct('');
@@ -389,20 +401,24 @@ export function InventoryListPage() {
     setImportPreview(rows as InventoryImportRow[]);
   };
 
-  // WEB-FX-003: shared Esc-to-close for the page-level modals on this page.
-  // Closes the most-recently-opened first.
+  // WEB-FX-003: Esc-to-close for non-modal UI (confirmations, order-all panel).
+  // BulkPrice + Import modals now use useEscClose + useFocusTrap below (WEB-UIUX-599).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (stockConfirm) { setStockConfirm(null); return; }
       if (dismissConfirm) { setDismissConfirm(false); return; }
       if (orderAllQueue.length > 0) { setOrderAllQueue([]); setOrderAllOpened(new Set()); return; }
-      if (showBulkPriceModal) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); return; }
-      if (showImportModal) { setShowImportModal(false); setImportText(''); setImportPreview([]); return; }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [showBulkPriceModal, showImportModal, stockConfirm, dismissConfirm, orderAllQueue.length]);
+  }, [stockConfirm, dismissConfirm, orderAllQueue.length]);
+
+  // WEB-UIUX-599: focus traps + Esc-close for the two inline modals.
+  const bulkPriceRef = useFocusTrap(showBulkPriceModal) as React.RefObject<HTMLDivElement>;
+  const importRef = useFocusTrap(showImportModal) as React.RefObject<HTMLDivElement>;
+  useEscClose(() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }, showBulkPriceModal);
+  useEscClose(() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }, showImportModal);
 
   // Price preview for bulk update
   const pricePreviewItems = useMemo(() => {
@@ -948,6 +964,7 @@ export function InventoryListPage() {
       {/* Bulk Price Update Modal */}
       {showBulkPriceModal && (
         <div
+          ref={bulkPriceRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           role="dialog"
           aria-modal="true"
@@ -1007,6 +1024,9 @@ export function InventoryListPage() {
                     ))}
                   </tbody>
                 </table>
+                {pricePreviewItems.length > 20 && (
+                  <p className="text-xs text-surface-400 dark:text-surface-500 px-1 pt-1">...and {pricePreviewItems.length - 20} more</p>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-2">
@@ -1029,6 +1049,7 @@ export function InventoryListPage() {
       {/* Import CSV Modal */}
       {showImportModal && (
         <div
+          ref={importRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           role="dialog"
           aria-modal="true"
