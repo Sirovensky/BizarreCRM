@@ -15,8 +15,8 @@ interface PortalTicketDetailProps {
 }
 
 const STATUS_PROGRESS: Record<string, number> = {
-  'Open': 15, 'In Progress': 45, 'Waiting for Parts': 55,
-  'Waiting on Customer': 55, 'Parts Arrived': 70, 'Warranty Repair': 35, 'On Hold': 35,
+  'Open': 15, 'Bench work active': 45, 'Parts on order': 55,
+  'Customer response needed': 55, 'Parts ready - device needed': 70, 'Warranty repair': 35, 'On Hold': 35,
 };
 
 function getProgress(statusName: string, isClosed: boolean): number {

@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { Smartphone, Wrench, Sparkles, Info, Calculator, Loader2 } from 'lucide-react';
+import { Smartphone, Wrench, Sparkles, Info, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { repairPricingApi } from '@/api/endpoints';
@@ -13,14 +13,16 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
 type PricingMode = 'tier' | 'matrix' | 'auto_margin';
 
 /**
- * Step 8 — Repair pricing (tier-based labor matrix).
+ * Step 8 — Repair pricing starter (fallback labor matrix).
  *
  * Three side-by-side tier cards (Flagship / Mainstream / Legacy) with five
- * labor inputs each (Screen / Battery / Charge port / Back glass / Camera).
+ * fallback labor inputs each (Screen / Battery / Charge port / Back glass / Camera).
  * Each value is kept in wizard session state under
  * `pricing_tier_<a|b|c>_<service>` so Back/refresh do not lose edits. On
  * Continue, the step calls `POST /repair-pricing/seed-defaults`, which fans
- * these values into the server-owned `repair_prices` matrix.
+ * these values into the server-owned `repair_prices` matrix as starting
+ * fallbacks. Supplier catalog cost, grade choices, manual overrides, and
+ * auto-margin rules may refine quote suggestions later.
  *
  * Tier rationale (per `mockups/web-setup-wizard.html#screen-8`):
  *   Tier A (0-2 yr) — flagship profit drivers, premium labor.
@@ -55,7 +57,6 @@ interface TierDef {
   subtitle: string;
   examples: string;
   headerClass: string;
-  partsCost: number;
 }
 
 const SERVICES: ServiceDef[] = [
@@ -73,7 +74,6 @@ const TIERS: TierDef[] = [
     subtitle: '0-2 yr models',
     examples: 'iPhone 14/15/16 series, S22-S24, Pixel 8/9',
     headerClass: 'bg-primary-500 text-primary-950',
-    partsCost: 40,
   },
   {
     letter: 'b',
@@ -81,7 +81,6 @@ const TIERS: TierDef[] = [
     subtitle: '3-5 yr models',
     examples: 'iPhone 11-13, S20-S21, Pixel 5-7',
     headerClass: 'bg-primary-200 text-primary-900',
-    partsCost: 30,
   },
   {
     letter: 'c',
@@ -90,7 +89,6 @@ const TIERS: TierDef[] = [
     examples: 'iPhone X / earlier, S10 / earlier',
     headerClass:
       'bg-surface-200 text-surface-700 dark:bg-surface-700 dark:text-surface-200',
-    partsCost: 20,
   },
 ];
 
@@ -165,9 +163,9 @@ function seedPricingPayload(values: Record<PricingKey, string>): RepairPricingSe
 function seedSummaryMessage(result: RepairPricingSeedDefaultsResponse): string {
   const changed = result.summary.inserted + result.summary.updated;
   if (result.summary.services_missing > 0) {
-    return `Seeded ${changed} repair price rows; ${result.summary.services_missing} service defaults were missing.`;
+    return `Seeded ${changed} fallback pricing rows; ${result.summary.services_missing} service defaults were missing.`;
   }
-  return `Seeded ${changed} repair price rows.`;
+  return `Seeded ${changed} fallback pricing rows.`;
 }
 
 export function StepRepairPricing({
@@ -194,22 +192,11 @@ export function StepRepairPricing({
     onUpdate({ [k]: clamped } as Partial<PendingWrites>);
   };
 
-  /** Average labor across the 5 services for this tier, minus a fixed parts-cost
-   *  assumption — gives the user a back-of-envelope "profit per repair" hint. */
-  const profitFor = (tier: TierDef): number => {
-    const sum = SERVICES.reduce((acc, svc) => {
-      const v = Number.parseInt(values[pricingKey(tier.letter, svc.key)] ?? '0', 10);
-      return acc + (Number.isNaN(v) ? 0 : v);
-    }, 0);
-    const avg = sum / SERVICES.length;
-    return Math.max(0, Math.round(avg - tier.partsCost));
-  };
-
   const handleApplyMedians = () => {
     const next = medianValues();
     setValues(next);
     onUpdate(pricingPatch(next));
-    toast.success('Industry medians loaded. Continue to seed them on the server.');
+    toast.success('Starter fallbacks loaded. Continue to seed them on the server.');
   };
 
   const handleContinue = async () => {
@@ -249,8 +236,8 @@ export function StepRepairPricing({
           Repair pricing
         </h1>
         <p className="mx-auto mt-2 max-w-2xl text-sm text-surface-500 dark:text-surface-400">
-          Pick how you want to price labor. Tier-by-age seeds the server pricing matrix now;
-          the per-device matrix and auto-margin controls are preview surfaces for Settings.
+          Set fallback labor for common repairs. Supplier costs, part grades, manual overrides,
+          and margin rules can refine quote suggestions as the pricing module evolves.
         </p>
       </div>
 
@@ -301,13 +288,8 @@ export function StepRepairPricing({
                 </div>
                 <p className="mt-0.5 text-xs font-medium opacity-80">{tier.subtitle}</p>
               </div>
-              <div className="shrink-0 text-right text-xs font-semibold">
-                <span className="inline-flex items-center gap-1">
-                  <Calculator className="h-3.5 w-3.5" aria-hidden="true" />≈ ${profitFor(tier)}
-                </span>
-                <p className="mt-0.5 text-[10px] font-normal uppercase tracking-wide opacity-75">
-                  profit / repair
-                </p>
+              <div className="shrink-0 text-right text-xs font-semibold uppercase tracking-wide opacity-80">
+                Fallback
               </div>
             </div>
 
@@ -358,7 +340,8 @@ export function StepRepairPricing({
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
             <span className="font-semibold">These are starting defaults.</span>{' '}
-            Continue writes them to the server-owned repair pricing matrix for phone devices.
+            Continue writes fallback labor to the server-owned repair pricing matrix for phone
+            devices. Supplier-cost matches and grade choices can adjust quote suggestions later.
             Existing custom cells stay untouched.
           </p>
         </div>
@@ -379,37 +362,37 @@ export function StepRepairPricing({
           Full per-device matrix
         </h3>
         <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
-          Spreadsheet of every model × service. Override the iPhone 15 Pro screen without touching anything else. Bulk-edit, CSV roundtrip, profit heatmap.
+          Spreadsheet of every model × service. Review supplier matches, grade options, stale costs, custom overrides, CSV roundtrip, and profit heatmaps.
         </p>
         <div className="mt-4 overflow-hidden rounded-lg border border-surface-200 bg-white opacity-70 dark:border-surface-700 dark:bg-surface-800">
           <table className="w-full text-xs">
             <thead className="bg-surface-100 dark:bg-surface-900">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Device</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Screen</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Battery</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Charge port</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Back glass</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Camera</th>
+                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Service</th>
+                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Grade</th>
+                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Supplier</th>
+                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Review</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
               {[
-                { d: 'iPhone 15 Pro', vals: [240, 95, 145, 220, 165] },
-                { d: 'iPhone 14', vals: [200, 80, 120, 180, 140] },
-                { d: 'iPhone 12', vals: [140, 70, 100, 130, 100] },
-                { d: 'Galaxy S24', vals: [220, 90, 130, 200, 150] },
-                { d: 'Galaxy S20', vals: [125, 65, 90, 110, 90] },
+                { d: 'iPhone 15 Pro', service: 'Display', grade: 'Premium', supplier: 'Matched', review: 'Fresh' },
+                { d: 'iPhone 14', service: 'Rear cover', grade: 'Standard', supplier: 'Matched', review: 'Fresh' },
+                { d: 'iPhone 12', service: 'Battery', grade: 'Standard', supplier: 'Stale', review: 'Check cost' },
+                { d: 'Galaxy S24', service: 'Camera', grade: 'Original-grade', supplier: 'Matched', review: 'Fresh' },
+                { d: 'Galaxy S20', service: 'Charging', grade: 'Standard', supplier: 'Missing', review: 'Manual quote' },
               ].map((row) => (
                 <tr key={row.d}>
                   <td className="px-3 py-2 font-medium text-surface-800 dark:text-surface-200">{row.d}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} className="px-3 py-2 text-right text-surface-600 dark:text-surface-400">${v}</td>
-                  ))}
+                  <td className="px-3 py-2 text-surface-600 dark:text-surface-400">{row.service}</td>
+                  <td className="px-3 py-2 text-surface-600 dark:text-surface-400">{row.grade}</td>
+                  <td className="px-3 py-2 text-surface-600 dark:text-surface-400">{row.supplier}</td>
+                  <td className="px-3 py-2 text-surface-600 dark:text-surface-400">{row.review}</td>
                 </tr>
               ))}
               <tr>
-                <td colSpan={6} className="px-3 py-2 text-center text-[11px] italic text-surface-400">
+                <td colSpan={5} className="px-3 py-2 text-center text-[11px] italic text-surface-400">
                   …and ~195 more rows
                 </td>
               </tr>
@@ -429,8 +412,8 @@ export function StepRepairPricing({
 
       {/* ─── Auto-margin rules (PLACEHOLDER) ─────────────────────────
           DPI-7..DPI-9. Real implementation will let the shop pick a
-          target margin (% or $-over-parts-cost) and recompute labor
-          whenever the catalog scraper updates parts pricing. */}
+          target margin (% or $-over-parts-cost) and recompute suggested labor
+          whenever supplier catalog data changes. */}
       {mode === 'auto_margin' && (
       <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
         <div className="mb-3 flex items-center gap-2">
@@ -443,34 +426,31 @@ export function StepRepairPricing({
           Auto-margin rules
         </h3>
         <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
-          Set a target margin %, choose rounding to .99, whole dollar, or .98, and the server recalculates pricing whenever supplier costs change.
+          Configure margin goals, rounding, supplier-cost freshness, spike handling, and owner-review guardrails as the dynamic pricing workflow matures.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 opacity-70 sm:grid-cols-2">
           <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Rounding</p>
             <select disabled aria-disabled="true" className="mt-1.5 w-full cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900">
-              <option>Round up to .99</option>
-              <option>Round up to $1</option>
-              <option>Round up to .98</option>
+              <option>Configured in Settings</option>
             </select>
           </div>
           <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Target</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Guardrails</p>
             <div className="mt-1.5 flex items-center gap-2">
               <input
                 type="text"
-                value="60"
+                value="Review required"
                 disabled
                 aria-disabled="true"
-                className="w-20 cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-right text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900"
+                className="w-full cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900"
               />
-              <span className="text-sm text-surface-500">%</span>
             </div>
           </div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-[11px] text-surface-500 dark:text-surface-400">
-            Re-runs whenever the daily catalog scraper finds a parts-cost change.
+            Re-runs when supplier catalog data changes, while custom rows and review flags stay protected.
           </p>
           <label className="flex items-center gap-2 text-xs font-medium text-surface-400">
             <input type="checkbox" disabled aria-disabled="true" className="cursor-not-allowed" />
@@ -480,7 +460,7 @@ export function StepRepairPricing({
       </div>
       )}
 
-      {/* Tier-mode bonus action: reset the editable grid to server day-1 medians. */}
+      {/* Tier-mode bonus action: reset the editable grid to starter fallback labor. */}
       {mode === 'tier' && (
         <div className="mt-4 flex justify-center">
           <button
@@ -490,13 +470,13 @@ export function StepRepairPricing({
             className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Apply industry medians
+            Apply starter fallbacks
           </button>
         </div>
       )}
 
       <p className="mt-3 text-center text-xs text-surface-400 dark:text-surface-500">
-        Per-device matrix + Auto-margin are backed by server routes; the full wizard editor remains tracked in TODO.md.
+        Per-device matrix + Auto-margin are backed by WIP server routes; this step seeds safe starting fallbacks only.
       </p>
 
       <div className="mt-8 flex flex-col items-start justify-between gap-3 border-t border-surface-200 pt-5 sm:flex-row sm:items-center dark:border-surface-700">
@@ -525,7 +505,7 @@ export function StepRepairPricing({
             disabled={saving}
             className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? 'Seeding pricing' : 'Continue'}
+            {saving ? 'Seeding fallbacks' : 'Continue'}
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
           </button>
         </div>

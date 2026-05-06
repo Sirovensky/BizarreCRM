@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS device_models (
   manufacturer_id INTEGER NOT NULL REFERENCES manufacturers(id),
   name            TEXT NOT NULL,          -- "iPhone 14 Pro"
   slug            TEXT NOT NULL,          -- "iphone-14-pro"
-  category        TEXT NOT NULL DEFAULT 'phone', -- phone|tablet|laptop|console|other
+  category        TEXT NOT NULL DEFAULT 'phone', -- phone|tablet|laptop|desktop|console|tv|other
   release_year    INTEGER,
   is_popular      INTEGER NOT NULL DEFAULT 0, -- 1 = show in quick-select
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),

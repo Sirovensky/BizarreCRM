@@ -31,6 +31,20 @@ import { consumeWindowRate } from '../utils/rateLimiter.js';
 
 const logger = createLogger('catalog-routes');
 
+function slugifyCategory(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 64);
+}
+
+function labelFromCategory(slug: string): string {
+  return CATEGORY_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function parseLimit(raw: unknown, defaultVal = 100, maxVal = 200): number {
   if (raw === undefined || raw === null || raw === '') return defaultVal;
   const n = Number(raw);
@@ -79,11 +93,26 @@ const CANONICAL_FALLBACK = ['phone', 'tablet', 'laptop', 'tv', 'game-console', '
 router.get('/categories', asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
   const rows = await adb.all(`
-    SELECT category AS slug, COUNT(*) AS count
-    FROM device_models
-    WHERE category IS NOT NULL AND TRIM(category) != ''
-    GROUP BY category
-    ORDER BY count DESC, category ASC
+    WITH category_sources AS (
+      SELECT category AS slug, COUNT(*) AS model_count
+      FROM device_models
+      WHERE category IS NOT NULL AND TRIM(category) != ''
+      GROUP BY category
+      UNION ALL
+      SELECT category AS slug, 0 AS model_count
+      FROM condition_templates
+      WHERE category IS NOT NULL AND TRIM(category) != ''
+      GROUP BY category
+      UNION ALL
+      SELECT category AS slug, 0 AS model_count
+      FROM repair_services
+      WHERE category IS NOT NULL AND TRIM(category) != ''
+      GROUP BY category
+    )
+    SELECT slug, SUM(model_count) AS count
+    FROM category_sources
+    GROUP BY slug
+    ORDER BY count DESC, slug ASC
   `);
   type Row = { slug: string; count: number };
   const seen = new Set<string>();
@@ -94,16 +123,99 @@ router.get('/categories', asyncHandler(async (_req, res) => {
     seen.add(slug);
     result.push({
       slug,
-      label: CATEGORY_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      label: labelFromCategory(slug),
       count: Number(r.count) || 0,
     });
   }
   for (const slug of CANONICAL_FALLBACK) {
     if (seen.has(slug)) continue;
     seen.add(slug);
-    result.push({ slug, label: CATEGORY_LABELS[slug] ?? slug, count: 0 });
+    result.push({ slug, label: labelFromCategory(slug), count: 0 });
   }
   res.json({ success: true, data: result });
+}));
+
+router.post('/categories', adminOnly, asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const raw = req.body?.slug ?? req.body?.name ?? req.body?.label;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new AppError('name or slug is required', 400);
+  }
+
+  const slug = slugifyCategory(validateTextLength(raw, 80, 'category'));
+  if (!slug || slug.length < 2) {
+    throw new AppError('category must contain at least two letters or numbers', 400);
+  }
+  const labelRaw = typeof req.body?.label === 'string' && req.body.label.trim()
+    ? validateTextLength(req.body.label, 80, 'label')
+    : labelFromCategory(slug);
+  const label = labelRaw.trim();
+
+  let template = await adb.get<{ id: number }>(
+    'SELECT id FROM condition_templates WHERE category = ? AND is_default = 1 ORDER BY id LIMIT 1',
+    slug,
+  );
+  if (!template) {
+    const result = await adb.run(
+      'INSERT INTO condition_templates (category, name, is_default) VALUES (?, ?, 1)',
+      slug,
+      'Default',
+    );
+    template = { id: Number(result.lastInsertRowid) };
+  }
+
+  const checks = [
+    'Power / startup behavior',
+    'Exterior condition',
+    'Accessories received',
+    'Serial or model number recorded',
+    'Customer symptom confirmed',
+    'Safety concern noted',
+    'Intake photos taken',
+  ];
+  for (let i = 0; i < checks.length; i += 1) {
+    await adb.run(
+      `INSERT INTO condition_checks (template_id, label, sort_order)
+       SELECT ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM condition_checks WHERE template_id = ? AND label = ?
+       )`,
+      template.id,
+      checks[i],
+      i,
+      template.id,
+      checks[i],
+    );
+  }
+
+  const services = [
+    { name: `${label} Diagnostic`, slug: `${slug}-diagnostic`, sort: 0 },
+    { name: `${label} General Service`, slug: `${slug}-general-service`, sort: 1 },
+    { name: `${label} Parts / Estimate Review`, slug: `${slug}-parts-estimate-review`, sort: 2 },
+  ];
+  for (const service of services) {
+    await adb.run(
+      'INSERT OR IGNORE INTO repair_services (name, slug, category, sort_order) VALUES (?, ?, ?, ?)',
+      service.name,
+      service.slug,
+      slug,
+      service.sort,
+    );
+  }
+
+  const countRow = await adb.get<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM device_models WHERE category = ?',
+    slug,
+  );
+  res.status(201).json({
+    success: true,
+    data: {
+      slug,
+      label,
+      count: Number(countRow?.count) || 0,
+      generic_defaults_seeded: true,
+    },
+  });
 }));
 
 // ─── Device models ───────────────────────────────────────────────────────────
@@ -180,8 +292,10 @@ router.post('/devices', adminOnly, asyncHandler(async (req, res) => {
   }
   const nameTrimmed = validateRequiredString(name, 'name', 200);
 
-  const VALID_CATS = ['phone', 'tablet', 'laptop', 'console', 'tv', 'other'];
-  const cat = typeof category === 'string' && VALID_CATS.includes(category) ? category : 'other';
+  const cat = typeof category === 'string' && category.trim()
+    ? slugifyCategory(validateTextLength(category, 80, 'category'))
+    : 'other';
+  if (!cat) throw new AppError('category is invalid', 400);
 
   // Auto-generate slug: "<manufacturer_id>-<name-slugified>"
   const slug = `${Number(manufacturer_id)}-${nameTrimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;

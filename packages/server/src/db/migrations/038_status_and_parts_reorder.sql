@@ -2,13 +2,13 @@
 INSERT OR IGNORE INTO ticket_statuses (name, color, sort_order, is_default, is_closed, notify_customer)
 VALUES ('Created', '#60a5fa', 0, 1, 0, 0);
 
--- 2. Remove default flag from "Waiting for inspection"
-UPDATE ticket_statuses SET is_default = 0 WHERE name = 'Waiting for inspection';
+-- 2. Remove default flag from intake status
+UPDATE ticket_statuses SET is_default = 0 WHERE name = 'Intake received';
 
 -- 3. Rename "Open" to "On Hold"
 UPDATE ticket_statuses SET name = 'On Hold', color = '#6b7280' WHERE id = 1 AND name = 'Open';
 
--- 4. Shift sort orders so Created=0, Waiting for inspection=1, etc.
+-- 4. Shift sort orders so Created=0, intake follows, etc.
 UPDATE ticket_statuses SET sort_order = sort_order + 1 WHERE name != 'Created' AND sort_order >= 0;
 
 -- 5. Ensure Created has sort_order 0

@@ -957,8 +957,8 @@ router.get('/tech-workload', asyncHandler(async (req, res) => {
       SELECT
         t.assigned_to,
         COUNT(*) AS open_tickets,
-        SUM(CASE WHEN ts.name = 'In Progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN ts.name IN ('Waiting for Parts', 'Special Part Order (Pending Parts)') THEN 1 ELSE 0 END) AS waiting_parts
+        SUM(CASE WHEN ts.name = 'Bench work active' THEN 1 ELSE 0 END) AS in_progress,
+        SUM(CASE WHEN ts.name IN ('Parts on order', 'Parts quote needed', 'Special-order parts pending') THEN 1 ELSE 0 END) AS waiting_parts
       FROM tickets t
       JOIN ticket_statuses ts ON ts.id = t.status_id
       WHERE t.is_deleted = 0 AND ts.is_closed = 0 AND ts.is_cancelled = 0

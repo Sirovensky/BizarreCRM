@@ -11,7 +11,7 @@ export interface DeviceModel {
   manufacturer_id: number;
   name: string;
   slug: string;
-  category: 'phone' | 'tablet' | 'laptop' | 'console' | 'other';
+  category: string;
   release_year: number | null;
   is_popular: boolean;
   created_at: string;

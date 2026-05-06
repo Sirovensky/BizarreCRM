@@ -263,8 +263,8 @@ const TICKET_SETTINGS: SettingDef[] = [
     options: [
       { label: 'Disabled', value: '' },
       { label: 'Closed', value: 'closed' },
-      { label: 'Waiting on Customer', value: 'waiting_on_customer' },
-      { label: 'Waiting for Parts', value: 'waiting_for_parts' },
+      { label: 'Customer response needed', value: 'customer_response_needed' },
+      { label: 'Parts on order', value: 'parts_on_order' },
     ],
   },
   {
@@ -388,7 +388,7 @@ const TICKET_SETTINGS: SettingDef[] = [
     type: 'select',
     options: [
       { label: 'No change', value: '' },
-      { label: 'Waiting on Customer', value: 'waiting_on_customer' },
+      { label: 'Customer response needed', value: 'customer_response_needed' },
       { label: 'On Hold', value: 'on_hold' },
     ],
   },

@@ -20,7 +20,7 @@ export type WizardPhase =
   | 'twoFactorSetup'    // Step 3 both — TOTP enroll + backup codes
   // Wizard body (linear)
   | 'welcome'           // Step 4 — shop name + theme
-  | 'shopType'          // Step 5 — phone / console-pc / tv / mixed (NEW)
+  | 'shopType'          // Step 5 — electronics preset (phone / tablet / PC / console / TV / mixed)
   | 'store'             // Step 6 — address/phone/email/timezone/currency
   | 'importHandoff'     // Step 7 — will-import / later / fresh
   | 'repairPricing'     // Step 8 — tier-based labor matrix (NEW)
@@ -159,7 +159,13 @@ export interface PendingWrites {
   theme?: 'light' | 'dark' | 'system';
 
   // ─── Shop type step (NEW) ────────────────────────────────────────
-  shop_type?: 'phone' | 'console_pc' | 'tv' | 'mixed';
+  shop_type?:
+    | 'phone_repair'
+    | 'phone_tablet_repair'
+    | 'computer_repair'
+    | 'console_gaming'
+    | 'tv_consumer_electronics'
+    | 'general_electronics';
 
   // ─── Store info step ─────────────────────────────────────────────
   store_address?: string;

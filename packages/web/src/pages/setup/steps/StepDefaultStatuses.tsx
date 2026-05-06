@@ -18,8 +18,8 @@ import { settingsApi } from '@/api/endpoints';
  * Mirrors `#screen-9` in `mockups/web-setup-wizard.html`. Surfaces the seeded
  * ticket statuses so the shop owner can decide which ones auto-send an SMS to
  * the customer. The seed (`packages/shared/src/constants/statuses.ts`) ships
- * sensible defaults — customer-facing states like "Ready for pickup" default
- * to `notify_customer = true`, internal states like "Diagnosis - In progress"
+ * sensible defaults — customer-facing ready/pickup states default
+ * to `notify_customer = true`, internal diagnostic and final-check states
  * default to false. This step lets the owner override BEFORE the first ticket
  * is created so SMS flows match the shop's actual communication style.
  *
@@ -80,7 +80,7 @@ const GROUPS: GroupMeta[] = [
   {
     id: 'cancelled',
     label: 'Cancelled',
-    description: 'Cancelled, BER, or disposed',
+    description: 'Stopped, uneconomical, or disposal outcomes',
     accent: 'bg-red-500',
   },
 ];

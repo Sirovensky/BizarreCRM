@@ -118,7 +118,10 @@ const EXPORT_BLACKLIST = new Set<string>([
 
 type ShopTemplateId =
   | 'phone_repair'
+  | 'phone_tablet_repair'
   | 'computer_repair'
+  | 'console_gaming'
+  | 'tv_consumer_electronics'
   | 'watch_repair'
   | 'general_electronics';
 
@@ -150,6 +153,25 @@ const SHOP_TEMPLATES: ShopTemplate[] = [
     },
   },
   {
+    id: 'phone_tablet_repair',
+    label: 'Phone + Tablet Shop',
+    description: 'Defaults for phone shops that also handle tablets, accessories, and managed-device approvals.',
+    settings: {
+      checkin_default_category: 'phone',
+      repair_require_imei: '1',
+      repair_require_pre_condition: '1',
+      repair_default_warranty_value: '90',
+      repair_default_warranty_unit: 'days',
+      repair_default_due_value: '2',
+      repair_default_due_unit: 'days',
+      ticket_label_template: 'compact',
+      pos_show_products: '1',
+      pos_show_repairs: '1',
+      pos_show_bundles: '1',
+      receipt_cfg_barcode: '1',
+    },
+  },
+  {
     id: 'computer_repair',
     label: 'Computer Repair Shop',
     description: 'Defaults optimized for laptop/desktop repair — diagnostic required, 7d lead time, serial capture.',
@@ -161,6 +183,42 @@ const SHOP_TEMPLATES: ShopTemplate[] = [
       repair_default_due_value: '7',
       repair_default_due_unit: 'days',
       repair_default_input_criteria: 'serial',
+      ticket_label_template: 'professional',
+      pos_show_products: '1',
+      pos_show_repairs: '1',
+      pos_show_miscellaneous: '1',
+    },
+  },
+  {
+    id: 'console_gaming',
+    label: 'Console / Gaming Repair Shop',
+    description: 'Defaults for consoles, handhelds, controllers, ports, thermal service, and save-data consent.',
+    settings: {
+      checkin_default_category: 'console',
+      repair_require_pre_condition: '1',
+      repair_require_post_condition: '1',
+      repair_default_warranty_value: '30',
+      repair_default_warranty_unit: 'days',
+      repair_default_due_value: '3',
+      repair_default_due_unit: 'days',
+      ticket_label_template: 'compact',
+      pos_show_products: '1',
+      pos_show_repairs: '1',
+      pos_show_miscellaneous: '1',
+    },
+  },
+  {
+    id: 'tv_consumer_electronics',
+    label: 'TV / Consumer Electronics Shop',
+    description: 'Defaults for TVs, monitors, projectors, remotes, board repairs, and review-heavy estimates.',
+    settings: {
+      checkin_default_category: 'tv',
+      repair_require_pre_condition: '1',
+      repair_require_diagnostic: '1',
+      repair_default_warranty_value: '30',
+      repair_default_warranty_unit: 'days',
+      repair_default_due_value: '7',
+      repair_default_due_unit: 'days',
       ticket_label_template: 'professional',
       pos_show_products: '1',
       pos_show_repairs: '1',
@@ -353,7 +411,15 @@ router.post(
     const adb = req.asyncDb;
     const templateId = validateEnum(
       req.body?.template_id,
-      ['phone_repair', 'computer_repair', 'watch_repair', 'general_electronics'] as const,
+      [
+        'phone_repair',
+        'phone_tablet_repair',
+        'computer_repair',
+        'console_gaming',
+        'tv_consumer_electronics',
+        'watch_repair',
+        'general_electronics',
+      ] as const,
       'template_id',
       true
     );

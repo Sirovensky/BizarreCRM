@@ -304,8 +304,8 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   }
 
   const STATUS_PROGRESS: Record<string, number> = {
-    'Open': 10, 'In Progress': 40, 'Waiting for Parts': 50, 'Waiting on Customer': 50,
-    'Parts Arrived': 60, 'On Hold': 30, 'Closed': 100, 'Cancelled': 100,
+    'Open': 10, 'Bench work active': 40, 'Parts on order': 50, 'Customer response needed': 50,
+    'Parts ready - device needed': 60, 'On Hold': 30, 'Closed': 100, 'Job cancelled': 100,
   };
 
   // Search form

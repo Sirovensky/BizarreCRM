@@ -12,7 +12,7 @@ export function seedDatabase(db: any): void {
     `);
     for (const s of DEFAULT_TICKET_STATUSES) {
       // notify_customer is intentionally sourced from the shared constant so that
-      // customer-facing statuses ("Waiting for inspection", "Ready for pickup", etc.)
+      // customer-facing statuses (intake, ready, pickup, etc.)
       // default to auto-SMS out of the box. Seeding it as `0` meant brand new shops
       // never sent a single notification until someone manually flipped the toggle
       // in Settings → Statuses, which is the "stuck in PENDING" root cause fixed in
@@ -80,8 +80,8 @@ export function seedDatabase(db: any): void {
     // SMS Templates — generic, no shop-specific references
     const insertTpl = db.prepare(`INSERT OR IGNORE INTO sms_templates (name, content, category) VALUES (?, ?, ?)`);
     insertTpl.run('Device Ready for Pickup', 'Hi {{customer_name}}, your {{device_name}} is ready for pickup! Come by during business hours. Reply STOP to opt out.', 'status_update');
-    insertTpl.run('Waiting for Parts', 'Hi {{customer_name}}, we\'ve ordered the part needed for your {{device_name}} (Ticket #{{ticket_id}}). We\'ll text you when it arrives! Reply STOP to opt out.', 'status_update');
-    insertTpl.run('Parts Arrived', 'Hi {{customer_name}}, the part for your {{device_name}} has arrived! Bring it in and we\'ll get started right away. Reply STOP to opt out.', 'status_update');
+    insertTpl.run('Parts Ordered Update', 'Hi {{customer_name}}, we ordered the part needed for your {{device_name}} (Ticket #{{ticket_id}}). We will text you when it arrives. Reply STOP to opt out.', 'status_update');
+    insertTpl.run('Parts Ready Update', 'Hi {{customer_name}}, the part for your {{device_name}} is here. We will continue as soon as the device is ready for the bench. Reply STOP to opt out.', 'status_update');
     insertTpl.run('Repair Complete', 'Great news, {{customer_name}}! Your {{device_name}} repair is complete. Total: ${{total}}. Come pick it up anytime. Reply STOP to opt out.', 'status_update');
     insertTpl.run('Appointment Reminder', 'Hi {{customer_name}}, this is a reminder of your appointment tomorrow. Reply to confirm or reschedule. Reply STOP to opt out.', 'appointment');
     insertTpl.run('Estimate Ready', 'Hi {{customer_name}}, your repair estimate for {{device_name}} is ready: ${{estimate_total}}. Call or visit us to approve. Reply STOP to opt out.', 'estimate');

@@ -49,19 +49,18 @@ export const AUTOMATION_USER_ID: null = null;
 // are permitted to transition TO.
 //
 // Rationale per entry:
-//   Closed statuses (Repaired, Payment Collected..., Device shipped,
-//   Repaired & Collected, Payment Received & Picked Up):
+//   Closed statuses (ready, paid, shipped, collected):
 //     → Allow re-queue back to hold states (e.g. customer disputes, re-ship)
-//       but block re-opening to raw "Waiting for inspection" to prevent
+//       but block re-opening to raw intake to prevent
 //       accidental data loss on completed jobs.
 //     → Block transitioning to another closed status directly; use the hold
 //       state as the intermediate step so the audit trail is clear.
 //     → Allow cancellation from closed (owner may void the job post-pickup).
 //
-//   Cancelled statuses (Cancelled, BER, Disposed):
-//     → Cancelled and BER may be re-opened to "Waiting for inspection" so the
-//       device can be re-evaluated (e.g. customer returns after a BER quote).
-//     → Disposed is terminal — no transitions allowed once the device is gone.
+//   Stop statuses:
+//     → Customer cancellation and not-economical decisions may be re-opened to
+//       intake so the device can be re-evaluated.
+//     → Disposal completed is terminal once the device is gone.
 //
 // Names NOT present as keys fall through with NO guard (custom tenant statuses
 // are fully permissive so tenants can define their own workflows).
@@ -71,17 +70,17 @@ export const AUTOMATION_USER_ID: null = null;
 // don't have to repeat a long list — we use the flag-based check in the guard
 // instead of listing every open name here.
 const CLOSED_STATUS_NAMES = new Set([
-  'Repaired',
-  'Payment Collected - Ready for shipment',
-  'Device shipped',
-  'Repaired & Collected',
-  'Payment Received & Picked Up',
+  'Ready after repair',
+  'Paid - ready to ship',
+  'Shipped',
+  'Repaired and collected',
+  'Paid and picked up',
 ]);
 
 const CANCELLED_STATUS_NAMES = new Set([
-  'Cancelled',
-  'BER (Beyond Economical Repair)',
-  'Disposed',
+  'Job cancelled',
+  'Not economical to repair',
+  'Disposal completed',
 ]);
 
 /**
@@ -96,54 +95,54 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
   // A closed ticket may be moved to a hold/on-hold state for rework or
   // re-shipment, or cancelled if the job is disputed/voided post-pickup.
   // It may NOT jump to another closed state directly (use the hold state first).
-  'Repaired': [
-    'Repaired - Waiting for payment',
-    'Approval required',
-    'Waiting on customer',
-    'Waiting for Parts',
-    'In Progress',
-    'Repaired - Pending QC',
-    'Cancelled',
-    'BER (Beyond Economical Repair)',
+  'Ready after repair': [
+    'Complete - balance due',
+    'Estimate approval needed',
+    'Customer response needed',
+    'Parts on order',
+    'Bench work active',
+    'Repair complete - final check',
+    'Job cancelled',
+    'Not economical to repair',
   ],
-  'Payment Collected - Ready for shipment': [
-    'In-transit',
-    'Device shipped',
-    'Waiting for asset',
-    'Cancelled',
+  'Paid - ready to ship': [
+    'In transit',
+    'Shipped',
+    'Awaiting related device',
+    'Job cancelled',
   ],
-  'Device shipped': [
-    'Repaired & Collected',
-    'Payment Received & Picked Up',
-    'In-transit',
-    'Waiting for asset',
-    'Cancelled',
+  'Shipped': [
+    'Repaired and collected',
+    'Paid and picked up',
+    'In transit',
+    'Awaiting related device',
+    'Job cancelled',
   ],
-  'Repaired & Collected': [
-    'Cancelled',
+  'Repaired and collected': [
+    'Job cancelled',
     // Allow reopening for warranty returns.
-    'Waiting for inspection',
-    'In Progress',
+    'Intake received',
+    'Bench work active',
   ],
-  'Payment Received & Picked Up': [
-    'Cancelled',
-    'Waiting for inspection',
-    'In Progress',
+  'Paid and picked up': [
+    'Job cancelled',
+    'Intake received',
+    'Bench work active',
   ],
 
   // ── Cancelled → conditional re-open ────────────────────────────────────────
-  // Customer cancellations and BER verdicts can be reversed (re-evaluate device).
-  'Cancelled': [
-    'Waiting for inspection',
-    'Diagnosis - In progress',
-    'In Progress',
+  // Customer cancellations and not-economical decisions can be reversed.
+  'Job cancelled': [
+    'Intake received',
+    'Diagnostic underway',
+    'Bench work active',
   ],
-  'BER (Beyond Economical Repair)': [
-    'Waiting for inspection',
-    'Diagnosis - In progress',
+  'Not economical to repair': [
+    'Intake received',
+    'Diagnostic underway',
   ],
-  // Disposed is TERMINAL — no outgoing transitions.
-  'Disposed': [],
+  // Disposal completed is TERMINAL — no outgoing transitions.
+  'Disposal completed': [],
 };
 
 // ---------------------------------------------------------------------------

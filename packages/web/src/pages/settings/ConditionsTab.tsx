@@ -6,7 +6,7 @@ import {
   Smartphone, Tablet, Laptop, Monitor, Gamepad2, Tv, HelpCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi } from '@/api/endpoints';
+import { catalogApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
@@ -30,7 +30,17 @@ interface ConditionTemplate {
   checks: ConditionCheck[];
 }
 
-const CATEGORIES = [
+const CATEGORY_ICONS: Record<string, typeof HelpCircle> = {
+  phone: Smartphone,
+  tablet: Tablet,
+  laptop: Laptop,
+  desktop: Monitor,
+  console: Gamepad2,
+  tv: Tv,
+  other: HelpCircle,
+};
+
+const FALLBACK_CATEGORIES = [
   { key: 'phone', label: 'Phone', icon: Smartphone },
   { key: 'tablet', label: 'Tablet', icon: Tablet },
   { key: 'laptop', label: 'Laptop', icon: Laptop },
@@ -44,6 +54,47 @@ const CATEGORIES = [
 
 export function ConditionsTab() {
   const [selectedCategory, setSelectedCategory] = useState('phone');
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const queryClient = useQueryClient();
+
+  const { data: categoryRes } = useQuery({
+    queryKey: ['catalog', 'categories'],
+    queryFn: () => catalogApi.getCategories(),
+  });
+
+  const categoriesFromApi = ((categoryRes as any)?.data?.data ?? []) as Array<{
+    slug: string;
+    label: string;
+    count: number;
+  }>;
+  const categories = categoriesFromApi.length
+    ? categoriesFromApi.map((cat) => ({
+        key: cat.slug,
+        label: cat.label,
+        icon: CATEGORY_ICONS[cat.slug] ?? HelpCircle,
+      }))
+    : FALLBACK_CATEGORIES;
+
+  const createCategory = useMutation({
+    mutationFn: (name: string) => catalogApi.createCategory({ name }),
+    onSuccess: (res: any) => {
+      const slug = res?.data?.data?.slug;
+      queryClient.invalidateQueries({ queryKey: ['catalog', 'categories'] });
+      queryClient.invalidateQueries({ queryKey: ['condition-templates'] });
+      if (slug) setSelectedCategory(slug);
+      setNewCategoryName('');
+      setShowNewCategory(false);
+      toast.success('Category created');
+    },
+    onError: (err: any) => toast.error(formatApiError(err) || 'Failed to create category'),
+  });
+
+  function handleCreateCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    createCategory.mutate(name);
+  }
 
   return (
     <div className="space-y-6">
@@ -52,7 +103,7 @@ export function ConditionsTab() {
         <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wide">Pre/Post Repair Conditions</h3>
         {/* Category Tabs */}
         <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 overflow-x-auto">
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             const Icon = cat.icon;
             return (
               <button
@@ -70,7 +121,50 @@ export function ConditionsTab() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setShowNewCategory(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+          >
+            <Plus className="h-4 w-4" />
+            Category
+          </button>
         </div>
+
+        {showNewCategory && (
+          <div className="flex flex-col gap-2 rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800 sm:flex-row">
+            <input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateCategory();
+                if (e.key === 'Escape') setShowNewCategory(false);
+              }}
+              placeholder="Vacuum cleaners"
+              className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 outline-none focus:border-primary-500 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCreateCategory}
+                disabled={createCategory.isPending || !newCategoryName.trim()}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {createCategory.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Create
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowNewCategory(false)}
+                className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-600 dark:border-surface-700 dark:text-surface-300"
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Template list for selected category */}
         <CategoryTemplates category={selectedCategory} />

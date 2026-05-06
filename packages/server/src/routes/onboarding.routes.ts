@@ -78,7 +78,15 @@ interface OnboardingRow {
   created_at: string | null;
 }
 
-const SHOP_TYPES = ['phone_repair', 'computer_repair', 'watch_repair', 'general_electronics'] as const;
+const SHOP_TYPES = [
+  'phone_repair',
+  'phone_tablet_repair',
+  'computer_repair',
+  'console_gaming',
+  'tv_consumer_electronics',
+  'watch_repair',
+  'general_electronics',
+] as const;
 type ShopType = typeof SHOP_TYPES[number];
 
 // Onboarding admin check: some tenants have legacy role strings like 'owner' or
@@ -182,42 +190,130 @@ function rowToResponse(row: OnboardingRow): OnboardingStateResponse {
 // Shop-type starter templates
 // ---------------------------------------------------------------------------
 //
-// Each shop type gets a tiny bundle of SMS templates. Anything richer
-// (repair pricing catalog, device-model library) is a v2 enhancement — see
-// the README "Onboarding & Day-1 Experience" section — because the agent
-// explicitly wants to hand-curate the seed from a known-good production DB
-// before rolling it out.
+// Each shop type gets an electronics-focused SMS template bundle. Service,
+// device, and pricing enrichment lives in migrations / pricing setup; these
+// templates stay intentionally generic and avoid copying real-shop wording.
 
 interface ShopTypeTemplate {
   smsTemplates: Array<{ name: string; content: string; category: string }>;
 }
 
+const BASE_ELECTRONICS_SMS_TEMPLATES: ShopTypeTemplate['smsTemplates'] = [
+  {
+    name: 'Repair Intake Received',
+    content: 'Hi {{customer_name}}, we checked in your {{device_name}} under ticket #{{ticket_id}}. We will inspect it and update you with next steps. Reply STOP to opt out.',
+    category: 'status_update',
+  },
+  {
+    name: 'Diagnostic Summary Ready',
+    content: 'Hi {{customer_name}}, we finished the initial check on your {{device_name}}. Please review the estimate or contact us with questions. Reply STOP to opt out.',
+    category: 'estimate',
+  },
+  {
+    name: 'Approval Needed',
+    content: 'Hi {{customer_name}}, your {{device_name}} estimate is ready. Please approve before we order parts or begin the repair. Reply STOP to opt out.',
+    category: 'estimate',
+  },
+  {
+    name: 'Part Sourcing Update',
+    content: 'Hi {{customer_name}}, a part needed for your {{device_name}} has been requested. We will update you when it is available. Reply STOP to opt out.',
+    category: 'parts',
+  },
+  {
+    name: 'Part Ready for Bench',
+    content: 'Hi {{customer_name}}, the part for your {{device_name}} is here and your repair is queued for the bench. Reply STOP to opt out.',
+    category: 'parts',
+  },
+  {
+    name: 'Repair Quality Check Passed',
+    content: 'Hi {{customer_name}}, your {{device_name}} passed final checks and is ready for pickup. Ticket #{{ticket_id}}. Reply STOP to opt out.',
+    category: 'status_update',
+  },
+  {
+    name: 'Balance Due Before Release',
+    content: 'Hi {{customer_name}}, your {{device_name}} is complete. Balance due: ${{total}}. Payment is needed before pickup or shipment. Reply STOP to opt out.',
+    category: 'payment',
+  },
+  {
+    name: 'Repair Review Needed',
+    content: 'Hi {{customer_name}}, the repair path for your {{device_name}} needs your review before we continue. Please contact us about ticket #{{ticket_id}}. Reply STOP to opt out.',
+    category: 'status_update',
+  },
+  {
+    name: 'Pickup or Shipping Needed',
+    content: 'Hi {{customer_name}}, please contact us to arrange pickup, drop-off, or shipping for your {{device_name}}. Ticket #{{ticket_id}}. Reply STOP to opt out.',
+    category: 'logistics',
+  },
+];
+
 const SHOP_TYPE_TEMPLATES: Record<ShopType, ShopTypeTemplate> = {
   phone_repair: {
     smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
       {
-        name: 'Phone Drop-off Confirmation',
-        content: 'Hi {{customer_name}}, we received your {{device_name}} and will diagnose it shortly. Ticket #{{ticket_id}}. Reply STOP to opt out.',
+        name: 'Phone Data Reminder',
+        content: 'Hi {{customer_name}}, please make sure your {{device_name}} is backed up and unlocked or in repair mode before service when possible. Reply STOP to opt out.',
+        category: 'status_update',
+      },
+    ],
+  },
+  phone_tablet_repair: {
+    smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
+      {
+        name: 'Tablet Accessory Reminder',
+        content: 'Hi {{customer_name}}, if your {{device_name}} uses a keyboard, stylus, case, or charger related to the issue, please bring it with the device. Reply STOP to opt out.',
         category: 'status_update',
       },
       {
-        name: 'Phone Repair Quote',
-        content: 'Hi {{customer_name}}, your {{device_name}} repair estimate is ${{estimate_total}}. Reply YES to approve or call us. Reply STOP to opt out.',
-        category: 'estimate',
+        name: 'School or Business Device Approval',
+        content: 'Hi {{customer_name}}, we may need owner or admin approval before resetting or servicing managed profiles on your {{device_name}}. Reply STOP to opt out.',
+        category: 'status_update',
       },
     ],
   },
   computer_repair: {
     smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
       {
-        name: 'Computer Diagnostic Complete',
-        content: 'Hi {{customer_name}}, diagnostics on your {{device_name}} are finished. Please call us to discuss next steps. Ticket #{{ticket_id}}. Reply STOP to opt out.',
+        name: 'Computer Data Consent',
+        content: 'Hi {{customer_name}}, please confirm whether your {{device_name}} data must be preserved before we perform resets, storage work, or cleanup. Reply STOP to opt out.',
         category: 'status_update',
       },
       {
-        name: 'Data Backup Reminder',
-        content: 'Hi {{customer_name}}, before we proceed with your {{device_name}} repair, please confirm your data is backed up. Reply STOP to opt out.',
+        name: 'Computer Credential Needed',
+        content: 'Hi {{customer_name}}, we need you to enter or confirm access for {{device_name}} before we can complete diagnostics. Reply STOP to opt out.',
         category: 'status_update',
+      },
+    ],
+  },
+  console_gaming: {
+    smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
+      {
+        name: 'Console Save Data Reminder',
+        content: 'Hi {{customer_name}}, please confirm whether save data on your {{device_name}} must be preserved before any reset or storage service. Reply STOP to opt out.',
+        category: 'status_update',
+      },
+      {
+        name: 'Console Accessory Request',
+        content: 'Hi {{customer_name}}, if the issue involves power, display, dock, controller, or storage, please bring the related accessory for testing. Reply STOP to opt out.',
+        category: 'status_update',
+      },
+    ],
+  },
+  tv_consumer_electronics: {
+    smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
+      {
+        name: 'TV Intake Details Needed',
+        content: 'Hi {{customer_name}}, please send the brand, model number, screen size, and a photo of the issue for your {{device_name}} when available. Reply STOP to opt out.',
+        category: 'status_update',
+      },
+      {
+        name: 'TV Repair Economics Review',
+        content: 'Hi {{customer_name}}, we need to review part availability and repair economics for your {{device_name}} before proceeding. Reply STOP to opt out.',
+        category: 'estimate',
       },
     ],
   },
@@ -237,14 +333,15 @@ const SHOP_TYPE_TEMPLATES: Record<ShopType, ShopTypeTemplate> = {
   },
   general_electronics: {
     smsTemplates: [
+      ...BASE_ELECTRONICS_SMS_TEMPLATES,
       {
-        name: 'Device Received',
-        content: 'Hi {{customer_name}}, we received your {{device_name}} for service. Ticket #{{ticket_id}}. Reply STOP to opt out.',
+        name: 'Accessory Testing Request',
+        content: 'Hi {{customer_name}}, please bring any charger, cable, remote, dock, controller, or case related to the issue with your {{device_name}}. Reply STOP to opt out.',
         category: 'status_update',
       },
       {
-        name: 'Device Ready',
-        content: 'Hi {{customer_name}}, your {{device_name}} is ready for pickup. Total: ${{total}}. Reply STOP to opt out.',
+        name: 'Unknown Device Review',
+        content: 'Hi {{customer_name}}, your {{device_name}} needs a custom review because parts or service steps are not standard. We will contact you before proceeding. Reply STOP to opt out.',
         category: 'status_update',
       },
     ],
@@ -468,10 +565,9 @@ router.delete(
 /**
  * POST /set-shop-type — records the shop type + applies its starter template.
  *
- * The starter template today is a small SMS template bundle; richer content
- * (repair pricing catalog, device-model library) is intentionally deferred
- * until a curated "seed" DB is built from real shop history — see the
- * "Onboarding & Day-1 Experience" section of the README.
+ * The starter template installs electronics-specific SMS language and records
+ * the selected shop type. Device/service/pricing seeds are owned by migrations
+ * and setup pricing routes so this endpoint stays lightweight and idempotent.
  */
 router.post(
   '/set-shop-type',

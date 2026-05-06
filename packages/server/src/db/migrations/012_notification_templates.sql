@@ -16,9 +16,9 @@ CREATE TABLE IF NOT EXISTS notification_templates (
 
 INSERT OR IGNORE INTO notification_templates (event_key, event_label, category, subject, sms_body, send_sms_auto) VALUES
   ('ticket_created', 'A new ticket is created', 'customer', 'Repair In Progress - {ticket_id} from {store_name}', 'Hi {customer_name}, your device has been checked in at {store_name}. Ticket: {ticket_id}', 1),
-  ('parts_arrived', 'Parts arrived, need the device', 'customer', '', 'Hi {customer_name}. We got the parts for your {device_name}. Feel free to stop by and we''ll get that resolved.', 1),
-  ('part_received_queue', 'Part received, in queue to fix', 'customer', '', 'Hi {customer_name}, we received the parts for your {device_name} and it''s in our repair queue. We''ll update you when it''s done!', 1),
-  ('device_repaired', 'Repaired/need pickup', 'customer', 'Your device is Ready For Pickup', 'Hi {customer_name}, your {device_name} repair is complete! Please pick it up at {store_name}. Hours: 9-3:30, 5-8 Mon-Fri.', 1),
+  ('parts_arrived', 'Parts ready for bench', 'customer', '', 'Hi {customer_name}. The part for your {device_name} is here, and we will continue when the device is ready for the bench.', 1),
+  ('part_received_queue', 'Parts received and queued', 'customer', '', 'Hi {customer_name}, the parts for your {device_name} are in and your ticket is queued for repair. We will update you when it is complete.', 1),
+  ('device_repaired', 'Repair complete for pickup', 'customer', 'Your device is ready', 'Hi {customer_name}, your {device_name} repair is complete. Please pick it up at {store_name}.', 1),
   ('device_unrepairable', 'A device cannot be repaired', 'customer', 'OOPS - Your Device cannot be repaired', 'Hi {customer_name}, unfortunately we were unable to repair your {device_name}. Please contact us for details.', 0),
   ('part_not_in_stock', 'Required part is not available in stock', 'customer', 'Pending Parts for Order - {ticket_id}', '', 0),
   ('waiting_approval', 'Waiting for customer approval', 'customer', '{device_name} Repair Order Pending Approval', '', 0),

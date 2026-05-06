@@ -781,6 +781,11 @@ export const catalogApi = {
   // Manufacturers
   getManufacturers: () => api.get('/catalog/manufacturers'),
 
+  // Device categories
+  getCategories: () => api.get('/catalog/categories'),
+  createCategory: (data: { name?: string; slug?: string; label?: string }) =>
+    api.post('/catalog/categories', data),
+
   // Device models
   searchDevices: (params?: {
     q?: string;
@@ -790,6 +795,13 @@ export const catalogApi = {
     limit?: number;
   }) => api.get('/catalog/devices', { params: { ...params, popular: params?.popular ? '1' : undefined } }),
   getDevice: (id: number) => api.get(`/catalog/devices/${id}`),
+  createDevice: (data: {
+    manufacturer_id: number;
+    name: string;
+    category?: string;
+    release_year?: number | null;
+    is_popular?: boolean;
+  }) => api.post('/catalog/devices', data),
 
   // Supplier catalog
   search: (params?: {
@@ -940,7 +952,10 @@ export const employeeApi = {
  */
 export type OnboardingShopType =
   | 'phone_repair'
+  | 'phone_tablet_repair'
   | 'computer_repair'
+  | 'console_gaming'
+  | 'tv_consumer_electronics'
   | 'watch_repair'
   | 'general_electronics';
 

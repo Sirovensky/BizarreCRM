@@ -334,8 +334,8 @@ export function TicketsRepairsSettings() {
               options={[
                 { value: '', label: 'Disabled' },
                 { value: 'closed', label: 'Closed' },
-                { value: 'waiting_on_customer', label: 'Waiting on Customer' },
-                { value: 'waiting_for_parts', label: 'Waiting for Parts' },
+                { value: 'customer_response_needed', label: 'Customer response needed' },
+                { value: 'parts_on_order', label: 'Parts on order' },
               ]}
               onChange={(v) => set('ticket_timer_auto_stop_status', v)}
             />
@@ -446,7 +446,7 @@ export function TicketsRepairsSettings() {
               value={val('ticket_status_after_estimate', '')}
               options={[
                 { value: '', label: 'No change' },
-                { value: 'waiting_on_customer', label: 'Waiting on Customer' },
+                { value: 'customer_response_needed', label: 'Customer response needed' },
                 { value: 'on_hold', label: 'On Hold' },
               ]}
               onChange={(v) => set('ticket_status_after_estimate', v)}

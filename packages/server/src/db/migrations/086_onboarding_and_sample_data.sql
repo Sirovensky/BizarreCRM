@@ -33,7 +33,7 @@
 CREATE TABLE IF NOT EXISTS onboarding_state (
     id                         INTEGER PRIMARY KEY CHECK (id = 1),
     checklist_dismissed        INTEGER NOT NULL DEFAULT 0,
-    shop_type                  TEXT,                                   -- phone_repair | computer_repair | watch_repair | general_electronics
+    shop_type                  TEXT,                                   -- electronics preset id selected during setup
     sample_data_loaded         INTEGER NOT NULL DEFAULT 0,
     sample_data_entities_json  TEXT,                                   -- JSON array of {type, id} for one-click removal
     first_customer_at          TEXT,

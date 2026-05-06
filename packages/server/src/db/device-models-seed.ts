@@ -12,7 +12,7 @@ export interface DeviceModelSeed {
   manufacturer_slug: string;
   name: string;
   slug: string;
-  category: 'phone' | 'tablet' | 'laptop' | 'console' | 'other';
+  category: 'phone' | 'tablet' | 'laptop' | 'desktop' | 'console' | 'tv' | 'other';
   release_year?: number;
   is_popular: boolean;
 }
@@ -25,6 +25,10 @@ export const MANUFACTURERS: ManufacturerSeed[] = [
   { name: 'LG',        slug: 'lg' },
   { name: 'OnePlus',   slug: 'oneplus' },
   { name: 'Sony',      slug: 'sony' },
+  { name: 'Vizio',     slug: 'vizio' },
+  { name: 'Hisense',   slug: 'hisense' },
+  { name: 'Roku',      slug: 'roku' },
+  { name: 'Panasonic', slug: 'panasonic' },
   { name: 'Nokia',     slug: 'nokia' },
   { name: 'HTC',       slug: 'htc' },
   { name: 'Huawei',    slug: 'huawei' },
@@ -48,6 +52,12 @@ export const MANUFACTURERS: ManufacturerSeed[] = [
 
 export const DEVICE_MODELS: DeviceModelSeed[] = [
   // ─── Apple iPhone ───────────────────────────────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'iPhone 17 Pro Max',  slug: 'iphone-17-pro-max',  category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17 Pro',      slug: 'iphone-17-pro',      category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone Air',         slug: 'iphone-air',         category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17',          slug: 'iphone-17',          category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17e',         slug: 'iphone-17e',         category: 'phone', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 16e',         slug: 'iphone-16e',         category: 'phone', release_year: 2025, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPhone 16 Pro Max',  slug: 'iphone-16-pro-max',  category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPhone 16 Pro',      slug: 'iphone-16-pro',      category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPhone 16 Plus',     slug: 'iphone-16-plus',     category: 'phone', release_year: 2024, is_popular: true  },
@@ -91,6 +101,12 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'apple', name: 'iPhone 5',           slug: 'iphone-5',           category: 'phone', release_year: 2012, is_popular: false },
 
   // ─── Apple iPad ─────────────────────────────────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'iPad Pro 13" (M5)',       slug: 'ipad-pro-13-m5',       category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Pro 11" (M5)',       slug: 'ipad-pro-11-m5',       category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Air 13" (M4)',       slug: 'ipad-air-13-m4',       category: 'tablet', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Air 11" (M4)',       slug: 'ipad-air-11-m4',       category: 'tablet', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad (A16)',              slug: 'ipad-a16',             category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad mini (A17 Pro)',     slug: 'ipad-mini-a17-pro',    category: 'tablet', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPad Pro 12.9" (6th Gen)', slug: 'ipad-pro-12-9-6th', category: 'tablet', release_year: 2022, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPad Pro 11" (4th Gen)',   slug: 'ipad-pro-11-4th',   category: 'tablet', release_year: 2022, is_popular: true  },
   { manufacturer_slug: 'apple', name: 'iPad Pro 12.9" (5th Gen)', slug: 'ipad-pro-12-9-5th', category: 'tablet', release_year: 2021, is_popular: true  },
@@ -122,6 +138,14 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'apple', name: 'MacBook Pro 13" (Intel)', slug: 'macbook-pro-13-intel', category: 'laptop', release_year: 2020, is_popular: false },
 
   // ─── Samsung Galaxy S series ─────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26 Ultra',  slug: 'galaxy-s26-ultra',  category: 'phone', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26+',       slug: 'galaxy-s26-plus',   category: 'phone', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26',        slug: 'galaxy-s26',        category: 'phone', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25 Ultra',  slug: 'galaxy-s25-ultra',  category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25 Edge',   slug: 'galaxy-s25-edge',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25+',       slug: 'galaxy-s25-plus',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25',        slug: 'galaxy-s25',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25 FE',     slug: 'galaxy-s25-fe',     category: 'phone', release_year: 2025, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy S24 Ultra',  slug: 'galaxy-s24-ultra',  category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy S24+',       slug: 'galaxy-s24-plus',   category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy S24',        slug: 'galaxy-s24',        category: 'phone', release_year: 2024, is_popular: true  },
@@ -157,6 +181,11 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'samsung', name: 'Galaxy Note 8',        slug: 'galaxy-note-8',        category: 'phone', release_year: 2017, is_popular: false },
 
   // ─── Samsung Galaxy Z ─────────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 7',   slug: 'galaxy-z-fold-7',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 7',   slug: 'galaxy-z-flip-7',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 7 FE', slug: 'galaxy-z-flip-7-fe', category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 6',   slug: 'galaxy-z-fold-6',   category: 'phone', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 6',   slug: 'galaxy-z-flip-6',   category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 5',   slug: 'galaxy-z-fold-5',   category: 'phone', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 5',   slug: 'galaxy-z-flip-5',   category: 'phone', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 4',   slug: 'galaxy-z-fold-4',   category: 'phone', release_year: 2022, is_popular: true  },
@@ -165,6 +194,10 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 3',   slug: 'galaxy-z-flip-3',   category: 'phone', release_year: 2021, is_popular: true  },
 
   // ─── Samsung Galaxy A series ────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy A56 5G', slug: 'galaxy-a56-5g', category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A36 5G', slug: 'galaxy-a36-5g', category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A26 5G', slug: 'galaxy-a26-5g', category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A16 5G', slug: 'galaxy-a16-5g', category: 'phone', release_year: 2024, is_popular: false },
   { manufacturer_slug: 'samsung', name: 'Galaxy A55',  slug: 'galaxy-a55',  category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy A54',  slug: 'galaxy-a54',  category: 'phone', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy A53',  slug: 'galaxy-a53',  category: 'phone', release_year: 2022, is_popular: true  },
@@ -184,6 +217,10 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'samsung', name: 'Galaxy A12',  slug: 'galaxy-a12',  category: 'phone', release_year: 2020, is_popular: false },
 
   // ─── Samsung Tablets ────────────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S11 Ultra', slug: 'galaxy-tab-s11-ultra', category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S11',       slug: 'galaxy-tab-s11',       category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10 Ultra', slug: 'galaxy-tab-s10-ultra', category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10+',      slug: 'galaxy-tab-s10-plus',  category: 'tablet', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Tab S9 Ultra', slug: 'galaxy-tab-s9-ultra', category: 'tablet', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Tab S9+',      slug: 'galaxy-tab-s9-plus',  category: 'tablet', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'samsung', name: 'Galaxy Tab S9',       slug: 'galaxy-tab-s9',       category: 'tablet', release_year: 2023, is_popular: true  },
@@ -196,6 +233,12 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'samsung', name: 'Galaxy Tab A7',       slug: 'galaxy-tab-a7',       category: 'tablet', release_year: 2020, is_popular: false },
 
   // ─── Google Pixel ───────────────────────────────────────────────────────────
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro Fold', slug: 'pixel-10-pro-fold', category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro XL',   slug: 'pixel-10-pro-xl',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro',      slug: 'pixel-10-pro',      category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 10',          slug: 'pixel-10',          category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 9a',          slug: 'pixel-9a',          category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 9 Pro Fold',  slug: 'pixel-9-pro-fold',  category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'google', name: 'Pixel 9 Pro XL', slug: 'pixel-9-pro-xl', category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'google', name: 'Pixel 9 Pro',    slug: 'pixel-9-pro',    category: 'phone', release_year: 2024, is_popular: true  },
   { manufacturer_slug: 'google', name: 'Pixel 9',        slug: 'pixel-9',        category: 'phone', release_year: 2024, is_popular: true  },
@@ -232,6 +275,8 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'motorola', name: 'Edge 30',              slug: 'moto-edge-30',       category: 'phone', release_year: 2022, is_popular: false },
 
   // ─── OnePlus ────────────────────────────────────────────────────────────────
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 13',    slug: 'oneplus-13',    category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 13R',   slug: 'oneplus-13r',   category: 'phone', release_year: 2025, is_popular: false },
   { manufacturer_slug: 'oneplus', name: 'OnePlus 12',    slug: 'oneplus-12',    category: 'phone', release_year: 2024, is_popular: false },
   { manufacturer_slug: 'oneplus', name: 'OnePlus 11',    slug: 'oneplus-11',    category: 'phone', release_year: 2023, is_popular: false },
   { manufacturer_slug: 'oneplus', name: 'OnePlus 10 Pro', slug: 'oneplus-10-pro', category: 'phone', release_year: 2022, is_popular: false },
@@ -325,4 +370,40 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   // ─── Steam Deck ──────────────────────────────────────────────────────────────
   { manufacturer_slug: 'steam', name: 'Steam Deck OLED', slug: 'steam-deck-oled', category: 'console', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'steam', name: 'Steam Deck',      slug: 'steam-deck',      category: 'console', release_year: 2022, is_popular: true  },
+
+  // ─── TV / Monitor intake families ───────────────────────────────────────────
+  // TV repairs are usually quoted from the exact model number captured at
+  // intake. These generic families make day-1 check-in usable without
+  // pretending supplier parts can be matched from a consumer-facing series name.
+  { manufacturer_slug: 'samsung', name: 'Samsung 32" LED TV',       slug: 'samsung-32-led-tv',       category: 'tv', is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Samsung 43" LED TV',       slug: 'samsung-43-led-tv',       category: 'tv', is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Samsung 55" Crystal UHD',  slug: 'samsung-55-crystal-uhd',  category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Samsung 65" Crystal UHD',  slug: 'samsung-65-crystal-uhd',  category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Samsung 55" QLED TV',      slug: 'samsung-55-qled-tv',      category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Samsung 65" QLED TV',      slug: 'samsung-65-qled-tv',      category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Samsung 55" OLED TV',      slug: 'samsung-55-oled-tv',      category: 'tv', is_popular: false },
+  { manufacturer_slug: 'lg',      name: 'LG 43" LED TV',            slug: 'lg-43-led-tv',            category: 'tv', is_popular: false },
+  { manufacturer_slug: 'lg',      name: 'LG 55" UHD TV',            slug: 'lg-55-uhd-tv',            category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'LG 65" UHD TV',            slug: 'lg-65-uhd-tv',            category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'LG 55" OLED TV',           slug: 'lg-55-oled-tv',           category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'LG 65" OLED TV',           slug: 'lg-65-oled-tv',           category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'sony',    name: 'Sony Bravia 55" LED TV',   slug: 'sony-bravia-55-led-tv',   category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'sony',    name: 'Sony Bravia 65" LED TV',   slug: 'sony-bravia-65-led-tv',   category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'sony',    name: 'Sony Bravia 55" OLED TV',  slug: 'sony-bravia-55-oled-tv',  category: 'tv', is_popular: false },
+  { manufacturer_slug: 'tcl',     name: 'TCL Roku 32" TV',          slug: 'tcl-roku-32-tv',          category: 'tv', is_popular: false },
+  { manufacturer_slug: 'tcl',     name: 'TCL Roku 43" TV',          slug: 'tcl-roku-43-tv',          category: 'tv', is_popular: false },
+  { manufacturer_slug: 'tcl',     name: 'TCL Roku 55" TV',          slug: 'tcl-roku-55-tv',          category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'tcl',     name: 'TCL Google TV 65"',        slug: 'tcl-google-tv-65',        category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'hisense', name: 'Hisense 43" LED TV',       slug: 'hisense-43-led-tv',       category: 'tv', is_popular: false },
+  { manufacturer_slug: 'hisense', name: 'Hisense 55" ULED TV',      slug: 'hisense-55-uled-tv',      category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'hisense', name: 'Hisense 65" ULED TV',      slug: 'hisense-65-uled-tv',      category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'vizio',   name: 'Vizio 32" D-Series TV',    slug: 'vizio-32-d-series-tv',    category: 'tv', is_popular: false },
+  { manufacturer_slug: 'vizio',   name: 'Vizio 50" V-Series TV',    slug: 'vizio-50-v-series-tv',    category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'vizio',   name: 'Vizio 55" M-Series TV',    slug: 'vizio-55-m-series-tv',    category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'vizio',   name: 'Vizio 55" OLED TV',        slug: 'vizio-55-oled-tv',        category: 'tv', is_popular: false },
+  { manufacturer_slug: 'roku',    name: 'Roku Select 43" TV',       slug: 'roku-select-43-tv',       category: 'tv', is_popular: false },
+  { manufacturer_slug: 'roku',    name: 'Roku Plus 55" TV',         slug: 'roku-plus-55-tv',         category: 'tv', is_popular: true  },
+  { manufacturer_slug: 'other',   name: 'Generic LED/LCD TV',       slug: 'generic-led-lcd-tv',      category: 'tv', is_popular: false },
+  { manufacturer_slug: 'other',   name: 'Generic Computer Monitor', slug: 'generic-computer-monitor', category: 'tv', is_popular: false },
+  { manufacturer_slug: 'other',   name: 'Generic Projector',        slug: 'generic-projector',       category: 'tv', is_popular: false },
 ];

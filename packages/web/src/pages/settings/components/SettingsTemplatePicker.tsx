@@ -13,15 +13,17 @@
  *     confirm prompt to avoid surprise.
  *
  * The picker is intentionally tiny — it delegates all heavy lifting to the
- * server and only renders 4 cards.
+ * server and renders electronics-only starter bundles.
  */
 
 import { useState } from 'react';
 import {
   Smartphone,
+  Tablet,
   Laptop,
-  Watch,
-  Cpu,
+  Gamepad2,
+  Tv,
+  Layers,
   Loader2,
   CheckCircle2,
 } from 'lucide-react';
@@ -44,26 +46,38 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
   {
     id: 'phone_repair',
     label: 'Phone Repair',
-    description: 'Screen, battery, and charge-port SMS templates tuned for phone shops.',
+    description: 'Phone intake, estimates, parts updates, ready-for-pickup, and data reminders.',
     icon: Smartphone,
   },
   {
+    id: 'phone_tablet_repair',
+    label: 'Phone + Tablet',
+    description: 'Adds tablet accessory, charger, stylus, and managed-device reminders.',
+    icon: Tablet,
+  },
+  {
     id: 'computer_repair',
-    label: 'Computer Repair',
-    description: 'Diagnostic, pickup, and parts-on-order templates for computer shops.',
+    label: 'Computer / IT Bench',
+    description: 'Diagnostics, data consent, access needed, parts updates, and pickup messages.',
     icon: Laptop,
   },
   {
-    id: 'watch_repair',
-    label: 'Watch Repair',
-    description: 'Watch-specific battery, crystal, and water-resistance messages.',
-    icon: Watch,
+    id: 'console_gaming',
+    label: 'Console / Gaming',
+    description: 'Console accessory, save-data, controller, port, thermal, and repair updates.',
+    icon: Gamepad2,
+  },
+  {
+    id: 'tv_consumer_electronics',
+    label: 'TV / Electronics',
+    description: 'TV model-detail, repair-economics, pickup, board, input, and panel-review messages.',
+    icon: Tv,
   },
   {
     id: 'general_electronics',
-    label: 'General Electronics',
-    description: 'Broad repair-shop templates covering a mix of device types.',
-    icon: Cpu,
+    label: 'Multi-device',
+    description: 'Broad electronics templates for shops taking phones, tablets, computers, consoles, and TVs.',
+    icon: Layers,
   },
 ];
 
