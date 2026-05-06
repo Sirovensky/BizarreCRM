@@ -228,6 +228,16 @@ function SavedFiltersDropdown({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  // Cross-tab invalidation: listen for saved-filter changes from other tabs
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const bc = new BroadcastChannel('saved-filters');
+    bc.onmessage = () => {
+      queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+    };
+    return () => bc.close();
+  }, [queryClient]);
+
   const { data: savedData } = useQuery({
     queryKey: ['ticket-saved-filters'],
     queryFn: () => ticketApi.savedFilters.list(),
@@ -267,6 +277,9 @@ function SavedFiltersDropdown({
                     try {
                       await ticketApi.savedFilters.delete(sf.id);
                       queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                      if (typeof BroadcastChannel !== 'undefined') {
+                        new BroadcastChannel('saved-filters').postMessage({ type: 'deleted', id: sf.id });
+                      }
                       toast.success('Filter deleted');
                     } catch (err) {
                       toast.error(formatApiError(err));
@@ -289,6 +302,9 @@ function SavedFiltersDropdown({
                   try {
                     await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
                     queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                    if (typeof BroadcastChannel !== 'undefined') {
+                      new BroadcastChannel('saved-filters').postMessage({ type: 'created' });
+                    }
                     toast.success('Filter saved');
                     setFilterName('');
                     setSaving(false);
@@ -1597,7 +1613,7 @@ export function TicketListPage() {
                 }
               }}
               className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1.5 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
-              title="Export tickets as CSV"
+              title={(hasActiveFilters || statusFilter) ? `Exporting ${pagination.total} filtered rows. Clear filters first to export all.` : 'Export tickets as CSV'}
             >
               <Download className="h-3.5 w-3.5" /> Export
             </button>

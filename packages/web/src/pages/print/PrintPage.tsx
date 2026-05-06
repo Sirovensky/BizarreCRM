@@ -1320,8 +1320,13 @@ export function PrintPage() {
     }
   }, [printReady]);
 
+  // WEB-UIUX-686: guard so window.print() fires only once per page lifecycle.
+  // Without this, refetchOnWindowFocus causes printReady to toggle false→true
+  // on focus, re-running the effect and opening a second print dialog.
+  const printedRef = useRef(false);
   useEffect(() => {
-    if (autoprint && printReady) {
+    if (autoprint && printReady && !printedRef.current) {
+      printedRef.current = true;
       const timer = setTimeout(() => window.print(), 400);
       return () => clearTimeout(timer);
     }

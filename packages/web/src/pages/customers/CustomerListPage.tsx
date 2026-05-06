@@ -583,7 +583,7 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+          <button onClick={handleExport} disabled={exporting} title={hasFilters ? `Exporting ${pagination?.total ?? '?'} filtered rows. Clear filters first to export all.` : 'Export customers as CSV'} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {exporting ? 'Exporting...' : 'Export'}
           </button>

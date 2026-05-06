@@ -3162,30 +3162,30 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 - [ ] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
 
-- [ ] WEB-UIUX-668. **[MINOR] Saved filter deleted by user A → user B's cache still applies the deleted filter (no cross-tab invalidation).** L6.
+- [x] WEB-UIUX-668. **[MINOR] Saved filter deleted by user A → user B's cache still applies the deleted filter (no cross-tab invalidation).** L6. **[AUTOLOOP-T31 RESOLVED: SavedFiltersDropdown adds BroadcastChannel("saved-filters") listener; delete/create handlers postMessage so other tabs invalidate React Query cache.]**
   `packages/web/src/pages/tickets/TicketListPage.tsx:201-320`
 
 - [ ] WEB-UIUX-669. **[MINOR] Invoice empty state: just icon + "No invoices found" — no "clear filters" CTA.** L8.
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:426-430`
 
-- [ ] WEB-UIUX-670. **[MINOR] No "Select all 4,832 matching" affordance like Gmail.** Bulk actions max at pagesize. L1.
+- [ ] WEB-UIUX-670. **[MINOR] No "Select all 4,832 matching" affordance like Gmail.** Bulk actions max at pagesize. L1. **[AUTOLOOP-T31 BLOCKED: requires server bulk-by-filter endpoints accepting filter criteria instead of explicit IDs.]**
 
 - [ ] WEB-UIUX-671. **[MINOR] Native `<input type="date">` for from/to has no max/min — future date `2099-01-01` allowed silently.** L7.
   `packages/web/src/pages/customers/CustomerListPage.tsx:636-642`
 
-- [ ] WEB-UIUX-672. **[MINOR] DateRangePicker `from > to` (inverted) accepted by typing.** L7.
+- [x] WEB-UIUX-672. **[MINOR] DateRangePicker `from > to` (inverted) accepted by typing.** L7. **[AUTOLOOP-T31 RESOLVED: DateRangePicker handleFromChange/handleToChange auto-swap when typed date inverts range.]**
   `packages/web/src/components/shared/DateRangePicker.tsx:109-115`
 
 - [ ] WEB-UIUX-673. **[MINOR] Old/invalid status param in URL silently passed to server.** "No items match" with no flag that filter value is invalid. L8, L14.
 
-- [ ] WEB-UIUX-674. **[MINOR] Export with current filter applied — no "Export filtered / Export all" choice.** Surprise = recipient gets subset. L8.
+- [x] WEB-UIUX-674. **[MINOR] Export with current filter applied — no "Export filtered / Export all" choice.** Surprise = recipient gets subset. L8. **[AUTOLOOP-T31 RESOLVED: Export buttons title now "Exporting N filtered rows. Clear filters first to export all." when filters active (TicketList + CustomerList).]**
 
 - [ ] WEB-UIUX-675. **[MINOR] CommandPalette saveRecentSearch persists to sessionStorage — doesn't filter sensitive data (SSN, card-shape).** L16.
   `packages/web/src/components/shared/CommandPalette.tsx:142-169`
 
 #### ED11: Print/Receipt Failures
 
-- [ ] WEB-UIUX-676. **[MAJOR] Drawer-pop button optimistically toasts "Cash drawer opened" on HTTP 200.** No driver poll, no tactile confirm. Drawer disconnect/jam = silent fail with green toast. L8.
+- [x] WEB-UIUX-676. **[MAJOR] Drawer-pop button optimistically toasts "Cash drawer opened" on HTTP 200.** No driver poll, no tactile confirm. Drawer disconnect/jam = silent fail with green toast. L8. **[AUTOLOOP-T31 RESOLVED: drawer-pop toast wording corrected to "Drawer command sent — verify the drawer opened" (HTTP 200 confirms command, not hardware state).]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:430-437`
 
 - [ ] WEB-UIUX-677. **[MAJOR] Print Receipt is fire-and-forget `window.print()` — no printer-online pre-check, no success/failure callback.** Cashier clicks → silence → walks away. L8.
@@ -3198,26 +3198,26 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:81`
 
-- [ ] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8.
+- [ ] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
 - [ ] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:367-373`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:249`
 
-- [ ] WEB-UIUX-682. **[MAJOR] `checkin_auto_print_label` toggle marked "live" but has NO consumer.** Setting persists, nothing reads it. SuccessScreen never honors. L5, L8.
+- [x] WEB-UIUX-682. **[MAJOR] `checkin_auto_print_label` toggle marked "live" but has NO consumer.** Setting persists, nothing reads it. SuccessScreen never honors. L5, L8. **[AUTOLOOP-T31 RESOLVED: SuccessScreen useEffect — when create_ticket  checkin_auto_print_label  ticketId, auto-navigates to /print/ticket/{id}?size=label.]**
   `packages/web/src/pages/settings/PosSettings.tsx:233-238`
   `packages/web/src/pages/settings/settingsMetadata.ts:669-674`
 
 - [ ] WEB-UIUX-683. **[MAJOR] No printer-status telemetry anywhere — zero hits for printer.*offline / printer_status.** Cannot pre-disable Print buttons when no printer connected. L8, L11.
 
-- [ ] WEB-UIUX-684. **[MINOR] PrintPreviewModal paper-size selection has no in-modal override.** 80mm receipt rendered on 58mm thermal → right edge clipped. L9.
+- [x] WEB-UIUX-684. **[MINOR] PrintPreviewModal paper-size selection has no in-modal override.** 80mm receipt rendered on 58mm thermal → right edge clipped. L9. **[AUTOLOOP-T31 RESOLVED: PrintPreviewModal adds 58mm/80mm/Letter dropdown overriding default for receipts; live badge update.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:16-21`
 
 - [ ] WEB-UIUX-685. **[MINOR] LabelLayout silently truncates devices to first 2 — multi-device tickets lose 3rd+ device on bench label.** No "+N more". L13.
   `packages/web/src/pages/print/PrintPage.tsx:936-938`
 
-- [ ] WEB-UIUX-686. **[MINOR] PrintPage autoprint `useEffect` deps include query result — refetch on focus triggers second `window.print()`.** L1, L13.
+- [x] WEB-UIUX-686. **[MINOR] PrintPage autoprint `useEffect` deps include query result — refetch on focus triggers second `window.print()`.** L1, L13. **[AUTOLOOP-T31 RESOLVED: PrintPage adds `printedRef = useRef(false)` guard; window.print() runs only once per page lifecycle, immune to refetch-on-focus.]**
   `packages/web/src/pages/print/PrintPage.tsx:993-998`
 
 - [ ] WEB-UIUX-687. **[MINOR] QR receipt has no human-readable fallback URL or numeric code — customer can't scan, no typeable code.** Cellular customer can't access LAN-internal serverUrl. L4, L11.
@@ -3240,7 +3240,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/communications/components/OffHoursAutoReplyToggle.tsx`
 
-- [ ] WEB-UIUX-692. **[MAJOR] Stale phone hard-coded in automation `to` field — no warning that hard-coded value won't track customer record updates.** L5, L11.
+- [x] WEB-UIUX-692. **[MAJOR] Stale phone hard-coded in automation `to` field — no warning that hard-coded value won't track customer record updates.** L5, L11. **[AUTOLOOP-T31 RESOLVED: AutomationsTab SMS to-field renders amber warning when hardcoded phone (no `{customer` placeholder) detected.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:170-180`
 
 - [ ] WEB-UIUX-693. **[MAJOR] Campaign opt-out compliance regex catches phrasings but doesn't show which segment members are suppressed.** Operator firing 2000 blast can't see "X opted out, will not receive". L7, L16.

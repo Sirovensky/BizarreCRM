@@ -177,6 +177,11 @@ function ActionConfigForm({
               placeholder="{customer_phone}"
               className="w-full px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
             />
+            {config.to && String(config.to).trim() !== '' && !String(config.to).includes('{customer') && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Hardcoded values won&apos;t update if the customer&apos;s phone changes. Use &#123;customer_phone&#125; placeholder for live tracking.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-500 mb-1">Message Template *</label>

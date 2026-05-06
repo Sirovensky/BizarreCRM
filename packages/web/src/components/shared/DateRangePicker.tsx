@@ -108,11 +108,21 @@ export function DateRangePicker({
   };
 
   const handleFromChange = (from: string) => {
-    onChange({ ...value, preset: 'custom', from });
+    // Auto-swap if from > to
+    if (from && value.to && from > value.to) {
+      onChange({ ...value, preset: 'custom', from: value.to, to: from });
+    } else {
+      onChange({ ...value, preset: 'custom', from });
+    }
   };
 
   const handleToChange = (to: string) => {
-    onChange({ ...value, preset: 'custom', to });
+    // Auto-swap if to < from
+    if (to && value.from && to < value.from) {
+      onChange({ ...value, preset: 'custom', from: to, to: value.from });
+    } else {
+      onChange({ ...value, preset: 'custom', to });
+    }
   };
 
   // Keyboard navigation for the dropdown menu

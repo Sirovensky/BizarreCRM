@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { X, FileText, Printer, Settings2 } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 import { useNavigate } from 'react-router-dom';
@@ -17,13 +17,20 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const dialogRef = useFocusTrap(true, { initialFocusSelector: '[aria-label="Close"]' });
   const defaultSize = getSetting('receipt_default_size', 'receipt80');
+  const [selectedSize, setSelectedSize] = useState<string>(defaultSize);
+
+  const PAPER_SIZES: { value: string; label: string }[] = [
+    { value: 'receipt58', label: '58mm' },
+    { value: 'receipt80', label: '80mm' },
+    { value: 'letter', label: 'Letter' },
+  ];
 
   const handlePrint = useCallback((type: 'workorder' | 'receipt') => {
     if (type === 'workorder' && !ticketId) return;
     if (type === 'receipt' && !invoiceId && !ticketId) return;
 
     const typeParam = type === 'receipt' ? '&type=receipt' : '';
-    const size = type === 'workorder' ? 'letter' : defaultSize;
+    const size = type === 'workorder' ? 'letter' : selectedSize;
     const basePath = type === 'receipt' && invoiceId
       ? `/print/invoice/${invoiceId}`
       : `/print/ticket/${ticketId}`;
@@ -64,9 +71,9 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
       };
       check();
     };
-  }, [ticketId, invoiceId, defaultSize]);
+  }, [ticketId, invoiceId, selectedSize]);
 
-  const sizeLabel = defaultSize === 'receipt80' ? '80mm' : defaultSize === 'receipt58' ? '58mm' : 'Letter';
+  const sizeLabel = selectedSize === 'receipt80' ? '80mm' : selectedSize === 'receipt58' ? '58mm' : 'Letter';
 
   // Escape key handler (Tab cycling + focus restore handled by useFocusTrap)
   useEffect(() => {
@@ -97,6 +104,23 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
         </div>
 
         <div className="p-5 space-y-3">
+          {/* Paper size override */}
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="paper-size-select" className="text-xs font-medium text-surface-500 dark:text-surface-400 whitespace-nowrap">
+              Paper size
+            </label>
+            <select
+              id="paper-size-select"
+              value={selectedSize}
+              onChange={e => setSelectedSize(e.target.value)}
+              className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs font-medium text-surface-800 dark:text-surface-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              {PAPER_SIZES.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Work Order */}
           {ticketId && (
             <button

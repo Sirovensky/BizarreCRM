@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail, AlertTriangle, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -38,6 +38,22 @@ export function SuccessScreen() {
     staleTime: 5 * 60 * 1000,
   });
   const storeConfig = configData ?? {};
+
+  // WEB-UIUX-682: auto-print label when checkin_auto_print_label is enabled.
+  // Fires once per check-in success, after storeConfig has loaded.
+  useEffect(() => {
+    if (!showSuccess) return;
+    const mode = showSuccess.mode ?? 'checkout';
+    if (mode !== 'create_ticket') return;
+    if (storeConfig['checkin_auto_print_label'] !== 'true') return;
+    const ticketId: number | null = showSuccess.ticket?.id ?? showSuccess.ticket_id ?? null;
+    if (!ticketId) return;
+    // Navigate to the label-print view. resetAll() is intentionally omitted here
+    // so the user can still see the success screen if they navigate back; the
+    // normal "Print Label" button calls resetAll() explicitly.
+    navigate(`/print/ticket/${ticketId}?size=label`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSuccess, storeConfig]);
 
   // Fetch server info for QR code URL — must be above early return (hook rules).
   const { data: serverInfo } = useQuery({

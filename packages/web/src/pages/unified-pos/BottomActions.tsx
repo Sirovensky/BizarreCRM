@@ -477,7 +477,7 @@ export function BottomActions() {
             onClick={async () => {
               try {
                 await posApi.openDrawer();
-                toast.success('Cash drawer opened');
+                toast.success('Drawer command sent — verify the drawer opened');
               } catch {
                 toast.error('Failed to open drawer');
               }
