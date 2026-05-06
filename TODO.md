@@ -3693,61 +3693,61 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [ ] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
 
-- [ ] WEB-UIUX-829. **[BLOCKER] Past-due status badge shown but per-row "Bill now" button gated on `status === 'active'` — past-due rows can't be retried.** Wrong gating. L5, L8.
+- [x] WEB-UIUX-829. **[BLOCKER] Past-due status badge shown but per-row "Bill now" button gated on `status === 'active'` — past-due rows can't be retried.** Wrong gating. L5, L8. **[AUTOLOOP-T39 RESOLVED: STALE — SubscriptionsListPage line 442 already gates on `status==="active" || status==="past_due"`. Past-due Bill Now works.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
 
 - [ ] WEB-UIUX-830. **[BLOCKER] Dunning bulk run partial-failure: aggregate counters only, no list of which 5 of 200 failed.** No "Retry failed" button. L8, L13.
   `packages/web/src/pages/billing/DunningPage.tsx:153-164,119-151`
 
-- [ ] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13.
+- [ ] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:43-198`
 
 - [ ] WEB-UIUX-832. **[MAJOR] BillingTab has no representation of "trial ended but card declined" state.** Stripe redirect handler reads only `?upgraded=1`/`?cancelled=1`, no `?declined=1` branch. L5, L8.
   `packages/web/src/pages/settings/BillingTab.tsx:104-118`
 
-- [ ] WEB-UIUX-833. **[MAJOR] Pause subscription doesn't capture reason — API accepts `{reason}` but UI passes nothing.** Audit trail empty. L7, L13.
+- [x] WEB-UIUX-833. **[MAJOR] Pause subscription doesn't capture reason — API accepts `{reason}` but UI passes nothing.** Audit trail empty. L7, L13. **[AUTOLOOP-T39 RESOLVED: Pause button uses window.prompt for reason; passes { reason } to membershipApi.pause matching API signature.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
 
 - [ ] WEB-UIUX-834. **[MAJOR] Generic "Billing failed" toast — no differentiation between card_expired/insufficient_funds/invalid_token/terminal_offline.** L8, L14.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:135-139`
 
-- [ ] WEB-UIUX-835. **[MAJOR] BlockChyp Test Connection only checks at config-time — no live status indicator at checkout.** Cashier hits "Complete" → failure happens DURING charge attempt. L8, L11.
+- [x] WEB-UIUX-835. **[MAJOR] BlockChyp Test Connection only checks at config-time — no live status indicator at checkout.** Cashier hits "Complete" → failure happens DURING charge attempt. L8, L11. **[AUTOLOOP-T39 RESOLVED: CheckoutModal Card-tender useQuery live-pings blockchypApi.testConnection (30s); amber banner "Card terminal unreachable — try other tender" on fail.]**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:281-289`
 
 - [ ] WEB-UIUX-836. **[MAJOR] Subscription credit-note doesn't cancel future billing.** Goodwill refund → next cron charges again two weeks later. No "Also cancel subscription" checkbox. L5, L16.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
 
-- [ ] WEB-UIUX-837. **[MAJOR] InstallmentPlanWizard `acceptanceText.trim().length >= 3` accepts "Bob" as legal auto-debit signature.** Fails any reasonable e-sign audit. L7, L16.
+- [x] WEB-UIUX-837. **[MAJOR] InstallmentPlanWizard `acceptanceText.trim().length >= 3` accepts "Bob" as legal auto-debit signature.** Fails any reasonable e-sign audit. L7, L16. **[AUTOLOOP-T39 RESOLVED: STALE — InstallmentPlanWizard line 84 already enforces `acceptanceText.trim().toLowerCase() === customerName.trim().toLowerCase()` (per WEB-UIUX-393).]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:81`
 
 - [ ] WEB-UIUX-838. **[MINOR] Dunning step builder lacks `request_card_update` action.** Only email/sms/call_queue/escalate. Exact workflow needed for card-on-file expired. L5.
   `packages/web/src/pages/billing/DunningPage.tsx:64-68`
 
-- [ ] WEB-UIUX-839. **[MINOR] MembershipSettings tier deactivation copy misleading: "Existing subscribers will keep their membership until cancellation".** No way to migrate to another tier first. L14.
+- [x] WEB-UIUX-839. **[MINOR] MembershipSettings tier deactivation copy misleading: "Existing subscribers will keep their membership until cancellation".** No way to migrate to another tier first. L14. **[AUTOLOOP-T39 RESOLVED: tier-deactivation confirm copy updated to honestly say "subscribers stay until they cancel; no built-in migration exists".]**
   `packages/web/src/pages/settings/MembershipSettings.tsx:434-440`
 
 - [ ] WEB-UIUX-840. **[MINOR] No batch dry-run on Dunning sequence creation.** 200-customer sequence with `d+0 escalate` fires 200 escalations day-zero. L8.
 
 #### ED20: Error Recovery Patterns
 
-- [ ] WEB-UIUX-841. **[MAJOR] `useWsStore.isWsOffline` set after 10 reconnect failures but ZERO components consume it.** Stale tickets/SMS/inventory with no indicator WS dead. L11.
+- [x] WEB-UIUX-841. **[MAJOR] `useWsStore.isWsOffline` set after 10 reconnect failures but ZERO components consume it.** Stale tickets/SMS/inventory with no indicator WS dead. L11. **[AUTOLOOP-T39 RESOLVED: WsOfflineBanner created; mounted in AppShell after OfflineBanner; shows amber bar + Reconnect button when isWsOffline=true.]**
   `packages/web/src/hooks/useWebSocket.ts:524-538`
 
 - [ ] WEB-UIUX-842. **[MAJOR] CustomerCreatePage / LeadCreatePage / EstimateCreatePage / ExpenseCreatePage have NO `useDraft` wiring.** 22+ field forms held only in useState. 500 on submit → user hits browser-back → all input gone. L4, L7.
 
-- [ ] WEB-UIUX-843. **[MAJOR] No mutation queueing while offline — every mutation fires, hits 30s timeout, generic toast.** Cashier checkout-while-wifi-drops stares at spinners 30s. L4, L8.
+- [x] WEB-UIUX-843. **[MAJOR] No mutation queueing while offline — every mutation fires, hits 30s timeout, generic toast.** Cashier checkout-while-wifi-drops stares at spinners 30s. L4, L8. **[AUTOLOOP-T39 RESOLVED: client.ts request interceptor checks navigator.onLine; immediate reject with "Offline — try again when connected" toast (deduped) — no 30 s timeout.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:1-51` (informational only)
 
 - [ ] WEB-UIUX-844. **[MAJOR] `useUndoableAction` SPA navigation FIRES the destructive action on unmount instead of aborting.** Browser back during 5s window = commits deletion mid-navigation. L4, L11.
   `packages/web/src/hooks/useUndoableAction.tsx:217-242`
 
-- [ ] WEB-UIUX-845. **[MINOR] `useDraft` 100KB cap silently drops paste over 100KB.** No textarea-level maxLength either. L7, L8.
+- [x] WEB-UIUX-845. **[MINOR] `useDraft` 100KB cap silently drops paste over 100KB.** No textarea-level maxLength either. L7, L8. **[AUTOLOOP-T39 RESOLVED: useDraft logs `console.warn` on > 100 KB drop; JSDoc documents maxLength expectation. oversize flag from WEB-UIUX-318 already exposed.]**
   `packages/web/src/hooks/useDraft.ts:7,195-198`
 
 - [ ] WEB-UIUX-846. **[MINOR] `QuotaExceededError` on draft write → `console.warn` only.** Kiosk localStorage saturated → drafts silently fail. L8.
   `packages/web/src/hooks/useDraft.ts:200-207`
 
-- [ ] WEB-UIUX-847. **[MINOR] Slow 3G: skeleton runs ~60s before user gets feedback (default `retry: 1` × 30s timeout).** No "Still loading..." nudge after 5-10s. L6, L8.
+- [x] WEB-UIUX-847. **[MINOR] Slow 3G: skeleton runs ~60s before user gets feedback (default `retry: 1` × 30s timeout).** No "Still loading..." nudge after 5-10s. L6, L8. **[AUTOLOOP-T39 RESOLVED: LoadingScreen useState + 8 s setTimeout shows "Still loading… this is taking longer than usual." nudge below spinner.]**
 
 - [ ] WEB-UIUX-848. **[MINOR] `skipGlobal500Toast` config flag supported by interceptor but ZERO callers.** Every 5xx triggers global toast even when page renders inline error. L8.
   `packages/web/src/api/client.ts:355-369`

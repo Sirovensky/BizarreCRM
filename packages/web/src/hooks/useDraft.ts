@@ -121,10 +121,14 @@ export interface DraftStatus {
  * {@link DraftStatus} object that replaces the old plain `hasDraft` boolean.
  *
  * - `status.saved`     — true when localStorage holds the current value.
- * - `status.oversize`  — true when the value exceeds 100 KB and was silently
- *                        dropped from localStorage. Callers MUST surface this
+ * - `status.oversize`  — true when the value exceeds 100 KB and was NOT
+ *                        persisted to localStorage. Callers MUST surface this
  *                        to the user (toast / banner) so they are not surprised
- *                        by lost work on reload.
+ *                        by lost work on reload. To prevent reaching this cap
+ *                        via paste, set `maxLength={100_000}` on the underlying
+ *                        `<textarea>` (or equivalent rich-text constraint).
+ *                        A `console.warn` is also emitted so engineers see the
+ *                        drop in DevTools when testing large-paste scenarios.
  * - `status.lastSavedAt` — wall-clock time of the last successful write.
  *
  * The `key` is the caller's per-form/per-record identifier (e.g.
@@ -234,6 +238,15 @@ export function useDraft(
       // caller can show a warning — previously this was a silent data loss.
       if (value.length > DRAFT_MAX_BYTES) {
         localStorage.removeItem(currentKey);
+        // WEB-UIUX-845: warn engineers that oversized content was dropped so
+        // the omission is visible in DevTools / CI logs. The `oversize` status
+        // flag is the caller-facing signal; this warn is the dev-facing one.
+        console.warn(
+          `[useDraft] draft key "${currentKey}" is ${value.length} bytes — ` +
+          `exceeds ${DRAFT_MAX_BYTES}-byte cap and was NOT persisted to ` +
+          'localStorage. Content survives only for the current session. ' +
+          'Consider adding a textarea maxLength or splitting into smaller fields.',
+        );
         if (mountedRef.current) {
           setHasDraft(false);
           setOversize(true);

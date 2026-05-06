@@ -19,6 +19,7 @@ import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { WsOfflineBanner } from '@/components/shared/WsOfflineBanner';
 import { Button } from '@/components/shared/Button';
 
 // Shape of the augmented config payload returned by `settingsApi.getConfig()`.
@@ -192,6 +193,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             navigator.onLine is true; flips to a high-visibility amber bar
             the moment the browser fires an `offline` event. */}
         <OfflineBanner />
+        {/* WEB-UIUX-841: WebSocket offline indicator. Renders when the WS
+            has exhausted MAX_RECONNECT_ATTEMPTS; provides a Reconnect button
+            that resets the attempt counter via the auth-ready event. */}
+        <WsOfflineBanner />
         <Header
           hamburgerButton={
             <Button

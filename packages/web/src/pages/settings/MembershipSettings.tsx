@@ -451,7 +451,7 @@ export function MembershipSettings() {
 
   async function handleDelete(tier: MembershipTier) {
     const ok = await confirm(
-      `Deactivate "${tier.name}"? Existing subscribers will keep their membership until cancellation.`,
+      `Deactivate "${tier.name}"? Existing subscribers stay on this tier until they cancel. There is no built-in migration to another tier.`,
       { title: 'Deactivate Tier', confirmLabel: 'Deactivate', danger: true },
     );
     if (ok) deleteMutation.mutate(tier.id);

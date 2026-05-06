@@ -150,6 +150,17 @@ function scheduleTokenRefresh() {
 
 // Request interceptor: send cookies and attach CSRF for cookie-auth mutations.
 client.interceptors.request.use((config) => {
+  // WEB-UIUX-843: fail fast when the browser is offline instead of letting
+  // every mutation hang for 30 s before showing a generic timeout toast.
+  // navigator.onLine is false only when the browser *knows* there is no
+  // network interface; it is not a reliable "server reachable" check, but it
+  // is sufficient to skip the wait when the user is definitely disconnected.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const offlineErr = new Error('Offline — try again when connected.');
+    (offlineErr as { isOfflineFastReject?: boolean }).isOfflineFastReject = true;
+    return Promise.reject(offlineErr);
+  }
+
   const csrfToken = getCsrfTokenCookie();
   if (csrfToken) {
     scheduleTokenRefresh();
@@ -212,6 +223,13 @@ if (typeof window !== 'undefined') {
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // WEB-UIUX-843: surface the offline fast-reject as a user-visible toast and
+    // pass it through immediately — no retry, no refresh pipeline needed.
+    if ((error as { isOfflineFastReject?: boolean }).isOfflineFastReject) {
+      toast.error('Offline — try again when connected.', { id: 'offline-fast-reject' });
+      return Promise.reject(error);
+    }
+
     const originalRequest = error.config;
 
     // Attach server-supplied error code + request_id to the thrown axios error

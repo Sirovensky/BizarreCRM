@@ -1036,7 +1036,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
   });
 
   const pauseMut = useMutation({
-    mutationFn: () => membershipApi.pause(memberData!.id),
+    mutationFn: (reason: string) => membershipApi.pause(memberData!.id, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
       toast.success('Membership paused');
@@ -1112,7 +1112,10 @@ function MembershipCard({ customerId }: { customerId: number }) {
             {memberData.status === 'active' && (
               <>
                 <button
-                  onClick={() => pauseMut.mutate()}
+                  onClick={() => {
+                    const reason = window.prompt('Reason for pausing membership (optional):') ?? '';
+                    pauseMut.mutate(reason);
+                  }}
                   disabled={pauseMut.isPending}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
                 >

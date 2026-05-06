@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { extractApiError } from '../../utils/apiError';
 import { Button } from './Button';
@@ -13,11 +14,21 @@ import { CopyButton } from './CopyButton';
  */
 
 export function LoadingScreen() {
+  const [showNudge, setShowNudge] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowNudge(true), 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="flex h-screen items-center justify-center bg-white dark:bg-surface-950">
       <div className="flex flex-col items-center gap-4">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
         <p className="text-sm text-surface-500">Loading...</p>
+        {showNudge && (
+          <p className="text-xs text-surface-400">Still loading&hellip; this is taking longer than usual.</p>
+        )}
       </div>
     </div>
   );

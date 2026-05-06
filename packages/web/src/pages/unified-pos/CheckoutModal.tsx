@@ -227,6 +227,27 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   });
   const blockchypConfigured = bcStatusData?.data?.data?.enabled ?? false;
 
+  // ─── BlockChyp live terminal ping (WEB-UIUX-835) ───────────────
+  // Run a silent testConnection whenever Card is the active tender and
+  // BlockChyp is configured.  Refresh every 30 s so stale state is caught.
+  const cardTenderActive =
+    method === 'Card' ||
+    (splitMode && splitPayments.some((sp) => sp.method === 'Card'));
+  const { data: terminalPingData, isFetching: terminalPingFetching } = useQuery({
+    queryKey: ['blockchyp-live-ping'],
+    queryFn: () => blockchypApi.testConnection(),
+    enabled: blockchypConfigured && cardTenderActive,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const terminalReachable =
+    !blockchypConfigured ||
+    !cardTenderActive ||
+    terminalPingFetching ||
+    terminalPingData === undefined ||
+    (terminalPingData?.data?.data?.success ?? false);
+
   // ─── Membership Upsell ──────────────────────────────────────────
   const { customer } = useUnifiedPosStore();
   const queryClient = useQueryClient();
@@ -828,6 +849,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   Change: {formatCurrency(change)}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* WEB-UIUX-835: live terminal reachability banner */}
+          {blockchypConfigured && cardTenderActive && !terminalReachable && (
+            <div className="rounded-lg bg-yellow-50 px-4 py-3 dark:bg-yellow-500/10 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+              <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
+                Card terminal unreachable — try other tender.
+              </p>
             </div>
           )}
 
