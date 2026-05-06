@@ -144,6 +144,7 @@ export function StocktakePage() {
       toast.success(`Committed: ${data.items_adjusted} items adjusted`);
       queryClient.invalidateQueries({ queryKey: ['stocktakes'] });
       queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Commit failed'),
   });

@@ -586,6 +586,8 @@ export function PurchaseOrdersPage() {
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
             queryClient.invalidateQueries({ queryKey: ['purchase-order-detail', receiveModal.po.id] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['pos-products'] });
           }}
         />
       )}

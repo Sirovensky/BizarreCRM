@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown, Check, MoreHorizontal, Trash2,
-  Printer, ShoppingCart, Loader2, GitMerge, Shield, ArrowRightLeft, Copy,
+  Printer, ShoppingCart, Loader2, GitMerge, Shield, ArrowRightLeft, Copy, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/utils/cn';
@@ -150,7 +150,7 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDupl
             </button>
             <button onClick={() => { onCloneWarranty(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
-              <Shield className="h-4 w-4" /> Clone as Warranty
+              <Shield className="h-4 w-4" /> Invite back for free re-repair (warranty)
             </button>
             <button onClick={() => { onDuplicate(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
@@ -285,6 +285,14 @@ export function TicketActions({
             >
               <ShoppingCart className="h-4 w-4" />
               Checkout
+            </button>
+            <button
+              onClick={onCloneWarranty}
+              title="Create a new warranty ticket for a free re-repair"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-950/40 dark:text-primary-300 dark:hover:bg-primary-950/70"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span className="hidden sm:inline">Free re-repair</span>
             </button>
             <PrintButton ticketId={ticketId} invoiceId={ticket.invoice_id} />
             <ActionsDropdown

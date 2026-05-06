@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Loader2, Search, GitMerge } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ticketApi, settingsApi, invoiceApi, employeeApi, smsApi } from '@/api/endpoints';
+import { ticketApi, settingsApi, invoiceApi, employeeApi, smsApi, benchApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { BackButton } from '@/components/shared/BackButton';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
@@ -36,7 +36,7 @@ import { QcSignOffModal } from '@/components/tickets/QcSignOffModal';
 // FA-M8: Ticket handoff lives in the overflow menu now so techs can transfer
 // a ticket with a required reason (server logs the handoff audit row).
 import { TicketHandoffModal } from '@/components/team/TicketHandoffModal';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -347,10 +347,33 @@ export function TicketDetailPage() {
   interface EmployeeMin { id: number; first_name?: string; last_name?: string; full_name?: string; [key: string]: unknown }
   const employees: EmployeeMin[] = employeesData?.data?.data || [];
 
+  // ─── Fetch QC sign-off status (WEB-UIUX-880) ─────────────────────
+  // Always fetch so the summary card stays visible on completed tickets.
+  const { data: qcStatusData } = useQuery({
+    queryKey: ['qc-status', ticketId],
+    queryFn: () => benchApi.qc.status(ticketId),
+    enabled: isValidId,
+    retry: false,
+  });
+  interface QcSignOffRow {
+    id: number;
+    tech_user_id: number;
+    checklist_results: Array<{ item_id: number; passed: boolean; name?: string }>;
+    checklist_results_json?: string;
+    notes?: string | null;
+    signed_at: string;
+    working_photo_path?: string | null;
+    tech_signature_path?: string | null;
+  }
+  const qcStatus: { qc_required: boolean; signed: boolean; sign_off: QcSignOffRow | null } | undefined =
+    qcStatusData?.data?.data;
+
   // ─── Mutations ────────────────────────────────────────────────────
   const invalidateTicketById = useCallback((targetTicketId: number) => {
     queryClient.invalidateQueries({ queryKey: ['ticket', targetTicketId] });
     queryClient.invalidateQueries({ queryKey: ['ticket-history', targetTicketId] });
+    queryClient.invalidateQueries({ queryKey: ['tickets', 'kanban'] });
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
   }, [queryClient]);
 
   const invalidateTicket = useCallback(() => {
@@ -715,6 +738,72 @@ export function TicketDetailPage() {
               currentDeviceName={devices[0]?.device_name || ''}
             />
           )}
+
+          {/* WEB-UIUX-880 — QC sign-off summary (read-only, shown when signed) */}
+          {qcStatus?.signed && qcStatus.sign_off && (() => {
+            const so = qcStatus.sign_off;
+            const results: Array<{ item_id: number; passed: boolean; name?: string }> =
+              so.checklist_results ?? [];
+            const passedCount = results.filter((r) => r.passed).length;
+            const failedCount = results.length - passedCount;
+            const allPassed = failedCount === 0 && results.length > 0;
+            // Derive tech display name from employees list (tech_user_id → name).
+            const techEmployee = employees.find((e) => e.id === so.tech_user_id);
+            const techName = techEmployee
+              ? (techEmployee.full_name || `${techEmployee.first_name ?? ''} ${techEmployee.last_name ?? ''}`.trim())
+              : `Tech #${so.tech_user_id}`;
+            const signedDate = so.signed_at
+              ? new Date(so.signed_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+              : null;
+            return (
+              <div
+                className={`rounded-lg border p-3 text-sm ${
+                  allPassed
+                    ? 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-900/20'
+                    : 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-semibold mb-1">
+                  {allPassed ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  )}
+                  <span className={allPassed ? 'text-green-800 dark:text-green-200' : 'text-amber-800 dark:text-amber-200'}>
+                    QC {allPassed ? 'Passed' : 'Failed'}
+                  </span>
+                </div>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
+                  <dt className="text-surface-500 dark:text-surface-400">Tech</dt>
+                  <dd className="text-surface-700 dark:text-surface-200 font-medium">{techName}</dd>
+                  {signedDate && (
+                    <>
+                      <dt className="text-surface-500 dark:text-surface-400">Date</dt>
+                      <dd className="text-surface-700 dark:text-surface-200">{signedDate}</dd>
+                    </>
+                  )}
+                  {results.length > 0 && (
+                    <>
+                      <dt className="text-surface-500 dark:text-surface-400">Checklist</dt>
+                      <dd className="text-surface-700 dark:text-surface-200">
+                        {passedCount}/{results.length} passed
+                        {failedCount > 0 && (
+                          <span className="ml-1 text-amber-700 dark:text-amber-400">
+                            ({failedCount} failed)
+                          </span>
+                        )}
+                      </dd>
+                    </>
+                  )}
+                </dl>
+                {so.notes && (
+                  <p className="mt-1.5 text-xs text-surface-600 dark:text-surface-300 border-t border-surface-200 dark:border-surface-700 pt-1.5">
+                    {so.notes}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Audit 44.10 — QC sign-off launcher */}
           <button

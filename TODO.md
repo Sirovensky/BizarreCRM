@@ -3846,61 +3846,61 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-877. **[BLOCKER] No manager-override / approval gate on refunds.** Anyone with InvoiceDetail access issues credit-note up to amount_paid in single click. No PIN, no threshold. Audit trail captures `recorded_by` for payments but NOT for credit-note in UI. L16, L4. **[AUTOLOOP-T40 RESOLVED: Refund button gated by PinModal when maxCreditNoteAmount > $100 threshold; verifyPin via authApi opens credit-note form on success.]**
 
-- [ ] WEB-UIUX-878. **[MAJOR] Refund reason picker missing service-recovery codes.** No `failed_repair`, `lost_data`, `extended_delay`, `goodwill_gesture`, `chargeback_prevention`, `warranty_invocation`. Most common scenarios collapse into "dissatisfaction". L14, L13.
+- [x] WEB-UIUX-878. **[MAJOR] Refund reason picker missing service-recovery codes.** No `failed_repair`, `lost_data`, `extended_delay`, `goodwill_gesture`, `chargeback_prevention`, `warranty_invocation`. Most common scenarios collapse into "dissatisfaction". L14, L13. **[AUTOLOOP-T41 RESOLVED: RefundReasonCode + REASONS array gain failed_repair, lost_data, extended_delay, goodwill_gesture, chargeback_prevention, warranty_invocation. Server accepts free-form.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
 
 - [ ] WEB-UIUX-879. **[MAJOR · BLOCKED] No "do not request review" flag for unhappy customers.** Refund customer 4h ago → automated review-request SMS fires → 1-star review. L5, L16.
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-880. **[MAJOR] QC sign-off result invisible on completed ticket.** Modal writes data, no read-only display surface. Operator handling "you didn't fix my phone" can't point to "Steve QC-passed Tuesday 4pm with photo proof". L11, L13.
+- [x] WEB-UIUX-880. **[MAJOR] QC sign-off result invisible on completed ticket.** Modal writes data, no read-only display surface. Operator handling "you didn't fix my phone" can't point to "Steve QC-passed Tuesday 4pm with photo proof". L11, L13. **[AUTOLOOP-T41 RESOLVED: TicketDetailPage useQuery for benchApi.qc.status; renders summary card (tech + date + pass/fail counts + notes) above QC launcher when sign-off exists.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx`
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
 
 - [ ] WEB-UIUX-881. **[MAJOR] CustomerHistorySidebar caps at 5 with NO "See all" + repeat-fault pill only fires for current device.** L11.
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:90-92`
 
-- [ ] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4.
+- [ ] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **[AUTOLOOP-T41 BLOCKED: customer Communications call affordances need server SQL + client type+render; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1740-1785`
 
 - [ ] WEB-UIUX-883. **[MAJOR] Refund history not aggregated anywhere.** Operator clicks each invoice individually to see credit-note timeline. CustomerAnalyticsBar shows LTV but no "total refunds" or "refund ratio". L11, L13.
 
-- [ ] WEB-UIUX-884. **[MAJOR] No "invite back for free re-repair" workflow.** `cloneWarranty` exists but hidden in overflow menu, doesn't auto-message, no zero-cost line-item template. 5 manual steps. L4, L5.
+- [x] WEB-UIUX-884. **[MAJOR] No "invite back for free re-repair" workflow.** `cloneWarranty` exists but hidden in overflow menu, doesn't auto-message, no zero-cost line-item template. 5 manual steps. L4, L5. **[AUTOLOOP-T41 RESOLVED: TicketActions surfaces "Free re-repair" primary header button (RefreshCw icon); overflow item relabelled "Invite back for free re-repair (warranty)".]**
 
 - [ ] WEB-UIUX-885. **[MAJOR · BLOCKED] No SMS/email follow-up scaffold from credit-note success.** Customer hangs up not knowing if refund landed. Receipt-prompt only fires after payment, not after refund. L8, L4.
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13.
+- [ ] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
 
 #### DATA1: Data Flow Consistency
 
 - [ ] WEB-UIUX-887. **[BLOCKER] POS sale never invalidates inventory cache.** `CheckoutModal.onSuccess` invalidates `['membership',...]` only. Other tabs show pre-sale stock indefinitely. L6, L11, L13.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:228-230`
 
-- [ ] WEB-UIUX-888. **[BLOCKER] `pos-products` cache key NEVER invalidated by any mutation.** Inventory edit (price/stock/PO/stocktake) → POS product tile shows old price/stock until hard refresh. Cashier rings yesterday's price. L6, L13, L16.
+- [x] WEB-UIUX-888. **[BLOCKER] `pos-products` cache key NEVER invalidated by any mutation.** Inventory edit (price/stock/PO/stocktake) → POS product tile shows old price/stock until hard refresh. Cashier rings yesterday's price. L6, L13, L16. **[AUTOLOOP-T41 RESOLVED: queryClient.invalidateQueries(["pos-products"]) added to price update + stock adjust (InventoryDetailPage) + stocktake commit + PO receive onSuccess.]**
   `packages/web/src/pages/unified-pos/ProductsTab.tsx:40`
 
 - [ ] WEB-UIUX-889. **[BLOCKER] Stocktake commit doesn't invalidate inventory cache.** Toast says "Committed: N items adjusted" but inventory list shows pre-stocktake numbers. L6, L13.
   `packages/web/src/pages/inventory/StocktakePage.tsx:141-145`
 
-- [ ] WEB-UIUX-890. **[BLOCKER] PO receive doesn't invalidate inventory cache.** After receiving 50 phones, POS still says "0 in stock". L6, L13.
+- [x] WEB-UIUX-890. **[BLOCKER] PO receive doesn't invalidate inventory cache.** After receiving 50 phones, POS still says "0 in stock". L6, L13. **[AUTOLOOP-T41 RESOLVED: PurchaseOrdersPage ReceiveModal onSuccess invalidates ["inventory"] + ["pos-products"] caches.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:553-555`
 
 - [ ] WEB-UIUX-891. **[MAJOR · BLOCKED] SMS conversation linkage is by phone string, not customer_id.** Customer phone change → previous `conv_phone` becomes orphan stranger thread, new phone has no history. L5, L13.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/communications/CommunicationPage.tsx:50,68,91,1440,1651-1655`
 
-- [ ] WEB-UIUX-892. **[MAJOR] Customer phone change strands portal account.** Portal login uses phone as identity key. Front-desk update silently breaks portal access. L5, L16.
+- [x] WEB-UIUX-892. **[MAJOR] Customer phone change strands portal account.** Portal login uses phone as identity key. Front-desk update silently breaks portal access. L5, L16. **[AUTOLOOP-T41 RESOLVED: CustomerDetailPage InfoTab handleSave shows window.confirm when phone differs from original — blocks save if staff cancels (preserves portal-login identity).]**
   `packages/web/src/pages/portal/portalApi.ts:194-195`
 
 - [ ] WEB-UIUX-893. **[MAJOR] Customer name/email/phone edits don't invalidate dependent list caches.** `['tickets']`/`['invoices']`/`['estimates']`/`['sms-conversations']`/`['leads']` all show OLD name. WS `customer:updated` only invalidates `['customers']`. L6, L9.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1154-1157`
 
-- [ ] WEB-UIUX-894. **[MAJOR] Currency change in Settings requires page reload.** `formatCurrency` reads module-level singleton refreshed only by `['settings-config-env']`. Saving currency in `['settings','store']` invalidates DIFFERENT key. L6, L10.
+- [x] WEB-UIUX-894. **[MAJOR] Currency change in Settings requires page reload.** `formatCurrency` reads module-level singleton refreshed only by `['settings-config-env']`. Saving currency in `['settings','store']` invalidates DIFFERENT key. L6, L10. **[AUTOLOOP-T41 RESOLVED: SettingsPage saveMutation onSuccess now invalidates ["settings-config-env"] so AppShell re-runs initCurrencyFromSettings without reload.]**
 
 - [ ] WEB-UIUX-895. **[MAJOR] Print page renders LIVE customer/store data on re-print of historical receipts.** Renamed customer "J Doe" → "Jane Doe-Smith" → reprint of 6-month-old receipt now says new name. Tax/legal expects point-in-time snapshots. L13, L16.
   `packages/web/src/pages/print/PrintPage.tsx:195-241,451-549,763-810,910-941`
 
-- [ ] WEB-UIUX-896. **[MAJOR] Ticket detail status change invalidates `['ticket', id]` only — Kanban shows OLD column.** Mitigated by WS but fails offline / tab-suspended. L11.
+- [x] WEB-UIUX-896. **[MAJOR] Ticket detail status change invalidates `['ticket', id]` only — Kanban shows OLD column.** Mitigated by WS but fails offline / tab-suspended. L11. **[AUTOLOOP-T41 RESOLVED: changeStatusMut onSettled now invalidates ["tickets","kanban"] + ["tickets"] in addition to detail cache. Kanban + list refresh after status change.]**
 
 - [ ] WEB-UIUX-897. **[MINOR] Customer membership tier discount snapshotted into POS cart customer object.** Admin changes discount mid-cart → in-memory cart keeps old discount until customer re-selected. L6.
 

@@ -1327,6 +1327,16 @@ function InfoTab({
       return;
     }
 
+    // WEB-UIUX-892: phone is the portal login identity key — warn before changing it.
+    const newPhone = stripPhone(form.phone);
+    const oldPhone = customer.phone || '';
+    if (newPhone !== oldPhone) {
+      const confirmed = window.confirm(
+        "Phone changes the customer's portal login identity. Existing portal account will be unreachable until the customer re-registers with the new number.",
+      );
+      if (!confirmed) return;
+    }
+
     const payload: UpdateCustomerInput = {
       first_name: form.first_name.trim(),
       last_name: form.last_name.trim() || undefined,

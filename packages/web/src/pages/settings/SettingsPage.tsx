@@ -214,6 +214,7 @@ function StoreInfoTab() {
     mutationFn: (formData: Record<string, string>) => settingsApi.updateStore(formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'store'] });
+      queryClient.invalidateQueries({ queryKey: ['settings-config-env'] });
       setDirty(false);
       toast.success('Store settings saved');
     },

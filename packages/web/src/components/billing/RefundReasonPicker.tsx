@@ -20,15 +20,27 @@ export type RefundReasonCode =
   | 'wrong_item'
   | 'duplicate_charge'
   | 'price_adjustment'
+  | 'failed_repair'
+  | 'lost_data'
+  | 'extended_delay'
+  | 'goodwill_gesture'
+  | 'chargeback_prevention'
+  | 'warranty_invocation'
   | 'other';
 
 const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: string }> = [
-  { code: 'defective',        label: 'Defective product',   hint: 'Arrived broken or malfunctioned.' },
-  { code: 'dissatisfaction',  label: 'Customer dissatisfied', hint: 'Changed mind, unhappy with result.' },
-  { code: 'wrong_item',       label: 'Wrong item',          hint: 'Received/ordered the wrong SKU.' },
-  { code: 'duplicate_charge', label: 'Duplicate charge',    hint: 'Billed twice by mistake.' },
-  { code: 'price_adjustment', label: 'Price adjustment',    hint: 'Retroactive discount / price match.' },
-  { code: 'other',            label: 'Other',               hint: 'Free-form reason in the note.' },
+  { code: 'defective',             label: 'Defective product',      hint: 'Arrived broken or malfunctioned.' },
+  { code: 'dissatisfaction',       label: 'Customer dissatisfied',  hint: 'Changed mind, unhappy with result.' },
+  { code: 'wrong_item',            label: 'Wrong item',             hint: 'Received/ordered the wrong SKU.' },
+  { code: 'duplicate_charge',      label: 'Duplicate charge',       hint: 'Billed twice by mistake.' },
+  { code: 'price_adjustment',      label: 'Price adjustment',       hint: 'Retroactive discount / price match.' },
+  { code: 'failed_repair',         label: 'Failed repair',          hint: 'Service repair did not resolve the issue.' },
+  { code: 'lost_data',             label: 'Lost data',              hint: 'Customer data lost during service.' },
+  { code: 'extended_delay',        label: 'Extended delay',         hint: 'Service took significantly longer than quoted.' },
+  { code: 'goodwill_gesture',      label: 'Goodwill gesture',       hint: 'Discretionary credit to preserve customer relationship.' },
+  { code: 'chargeback_prevention', label: 'Chargeback prevention',  hint: 'Pre-emptive refund to avoid a payment dispute.' },
+  { code: 'warranty_invocation',   label: 'Warranty invocation',    hint: 'Refund issued under product or service warranty.' },
+  { code: 'other',                 label: 'Other',                  hint: 'Free-form reason in the note.' },
 ];
 
 interface RefundReasonPickerProps {

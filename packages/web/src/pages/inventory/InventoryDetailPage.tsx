@@ -99,6 +99,7 @@ export function InventoryDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['bin-locations'] });
       queryClient.invalidateQueries({ queryKey: ['bin-heatmap'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
       toast.success('Item updated');
       setEditMode(false);
     },
@@ -110,6 +111,7 @@ export function InventoryDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
       toast.success('Stock adjusted');
       setShowAdjust(false);
       setAdjustQty('');
