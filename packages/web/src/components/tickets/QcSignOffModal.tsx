@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera, Eraser, Check, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { Camera, Eraser, Check, X, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
 import {
@@ -64,6 +64,7 @@ export function QcSignOffModal({
   }, [items.length]);
 
   const [notes, setNotes] = useState('');
+  const [failReason, setFailReason] = useState('');
   const [workingPhotoFile, setWorkingPhotoFile] = useState<File | null>(null);
   const [workingPhotoPreview, setWorkingPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -156,14 +157,21 @@ export function QcSignOffModal({
   };
 
   const allPassed = items.length > 0 && items.every((i) => passedMap[i.id]);
-  const canSubmit = allPassed && workingPhotoFile && signatureDrawn;
+  const anyChecked = items.some((i) => passedMap[i.id]);
+  // Fail path: at least one item checked (so the tech has reviewed) + fail reason filled.
+  const isFail = items.length > 0 && !allPassed && anyChecked;
+  const canSubmit =
+    workingPhotoFile &&
+    signatureDrawn &&
+    (allPassed || (isFail && failReason.trim().length > 0));
 
   // Guard close when the tech has started filling in the form.
   const hasChanges =
     signatureDrawn ||
     workingPhotoFile !== null ||
     Object.values(passedMap).some(Boolean) ||
-    notes.trim().length > 0;
+    notes.trim().length > 0 ||
+    failReason.trim().length > 0;
 
   const safeClose = () => {
     if (
@@ -195,14 +203,17 @@ export function QcSignOffModal({
           items.map((i) => ({ item_id: i.id, passed: !!passedMap[i.id] })),
         ),
       );
-      fd.append('notes', notes);
+      const combinedNotes = isFail
+        ? `FAIL: ${failReason.trim()}${notes.trim() ? `\n\n${notes.trim()}` : ''}`
+        : notes;
+      fd.append('notes', combinedNotes);
       fd.append('working_photo', workingPhotoFile);
       fd.append('tech_signature', new File([blob], 'signature.png', { type: 'image/png' }));
 
       return benchApi.qc.signOff(fd);
     },
     onSuccess: () => {
-      toast.success('QC sign-off recorded');
+      toast.success(isFail ? 'QC fail recorded' : 'QC sign-off recorded');
       qc.invalidateQueries({ queryKey: ['qc-status', ticketId] });
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
       onSigned?.();
@@ -263,7 +274,7 @@ export function QcSignOffModal({
           <>
             <div className="mb-4">
               <p className="mb-2 text-xs font-semibold uppercase text-surface-500">
-                Checklist — every item must be ticked
+                Checklist — tick each item that passed
               </p>
               <ul className="space-y-2">
                 {items.map((item) => (
@@ -286,6 +297,26 @@ export function QcSignOffModal({
                 ))}
               </ul>
             </div>
+
+            {isFail && (
+              <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/20">
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase text-red-700 dark:text-red-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Reason for fail (required)
+                </label>
+                <textarea
+                  value={failReason}
+                  onChange={(e) => setFailReason(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  className="w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
+                  placeholder="Describe which items failed and why…"
+                />
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  Items {items.filter((i) => !passedMap[i.id]).map((i) => i.name).join(', ')} not passed.
+                </p>
+              </div>
+            )}
 
             <div className="mb-4">
               <p className="mb-2 text-xs font-semibold uppercase text-surface-500">
@@ -371,14 +402,20 @@ export function QcSignOffModal({
               <button
                 onClick={() => signMut.mutate()}
                 disabled={!canSubmit || signMut.isPending}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                  isFail
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                }`}
               >
                 {signMut.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isFail ? (
+                  <AlertTriangle className="h-4 w-4" />
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                Sign off
+                {isFail ? 'Record fail' : 'Sign off'}
               </button>
             </div>
           </>

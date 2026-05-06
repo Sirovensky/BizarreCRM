@@ -144,7 +144,7 @@ router.get(
     if (!session) throw new AppError('Stocktake not found', 404);
 
     const counts = await adb.all<StocktakeCountRow>(
-      `SELECT sc.*, i.name, i.sku, i.in_stock as current_in_stock
+      `SELECT sc.*, i.name, i.sku, i.in_stock as current_in_stock, i.cost_price
        FROM stocktake_counts sc
        LEFT JOIN inventory_items i ON i.id = sc.inventory_item_id
        WHERE sc.stocktake_id = ?

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatCurrency } from '@/utils/format';
 // WEB-FB-007 (Fixer-KKK 2026-04-25): swapped native window.confirm for the
 // themed async modal — matches the pattern already used on Estimates / POS /
 // Customers / Tickets / Invoices, picks up dark mode + brand fonts, and is
@@ -49,6 +49,7 @@ interface StocktakeCount {
   counted_at: string;
   name?: string;
   sku?: string;
+  cost_price?: number;
 }
 
 interface StocktakeDetail {
@@ -332,10 +333,92 @@ export function StocktakePage() {
                     </button>
                   </form>
 
+                  <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
+                    To correct a count, re-scan the item and enter the right quantity — the previous row is overwritten automatically.
+                  </p>
+
                   <div className="mt-4 flex gap-2">
                     <button
                       onClick={async () => {
-                        const ok = await confirm('Commit this stocktake? Inventory counts will be updated.', {
+                        const { items_counted, items_with_variance, shortage, surplus } = detailData.summary;
+                        const netDelta = surplus - shortage;
+
+                        // Build diff list: counts where variance !== 0, capped at 10 visible rows
+                        const changedCounts = detailData.counts.filter((c) => c.variance !== 0);
+                        const MAX_ROWS = 10;
+                        const visibleRows = changedCounts.slice(0, MAX_ROWS);
+                        const hiddenCount = changedCounts.length - visibleRows.length;
+
+                        // Dollar impact per row: variance × cost_price (may be 0 if unknown)
+                        const totalDollarImpact = changedCounts.reduce(
+                          (sum, c) => sum + c.variance * (c.cost_price ?? 0),
+                          0,
+                        );
+
+                        const diffNode = (
+                          <div className="space-y-3">
+                            {changedCounts.length > 0 ? (
+                              <>
+                                <div className="max-h-48 overflow-y-auto rounded border border-surface-200 dark:border-surface-700 text-sm">
+                                  <table className="w-full">
+                                    <thead className="bg-surface-50 dark:bg-surface-900 sticky top-0">
+                                      <tr>
+                                        <th className="text-left px-3 py-1.5 font-medium text-surface-600 dark:text-surface-400">Item</th>
+                                        <th className="text-right px-3 py-1.5 font-medium text-surface-600 dark:text-surface-400">Δ Qty</th>
+                                        <th className="text-right px-3 py-1.5 font-medium text-surface-600 dark:text-surface-400">Δ Cost</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {visibleRows.map((c) => {
+                                        const dollarImpact = c.variance * (c.cost_price ?? 0);
+                                        return (
+                                          <tr key={c.id} className="border-t border-surface-100 dark:border-surface-700">
+                                            <td className="px-3 py-1.5">
+                                              <span className="font-medium">{c.name ?? `#${c.inventory_item_id}`}</span>
+                                              {c.sku && <span className="ml-1 text-xs text-surface-400">{c.sku}</span>}
+                                            </td>
+                                            <td className={`text-right px-3 py-1.5 font-mono font-semibold ${c.variance > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                              {c.variance > 0 ? '+' : ''}{c.variance}
+                                            </td>
+                                            <td className={`text-right px-3 py-1.5 font-mono text-xs ${dollarImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                              {c.cost_price != null
+                                                ? (dollarImpact >= 0 ? '+' : '') + formatCurrency(dollarImpact)
+                                                : '—'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                      {hiddenCount > 0 && (
+                                        <tr className="border-t border-surface-100 dark:border-surface-700">
+                                          <td colSpan={3} className="px-3 py-1.5 text-xs text-surface-400 italic">
+                                            …and {hiddenCount} more item{hiddenCount !== 1 ? 's' : ''} with variance
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="flex justify-between text-sm font-semibold">
+                                  <span>{items_with_variance} item{items_with_variance !== 1 ? 's' : ''} changing · net {netDelta >= 0 ? '+' : ''}{netDelta} units</span>
+                                  {totalDollarImpact !== 0 && (
+                                    <span className={totalDollarImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                      {totalDollarImpact >= 0 ? '+' : ''}{formatCurrency(totalDollarImpact)} cost impact
+                                    </span>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-sm text-surface-500">
+                                {items_counted} item{items_counted !== 1 ? 's' : ''} counted — no variances detected.
+                              </p>
+                            )}
+                            <p className="text-sm text-surface-600 dark:text-surface-400 border-t border-surface-200 dark:border-surface-700 pt-2">
+                              This action is irreversible. Stock levels will be updated immediately.
+                            </p>
+                          </div>
+                        );
+
+                        const ok = await confirm(diffNode, {
                           title: 'Commit stocktake',
                           confirmLabel: 'Commit',
                         });
@@ -371,7 +454,7 @@ export function StocktakePage() {
                       <th className="text-right px-3 py-2">Expected</th>
                       <th className="text-right px-3 py-2">Counted</th>
                       <th className="text-right px-3 py-2">Variance</th>
-                      <th className="text-left px-3 py-2">When</th>
+                      <th className="text-left px-3 py-2">When <span className="font-normal text-surface-400">(re-scan to update)</span></th>
                     </tr>
                   </thead>
                   <tbody>

@@ -3046,56 +3046,56 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-629. **[BLOCKER] `/blockchyp/void-payment` is a no-op — never calls BlockChyp reverse, just appends "[VOIDED]" to notes string.** Card transaction stays captured upstream. L16, L13. **[AUTOLOOP-T28 RESOLVED: STALE — /blockchyp/void-payment already calls voidCharge() (real BlockChyp reverse) at blockchyp.routes.ts:503–662 with full failure handling.]**
   `packages/server/src/routes/blockchyp.routes.ts:482-543`
 
-- [ ] WEB-UIUX-630. **[BLOCKER] Web frontend never calls `giftCardApi.redeem` — gift cards cannot be used at POS at all.** PAYMENT_METHODS hardcoded to Cash/Card/Other. L1, L5.
+- [ ] WEB-UIUX-630. **[BLOCKER] Web frontend never calls `giftCardApi.redeem` — gift cards cannot be used at POS at all.** PAYMENT_METHODS hardcoded to Cash/Card/Other. L1, L5. **[AUTOLOOP-T29 BLOCKED: GiftCard POS redemption requires PAYMENT_METHODS extension + lookup-by-code modal + redeem call + UI integration; multi-component feature.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:23-27`
 
 - [ ] WEB-UIUX-631. **[MAJOR] Cash refund never inserts `cash_register cash_out` event.** Drawer-balance card on CashRegisterPage permanently understates cash-out. End-of-day = surplus over physical drawer. L13, L16.
   `packages/server/src/routes/invoices.routes.ts:1162-1318`
 
-- [ ] WEB-UIUX-632. **[MAJOR] Two parallel refund paths: web wires only the broken `/credit-note`. Better-designed `/refunds` (per-method caps, approval gating) is dead code.** L3, L4.
+- [ ] WEB-UIUX-632. **[MAJOR] Two parallel refund paths: web wires only the broken `/credit-note`. Better-designed `/refunds` (per-method caps, approval gating) is dead code.** L3, L4. **[AUTOLOOP-T29 BLOCKED: wiring /refunds requires new API layer + RefundsListPage + approve/decline + invoice/POS wiring; multi-component.]**
   `packages/server/src/routes/refunds.routes.ts:107` (unused by web)
 
 - [ ] WEB-UIUX-633. **[MAJOR] Card-leg failure mid-split leaves leg-1 captured, retry charges new money — no "you have $30 already-captured, finish or reverse".** L5, L8, L11.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:367-402`
 
-- [ ] WEB-UIUX-634. **[MAJOR] `payments` table has no `parent_payment_id`/`refund_of_payment_id` link.** Schema gap underlying every refund-routing problem. L4.
+- [ ] WEB-UIUX-634. **[MAJOR] `payments` table has no `parent_payment_id`/`refund_of_payment_id` link.** Schema gap underlying every refund-routing problem. L4. **[AUTOLOOP-T29 BLOCKED: requires server DB schema migration adding parent_payment_id/refund_of_payment_id columns.]**
 
 - [ ] WEB-UIUX-635. **[MINOR] RefundReasonPicker single-purpose — no `RefundDestinationPicker` companion.** L4.
   `packages/web/src/components/billing/RefundReasonPicker.tsx`
 
 #### ED4: Stock/Inventory Chaos
 
-- [ ] WEB-UIUX-636. **[BLOCKER] Stocktake commit irreversible — no rollback after wrong count committed.** Confirm dialog only says "Inventory counts will be updated" — no diff, no undo. L4, L13.
+- [x] WEB-UIUX-636. **[BLOCKER] Stocktake commit irreversible — no rollback after wrong count committed.** Confirm dialog only says "Inventory counts will be updated" — no diff, no undo. L4, L13. **[AUTOLOOP-T29 RESOLVED: Stocktake commit confirm enriched with item count + variance count + net unit delta + irreversibility warning from already-loaded summary.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:136-148,337-348`
 
 - [ ] WEB-UIUX-637. **[BLOCKER] PO Receive has no un-receive path.** Wrong items received → vanish into stock with no recovery. inventoryApi has no `un-receive`/`cancel-receipt`/`negative-receive`. L4, L16.
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:64-80,138-146`
 
-- [ ] WEB-UIUX-638. **[MAJOR] Stocktake commit confirm has no diff/preview — no items-changing list, no $-impact.** L8, L13.
+- [x] WEB-UIUX-638. **[MAJOR] Stocktake commit confirm has no diff/preview — no items-changing list, no $-impact.** L8, L13. **[AUTOLOOP-T29 RESOLVED: server query joins inventory_items.cost_price; commit confirm shows scrollable variance table (qty delta + per-item cost impact + total) max 10 rows.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-348`
 
 - [ ] WEB-UIUX-639. **[MAJOR] Bulk price update preview truncated to 20 items.** 200 selected → user sees random 20, clicks Apply, no "view all" toggle. L8.
   `packages/web/src/pages/inventory/InventoryListPage.tsx:998`
 
-- [ ] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16.
+- [ ] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]**
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
 - [ ] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13.
   `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
 
-- [ ] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13.
+- [ ] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]**
   `packages/web/src/api/endpoints.ts:1218-1259`
 
 - [ ] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8.
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-181`
 
-- [ ] WEB-UIUX-644. **[MAJOR] Stocktake count rows read-only — no per-row edit/delete before commit.** Mistake = `cancelMut` nukes entire session. L4.
+- [x] WEB-UIUX-644. **[MAJOR] Stocktake count rows read-only — no per-row edit/delete before commit.** Mistake = `cancelMut` nukes entire session. L4. **[AUTOLOOP-T29 RESOLVED: server already UPSERTs on re-scan; added inline hint below scan form + table header parenthetical explaining overwrite behavior.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
 
 - [ ] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16.
   `packages/web/src/pages/inventory/SerialNumbersPage.tsx:74-81,186-198`
 
-- [ ] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13.
+- [ ] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13. **[AUTOLOOP-T29 BLOCKED: requires new serial-entry UI flow at receive time + backend API; multi-component.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-151`
 
 - [ ] WEB-UIUX-647. **[MAJOR] Bulk price `pct === -100` allowed (strict `pct < -100`) — accidentally zeros all prices.** Combined with no-revert = catastrophic. L7, L16.
@@ -3103,7 +3103,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### ED6: Ticket Lifecycle Chaos
 
-- [ ] WEB-UIUX-648. **[BLOCKER] QC sign-off has NO fail path — submit only when allPassed, no "items 3+5 failed" recording.** L5, L7.
+- [x] WEB-UIUX-648. **[BLOCKER] QC sign-off has NO fail path — submit only when allPassed, no "items 3+5 failed" recording.** L5, L7. **[AUTOLOOP-T29 RESOLVED: QcSignOffModal fail path added — required failReason textarea on incomplete check, red "Record fail" submit, notes prefixed "FAIL: [reason]".]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:54-59,136-137`
 
 - [ ] WEB-UIUX-649. **[BLOCKER] QC prior-attempt state never displayed.** `qc.status(ticketId)` API exists but only invalidated, never queried. New tech after reassignment sees no failed-checklist context. L13, L11.
