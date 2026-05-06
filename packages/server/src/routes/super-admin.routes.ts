@@ -108,13 +108,22 @@ function snapshotTierFields(row: AnyRow | undefined): Record<string, unknown> {
 }
 
 // ─── Guards ─────────────────────────────────────────────────────────
-
-router.use((_req, res, next) => {
-  if (!config.multiTenant) {
-    return res.status(404).json({ success: false, message: 'Multi-tenant mode is not enabled' });
-  }
-  next();
-});
+//
+// The super-admin API was previously gated on `config.multiTenant` — every
+// route returned 404 in single-tenant mode. That made /super-admin's
+// audit log, JWT rotation, super-admin password / 2FA setup, security
+// alerts, and platform config inaccessible to single-tenant operators
+// who legitimately need those features.
+//
+// Single-tenant mode now also initializes the master DB (see
+// db/master-connection.ts and index.ts). Tenant-CRUD endpoints stay in
+// the router but degrade gracefully: list-tenants returns []; per-slug
+// routes return 404. Real tenant operations (provisioning, billing
+// webhooks, etc.) remain meaningful only in multi-tenant. Per-route
+// gates exist where strictly required (see :2488 below).
+//
+// We deliberately keep the router-wide guard removed; routes that
+// strictly require multi-tenant mode have their own checks.
 
 // ─── TOTP Encryption (same pattern as tenant auth) ──────────────────
 

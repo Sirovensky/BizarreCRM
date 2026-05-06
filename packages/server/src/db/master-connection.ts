@@ -7,12 +7,20 @@ import { config } from '../config.js';
 let masterDb: Database.Database | null = null;
 
 /**
- * Initialize the master database (multi-tenant mode only).
- * Creates the DB file and schema if they don't exist.
+ * Initialize the master database. Creates the DB file and schema if they
+ * don't exist.
+ *
+ * Runs in BOTH single-tenant and multi-tenant modes:
+ *   - multi-tenant: holds the `tenants` table (every tenant lookup) PLUS
+ *     super-admin auth, audit log, security alerts, etc.
+ *   - single-tenant: holds the same super-admin auth + audit log + alerts.
+ *     The `tenants` table stays empty (no tenants exist), but every other
+ *     super-admin feature (JWT rotation, audit log review, 2FA setup,
+ *     password setup, security alerts, platform config) needs the
+ *     master DB to function. Removing the previous `!config.multiTenant`
+ *     early-return unblocks single-tenant super-admin login.
  */
 export function initMasterDb(): void {
-  if (!config.multiTenant) return;
-
   const dir = path.dirname(config.masterDbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 

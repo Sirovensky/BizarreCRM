@@ -337,13 +337,15 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncrypt
   }
 }
 
-// Initialize multi-tenant master DB before creating the readiness promise. The
-// readiness promise runs migrateAllTenants(), which needs getMasterDb() to be
-// available immediately.
-if (config.multiTenant) {
-  initMasterDb();
-  setMasterDb(getMasterDb());
-}
+// Initialize the master DB before creating the readiness promise.
+// In multi-tenant mode the readiness promise runs migrateAllTenants()
+// which needs getMasterDb() immediately. In single-tenant mode the
+// master DB still holds super-admin auth, audit log, security alerts,
+// announcements — everything the /super-admin panel needs to function.
+// Without this, /super-admin/api/* endpoints crashed with "Multi-tenant
+// mode is not enabled" or null-master-db errors.
+initMasterDb();
+setMasterDb(getMasterDb());
 
 // SCAN-1068: fail fast on a misconfigured virus scanner. If CLAMAV_HOST is
 // set but the clamscan integration is still a stub, refuse to start in
