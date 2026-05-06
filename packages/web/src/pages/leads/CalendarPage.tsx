@@ -521,7 +521,7 @@ function AppointmentDetailModal({
         onClick={onClose}
       >
         <div
-          className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-800"
+          className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-surface-800"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
@@ -675,7 +675,7 @@ function CreateAppointmentModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 id="appointment-create-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">

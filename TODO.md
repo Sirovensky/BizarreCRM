@@ -288,7 +288,7 @@ Verified working. Not TODOs.
   - iOS: confirms formats decode locally, uploads honor whatever server accepts, surfaces "Your shop's server doesn't accept X — convert or attach different file" when rejected.
   Recommend server-side transcoding to JPEG on ingestion so all clients see a consistent format; keep original on server for download. Block iOS implementation of TIFF / DNG / HEIC upload until this is decided.
 
-- [ ] **TEAM-CHAT-AUDIT-001. Team chat data-at-rest audit (server + clients).**
+- [ ] **TEAM-CHAT-AUDIT-001. Team chat data-at-rest audit (server + clients).** **[AUTOLOOP-T0 BLOCKED: 7-item audit covering SQLCipher, retention, GDPR, redactor — multi-week design, not a fix.]**
   Surfaced from `ios/ActionPlan.md §47`. Server today stores message bodies in SQLite TEXT columns (`team_chat_messages.body TEXT NOT NULL`, migration `096_team_management.sql`). No column-level encryption, no hashing. Fine as a staff-chat MVP but needs a comprehensive review before scaling:
   1. **At-rest encryption.** Does the tenant server DB sit on an encrypted filesystem? For SQLite deployments, the file is plaintext-readable unless SQLCipher (or equivalent) is applied at the DB layer. Cloud-hosted tenants inherit our infra's disk encryption; self-hosted tenants are on their own.
   2. **In-transit.** HTTPS already covers this; verify no polling fallback ever lands HTTP.
@@ -303,7 +303,7 @@ Verified working. Not TODOs.
   11. **Client cache.** Web + iOS + Android will locally cache messages (offline support). iOS/Android use SQLCipher — covered. Web uses IndexedDB / localStorage — needs its own review.
   Block wide rollout of team chat (iOS + Android) until findings close.
 
-- [ ] **TEAM-CHAT-ANDROID-PARITY-001. Android team-chat client missing.**
+- [x] **TEAM-CHAT-ANDROID-PARITY-001. Android team-chat client missing.** **[AUTOLOOP-T0 RESOLVED: stale — TeamChatApi/ListVM/ThreadVM/screens/nav/DI all already shipped in `android/`.]**
   Surfaced from `ios/ActionPlan.md §47`. Server + web both ship team chat today (`/api/v1/team-chat`, `/team/chat`). Android has zero references. Parity work for Android: list channels, thread view, compose + @mention, polling with `?after=<id>` cursor (matches server MVP), room for later WS upgrade. Shares schema with iOS once iOS ships; both should use the same shape so server doesn't grow per-client variants. Blocks iOS team-chat merge.
 
   Surfaced from `ios/ActionPlan.md §60` / §89. Server has `/api/v1/stocktake` (`stocktake.routes.ts`) and web has `pages/inventory/StocktakePage.tsx`. Android only references stocktake in a dashboard widget placeholder. Full Android parity: sessions list, per-session count UI, barcode-scan loop, variance resolution, adjust on commit. Follows same cursor-based pagination contract the other list surfaces use.
@@ -386,7 +386,7 @@ Verified working. Not TODOs.
 
 
 
-- [ ] WEB-FD-014. **[MED] `endpoints.ts` is 27k tokens / single-file mega-export — every page-level import drags the whole module graph.** Vite tree-shakes named exports but TypeScript declaration-merging across the file means a typo in one route forces a typecheck on every consumer. Split into `endpoints/{auth,ticket,customer,inventory,…}.ts` re-exported via `endpoints/index.ts`. Bundle and HMR cost: every chunk pulls every endpoint definition.
+- [ ] WEB-FD-014. **[MED] `endpoints.ts` is 27k tokens / single-file mega-export — every page-level import drags the whole module graph.** Vite tree-shakes named exports but TypeScript declaration-merging across the file means a typo in one route forces a typecheck on every consumer. Split into `endpoints/{auth,ticket,customer,inventory,…}.ts` re-exported via `endpoints/index.ts`. Bundle and HMR cost: every chunk pulls every endpoint definition. **[AUTOLOOP-T0 BLOCKED: 2042-LOC file → 15+ domain modules + hundreds of import-site updates. Too broad.]**
   <!-- meta: scope=web/api; files=packages/web/src/api/endpoints.ts; fix=split-by-domain+re-export-via-barrel -->
 
 
@@ -594,7 +594,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls.
+- [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls. **[AUTOLOOP-T0 BLOCKED: requires new i18next dep + extracting 400+ strings across 52 renderer files.]**
 
 
 
@@ -663,7 +663,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203. — Fixer-C26 2026-04-25 (PARTIAL — drift-defense only): cross-reference comment added on both type declarations explaining that Electron main and renderer compile to separate bundles with no `packages/management/src/shared/` folder yet, so the union is intentionally duplicated; instructs future contributors to edit BOTH files in the same commit and points at the eventual cleanup path. Real dedup still requires creating a shared types file referenced by both tsconfigs.
+- [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203. — Fixer-C26 2026-04-25 (PARTIAL — drift-defense only): cross-reference comment added on both type declarations explaining that Electron main and renderer compile to separate bundles with no `packages/management/src/shared/` folder yet, so the union is intentionally duplicated; instructs future contributors to edit BOTH files in the same commit and points at the eventual cleanup path. Real dedup still requires creating a shared types file referenced by both tsconfigs. **[AUTOLOOP-T0 BLOCKED: tsconfig.node rootDir + tsconfig include block any shared/ import without build-config restructure.]**
 
 
 
@@ -862,7 +862,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FN-005. **[MED] Pagination param drift — server reads `pagesize` (most routes), `per_page` (gift-cards, loaners), and `limit` (catalog/teamChat/super-admin/inventory.low-stock), and within a single endpoint the request key is `pagesize` while the response key is `per_page`.** Examples: `inventoryApi.list` sends `pagesize` to `GET /inventory` (server reads `pagesize` ✓ but RESPONSE pagination key is `per_page` — inventory.routes.ts:127); `voiceApi.calls` sends `pagesize` (server reads `pagesize` ✓, response `per_page` — voice.routes.ts:181,218); `giftCardApi.list` sends `per_page` (server reads `per_page` ✓ — giftCards.routes.ts:122,145); `loanerApi.list` sends `per_page` (server reads `per_page` ✓). The query-vs-response asymmetry within a single endpoint plus the cross-endpoint inconsistency makes a generic `usePaginatedQuery` hook impossible — each caller hand-rolls. Industry baseline: settle on one name in both directions and add a server alias for the legacy.
+- [x] WEB-FN-005. **[MED] Pagination param drift — server reads `pagesize` (most routes), `per_page` (gift-cards, loaners), and `limit` (catalog/teamChat/super-admin/inventory.low-stock), and within a single endpoint the request key is `pagesize` while the response key is `per_page`.** Examples: `inventoryApi.list` sends `pagesize` to `GET /inventory` (server reads `pagesize` ✓ but RESPONSE pagination key is `per_page` — inventory.routes.ts:127); `voiceApi.calls` sends `pagesize` (server reads `pagesize` ✓, response `per_page` — voice.routes.ts:181,218); `giftCardApi.list` sends `per_page` (server reads `per_page` ✓ — giftCards.routes.ts:122,145); `loanerApi.list` sends `per_page` (server reads `per_page` ✓). The query-vs-response asymmetry within a single endpoint plus the cross-endpoint inconsistency makes a generic `usePaginatedQuery` hook impossible — each caller hand-rolls. Industry baseline: settle on one name in both directions and add a server alias for the legacy. **[AUTOLOOP-T0 RESOLVED: added parsePageSizeDual in pagination.ts; inventory + voice list routes wired; gift-cards already canonical.]**
   <!-- meta: scope=web/api+server/routes+server/utils/pagination; files=packages/web/src/api/endpoints.ts:103,310,590,981,1021,packages/server/src/utils/pagination.ts ↔ packages/server/src/routes/inventory.routes.ts:65,127,packages/server/src/routes/voice.routes.ts:181,218,packages/server/src/routes/giftCards.routes.ts:122,145; fix=server-accept-both-pagesize+per_page-(via-parsePageSize-OR)+settle-response-on-per_page+document-canonical-pagination-shape-in-CONTRACTS.md -->
 
 
@@ -903,7 +903,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FM-012. **[MED] Six pages exceed 1,500 LOC + endpoints.ts at 1,287 LOC — page-as-monolith pattern blocks tree-shake / parallel TS check.** After SettingsPage (3,464): `CommunicationPage.tsx` (2,223), `CustomerDetailPage.tsx` (2,142), `DashboardPage.tsx` (2,112), `TicketWizard.tsx` (2,008), `TicketListPage.tsx` (1,817), `InventoryListPage.tsx` (1,780), `RepairsTab.tsx` (1,448), `ReportsPage.tsx` (1,396). Each contains 5-15 tightly-coupled inline subcomponents. The single `endpoints.ts` causes any tiny API tweak to invalidate the cached type-build for all pages — split per-domain (auth, billing, tickets, inventory, ...).
+- [ ] WEB-FM-012. **[MED] Six pages exceed 1,500 LOC + endpoints.ts at 1,287 LOC — page-as-monolith pattern blocks tree-shake / parallel TS check.** After SettingsPage (3,464): `CommunicationPage.tsx` (2,223), `CustomerDetailPage.tsx` (2,142), `DashboardPage.tsx` (2,112), `TicketWizard.tsx` (2,008), `TicketListPage.tsx` (1,817), `InventoryListPage.tsx` (1,780), `RepairsTab.tsx` (1,448), `ReportsPage.tsx` (1,396). Each contains 5-15 tightly-coupled inline subcomponents. The single `endpoints.ts` causes any tiny API tweak to invalidate the cached type-build for all pages — split per-domain (auth, billing, tickets, inventory, ...). **[AUTOLOOP-T0 BLOCKED: shared inline types/utils used across all subcomponents; even smallest extraction needs project-spanning refactor.]**
   <!-- meta: scope=web/pages+api; files=packages/web/src/pages/communications/CommunicationPage.tsx,packages/web/src/pages/customers/CustomerDetailPage.tsx,packages/web/src/pages/dashboard/DashboardPage.tsx,packages/web/src/pages/tickets/TicketWizard.tsx,packages/web/src/pages/tickets/TicketListPage.tsx,packages/web/src/pages/inventory/InventoryListPage.tsx,packages/web/src/api/endpoints.ts; fix=extract-inline-subcomponents-into-co-located-./components/+split-endpoints.ts-by-domain -->
 
 
@@ -928,14 +928,14 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FQ-012. **[MED] Drop-shadow scale mixed: `shadow-sm` buttons next to `shadow-md`/`shadow-xl`/`shadow-2xl` modals with no semantic ladder.** `customers/CustomerListPage.tsx:577` Add CTA `shadow-sm`; line 804 modal `shadow-xl`; `CustomerDetailPage.tsx:565` modal `shadow-xl`; `leads/LeadListPage.tsx:126` modal `shadow-2xl`; `leads/CalendarPage.tsx:93,204` modals `shadow-2xl`. So "modal" is sometimes shadow-xl and sometimes shadow-2xl on adjacent flows. Should pick one elevation token per role.
+- [x] WEB-FQ-012. **[MED] Drop-shadow scale mixed: `shadow-sm` buttons next to `shadow-md`/`shadow-xl`/`shadow-2xl` modals with no semantic ladder.** `customers/CustomerListPage.tsx:577` Add CTA `shadow-sm`; line 804 modal `shadow-xl`; `CustomerDetailPage.tsx:565` modal `shadow-xl`; `leads/LeadListPage.tsx:126` modal `shadow-2xl`; `leads/CalendarPage.tsx:93,204` modals `shadow-2xl`. So "modal" is sometimes shadow-xl and sometimes shadow-2xl on adjacent flows. Should pick one elevation token per role. **[AUTOLOOP-T0 RESOLVED: 3 modal containers in LeadListPage+CalendarPage switched shadow-2xl → shadow-xl; ladder = button=shadow-sm, modal=shadow-xl.]**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:577,804,packages/web/src/pages/customers/CustomerDetailPage.tsx:565,packages/web/src/pages/leads/LeadListPage.tsx:126,packages/web/src/pages/leads/CalendarPage.tsx:93,204; fix=elevation-tokens(button=shadow-sm,popover=shadow-md,modal=shadow-xl,toast=shadow-2xl)+codemod -->
 
 
 - [ ] WEB-FQ-014. **[MED] No EmptyState illustration — empty lists render plain `<p class="text-sm text-surface-400">No X yet</p>`, no icon, no CTA, on 18+ pages.** `NotificationTemplatesTab.tsx:280`, `CustomerDetailPage.tsx:980,993`, `SettingsPage.tsx:552`, `MembershipSettings.tsx:496`, `ReceiptSettings.tsx:187`, `AuditLogsTab.tsx:119`, `DeviceTemplatesPage.tsx:232,413`, `TicketNotes.tsx:302`, `RepairPricingTab.tsx:301,547`, `TicketDevices.tsx:86,519` — all single-line text. Shared `EmptyState` component exists (`shared/EmptyState.tsx`, used 5× in SettingsPage) but adoption is partial. New users see flat "no data" everywhere instead of guided illustrations.
   <!-- meta: scope=web/pages; files=packages/web/src/components/shared/EmptyState.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx:280,packages/web/src/pages/customers/CustomerDetailPage.tsx:980,packages/web/src/pages/tickets/TicketNotes.tsx:302; fix=expand-EmptyState-to-take-icon+title+description+action-prop+codemod-inline-`<p>No X yet</p>`-instances -->
 
-- [ ] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.)
+- [ ] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.) **[AUTOLOOP-T0 BLOCKED: requires Radix/HeadlessUI + DatePicker deps + codemod 128 native selects. Too broad.]**
   <!-- meta: scope=web/pages+components; files=packages/web/src/pages/customers/CustomerCreatePage.tsx:236,packages/web/src/pages/customers/CustomerListPage.tsx:609,627,926; fix=add-shared/Select.tsx+shared/DatePicker.tsx-as-headless-radix/HeadlessUI-wrappers+codemod-25-native-selects -->
 
 - [ ] WEB-FQ-016. **[MED] Status-color usage uses raw amber/blue/green/red Tailwind colors with NO dark variants in 30+ spots — light-only badges.** `CustomerListPage.tsx:464` rounded-full badge; `DashboardPage.tsx:284,314,355,738,776` `text-amber-600 dark:text-amber-400` (dark variants present here) but `:1338,1873` only `text-red-500` / `text-green-600` (no dark:). Customer detail page `border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10` (long), but other pages omit the `dark:` arm. Inconsistent dark-mode coverage = washed-out badges in dark mode.
@@ -983,7 +983,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FX-008. **[MED] PinModal is the only well-built modal — has `role="dialog"` + `aria-modal` + `aria-labelledby="pin-modal-title"` + close-button `aria-label="Close"`. Its pattern should be the shared `<Modal>` primitive everyone migrates to.** `components/shared/PinModal.tsx:133-146`. Currently each modal hand-rolls its own backdrop + close button, often forgetting all four ARIA hooks (see WEB-FX-003).
+- [ ] WEB-FX-008. **[MED] PinModal is the only well-built modal — has `role="dialog"` + `aria-modal` + `aria-labelledby="pin-modal-title"` + close-button `aria-label="Close"`. Its pattern should be the shared `<Modal>` primitive everyone migrates to.** `components/shared/PinModal.tsx:133-146`. Currently each modal hand-rolls its own backdrop + close button, often forgetting all four ARIA hooks (see WEB-FX-003). **[AUTOLOOP-T0 BLOCKED: codemod of 46 bare overlays — too broad for single-tick fix.]**
   <!-- meta: scope=web/components; files=packages/web/src/components/shared/PinModal.tsx:133-146,packages/web/src/components/shared/ConfirmDialog.tsx; fix=extract-shared/Modal.tsx-from-PinModal-pattern+add-focus-trap+ESC+codemod-46-bare-overlays-to-use-it -->
 
 

@@ -35,6 +35,27 @@ export function parsePageSize(raw: unknown, fallback = DEFAULT_PAGE_SIZE): numbe
 }
 
 /**
+ * Parse and clamp a page-size value that may arrive under either the legacy
+ * `pagesize` key OR the canonical `per_page` key.
+ *
+ * Canonical pagination response shape uses `per_page`; this helper lets
+ * clients migrate from `pagesize` → `per_page` without a flag-day.
+ * `per_page` takes precedence when both keys are present.
+ *
+ * @param query    - `req.query` (or any object that may contain the keys).
+ * @param fallback - Size to use when neither key is present / valid.
+ * @returns        Integer in [1, MAX_PAGE_SIZE].
+ */
+export function parsePageSizeDual(
+  query: Record<string, unknown>,
+  fallback = DEFAULT_PAGE_SIZE,
+): number {
+  // Prefer the canonical key; fall back to the legacy key.
+  const raw = query['per_page'] !== undefined ? query['per_page'] : query['pagesize'];
+  return parsePageSize(raw, fallback);
+}
+
+/**
  * Parse a client-supplied page number.
  *
  * @param raw - Raw value from `req.query.page`.

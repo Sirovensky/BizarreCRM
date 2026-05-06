@@ -20,7 +20,7 @@ import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
-import { parsePageSize } from '../utils/pagination.js';
+import { parsePageSize, parsePageSizeDual } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { logActivity } from '../utils/activityLog.js';
 import {
@@ -152,9 +152,10 @@ const inventoryImageUpload = multer({
 // GET /inventory - list items
 router.get('/', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { page = '1', pagesize = '20', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order, location_id } = req.query as Record<string, string>;
+  const { page = '1', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
-  const ps = Math.min(250, Math.max(1, parseInt(pagesize, 10) || 20));
+  // Accept both legacy `pagesize` and canonical `per_page`; cap at 250 for inventory exports.
+  const ps = Math.min(250, parsePageSizeDual(req.query as Record<string, unknown>, 20));
   const offset = (p - 1) * ps;
 
   let where = 'WHERE i.is_active = 1';

@@ -16,7 +16,7 @@ import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { createLogger } from '../utils/logger.js';
-import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { parsePageSize, parsePageSizeDual, parsePage } from '../utils/pagination.js';
 import { initiateThreeCxCall, isThreeCxConfigured } from '../services/threeCx.js';
 
 const logger = createLogger('voice.routes');
@@ -208,7 +208,7 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const page = parsePage(req.query.page);
-  const pageSize = parsePageSize(req.query.pagesize, 20);
+  const pageSize = parsePageSizeDual(req.query as Record<string, unknown>, 20);
   const convPhone = req.query.conv_phone as string | undefined;
   const entityType = req.query.entity_type as string | undefined;
   const entityId = req.query.entity_id as string | undefined;
