@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -57,6 +57,7 @@ const initialForm: FormState = {
 
 export function CustomerCreatePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(initialForm);
@@ -581,7 +582,7 @@ export function CustomerCreatePage() {
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => navigate((location.state as { from?: string } | null)?.from ?? '/customers')}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
             <X className="h-4 w-4" />

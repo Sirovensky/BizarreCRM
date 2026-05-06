@@ -621,7 +621,8 @@ export function TicketSidebar({
             <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Warranty Information</h3>
           </div>
           {devices.filter((d) => d.warranty).map((d) => {
-            const daysRemaining = d.warranty_days ? Math.max(0, d.warranty_days - Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86400000)) : 0;
+            const warrantyStart = d.collected_date ?? d.created_at;
+            const daysRemaining = d.warranty_days ? Math.max(0, d.warranty_days - Math.floor((Date.now() - new Date(warrantyStart).getTime()) / 86400000)) : 0;
             return (
               <div key={d.id} className="flex items-center justify-between text-sm mb-1.5 last:mb-0">
                 <span className="text-surface-600 dark:text-surface-400">{d.service?.name || d.device_name}</span>

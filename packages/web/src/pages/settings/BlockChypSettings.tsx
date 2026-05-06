@@ -117,6 +117,14 @@ export function BlockChypSettings() {
   const [baseline, setBaseline] = useState<BlockChypFormState>(DEFAULTS);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  // WEB-UIUX-148: secrets arrive redacted as '' from the server, so the
+  // disabled check `!apiKey || !bearer || !signingKey` always blocks the button
+  // after reload even when valid creds are stored. Track whether the server has
+  // stored credentials by checking if blockchyp_enabled was 'true' in the
+  // loaded config (a strong proxy: you can't enable BlockChyp without saving
+  // all 3 secrets). Button is enabled when creds are stored OR when the user
+  // has typed all 3 fields in the current session.
+  const [hasStoredCreds, setHasStoredCreds] = useState(false);
 
   // Load config
   const { data: configData } = useQuery({
@@ -135,6 +143,11 @@ export function BlockChypSettings() {
       } as BlockChypFormState;
       setForm(next);
       setBaseline(next);
+      // WEB-UIUX-148: if blockchyp is enabled in stored config, credentials
+      // must have been saved previously (the server enforces all 3 keys on
+      // enable). Mark them as stored so the Test Connection button is not
+      // disabled even though the decrypted values arrive redacted as ''.
+      setHasStoredCreds(cfg.blockchyp_enabled === 'true');
     }
   }, [configData]);
 
@@ -281,7 +294,7 @@ export function BlockChypSettings() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleTestConnection}
-                disabled={testing || !form.blockchyp_api_key || !form.blockchyp_bearer_token || !form.blockchyp_signing_key}
+                disabled={testing || (!hasStoredCreds && (!form.blockchyp_api_key || !form.blockchyp_bearer_token || !form.blockchyp_signing_key))}
                 className="btn btn-secondary btn-sm border border-surface-300 bg-surface-50 dark:border-surface-600 dark:bg-surface-700 dark:hover:bg-surface-600"
               >
                 {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}

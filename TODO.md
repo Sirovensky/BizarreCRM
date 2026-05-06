@@ -1200,7 +1200,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketListPage.tsx:560-578`
   <!-- meta: fix=use-click-toggled-dropdown -->
 
-- [ ] WEB-UIUX-51. **[MAJOR] KanbanBoard HTML5 drag-and-drop does not work on mobile.** Touch users cannot change ticket status via kanban. L11, L5.
+- [x] WEB-UIUX-51. **[MAJOR] KanbanBoard HTML5 drag-and-drop does not work on mobile.** Touch users cannot change ticket status via kanban. L11, L5. **[AUTOLOOP-T3 RESOLVED: KanbanCard adds touch-friendly "Move to…" dropdown (always visible mobile, hover desktop). Reuses existing transition guard + optimistic mutation. Zero new deps.]**
   `packages/web/src/pages/tickets/KanbanBoard.tsx`
   <!-- meta: fix=add-dnd-kit-or-tap-to-move-fallback -->
 
@@ -1208,7 +1208,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketListPage.tsx:95-156,201`
   <!-- meta: fix=add-keyboard-nav-and-aria -->
 
-- [ ] WEB-UIUX-53. **[MAJOR] Parts search "Add" buttons are `opacity-0 group-hover:opacity-100` — invisible to keyboard users.** L12, L1.
+- [x] WEB-UIUX-53. **[MAJOR] Parts search "Add" buttons are `opacity-0 group-hover:opacity-100` — invisible to keyboard users.** L12, L1. **[AUTOLOOP-T3 RESOLVED: 6 hover-only `opacity-0` buttons in TicketDevices now also reveal on `group-focus-within` + `focus`.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:558-563,579,609,986-1012`
   <!-- meta: fix=add-focus-visible:opacity-100 -->
 
@@ -1216,7 +1216,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketDevices.tsx:1070-1072`
   <!-- meta: fix=make-visible-or-add-long-press-affordance -->
 
-- [ ] WEB-UIUX-55. **[MAJOR] TicketSidebar warranty countdown uses `created_at` not warranty start date.** Incorrect warranty days calculation. L5, L16.
+- [x] WEB-UIUX-55. **[MAJOR] TicketSidebar warranty countdown uses `created_at` not warranty start date.** Incorrect warranty days calculation. L5, L16. **[AUTOLOOP-T3 RESOLVED: warranty start now `d.collected_date ?? d.created_at` in TicketSidebar.tsx.]**
   `packages/web/src/pages/tickets/TicketSidebar.tsx:544`
   <!-- meta: fix=use-warranty-activation-or-completion-date -->
 
@@ -1224,7 +1224,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/customers/CustomerCreatePage.tsx`
   <!-- meta: fix=add-beforeunload-or-confirm-on-navigate -->
 
-- [ ] WEB-UIUX-57. **[MAJOR] CustomerDetailPage header 5 action buttons overflow on narrow screens.** L11, L2.
+- [x] WEB-UIUX-57. **[MAJOR] CustomerDetailPage header 5 action buttons overflow on narrow screens.** L11, L2. **[AUTOLOOP-T3 RESOLVED: CustomerDetailPage header buttons container gets `flex-wrap` so all 5 wrap on narrow screens.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:398-438`
   <!-- meta: fix=collapse-infrequent-actions-into-More-dropdown -->
 
@@ -1232,7 +1232,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketListPage.tsx:1898`
   <!-- meta: fix=update-message-to-mention-undo-window -->
 
-- [ ] WEB-UIUX-59. **[MINOR] KanbanBoard loading state is plain text, not skeleton.** L6, L9.
+- [x] WEB-UIUX-59. **[MINOR] KanbanBoard loading state is plain text, not skeleton.** L6, L9. **[AUTOLOOP-T3 RESOLVED: KanbanBoard loading state replaced with 4 skeleton columns × 3-5 animate-pulse placeholder cards.]**
   `packages/web/src/pages/tickets/KanbanBoard.tsx:264-269`
   <!-- meta: fix=add-skeleton-columns -->
 
@@ -1240,7 +1240,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketListPage.tsx:636-664`
   <!-- meta: fix=add-aria-label -->
 
-- [ ] WEB-UIUX-61. **[MINOR] TicketNotes textarea missing accessible name.** L12.
+- [x] WEB-UIUX-61. **[MINOR] TicketNotes textarea missing accessible name.** L12. **[AUTOLOOP-T3 RESOLVED: aria-label="Note text" + "SMS message text" added to TicketNotes textareas.]**
   `packages/web/src/pages/tickets/TicketNotes.tsx:282-287`
   <!-- meta: fix=add-aria-label -->
 
@@ -1248,7 +1248,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketSidebar.tsx:571-608`
   <!-- meta: fix=add-Escape-handler -->
 
-- [ ] WEB-UIUX-63. **[MINOR] CustomerCreatePage Cancel navigates `navigate(-1)` — may leave the app.** L5.
+- [x] WEB-UIUX-63. **[MINOR] CustomerCreatePage Cancel navigates `navigate(-1)` — may leave the app.** L5. **[AUTOLOOP-T3 RESOLVED: Cancel uses `location.state.from ?? "/customers"` instead of `navigate(-1)`.]**
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:550`
   <!-- meta: fix=fallback-to-navigate('/customers') -->
 
@@ -1328,7 +1328,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 
 #### Settings Tabs
 
-- [ ] WEB-UIUX-144. **[BLOCKER] TicketsRepairsSettings same clobber bug.** L5, L16.
+- [x] WEB-UIUX-144. **[BLOCKER] TicketsRepairsSettings same clobber bug.** L5, L16. **[AUTOLOOP-T3 RESOLVED: TicketsRepairsSettings already has TICKETS_REPAIRS_OWNED_KEYS + saveOwnedConfig (landed in 215ab274). Clobber bug fixed.]**
   `packages/web/src/pages/settings/TicketsRepairsSettings.tsx:238-251`
   <!-- meta: fix=add-TICKETS_OWNED_KEYS-pattern -->
 
@@ -1336,7 +1336,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/settings/SmsVoiceSettings.tsx:264-322`
   <!-- meta: fix=make-voice-controlled-state-add-Save-Voice-button -->
 
-- [ ] WEB-UIUX-146. **[MAJOR] SmsVoiceSettings reads voice toggles via `document.getElementById`.** DOM-as-state pattern — fragile, breaks on rapid toggles or re-renders. L4, L7.
+- [x] WEB-UIUX-146. **[MAJOR] SmsVoiceSettings reads voice toggles via `document.getElementById`.** DOM-as-state pattern — fragile, breaks on rapid toggles or re-renders. L4, L7. **[AUTOLOOP-T3 RESOLVED: SmsVoiceSettings 5 DOM-reads replaced with controlled React state; useState hooks populated from configData.]**
   `packages/web/src/pages/settings/SmsVoiceSettings.tsx:117-145, 270-321`
   <!-- meta: fix=convert-to-controlled-useState -->
 
@@ -1344,7 +1344,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/settings/RepairPricingTab.tsx:836-851`
   <!-- meta: fix=replace-with-proper-useEffect -->
 
-- [ ] WEB-UIUX-148. **[MAJOR] BlockChyp Test Connection unreachable after reload.** Disables button unless all 3 secrets typed in current session, but secrets arrive redacted as `''` → user with valid stored creds sees disabled button. Dead-end UX. L8.
+- [x] WEB-UIUX-148. **[MAJOR] BlockChyp Test Connection unreachable after reload.** Disables button unless all 3 secrets typed in current session, but secrets arrive redacted as `''` → user with valid stored creds sees disabled button. Dead-end UX. L8. **[AUTOLOOP-T3 RESOLVED: BlockChyp Test Connection now gated on `(!hasStoredCreds  missing fields)`; users with stored creds can test without re-typing redacted secrets.]**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-288`
   <!-- meta: fix=track-hasServerCreds-flag-from-GET-response -->
 

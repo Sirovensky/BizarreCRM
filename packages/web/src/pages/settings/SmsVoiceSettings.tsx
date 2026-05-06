@@ -32,6 +32,13 @@ export function SmsVoiceSettings() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // Voice settings controlled state
+  const [voiceAutoRecord, setVoiceAutoRecord] = useState(false);
+  const [voiceAutoTranscribe, setVoiceAutoTranscribe] = useState(false);
+  const [voiceAnnounceRecording, setVoiceAnnounceRecording] = useState(false);
+  const [voiceForwardNumber, setVoiceForwardNumber] = useState('');
+  const [voiceInboundAction, setVoiceInboundAction] = useState('ring');
+
   // WEB-W1-029: auto-reply controlled state
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [autoReplyMessage, setAutoReplyMessage] = useState('');
@@ -74,6 +81,13 @@ export function SmsVoiceSettings() {
       }
     }
     setCredentials(creds);
+    // Populate voice settings state
+    setVoiceAutoRecord(cfg.voice_auto_record === '1');
+    setVoiceAutoTranscribe(cfg.voice_auto_transcribe === '1');
+    setVoiceAnnounceRecording(cfg.voice_announce_recording === '1');
+    setVoiceForwardNumber(cfg.voice_forward_number || '');
+    setVoiceInboundAction(cfg.voice_inbound_action || 'ring');
+
     // WEB-W1-029: populate auto-reply state
     setAutoReplyEnabled(cfg.auto_reply_enabled === '1');
     setAutoReplyMessage(cfg.auto_reply_message || '');
@@ -130,14 +144,12 @@ export function SmsVoiceSettings() {
       for (const [field, value] of Object.entries(credentials)) {
         entries[`sms_${selectedProvider}_${field}`] = value;
       }
-      // Also save voice settings
-      const voiceFields = ['voice_auto_record', 'voice_auto_transcribe', 'voice_announce_recording', 'voice_forward_number', 'voice_inbound_action'];
-      for (const key of voiceFields) {
-        const el = document.getElementById(key) as HTMLInputElement | HTMLSelectElement | null;
-        if (el) {
-          entries[key] = el.type === 'checkbox' ? ((el as HTMLInputElement).checked ? '1' : '0') : el.value;
-        }
-      }
+      // Also save voice settings (from React state — no DOM reads)
+      entries['voice_auto_record'] = voiceAutoRecord ? '1' : '0';
+      entries['voice_auto_transcribe'] = voiceAutoTranscribe ? '1' : '0';
+      entries['voice_announce_recording'] = voiceAnnounceRecording ? '1' : '0';
+      entries['voice_forward_number'] = voiceForwardNumber;
+      entries['voice_inbound_action'] = voiceInboundAction;
 
       // WEB-W1-029: persist auto-reply settings
       entries['auto_reply_enabled'] = autoReplyEnabled ? '1' : '0';
@@ -281,7 +293,8 @@ export function SmsVoiceSettings() {
             <input
               id="voice_auto_record"
               type="checkbox"
-              defaultChecked={cfg.voice_auto_record === '1'}
+              checked={voiceAutoRecord}
+              onChange={(e) => setVoiceAutoRecord(e.target.checked)}
               className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
             />
             <span className="text-sm text-surface-700 dark:text-surface-200">Automatically record all calls</span>
@@ -290,7 +303,8 @@ export function SmsVoiceSettings() {
             <input
               id="voice_auto_transcribe"
               type="checkbox"
-              defaultChecked={cfg.voice_auto_transcribe === '1'}
+              checked={voiceAutoTranscribe}
+              onChange={(e) => setVoiceAutoTranscribe(e.target.checked)}
               className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
             />
             <span className="text-sm text-surface-700 dark:text-surface-200">Automatically transcribe recordings</span>
@@ -299,7 +313,8 @@ export function SmsVoiceSettings() {
             <input
               id="voice_announce_recording"
               type="checkbox"
-              defaultChecked={cfg.voice_announce_recording === '1'}
+              checked={voiceAnnounceRecording}
+              onChange={(e) => setVoiceAnnounceRecording(e.target.checked)}
               className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
             />
             <span className="text-sm text-surface-700 dark:text-surface-200">Announce "this call may be recorded" to callers</span>
@@ -310,7 +325,8 @@ export function SmsVoiceSettings() {
             </label>
             <select
               id="voice_inbound_action"
-              defaultValue={cfg.voice_inbound_action || 'ring'}
+              value={voiceInboundAction}
+              onChange={(e) => setVoiceInboundAction(e.target.value)}
               className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
             >
               <option value="ring">Ring in browser</option>
@@ -326,7 +342,8 @@ export function SmsVoiceSettings() {
               id="voice_forward_number"
               type="tel"
               placeholder="+13035551234 (leave blank to disable)"
-              defaultValue={cfg.voice_forward_number || ''}
+              value={voiceForwardNumber}
+              onChange={(e) => setVoiceForwardNumber(e.target.value)}
               className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
             />
           </div>

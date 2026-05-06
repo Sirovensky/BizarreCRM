@@ -320,12 +320,14 @@ export function TicketNotes({
         {!smsMode ? (
           <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
             rows={3} placeholder={`Enter ${noteType} comment...`}
+            aria-label="Note text"
             className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y" />
         ) : (
           <div>
             <textarea value={smsContent} onChange={(e) => setSmsContent(e.target.value)}
               rows={3} placeholder="Type SMS message..."
               maxLength={1600}
+              aria-label="SMS message text"
               className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y" />
             {smsContent.length > 0 && (
               <div className="px-3 pb-1 text-right text-[10px] text-surface-400">

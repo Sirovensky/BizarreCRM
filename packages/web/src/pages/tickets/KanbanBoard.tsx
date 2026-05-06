@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -73,12 +73,35 @@ interface CardProps {
   ticket: KanbanTicket;
   statusColor: string;
   onDragStart: (e: DragEvent, ticketId: number) => void;
+  allColumns: KanbanColumn[];
+  onMoveTo: (ticketId: number, targetStatusId: number) => void;
 }
 
-function KanbanCard({ ticket, statusColor, onDragStart }: CardProps) {
+function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: CardProps) {
   const navigate = useNavigate();
   const days = daysSince(ticket.updated_at);
   const tech = assignedName(ticket);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleOutside(e: MouseEvent | TouchEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [menuOpen]);
+
+  // Other statuses the ticket can be moved to (exclude current)
+  const moveTargets = allColumns.filter((c) => c.status.id !== ticket.status_id);
 
   return (
     <div
@@ -113,6 +136,68 @@ function KanbanCard({ ticket, statusColor, onDragStart }: CardProps) {
         </span>
       </div>
       <GripVertical className="absolute top-2 right-1 h-3.5 w-3.5 text-surface-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      {/* WEB-UIUX-51: touch fallback — "Move to" button visible on touch devices
+          (pointer: coarse) and on hover for pointer devices. Uses the same
+          transition guard + confirm flow as D&D. Stops click propagation so
+          tapping the button doesn't navigate to the ticket detail page. */}
+      {moveTargets.length > 0 && (
+        <div
+          ref={menuRef}
+          className="relative mt-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            className={cn(
+              'flex w-full items-center justify-between gap-1 rounded border px-2 py-1 text-xs transition-colors',
+              'border-surface-200 dark:border-surface-600',
+              'bg-surface-50 dark:bg-surface-700',
+              'text-surface-600 dark:text-surface-300',
+              'hover:bg-surface-100 dark:hover:bg-surface-600',
+              // Always visible on touch devices; hover-only on pointer devices
+              'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+            )}
+          >
+            <span>Move to…</span>
+            <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', menuOpen && 'rotate-180')} />
+          </button>
+          {menuOpen && (
+            <div
+              role="listbox"
+              aria-label="Move ticket to status"
+              className={cn(
+                'absolute bottom-full left-0 mb-1 z-50 min-w-[160px] rounded-lg border shadow-lg',
+                'border-surface-200 dark:border-surface-600',
+                'bg-white dark:bg-surface-800',
+              )}
+            >
+              {moveTargets.map((col) => (
+                <button
+                  key={col.status.id}
+                  role="option"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onMoveTo(ticket.id, col.status.id);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700 first:rounded-t-lg last:rounded-b-lg"
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: col.status.color || '#6b7280' }}
+                  />
+                  <span className="truncate text-surface-700 dark:text-surface-200">{col.status.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -290,10 +375,66 @@ export default function KanbanBoard() {
     setDragOverStatus(null);
   }, []);
 
+  // WEB-UIUX-51: touch fallback handler — same guard + confirm logic as D&D drop.
+  const handleMoveTo = useCallback(
+    async (ticketId: number, targetStatusId: number) => {
+      const sourceColumn = allColumns.find((col) =>
+        col.tickets.some((t) => t.id === ticketId),
+      );
+      if (!sourceColumn || sourceColumn.status.id === targetStatusId) return;
+
+      const targetColumn = allColumns.find((c) => c.status.id === targetStatusId);
+      const verdict = evaluateTicketTransition(sourceColumn.status, targetColumn?.status);
+      if (verdict.kind === 'forbidden') {
+        toast.error(verdict.reason);
+        return;
+      }
+      if (verdict.kind === 'confirm') {
+        const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+        if (!ok) return;
+      }
+
+      statusMutation.mutate({ id: ticketId, statusId: targetStatusId, controller: beginStatusMutation() });
+    },
+    [allColumns, statusMutation, beginStatusMutation],
+  );
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20 text-surface-500">
-        Loading kanban board...
+      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 290px - var(--dev-banner-h, 0px))' }}>
+        {Array.from({ length: 4 }).map((_, colIdx) => (
+          <div
+            key={colIdx}
+            className="flex flex-col rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900/50 min-w-[280px] w-[300px] shrink-0"
+          >
+            {/* Skeleton column header */}
+            <div className="flex items-center gap-2 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+              <div className="h-3 w-3 rounded-full bg-surface-200 dark:bg-surface-700 animate-pulse shrink-0" />
+              <div className="h-3.5 w-24 rounded bg-surface-200 dark:bg-surface-700 animate-pulse" />
+              <div className="ml-auto h-5 w-7 rounded-full bg-surface-200 dark:bg-surface-700 animate-pulse" />
+            </div>
+            {/* Skeleton cards */}
+            <div className="flex flex-col gap-2 p-3">
+              {Array.from({ length: colIdx === 1 ? 5 : colIdx === 2 ? 3 : 4 }).map((_, cardIdx) => (
+                <div
+                  key={cardIdx}
+                  className="rounded-lg border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800 p-3 animate-pulse"
+                  style={{ borderLeftWidth: '3px', borderLeftColor: '#e5e7eb' }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="h-3 w-16 rounded bg-surface-200 dark:bg-surface-700" />
+                    <div className="h-3 w-10 rounded bg-surface-200 dark:bg-surface-700" />
+                  </div>
+                  <div className="mt-2 h-3.5 w-32 rounded bg-surface-200 dark:bg-surface-700" />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="h-3 w-20 rounded bg-surface-200 dark:bg-surface-700" />
+                    <div className="h-3 w-12 rounded bg-surface-200 dark:bg-surface-700" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -385,6 +526,8 @@ export default function KanbanBoard() {
                 ticket={ticket}
                 statusColor={col.status.color || '#6b7280'}
                 onDragStart={handleDragStart}
+                allColumns={allColumns}
+                onMoveTo={handleMoveTo}
               />
             ))}
           </div>

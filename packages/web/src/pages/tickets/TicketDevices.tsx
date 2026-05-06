@@ -722,7 +722,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addPartMut.mutate({ inventory_item_id: item.id, quantity: 1, price: item.price })}
                         disabled={addPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-green-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 rounded-md bg-green-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                         Add
@@ -744,7 +744,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addPartMut.mutate({ inventory_item_id: item.id, quantity: 1, price: item.price })}
                         disabled={addPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-amber-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 rounded-md bg-amber-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                         Add (order needed)
@@ -774,7 +774,7 @@ function PartsSearchModal({
                       <button
                         onClick={() => addSupplierPartMut.mutate(item)}
                         disabled={addSupplierPartMut.isPending}
-                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 rounded-md bg-yellow-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-yellow-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 inline-flex items-center gap-1 rounded-md bg-yellow-600 text-white px-2.5 py-1 text-xs font-medium hover:bg-yellow-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         {addSupplierPartMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShoppingCart className="h-3 w-3" />}
                         Add + Order
@@ -1141,7 +1141,7 @@ export function TicketDevices({
                           </span>
                           <button
                             onClick={() => requestPartMut.mutate(p)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                             title="Request part (add to order queue)"
                           >
                             <ShoppingCart className="h-3 w-3" />
@@ -1150,7 +1150,7 @@ export function TicketDevices({
                               render for parts that came from the inventory catalog
                               (ad-hoc custom parts have no inventory_item_id). */}
                           {p.inventory_item_id ? (
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity">
                               <DefectReporterButton
                                 inventoryItemId={p.inventory_item_id}
                                 itemName={p.item_name || `Item #${p.inventory_item_id}`}
@@ -1161,7 +1161,7 @@ export function TicketDevices({
                           ) : null}
                           <button
                             onClick={async () => { try { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); } catch (err) { toast.error(formatApiError(err)); } }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                             title="Remove part"
                           >
                             <X className="h-3 w-3" />
