@@ -696,6 +696,7 @@ export function TicketDetailPage() {
           <BenchTimer
             ticketId={ticketId}
             ticketDeviceId={devices[0]?.id}
+            employees={employees}
           />
 
           {/* Audit 44.1 — Repair template picker */}

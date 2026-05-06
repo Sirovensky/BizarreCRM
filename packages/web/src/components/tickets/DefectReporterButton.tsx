@@ -28,7 +28,8 @@ interface DefectReportResponse {
 }
 
 interface DefectReporterButtonProps {
-  inventoryItemId: number;
+  /** Set for catalog parts (inventory_item_id). Omit for quick-added custom parts. */
+  inventoryItemId?: number;
   itemName: string;
   ticketId?: number;
   compact?: boolean;
@@ -68,7 +69,13 @@ export function DefectReporterButton({
   const reportMut = useMutation({
     mutationFn: () => {
       const fd = new FormData();
-      fd.append('inventory_item_id', String(inventoryItemId));
+      // WEB-UIUX-655: catalog parts send inventory_item_id; custom (freeform)
+      // parts send part_name so the server can log the defect without a catalog ref.
+      if (inventoryItemId != null) {
+        fd.append('inventory_item_id', String(inventoryItemId));
+      } else {
+        fd.append('part_name', itemName);
+      }
       if (ticketId) fd.append('ticket_id', String(ticketId));
       fd.append('defect_type', defectType);
       if (description) fd.append('description', description);

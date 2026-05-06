@@ -138,8 +138,8 @@ export const customerApi = {
     api.put(`/customers/${id}`, data),
   delete: (id: number, confirmName: string) =>
     api.delete(`/customers/${id}`, { data: { confirm_name: confirmName } }),
-  search: (q: string) =>
-    api.get('/customers/search', { params: { q } }),
+  search: (q: string, signal?: AbortSignal) =>
+    api.get('/customers/search', { params: { q }, signal }),
   // @audit-fixed: orphan server route. `GET /customers/repeat` exists at
   // customers.routes.ts:929 (3+ tickets in last N months) but had no client
   // wrapper — pages had to hand-roll axios calls.

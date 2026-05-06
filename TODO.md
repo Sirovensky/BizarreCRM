@@ -3106,61 +3106,61 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-648. **[BLOCKER] QC sign-off has NO fail path — submit only when allPassed, no "items 3+5 failed" recording.** L5, L7. **[AUTOLOOP-T29 RESOLVED: QcSignOffModal fail path added — required failReason textarea on incomplete check, red "Record fail" submit, notes prefixed "FAIL: [reason]".]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:54-59,136-137`
 
-- [ ] WEB-UIUX-649. **[BLOCKER] QC prior-attempt state never displayed.** `qc.status(ticketId)` API exists but only invalidated, never queried. New tech after reassignment sees no failed-checklist context. L13, L11.
+- [x] WEB-UIUX-649. **[BLOCKER] QC prior-attempt state never displayed.** `qc.status(ticketId)` API exists but only invalidated, never queried. New tech after reassignment sees no failed-checklist context. L13, L11. **[AUTOLOOP-T30 RESOLVED: QcSignOffModal opens with useQuery(qc.status, ticketId); banner shows tech name + date + previously-failed checklist items.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-598,649-658`
 
 - [ ] WEB-UIUX-650. **[MAJOR] Closing ticket doesn't stop running BenchTimer — labor billed against closed job.** No timer-state check in status transition. L5, L13.
   `packages/web/src/pages/tickets/TicketActions.tsx:84-95`
 
-- [ ] WEB-UIUX-651. **[MAJOR] BenchTimer only renders for owner — second viewer sees `idle` even when another tech has timer running.** Manager closing ticket = zero in-page signal. L11.
+- [x] WEB-UIUX-651. **[MAJOR] BenchTimer only renders for owner — second viewer sees `idle` even when another tech has timer running.** Manager closing ticket = zero in-page signal. L11. **[AUTOLOOP-T30 RESOLVED: BenchTimer fetches byTicket; renders read-only "<tech_name> running for X:XX" when another tech owns active timer.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:62-87`
 
 - [ ] WEB-UIUX-652. **[MAJOR] Manager can't stop someone else's timer — only owner has Stop button.** Orphan timers run until owner starts another. L4, L13.
   `packages/web/src/components/tickets/BenchTimer.tsx:168-177`
 
-- [ ] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11.
+- [ ] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 
 - [ ] WEB-UIUX-654. **[MAJOR] Defect data exists per item but never read at reorder time.** `benchApi.defects.byItem(itemId)` API exists, zero call sites. Tech can re-add same defective part with no warning. L13.
   `packages/web/src/pages/tickets/TicketDevices.tsx:439-510`
   `packages/web/src/pages/inventory/AutoReorderPage.tsx:42-50`
 
-- [ ] WEB-UIUX-655. **[MAJOR] DefectReporterButton only renders for parts with `inventory_item_id` — quick-added custom parts have no defect-reporting affordance.** Defect signal lost at most relevant moment. L5.
+- [x] WEB-UIUX-655. **[MAJOR] DefectReporterButton only renders for parts with `inventory_item_id` — quick-added custom parts have no defect-reporting affordance.** Defect signal lost at most relevant moment. L5. **[AUTOLOOP-T30 RESOLVED: removed inventory_item_id guard; component sends part_name for freeform parts; server route + migration 170 accept either field (inventory_item_id nullable).]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:996-1005`
 
 - [ ] WEB-UIUX-656. **[MAJOR] No optimistic-concurrency guard on status or handoff.** Two techs flipping status simultaneously → last-write-wins silently. Loser's optimistic UI flips silently with no toast. L11, L4.
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:271-316`
   `packages/web/src/components/team/TicketHandoffModal.tsx:50-72`
 
-- [ ] WEB-UIUX-657. **[MAJOR] Expired estimate still allows Send/Approve/Convert — silently honors stale prices.** L5, L7.
+- [x] WEB-UIUX-657. **[MAJOR] Expired estimate still allows Send/Approve/Convert — silently honors stale prices.** L5, L7. **[AUTOLOOP-T30 RESOLVED: EstimateDetailPage `isExpired` derived from valid_until; Send/Approve/Convert disabled when expired; amber banner with Re-quote button.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:191-247`
 
 - [ ] WEB-UIUX-658. **[MAJOR] No "renew" / "extend valid_until" / "clone" action on expired estimate.** Customer comes back, operator has to manually clone. L1, L5.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
-- [ ] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13.
+- [ ] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
 
 - [ ] WEB-UIUX-660. **[MAJOR · BLOCKED] No abandoned-ticket workflow.** 90-day Ready-for-Pickup gets zero escalation lane (lumped with 7-day stale tickets in dashboard). No SMS cadence, no liability disclaimer, no auto-write-off. L5.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-661. **[MINOR] Service price uses native `prompt()` for inline edit — unstyled, no Esc-cancel reliable, invisible to surrounding aria-modal.** L7, L12.
+- [x] WEB-UIUX-661. **[MINOR] Service price uses native `prompt()` for inline edit — unstyled, no Esc-cancel reliable, invisible to surrounding aria-modal.** L7, L12. **[AUTOLOOP-T30 RESOLVED: STALE — TicketPayments.tsx + TicketDevices.tsx already use InlinePriceEditor with Enter-commit + Esc-cancel + aria-label; native prompt() removed.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:820-823,927-930`
 
 #### ED10: Search/Filter Weirdness
 
 - [ ] WEB-UIUX-662. **[MAJOR] CustomerListPage / TicketListPage / LeadListPage search sends raw input, NO phone/email normalization.** Searching `(555) 123-4567` won't match stored `5551234567`. CSR daily friction. L7, L1.
 
-- [ ] WEB-UIUX-663. **[MAJOR] Bulk selection survives filter changes silently.** Select 100 under `status=open`, change to `status=closed` → badge still "100 selected" but bulk-action hits hidden rows. L8, L11.
+- [x] WEB-UIUX-663. **[MAJOR] Bulk selection survives filter changes silently.** Select 100 under `status=open`, change to `status=closed` → badge still "100 selected" but bulk-action hits hidden rows. L8, L11. **[AUTOLOOP-T30 RESOLVED: TicketListPage selection cleared via useEffect on filter deps (status, group, assigned, date, keyword) — stale selections cant reach bulk actions.]**
 
 - [ ] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11.
 
-- [ ] WEB-UIUX-665. **[MAJOR] Estimate customer-search autocomplete has NO request-id guard or AbortController.** Slow `'Sm'` lands after `'Smith'` opens dropdown → wrong customer attached to estimate. L1.
+- [x] WEB-UIUX-665. **[MAJOR] Estimate customer-search autocomplete has NO request-id guard or AbortController.** Slow `'Sm'` lands after `'Smith'` opens dropdown → wrong customer attached to estimate. L1. **[AUTOLOOP-T30 RESOLVED: customerApi.search accepts AbortSignal; CreateEstimateModal useQuery threads React Query signal → in-flight aborts on each keystroke.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:86-92`
 
 - [ ] WEB-UIUX-666. **[MAJOR] EstimateListPage bulk delete fires N parallel requests, no batching.** 1000 selected = 1000 simultaneous DELETEs. L15.
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
-- [ ] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5.
+- [ ] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
 
 - [ ] WEB-UIUX-668. **[MINOR] Saved filter deleted by user A → user B's cache still applies the deleted filter (no cross-tab invalidation).** L6.
   `packages/web/src/pages/tickets/TicketListPage.tsx:201-320`

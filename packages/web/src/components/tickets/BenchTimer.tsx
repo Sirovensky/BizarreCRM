@@ -22,10 +22,20 @@ import { Play, Pause, Square, Timer, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
+import { useAuthStore } from '@/stores/authStore';
+
+interface EmployeeMin {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+}
 
 interface BenchTimerProps {
   ticketId: number;
   ticketDeviceId?: number;
+  /** Employee list from the parent page — used to resolve tech names for other-user timers. */
+  employees?: EmployeeMin[];
 }
 
 // WEB-FD-012 (Fixer-426B 2026-04-26): typed response shape for benchApi.timer.stop.
@@ -59,8 +69,9 @@ function centsToDisplay(cents: number): string {
   return formatCents(cents);
 }
 
-export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
+export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTimerProps) {
   const qc = useQueryClient();
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
   // Is the feature even on for this store?
   const { data: cfgData, isLoading: cfgLoading } = useQuery({
@@ -86,8 +97,48 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
   // THIS ticket. Otherwise the user might see another ticket's timer here.
   const isOurs = !!currentTimer && currentTimer.ticket_id === ticketId;
 
+  // WEB-UIUX-651: fetch all timers for this ticket so we can detect when
+  // another technician has an active (non-ended) timer running. The server
+  // returns all rows for admins/managers; for plain techs it only returns
+  // their own — so the "other tech running" path activates for privileged
+  // viewers who are not the timer owner.
+  interface ByTicketTimer {
+    id: number;
+    user_id: number;
+    ended_at: string | null;
+    elapsed_seconds: number;
+    paused: boolean;
+  }
+  const { data: byTicketData } = useQuery({
+    queryKey: ['bench-timer-by-ticket', ticketId],
+    queryFn: () => benchApi.timer.byTicket(ticketId),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+  const ticketTimers: ByTicketTimer[] = byTicketData?.data?.data?.timers ?? [];
+
+  // Find the first active (running) timer on this ticket owned by someone else.
+  const otherActiveTimer = isOurs
+    ? null
+    : ticketTimers.find(
+        (t) => t.ended_at === null && !t.paused && t.user_id !== currentUserId,
+      ) ?? null;
+
+  // Resolve the owning tech's display name from the employees list.
+  const otherTechName = useMemo(() => {
+    if (!otherActiveTimer) return null;
+    const emp = employees.find((e) => e.id === otherActiveTimer.user_id);
+    if (!emp) return 'Another tech';
+    if (emp.full_name) return emp.full_name;
+    const parts = [emp.first_name, emp.last_name].filter(Boolean);
+    return parts.length > 0 ? parts.join(' ') : 'Another tech';
+  }, [otherActiveTimer, employees]);
+
   // Ticking state — this is what drives the displayed seconds.
   const [localElapsed, setLocalElapsed] = useState(0);
+  // Ticking state for an other-tech's running timer (read-only display).
+  const [otherElapsed, setOtherElapsed] = useState(0);
 
   useEffect(() => {
     if (!isOurs || !currentTimer) {
@@ -119,6 +170,23 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
       document.removeEventListener('visibilitychange', handleVisible);
     };
   }, [isOurs, currentTimer?.id, currentTimer?.paused, currentTimer?.elapsed_seconds, refetch]);
+
+  // Tick for the other tech's live timer (read-only). Uses the elapsed_seconds
+  // returned by byTicket as the anchor — stale by up to 15 s but close enough
+  // for a read-only "X:XX" display.
+  useEffect(() => {
+    if (!otherActiveTimer) {
+      setOtherElapsed(0);
+      return;
+    }
+    setOtherElapsed(otherActiveTimer.elapsed_seconds ?? 0);
+    const start = Date.now();
+    const anchor = otherActiveTimer.elapsed_seconds ?? 0;
+    const interval = window.setInterval(() => {
+      setOtherElapsed(anchor + Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [otherActiveTimer?.id, otherActiveTimer?.elapsed_seconds]);
 
   const laborCost = useMemo(() => {
     const rate = currentTimer?.labor_rate_cents ?? laborRateCents;
@@ -181,7 +249,10 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
 
   const running = isOurs && currentTimer && !currentTimer.paused;
   const paused = isOurs && currentTimer && currentTimer.paused;
+  // "idle" from the current user's perspective — no timer of their own on this ticket.
   const idle = !isOurs;
+  // WEB-UIUX-651: another tech is actively running a timer on this ticket.
+  const otherRunning = idle && !!otherActiveTimer && !!otherTechName;
 
   return (
     <div className="card p-4">
@@ -190,76 +261,97 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <Timer className="h-4 w-4 text-primary-500" />
           Bench Timer
         </div>
-        {!idle && (
+        {/* Show Running badge for own timer OR another tech's timer */}
+        {(!idle || otherRunning) && (
           <span
             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              running
+              running || otherRunning
                 ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
                 : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
             }`}
           >
-            {running ? 'Running' : 'Paused'}
+            {running || otherRunning ? 'Running' : 'Paused'}
           </span>
         )}
       </div>
 
-      <div className="mb-3 text-center">
-        <div className="font-mono text-3xl tabular-nums text-surface-900 dark:text-surface-100">
-          {idle ? '00:00:00' : formatHMS(localElapsed)}
-        </div>
-        <div className="mt-1 flex items-center justify-center gap-1 text-xs text-surface-500">
-          <DollarSign className="h-3 w-3" />
-          Labor: {centsToDisplay(laborCost)}
-        </div>
-      </div>
+      {/* WEB-UIUX-651: read-only view for another tech's live timer */}
+      {otherRunning ? (
+        <>
+          <div className="mb-3 text-center">
+            <div className="font-mono text-3xl tabular-nums text-surface-900 dark:text-surface-100">
+              {formatHMS(otherElapsed)}
+            </div>
+            <div className="mt-1 text-xs text-surface-500">
+              {otherTechName} running
+            </div>
+          </div>
+          {/* Start/Pause buttons hidden — another tech owns this timer */}
+          <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-center text-xs text-surface-500 dark:border-surface-700 dark:bg-surface-800/50">
+            Timer controlled by {otherTechName}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3 text-center">
+            <div className="font-mono text-3xl tabular-nums text-surface-900 dark:text-surface-100">
+              {idle ? '00:00:00' : formatHMS(localElapsed)}
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-1 text-xs text-surface-500">
+              <DollarSign className="h-3 w-3" />
+              Labor: {centsToDisplay(laborCost)}
+            </div>
+          </div>
 
-      {idle && (
-        <button
-          onClick={() => startMut.mutate()}
-          disabled={startMut.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-        >
-          <Play className="h-4 w-4" />
-          Start work
-        </button>
-      )}
+          {idle && (
+            <button
+              onClick={() => startMut.mutate()}
+              disabled={startMut.isPending}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              <Play className="h-4 w-4" />
+              Start work
+            </button>
+          )}
 
-      {running && (
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => pauseMut.mutate()}
-            disabled={pauseMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
-          >
-            <Pause className="h-4 w-4" /> Pause
-          </button>
-          <button
-            onClick={() => stopMut.mutate()}
-            disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-          >
-            <Square className="h-4 w-4" /> Stop
-          </button>
-        </div>
-      )}
+          {running && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => pauseMut.mutate()}
+                disabled={pauseMut.isPending}
+                className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+              >
+                <Pause className="h-4 w-4" /> Pause
+              </button>
+              <button
+                onClick={() => stopMut.mutate()}
+                disabled={stopMut.isPending}
+                className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <Square className="h-4 w-4" /> Stop
+              </button>
+            </div>
+          )}
 
-      {paused && (
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => resumeMut.mutate()}
-            disabled={resumeMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-          >
-            <Play className="h-4 w-4" /> Resume
-          </button>
-          <button
-            onClick={() => stopMut.mutate()}
-            disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-          >
-            <Square className="h-4 w-4" /> Stop
-          </button>
-        </div>
+          {paused && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => resumeMut.mutate()}
+                disabled={resumeMut.isPending}
+                className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <Play className="h-4 w-4" /> Resume
+              </button>
+              <button
+                onClick={() => stopMut.mutate()}
+                disabled={stopMut.isPending}
+                className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <Square className="h-4 w-4" /> Stop
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

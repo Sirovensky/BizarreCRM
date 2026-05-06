@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera, Eraser, Check, X, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Camera, Eraser, Check, X, Loader2, CheckCircle2, AlertTriangle, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
 import {
@@ -30,6 +30,14 @@ interface QcChecklistItem {
   sort_order: number;
   is_active: number;
   device_category: string | null;
+}
+
+interface QcPriorAttempt {
+  tech_name?: string;
+  created_at?: string;
+  failed_items?: string[];
+  passed: boolean;
+  notes?: string;
 }
 
 interface QcSignOffModalProps {
@@ -54,6 +62,15 @@ export function QcSignOffModal({
     queryFn: () => benchApi.qc.checklist(deviceCategory),
   });
   const items: QcChecklistItem[] = checklistData?.data?.data ?? [];
+
+  // Fetch prior QC attempt so the tech knows what failed last time.
+  const { data: priorStatusData } = useQuery({
+    queryKey: ['qc-status', ticketId],
+    queryFn: () => benchApi.qc.status(ticketId),
+    // Don't retry aggressively — a 404 just means no prior attempt.
+    retry: false,
+  });
+  const priorAttempt: QcPriorAttempt | null = priorStatusData?.data?.data ?? null;
 
   // Local "passed" map — each ticked item maps to true.
   const [passedMap, setPassedMap] = useState<Record<number, boolean>>({});
@@ -261,6 +278,39 @@ export function QcSignOffModal({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {priorAttempt && (
+          <div
+            className={`mb-4 flex gap-3 rounded-lg border p-3 text-sm ${
+              priorAttempt.passed
+                ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-200'
+                : 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200'
+            }`}
+          >
+            <History className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-semibold">
+                {priorAttempt.passed ? 'Last attempt passed' : 'Last attempt failed'}
+                {priorAttempt.tech_name ? ` — by ${priorAttempt.tech_name}` : ''}
+                {priorAttempt.created_at
+                  ? ` on ${new Date(priorAttempt.created_at).toLocaleDateString()}`
+                  : ''}
+              </p>
+              {!priorAttempt.passed &&
+                priorAttempt.failed_items &&
+                priorAttempt.failed_items.length > 0 && (
+                  <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs">
+                    {priorAttempt.failed_items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              {priorAttempt.notes && (
+                <p className="mt-1 text-xs opacity-80">{priorAttempt.notes}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {checklistLoading ? (
           <div className="flex justify-center py-8">

@@ -99,10 +99,11 @@ function CreateEstimateModal({
   });
   const taxClasses: { id: number; name: string; rate: number }[] = taxClassData?.data?.data || [];
 
-  // Customer search
+  // Customer search — AbortController wired via React Query signal so each new
+  // keystroke cancels the previous in-flight request (WEB-UIUX-665).
   const { data: customerData } = useQuery({
     queryKey: ['customer-search', customerSearch],
-    queryFn: () => customerApi.search(customerSearch),
+    queryFn: ({ signal }) => customerApi.search(customerSearch, signal),
     enabled: customerSearch.length >= 2,
     staleTime: 30_000,
   });

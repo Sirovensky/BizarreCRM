@@ -429,6 +429,10 @@ export function EstimateDetailPage() {
     estimate.status === 'signed' ||
     estimate.status === 'converted' ||
     estimate.status === 'rejected';
+  const isExpired =
+    !estimateContentLocked &&
+    !!estimate.valid_until &&
+    new Date(estimate.valid_until) < new Date();
   // Mutually exclusive action buttons — without this gate a rapid click on
   // Convert mid-Send navigates away while the first mutation is still in
   // flight, leaving the server in an inconsistent state.
@@ -489,7 +493,7 @@ export function EstimateDetailPage() {
                   if (await confirm(msg)) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
-              disabled={anyMutationPending}
+              disabled={anyMutationPending || isExpired}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
                 'border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
@@ -505,7 +509,7 @@ export function EstimateDetailPage() {
                 try { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
-              disabled={anyMutationPending}
+              disabled={anyMutationPending || isExpired}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
                 'border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
@@ -521,7 +525,7 @@ export function EstimateDetailPage() {
                 try { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
-              disabled={anyMutationPending}
+              disabled={anyMutationPending || isExpired}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
                 'border border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
@@ -562,6 +566,21 @@ export function EstimateDetailPage() {
           </button>
         </div>
       </div>
+
+      {isExpired && (
+        <div className="mb-6 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-950/30">
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            Estimate expired on {formatDate(estimate.valid_until)} — pricing may be stale. Re-quote to update.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/estimates/new')}
+            className="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+          >
+            Re-quote
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}

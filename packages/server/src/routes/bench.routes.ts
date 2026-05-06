@@ -952,16 +952,35 @@ router.post(
       );
     }
 
-    const inventoryItemId = Number(req.body?.inventory_item_id);
-    if (!Number.isFinite(inventoryItemId) || inventoryItemId <= 0) {
-      throw new AppError('inventory_item_id is required', 400);
+    // WEB-UIUX-655: accept either inventory_item_id (catalog parts) or
+    // part_name (freeform / quick-added custom parts). At least one required.
+    const rawInventoryItemId = req.body?.inventory_item_id;
+    const inventoryItemId =
+      rawInventoryItemId !== undefined && rawInventoryItemId !== ''
+        ? Number(rawInventoryItemId)
+        : null;
+    const freeformPartName: string | null =
+      inventoryItemId === null
+        ? (req.body?.part_name
+            ? validateTextLength(String(req.body.part_name), 255, 'part_name')
+            : null)
+        : null;
+
+    if (
+      (inventoryItemId === null || !Number.isFinite(inventoryItemId) || inventoryItemId <= 0) &&
+      !freeformPartName
+    ) {
+      throw new AppError('inventory_item_id or part_name is required', 400);
     }
 
-    const item = await adb.get(
-      'SELECT id, name FROM inventory_items WHERE id = ?',
-      inventoryItemId,
-    );
-    if (!item) throw new AppError('Inventory item not found', 404);
+    let item: { id: number; name: string } | null = null;
+    if (inventoryItemId !== null) {
+      item = (await adb.get(
+        'SELECT id, name FROM inventory_items WHERE id = ?',
+        inventoryItemId,
+      )) as { id: number; name: string } | null;
+      if (!item) throw new AppError('Inventory item not found', 404);
+    }
 
     const defectType = validateEnum(
       req.body?.defect_type,
@@ -1016,9 +1035,10 @@ router.post(
 
     const result = await adb.run(
       `INSERT INTO parts_defect_reports
-        (inventory_item_id, ticket_id, reported_by_user_id, defect_type, description, photo_path)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (inventory_item_id, part_name, ticket_id, reported_by_user_id, defect_type, description, photo_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       inventoryItemId,
+      freeformPartName,
       defectTicketId,
       userId,
       defectType,
@@ -1026,13 +1046,15 @@ router.post(
       photoPath,
     );
 
-    // Threshold alert
+    // Threshold alert — only meaningful for tracked inventory items.
     const threshold = Number(await getStoreFlag(adb, 'defect_alert_threshold_30d', '4')) || 4;
-    const countRow = (await adb.get<any>(
-      `SELECT COUNT(*) AS n FROM parts_defect_reports
-       WHERE inventory_item_id = ? AND reported_at >= datetime('now', '-30 days')`,
-      inventoryItemId,
-    )) as { n: number };
+    const countRow = inventoryItemId !== null
+      ? (await adb.get<any>(
+          `SELECT COUNT(*) AS n FROM parts_defect_reports
+           WHERE inventory_item_id = ? AND reported_at >= datetime('now', '-30 days')`,
+          inventoryItemId,
+        )) as { n: number }
+      : { n: 0 };
     const count30d = Number(countRow?.n) || 0;
 
     let alertPersisted = false;
@@ -1047,7 +1069,7 @@ router.post(
         await adb.run(
           `INSERT INTO notifications (type, title, message, severity, created_at)
            VALUES ('defect_alert', ?, ?, 'warning', datetime('now'))`,
-          `Defect alert: ${(item as any).name}`,
+          `Defect alert: ${item ? (item as any).name : freeformPartName}`,
           `${count30d} defects reported in the last 30 days (threshold ${threshold}).`,
         );
         alertPersisted = true;
@@ -1067,6 +1089,7 @@ router.post(
     audit(req.db, 'parts_defect_reported', userId, req.ip ?? 'unknown', {
       report_id: Number(result.lastInsertRowid),
       inventory_item_id: inventoryItemId,
+      part_name: freeformPartName,
       defect_type: defectType,
       count_30d: count30d,
     });

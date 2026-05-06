@@ -1146,19 +1146,17 @@ export function TicketDevices({
                           >
                             <ShoppingCart className="h-3 w-3" />
                           </button>
-                          {/* FA-M9: Defect reporting is per-inventory-item, so only
-                              render for parts that came from the inventory catalog
-                              (ad-hoc custom parts have no inventory_item_id). */}
-                          {p.inventory_item_id ? (
-                            <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity">
-                              <DefectReporterButton
-                                inventoryItemId={p.inventory_item_id}
-                                itemName={p.item_name || `Item #${p.inventory_item_id}`}
-                                ticketId={ticketId}
-                                compact
-                              />
-                            </div>
-                          ) : null}
+                          {/* WEB-UIUX-655: render for all parts — catalog parts pass
+                              inventoryItemId, quick-added custom parts pass only itemName
+                              and the server logs them as freeform defect reports. */}
+                          <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity">
+                            <DefectReporterButton
+                              inventoryItemId={p.inventory_item_id ?? undefined}
+                              itemName={p.item_name || (p.inventory_item_id ? `Item #${p.inventory_item_id}` : 'Custom part')}
+                              ticketId={ticketId}
+                              compact
+                            />
+                          </div>
                           <button
                             onClick={async () => { try { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"

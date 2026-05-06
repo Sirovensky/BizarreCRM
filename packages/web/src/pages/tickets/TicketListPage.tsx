@@ -853,6 +853,13 @@ export function TicketListPage() {
 
   // Checkbox state
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // WEB-UIUX-663: clear selection whenever filters change so stale IDs from
+  // a previous filter set never reach bulk-action calls on hidden rows.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [statusFilter, statusGroupFilter, assignedTo, dateFilter, keyword]);
+
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [confirmDlg, setConfirmDlg] = useState<{ open: boolean; ticketId?: number; ticketLabel?: string; bulk?: boolean }>({ open: false });
   const [printTicket, setPrintTicket] = useState<{ id: number; invoiceId?: number | null } | null>(null);
