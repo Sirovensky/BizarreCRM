@@ -483,12 +483,36 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
 // page or go straight to the single-tenant first-run wizard.
 router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const [row, wizCompletedRow, wizSkippedAtRow, wizSkipCountRow] = await Promise.all([
+  // The wizard-completion state is recorded under TWO keys for historical
+  // reasons:
+  //   - `wizard_completed` — older key. Values: 'true' / 'skipped' /
+  //     'grandfathered'. The grandfather pass at server boot
+  //     (index.ts:535) writes 'grandfathered' for pre-feature tenants
+  //     who already had `setup_completed='true'`.
+  //   - `setup_wizard_completed` — newer key. Values: 'true' or absent.
+  //     Written by SetupPage flushAndExit AND read here.
+  //
+  // The two keys disagreed for grandfathered tenants: legacy key set,
+  // new key absent → setupWizardCompleted=false → App.tsx Gate 3
+  // redirected to /setup → SetupPage saw legacy='grandfathered' and
+  // redirected back → infinite /setup ↔ / loop until Firefox throttled
+  // the History API and the page errored out.
+  //
+  // Fix: derive setupWizardCompleted from BOTH keys. If EITHER says
+  // completed/skipped/grandfathered, return true. Single source of
+  // truth for clients; no client change required.
+  const [row, wizCompletedRow, legacyWizardRow, wizSkippedAtRow, wizSkipCountRow] = await Promise.all([
     adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1'),
     adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_completed'"),
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
     adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_skipped_at'"),
     adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_skip_count'"),
   ]);
+  const newKeyDone = wizCompletedRow?.value === 'true';
+  const legacyKeyDone =
+    legacyWizardRow?.value === 'true' ||
+    legacyWizardRow?.value === 'skipped' ||
+    legacyWizardRow?.value === 'grandfathered';
   // SCAN-1149: prevent CDN / reverse-proxy caching of setup-status — after
   // first-run completes, we don't want a stale `needsSetup:true` response
   // redirecting other browsers back to the wizard.
@@ -498,7 +522,7 @@ router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => 
     data: {
       needsSetup: row!.c === 0,
       isMultiTenant: config.multiTenant === true,
-      setupWizardCompleted: wizCompletedRow?.value === 'true',
+      setupWizardCompleted: newKeyDone || legacyKeyDone,
       setupWizardSkippedAt: wizSkippedAtRow?.value ?? null,
       setupWizardSkipCount: parseInt(wizSkipCountRow?.value || '0', 10),
     },
