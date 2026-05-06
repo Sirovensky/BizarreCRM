@@ -34,6 +34,13 @@ export interface PosTotals {
    * underpayment. Display fields stay as dollars.
    */
   totalCents: number;
+  /**
+   * WEB-UIUX-774: when discounts exceed subtotal+tax, the excess amount the
+   * customer is owed as store credit. Zero in the normal (non-refund) case.
+   * The cart total is still clamped at $0 — this field drives the display
+   * label only; server-side credit issuance is a separate flow.
+   */
+  storeCreditCents: number;
 }
 
 /** Round a dollar float to integer cents. Single-source rounding. */
@@ -92,7 +99,10 @@ export function computePosTotals(args: {
     subtotalC > 0 ? Math.round(discountC * (taxableC / subtotalC)) : 0;
   const netTaxableC = Math.max(0, taxableC - taxableShareC);
   const taxC = Math.round(netTaxableC * taxRate);
-  const totalC = Math.max(0, subtotalC + taxC - discountC);
+  const rawTotalC = subtotalC + taxC - discountC;
+  const totalC = Math.max(0, rawTotalC);
+  // WEB-UIUX-774: excess discount → store credit owed (display only).
+  const storeCreditC = rawTotalC < 0 ? -rawTotalC : 0;
 
   return {
     itemCount: cartItems.length,
@@ -101,5 +111,6 @@ export function computePosTotals(args: {
     tax: fromCents(taxC),
     total: fromCents(totalC),
     totalCents: totalC,
+    storeCreditCents: storeCreditC,
   };
 }

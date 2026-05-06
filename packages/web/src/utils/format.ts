@@ -227,6 +227,41 @@ export function dollarsFromMaybeCents(amount: number): number {
   return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
 }
 
+/**
+ * Return the local-calendar date of `date` as a `YYYY-MM-DD` string.
+ *
+ * WHY NOT `.toISOString().slice(0, 10)`:
+ *   `toISOString()` always emits UTC midnight, so for a `Date` that represents
+ *   any point in time after ~4 pm local time west of UTC (e.g. UTC-8 at 8 pm =
+ *   UTC+next-day 4 am) the ISO string rolls over to the *next* calendar day.
+ *   This produces a silent one-day drift in every date-only field — reports,
+ *   filter chips, form defaults — for users west of UTC.
+ *
+ * USAGE:
+ *   toLocalDateString(new Date())          // "2026-05-06"
+ *   toLocalDateString(someDate, 'America/New_York') // explicit tz via Intl
+ *
+ * @param date - A `Date` object or any value accepted by the `Date` constructor.
+ * @param timeZone - Optional IANA time-zone name (e.g. `"America/Los_Angeles"`).
+ *   Defaults to the runtime's local zone, which is correct for UI-only code.
+ *   Pass an explicit zone for server-rendered or multi-tenant contexts.
+ */
+export function toLocalDateString(date: Date | string | number, timeZone?: string): string {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const opts: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  };
+  // `formatToParts` gives us named parts so we can assemble ISO order
+  // regardless of the locale's display order.
+  const parts = new Intl.DateTimeFormat('en-CA', opts).formatToParts(d);
+  // en-CA natively formats as YYYY-MM-DD, so the joined string is already ISO.
+  return parts.map((p) => p.value).join('');
+}
+
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {

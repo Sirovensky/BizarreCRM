@@ -137,14 +137,20 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
 
   // Ticking state — this is what drives the displayed seconds.
   const [localElapsed, setLocalElapsed] = useState(0);
+  // While a wake-refetch is in flight, freeze the display at the last known
+  // value to avoid a "snap high then snap to server" jitter (WEB-UIUX-790).
+  const [wakeRefetching, setWakeRefetching] = useState(false);
   // Ticking state for an other-tech's running timer (read-only display).
   const [otherElapsed, setOtherElapsed] = useState(0);
 
   useEffect(() => {
     if (!isOurs || !currentTimer) {
       setLocalElapsed(0);
+      setWakeRefetching(false);
       return;
     }
+    // A fresh server value just landed — clear the refetch freeze and adopt it.
+    setWakeRefetching(false);
     setLocalElapsed(currentTimer.elapsed_seconds ?? 0);
     if (currentTimer.paused) return;
 
@@ -160,8 +166,18 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
     // jumped by the sleep duration, causing a visible snap. By refetching from
     // the server on visibility resume we get the authoritative `elapsed_seconds`
     // and the dep-array change restarts this effect with a fresh anchor.
+    //
+    // WEB-UIUX-790: additionally freeze the local counter during the inflight
+    // refetch so the stale-anchor jump is never visible. The interval is cleared
+    // immediately on wake; display stays at the pre-sleep value until the server
+    // responds and this effect re-runs with the authoritative elapsed_seconds.
     const handleVisible = () => {
-      if (document.visibilityState === 'visible') refetch();
+      if (document.visibilityState === 'visible') {
+        // Freeze counter — clear interval so the stale anchor can't tick.
+        window.clearInterval(interval);
+        setWakeRefetching(true);
+        refetch();
+      }
     };
     document.addEventListener('visibilitychange', handleVisible);
 
@@ -294,7 +310,8 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
       ) : (
         <>
           <div className="mb-3 text-center">
-            <div className="font-mono text-3xl tabular-nums text-surface-900 dark:text-surface-100">
+            {/* WEB-UIUX-790: dim digits during wake-refetch so frozen counter is visually explained */}
+            <div className={`font-mono text-3xl tabular-nums text-surface-900 dark:text-surface-100 transition-opacity duration-150 ${wakeRefetching ? 'opacity-40' : 'opacity-100'}`}>
               {idle ? '00:00:00' : formatHMS(localElapsed)}
             </div>
             <div className="mt-1 flex items-center justify-center gap-1 text-xs text-surface-500">

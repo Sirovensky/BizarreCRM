@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Percent, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import toast from 'react-hot-toast';
 
 /**
  * Inline line-item discount menu (audit §43.3).
@@ -67,6 +68,10 @@ export function LineItemDiscountMenu({
   }, [onClose]);
 
   const handleApply = () => {
+    if (percent !== '' && !/^\d+(\.\d{1,2})?$/.test(percent)) {
+      toast.error('Enter a valid percentage (e.g. 10 or 10.5)');
+      return;
+    }
     const p = Math.max(0, Math.min(100, parseFloat(percent) || 0));
     if (p === 0) {
       onClear();

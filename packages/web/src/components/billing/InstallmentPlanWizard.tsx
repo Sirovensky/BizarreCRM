@@ -15,7 +15,7 @@
  * bug flagged in criticalaudit-rerun §3 (bug 7).
  */
 import { useMemo, useState } from 'react';
-import { formatCents } from '@/utils/format';
+import { formatCents, toLocalDateString } from '@/utils/format';
 
 interface InstallmentPreview {
   index: number;
@@ -52,7 +52,7 @@ export function InstallmentPlanWizard({
   const [installmentCount, setInstallmentCount] = useState(4);
   const [frequencyDays, setFrequencyDays] = useState(7);
   const [startDate, setStartDate] = useState<string>(() =>
-    new Date().toISOString().slice(0, 10),
+    toLocalDateString(new Date()),
   );
   const [acceptanceText, setAcceptanceText] = useState('');
 

@@ -82,13 +82,19 @@ interface TaxData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function toLocalDate(d: Date): string {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDate(new Date());
 }
 
 function defaultFrom() {
-  const d = new Date(Date.now() - 30 * 86400_000);
-  return d.toISOString().slice(0, 10);
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return toLocalDate(d);
 }
 
 function defaultTo() {
@@ -103,20 +109,28 @@ function resolveDateRange(value: { from?: string; to?: string; preset?: string }
     case 'today':
       return { from: today, to: today };
     case 'yesterday': {
-      const y = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const y = toLocalDate(d);
       return { from: y, to: y };
     }
-    case 'last_7':
-      return { from: new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10), to: today };
-    case 'last_30':
-      return { from: new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10), to: today };
+    case 'last_7': {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      return { from: toLocalDate(d), to: today };
+    }
+    case 'last_30': {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return { from: toLocalDate(d), to: today };
+    }
     case 'this_month':
-      return { from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), to: today };
+      return { from: toLocalDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: today };
     case 'last_month': {
       const now = new Date();
       return {
-        from: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10),
-        to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10),
+        from: toLocalDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+        to: toLocalDate(new Date(now.getFullYear(), now.getMonth(), 0)),
       };
     }
     default:
@@ -441,7 +455,7 @@ function SalesTab({
 
                 if (groupBy === 'day') {
                   while (current <= end) {
-                    const key = current.toISOString().slice(0, 10);
+                    const key = toLocalDate(current);
                     result.push({ period: formatDate(key), revenue: revenueMap.get(key) || 0, rawDate: key });
                     current.setDate(current.getDate() + 1);
                   }
@@ -450,10 +464,10 @@ function SalesTab({
                   const day = current.getDay();
                   current.setDate(current.getDate() - (day === 0 ? 6 : day - 1)); // go to Monday
                   while (current <= end) {
-                    const key = current.toISOString().slice(0, 10);
+                    const key = toLocalDate(current);
                     const weekEnd = new Date(current);
                     weekEnd.setDate(weekEnd.getDate() + 6);
-                    const label = `${formatDate(key)} – ${formatDate(weekEnd.toISOString().slice(0, 10))}`;
+                    const label = `${formatDate(key)} – ${formatDate(toLocalDate(weekEnd))}`;
                     result.push({ period: label, revenue: revenueMap.get(key) || 0, rawDate: key });
                     current.setDate(current.getDate() + 7);
                   }
@@ -1087,8 +1101,8 @@ function InsightsTab({
   const fromMs = new Date(from + 'T00:00:00').getTime();
   const toMs = new Date(to + 'T00:00:00').getTime();
   const durationMs = toMs - fromMs;
-  const prevFrom = new Date(fromMs - durationMs - 86400_000).toISOString().slice(0, 10);
-  const prevTo = new Date(fromMs - 86400_000).toISOString().slice(0, 10);
+  const prevFrom = toLocalDate(new Date(fromMs - durationMs - 86400_000));
+  const prevTo = toLocalDate(new Date(fromMs - 86400_000));
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'insights', from, to],

@@ -33,6 +33,20 @@ interface Appointment {
 
 type ViewMode = 'month' | 'week' | 'day';
 
+// ─── TZ-aware time formatter ─────────────────────────────────────
+// WEB-UIUX-780: format a time string in the shop's configured timezone so
+// a receptionist in a different TZ sees the correct local time for the shop.
+function formatTimeTz(iso: string | Date | null | undefined, tz?: string): string {
+  if (iso == null) return '—';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  if (tz) {
+    try { opts.timeZone = tz; } catch { /* invalid tz — fall back to browser */ }
+  }
+  return d.toLocaleTimeString(undefined, opts);
+}
+
 // ─── Constants ───────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   scheduled: '#3b82f6',
@@ -152,12 +166,14 @@ function AppointmentDetailModal({
   users,
   existingAppointments,
   onAppointmentUpdated,
+  shopTz,
 }: {
   appointment: Appointment;
   onClose: () => void;
   users: { id: number; first_name: string; last_name: string }[];
   existingAppointments: Appointment[];
   onAppointmentUpdated: (appointment: Appointment) => void;
+  shopTz?: string;
 }) {
   const queryClient = useQueryClient();
   const displayStatus = appointment.no_show ? 'no-show' : appointment.status;
@@ -285,8 +301,8 @@ function AppointmentDetailModal({
           <p className="text-sm font-medium text-surface-500 dark:text-surface-400">Time</p>
           <p className="inline-flex items-center gap-1.5 text-surface-900 dark:text-surface-100">
             <Clock className="h-4 w-4 text-surface-400" />
-            {formatTime(appointment.start_time)}
-            {appointment.end_time && ` - ${formatTime(appointment.end_time)}`}
+            {formatTimeTz(appointment.start_time, shopTz)}
+            {appointment.end_time && ` - ${formatTimeTz(appointment.end_time, shopTz)}`}
           </p>
         </div>
         <div>
@@ -845,10 +861,12 @@ function MonthView({
   currentDate,
   appointments,
   onSelectAppointment,
+  shopTz,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   onSelectAppointment: (a: Appointment) => void;
+  shopTz?: string;
 }) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -918,7 +936,7 @@ function MonthView({
                         className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
                         style={{ backgroundColor: `${color}20`, color }}
                       >
-                        {formatTime(appt.start_time)} {appt.title || 'Appointment'}
+                        {formatTimeTz(appt.start_time, shopTz)} {appt.title || 'Appointment'}
                       </button>
                     );
                   })}
@@ -941,11 +959,13 @@ function WeekView({
   appointments,
   onSelectAppointment,
   hours = DEFAULT_HOURS,
+  shopTz,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  shopTz?: string;
 }) {
   const weekStart = startOfWeek(currentDate);
   const today = new Date();
@@ -1001,7 +1021,7 @@ function WeekView({
                       className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
                       style={{ backgroundColor: `${color}20`, color }}
                     >
-                      {formatTime(appt.start_time)} {appt.title || 'Appt'}
+                      {formatTimeTz(appt.start_time, shopTz)} {appt.title || 'Appt'}
                     </button>
                   );
                 })}
@@ -1020,11 +1040,13 @@ function DayView({
   appointments,
   onSelectAppointment,
   hours = DEFAULT_HOURS,
+  shopTz,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  shopTz?: string;
 }) {
   const dayAppts = appointments.filter((a) => isSameDay(new Date(a.start_time), currentDate));
 
@@ -1055,8 +1077,8 @@ function DayView({
                         {appt.title || 'Appointment'}
                       </p>
                       <p className="text-xs text-surface-500">
-                        {formatTime(appt.start_time)}
-                        {appt.end_time && ` - ${formatTime(appt.end_time)}`}
+                        {formatTimeTz(appt.start_time, shopTz)}
+                        {appt.end_time && ` - ${formatTimeTz(appt.end_time, shopTz)}`}
                         {appt.customer_first_name && ` | ${appt.customer_first_name} ${appt.customer_last_name}`}
                       </p>
                     </div>
@@ -1080,6 +1102,12 @@ export function CalendarPage() {
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const { getSetting } = useSettings();
+
+  // WEB-UIUX-780: read shop timezone from store_config so display times are
+  // always in the shop's local time, not the viewer's browser timezone.
+  const shopTz = getSetting('timezone', '') || undefined;
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzMismatch = shopTz && shopTz !== browserTz;
 
   // FA-L9: read business hours from settings when present; fall back to 7am-7pm.
   // calendar_start_hour / calendar_end_hour are simple int-in-string settings,
@@ -1175,6 +1203,25 @@ export function CalendarPage() {
         </button>
       </div>
 
+      {/* WEB-UIUX-780: shop TZ banner — always shown when a timezone is configured
+          so staff know which timezone times are displayed in. */}
+      {shopTz && (
+        <div className={cn(
+          'mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm',
+          tzMismatch
+            ? 'border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+            : 'border border-surface-200 bg-surface-50 text-surface-600 dark:border-surface-700 dark:bg-surface-800/50 dark:text-surface-400',
+        )}>
+          <Clock className="h-4 w-4 shrink-0" />
+          <span>
+            Times shown in <strong>{shopTz}</strong>
+            {tzMismatch && (
+              <span className="ml-1">(your browser is in {browserTz})</span>
+            )}
+          </span>
+        </div>
+      )}
+
       <div className="card">
         {/* Toolbar */}
         <div className="flex flex-col gap-3 border-b border-surface-200 px-4 py-3 dark:border-surface-700 sm:flex-row sm:items-center sm:justify-between">
@@ -1236,6 +1283,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                shopTz={shopTz}
               />
             )}
             {viewMode === 'week' && (
@@ -1244,6 +1292,7 @@ export function CalendarPage() {
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
                 hours={hours}
+                shopTz={shopTz}
               />
             )}
             {viewMode === 'day' && (
@@ -1252,6 +1301,7 @@ export function CalendarPage() {
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
                 hours={hours}
+                shopTz={shopTz}
               />
             )}
           </div>
@@ -1274,6 +1324,7 @@ export function CalendarPage() {
           users={users}
           existingAppointments={appointments}
           onAppointmentUpdated={setSelectedAppt}
+          shopTz={shopTz}
         />
       )}
 

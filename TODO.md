@@ -3523,25 +3523,25 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-771. **[MAJOR] Tax-rate change updates cart silently mid-checkout — no banner.** "Your total is $108.88" → "$109.13" between cashier saying it and tap to charge. L6, L8. **[AUTOLOOP-T35 RESOLVED: LeftPanel useRef+useEffect tracks prev taxRate; fires toast.warning with old%/new%/updated total on mid-session change.]**
   `packages/web/src/hooks/useDefaultTaxRate.ts:18-22`
 
-- [ ] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11.
+- [ ] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11. **[AUTOLOOP-T36 BLOCKED: server emits no `inventory:price_changed` WS event; cannot signal cart for re-pricing without server-side event.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:823-971`
 
 - [ ] WEB-UIUX-773. **[MAJOR] Tax-inclusive flag locked at line add — no UI to flip in cart.** ProductRow shows "No tax" for tax-inclusive item, cashier panic. L7, L9.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:756-771`
 
-- [ ] WEB-UIUX-774. **[MAJOR] `Math.max(0, total)` clamp masks refund-driven negative cart.** `Total: $0.00` instead of negative store-credit issuance. L7, L13.
+- [x] WEB-UIUX-774. **[MAJOR] `Math.max(0, total)` clamp masks refund-driven negative cart.** `Total: $0.00` instead of negative store-credit issuance. L7, L13. **[AUTOLOOP-T36 RESOLVED: PosTotals exposes storeCreditCents (pre-clamp excess); LeftPanel renders "Store credit to issue: $X" when discounts exceed cart. Server payload stays non-negative.]**
   `packages/web/src/pages/unified-pos/totals.ts:95`
 
 - [ ] WEB-UIUX-775. **[MAJOR] Persisted cart in localStorage outlives tax-rate/customer-group config changes.** Reopen cart next morning → stale snapshot. L6.
   `packages/web/src/pages/unified-pos/store.ts:289-304`
 
-- [ ] WEB-UIUX-776. **[MINOR] `group_discount_pct` field overloaded — % when type='percent', $ when type='fixed'.** No UI distinction; $0.50 fixed auto-applies like 50% percent. L7, L4.
+- [x] WEB-UIUX-776. **[MINOR] `group_discount_pct` field overloaded — % when type='percent', $ when type='fixed'.** No UI distinction; $0.50 fixed auto-applies like 50% percent. L7, L4. **[AUTOLOOP-T36 RESOLVED: CustomerGroupsTab Add+Edit discount inputs render `$` prefix when type=fixed, `%` suffix when percentage; label updates dynamically.]**
   `packages/web/src/pages/unified-pos/totals.ts:79-85`
 
 - [ ] WEB-UIUX-777. **[MINOR] Per-line tax cell uses pre-discount math, summary uses post-discount — row tax doesn't reconcile to total tax.** L9.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:621,655,769,809`
 
-- [ ] WEB-UIUX-778. **[MINOR] Discount input unbounded `parseFloat` — "1e3" parses to 1000.** Same in CashModal split amounts. L7.
+- [x] WEB-UIUX-778. **[MINOR] Discount input unbounded `parseFloat` — "1e3" parses to 1000.** Same in CashModal split amounts. L7. **[AUTOLOOP-T36 RESOLVED: LineItemDiscountMenu + CheckoutModal cashGiven + split-amount inputs reject scientific notation via regex onChange/pre-apply guard.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:881-887`
 
 #### ED15: Time/Timezone/Scheduling
@@ -3549,35 +3549,35 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-779. **[BLOCKER] No shop-timezone awareness on display — all surfaces render in browser local.** `formatTime/formatDateTime` never accept `timeZone` option. Shop has `store_timezone` setting, never consumed. L6, L14.
   `packages/web/src/utils/format.ts:101-144`
 
-- [ ] WEB-UIUX-780. **[MAJOR] CalendarPage uses BROWSER TZ for input AND display, ignoring shop TZ entirely.** Receptionist in PST scheduling for shop in EST = 3 hours off. Zero "Times shown in [Shop TZ]" disclaimer. L6.
+- [x] WEB-UIUX-780. **[MAJOR] CalendarPage uses BROWSER TZ for input AND display, ignoring shop TZ entirely.** Receptionist in PST scheduling for shop in EST = 3 hours off. Zero "Times shown in [Shop TZ]" disclaimer. L6. **[AUTOLOOP-T36 RESOLVED: CalendarPage formatTimeTz uses Intl.DateTimeFormat with shopTz; banner shows current shop TZ + browser-mismatch warning.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:176-192,524,607,661,125-127`
 
 - [ ] WEB-UIUX-781. **[MAJOR] DST spring-forward gap silently materialised — picking 02:30 on March 8 lands at 03:30 MDT.** No "non-existent local time" check. 15-min select includes 4 invalid slots. L7.
   `packages/web/src/pages/leads/CalendarPage.tsx:179-192`
 
-- [ ] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13.
+- [ ] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
 
 - [ ] WEB-UIUX-783. **[MAJOR] ShiftSchedulePage `start_at: newStart` sends `<input type="datetime-local">` value RAW with no offset.** Server interprets as UTC vs local vs shop-TZ — undefined. L7, L14.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:108-113`
 
-- [ ] WEB-UIUX-784. **[MAJOR] ReportsPage date range presets mix UTC and local arithmetic.** `todayStr() = .toISOString().slice(0,10)` is UTC; "this_month" computes local then slices UTC. Late-evening runs west of UTC drift to previous month. L7, L13.
+- [x] WEB-UIUX-784. **[MAJOR] ReportsPage date range presets mix UTC and local arithmetic.** `todayStr() = .toISOString().slice(0,10)` is UTC; "this_month" computes local then slices UTC. Late-evening runs west of UTC drift to previous month. L7, L13. **[AUTOLOOP-T36 RESOLVED: ReportsPage adds toLocalDate() helper using getFullYear/Month/Date; all .toISOString().slice(0,10) replaced across presets + chart loop + comparison period.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:74-114`
 
 - [ ] WEB-UIUX-785. **[MAJOR] No fiscal-year support anywhere — `grep -rn "fiscal"` returns 0 hits.** DateRangePicker has no this_year/last_year/ytd preset. L5.
   `packages/web/src/components/shared/DateRangePicker.tsx:26-34`
 
-- [ ] WEB-UIUX-786. **[MINOR] InstallmentPlanWizard local-midnight + `.toISOString().slice(0,10)` — DST-crossing weekly plan can preview due-date one day earlier.** L6.
+- [x] WEB-UIUX-786. **[MINOR] InstallmentPlanWizard local-midnight + `.toISOString().slice(0,10)` — DST-crossing weekly plan can preview due-date one day earlier.** L6. **[AUTOLOOP-T36 RESOLVED: InstallmentPlanWizard line-55 startDate init swapped from `.toISOString().slice(0,10)` to `toLocalDateString(new Date())` helper.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:67-78`
 
 - [ ] WEB-UIUX-787. **[MINOR] PaymentLinks `expires_at` date-only sent as YYYY-MM-DD — server picks own end-of-day in own TZ.** Hawaii customer at 9pm sees "Expired" unexpectedly. L7, L14.
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
-- [ ] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7.
+- [ ] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
 
 - [ ] WEB-UIUX-789. **[MINOR] `timeAgo()` appends `Z` only if no `Z`/`+` — `2026-04-30T10:00:00-05:00Z` malformed.** Mixed-format timestamps produce wrong "ago" labels. L14.
   `packages/web/src/utils/format.ts:154-168`
 
-- [ ] WEB-UIUX-790. **[MINOR] BenchTimer visibility refetch is correct but visible jitter on wake — local elapsed snaps high then snaps to server.** L13.
+- [x] WEB-UIUX-790. **[MINOR] BenchTimer visibility refetch is correct but visible jitter on wake — local elapsed snaps high then snaps to server.** L13. **[AUTOLOOP-T36 RESOLVED: BenchTimer adds wakeRefetching state — local interval cleared on visibilitychange, display dimmed until refetch resolves with server value.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:92-121`
 
 #### ED16: Barcode/Scanner Input

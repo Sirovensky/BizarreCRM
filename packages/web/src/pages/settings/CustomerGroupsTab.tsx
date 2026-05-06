@@ -135,23 +135,36 @@ export function CustomerGroupsTab() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Discount</label>
+                <label className="block text-xs font-medium text-surface-500 mb-1">
+                  Discount {addForm.discount_type === 'fixed' ? '($)' : '(%)'}
+                </label>
                 <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={addForm.discount_pct || ''}
-                    onChange={(e) => setAddForm({ ...addForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                    className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-24 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0"
-                  />
+                  <div className="relative flex items-center">
+                    {addForm.discount_type === 'fixed' && (
+                      <span className="absolute left-3 text-sm text-surface-500 pointer-events-none select-none">$</span>
+                    )}
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={addForm.discount_pct || ''}
+                      onChange={(e) => setAddForm({ ...addForm, discount_pct: parseFloat(e.target.value) || 0 })}
+                      className={cn(
+                        'py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-24 focus-visible:outline-none focus:ring-2 focus:ring-blue-500',
+                        addForm.discount_type === 'fixed' ? 'pl-6 pr-3' : 'px-3'
+                      )}
+                      placeholder="0"
+                    />
+                    {addForm.discount_type === 'percentage' && (
+                      <span className="absolute right-3 text-sm text-surface-500 pointer-events-none select-none">%</span>
+                    )}
+                  </div>
                   <select
                     value={addForm.discount_type}
                     onChange={(e) => setAddForm({ ...addForm, discount_type: e.target.value })}
                     className="px-2 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="percentage">%</option>
+                    <option value="percentage">% Percent</option>
                     <option value="fixed">$ Fixed</option>
                   </select>
                 </div>
@@ -217,14 +230,25 @@ export function CustomerGroupsTab() {
                         </td>
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={editForm.discount_pct || ''}
-                              onChange={(e) => setEditForm({ ...editForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                              className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
+                            <div className="relative flex items-center">
+                              {(editForm.discount_type || 'percentage') === 'fixed' && (
+                                <span className="absolute left-2 text-xs text-surface-500 pointer-events-none select-none">$</span>
+                              )}
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editForm.discount_pct || ''}
+                                onChange={(e) => setEditForm({ ...editForm, discount_pct: parseFloat(e.target.value) || 0 })}
+                                className={cn(
+                                  'py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus-visible:outline-none focus:ring-1 focus:ring-blue-500',
+                                  (editForm.discount_type || 'percentage') === 'fixed' ? 'pl-5 pr-2' : 'px-2'
+                                )}
+                              />
+                              {(editForm.discount_type || 'percentage') === 'percentage' && (
+                                <span className="absolute right-2 text-xs text-surface-500 pointer-events-none select-none">%</span>
+                              )}
+                            </div>
                             <select
                               value={editForm.discount_type || 'percentage'}
                               onChange={(e) => setEditForm({ ...editForm, discount_type: e.target.value })}

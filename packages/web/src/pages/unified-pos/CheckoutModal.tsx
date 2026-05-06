@@ -729,8 +729,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                         min="0"
                         value={sp.amount}
                         onChange={(e) => {
+                          const v = e.target.value;
+                          if (v !== '' && !/^\d*\.?\d{0,2}$/.test(v)) {
+                            toast.error('Enter a valid amount (e.g. 10 or 10.50)');
+                            return;
+                          }
                           const updated = splitPayments.map((p, i) =>
-                            i === idx ? { ...p, amount: e.target.value } : p,
+                            i === idx ? { ...p, amount: v } : p,
                           );
                           setSplitPayments(updated);
                         }}
@@ -793,7 +798,14 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   step="0.01"
                   min="0"
                   value={cashGiven}
-                  onChange={(e) => setCashGiven(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v !== '' && !/^\d*\.?\d{0,2}$/.test(v)) {
+                      toast.error('Enter a valid amount (e.g. 20 or 20.50)');
+                      return;
+                    }
+                    setCashGiven(v);
+                  }}
                   className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-lg font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                   placeholder="0.00"
                   autoFocus

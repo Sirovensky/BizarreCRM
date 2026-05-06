@@ -840,6 +840,8 @@ interface Totals {
   discountAmount: number;
   tax: number;
   total: number;
+  /** WEB-UIUX-774: excess discount converted to store credit owed (display only). */
+  storeCreditCents: number;
 }
 
 function useTotals(): Totals {
@@ -1019,9 +1021,12 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
           <span className="text-[10px] font-bold text-surface-500">{cartItems.length}</span>
           <ChevronRight className="h-3.5 w-3.5 text-surface-400" />
         </button>
-        {totals.total > 0 && (
-          <span className="text-[10px] font-bold text-surface-700 dark:text-surface-300 writing-mode-vertical" style={{ writingMode: 'vertical-rl' }}>
-            {formatCurrency(totals.total)}
+        {(totals.total > 0 || totals.storeCreditCents > 0) && (
+          <span
+            className={`text-[10px] font-bold${totals.storeCreditCents > 0 ? ' text-primary-600 dark:text-primary-400' : ' text-surface-700 dark:text-surface-300'}`}
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            {totals.storeCreditCents > 0 ? `+${formatCurrency(totals.storeCreditCents / 100)} cr` : formatCurrency(totals.total)}
           </span>
         )}
       </div>
@@ -1142,6 +1147,13 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
           <span>Total</span>
           <span>{formatCurrency(totals.total)}</span>
         </div>
+        {/* WEB-UIUX-774: show store-credit owed when discounts exceed the cart total */}
+        {totals.storeCreditCents > 0 && (
+          <div className="flex justify-between text-xs font-semibold text-primary-600 dark:text-primary-400 pt-1">
+            <span>Store credit to issue</span>
+            <span>{formatCurrency(totals.storeCreditCents / 100)}</span>
+          </div>
+        )}
       </div>}
     </div>
   );
