@@ -1,3 +1,12 @@
+// MUST be the first import: installs a fetch-based polyfill for
+// window.electronAPI when this bundle runs in a browser tab (served from
+// /super-admin by the BizarreCRM server). In Electron the real
+// electronAPI is exposed by the preload script and the shim no-ops.
+// Without this, renderer code calling getAPI().foo.bar() in browser
+// context throws "Cannot read property 'foo' of undefined".
+import { installBrowserShim } from './api/electronAPIShim';
+installBrowserShim();
+
 import { Component, StrictMode } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { createRoot } from 'react-dom/client';

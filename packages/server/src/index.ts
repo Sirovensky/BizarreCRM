@@ -1471,22 +1471,58 @@ app.use('/super-admin/api', localhostOnly, superAdminRoutes);
 const adminCsp = "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'; frame-ancestors 'none'";
 // Serve the extracted admin JS files under /admin/js/ (needed by both panels).
 app.use('/admin/js', express.static(path.resolve(__dirname, 'admin/js'), { index: false }));
-// Super-admin panel is available in BOTH single-tenant and multi-tenant
-// modes. The original gate (`if (!config.multiTenant) return 404`) was too
-// strict — single-tenant operators legitimately need super-admin features
-// for: audit log review, JWT secret rotation, super-admin password / 2FA
-// setup, security alert review, session management, platform config
-// editing. The tenant CRUD endpoints under super-admin are no-ops or
-// redirect-to-self in single-tenant; harmless. The HTML page does not
-// need a multi-tenant gate; the underlying /super-admin/api/* routes
-// already enforce super-admin authentication regardless of mode.
-app.get('/super-admin', localhostOnly, (_req, res) => {
-  res.setHeader('Content-Security-Policy', adminCsp);
-  res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
+// Super-admin panel served from the management React SPA.
+// =========================================================
+// The legacy `admin/super-admin.html` was a tiny standalone page with
+// minimal functionality. The full-featured dashboard lives in
+// packages/management's renderer; with the electronAPIShim polyfilling
+// window.electronAPI in browser context, we build the SAME renderer to
+// `dist/super-admin-spa/` (see packages/management/vite.config.web.ts)
+// and serve it here. Operators get the rich UI in any browser instead of
+// only inside the Electron desktop app.
+//
+// SPA route shape:
+//   /super-admin             → index.html
+//   /super-admin/assets/*    → static (Vite-emitted JS/CSS bundles)
+//   /super-admin/<anything>  → index.html (HashRouter handles client-side
+//                              routing inside the SPA)
+//
+// CSP for the SPA is intentionally LESS strict than the legacy panel's
+// because Vite's bundle uses small inline scripts to bootstrap modules.
+// 'unsafe-inline' on script-src is the cost of running a Vite bundle.
+// 'unsafe-eval' is required by some React DevTools paths in dev; we keep
+// it disabled in prod (the renderer doesn't ship DevTools).
+const spaCsp = "default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; frame-ancestors 'none'";
+const spaDir = path.resolve(__dirname, 'super-admin-spa');
+
+// Static-file mount for /super-admin/assets/* and any other top-level
+// files (favicon, etc.). `fallthrough: true` so the wildcard handler
+// below still serves index.html for non-asset paths (SPA routing).
+app.use('/super-admin', localhostOnly, (req, res, next) => {
+  res.setHeader('Content-Security-Policy', spaCsp);
+  next();
 });
-app.get('/super-admin/*', localhostOnly, (_req, res) => {
-  res.setHeader('Content-Security-Policy', adminCsp);
-  res.sendFile(path.resolve(__dirname, 'admin/super-admin.html'));
+app.use('/super-admin', localhostOnly, express.static(spaDir, { index: false, fallthrough: true }));
+
+// SPA fallback: any unmatched /super-admin/* path returns index.html so
+// HashRouter can handle the client-side route. Without this, deep links
+// like /super-admin/dashboard would 404 on browser refresh.
+app.get('/super-admin', localhostOnly, (_req, res, next) => {
+  const indexPath = path.join(spaDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    // SPA bundle missing — server was deployed without the management
+    // renderer build step. Return a clear error rather than a confusing
+    // ENOENT stack trace.
+    return res.status(503).send('Super-admin SPA bundle not built. Run `npm run build:renderer:web -w @bizarre-crm/management` and restart the server.');
+  }
+  res.sendFile(indexPath);
+});
+app.get('/super-admin/*', localhostOnly, (_req, res, next) => {
+  const indexPath = path.join(spaDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    return res.status(503).send('Super-admin SPA bundle not built. Run `npm run build:renderer:web -w @bizarre-crm/management` and restart the server.');
+  }
+  res.sendFile(indexPath);
 });
 
 // API Routes (auth does NOT require middleware)
