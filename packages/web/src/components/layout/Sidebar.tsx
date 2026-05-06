@@ -488,7 +488,7 @@ function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
 
 function SidebarTooltipWrapper({ label }: { label: string }) {
   return (
-    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-surface-100 dark:text-surface-900">
+    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity delay-300 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-surface-100 dark:text-surface-900">
       {label}
       <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-surface-900 dark:border-r-surface-100" />
     </div>

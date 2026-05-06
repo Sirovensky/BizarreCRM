@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown, Check, MoreHorizontal, Trash2,
@@ -9,7 +9,7 @@ import { cn } from '@/utils/cn';
 import { formatTicketId } from '@/utils/format';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
-import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
+const PrintPreviewModal = lazy(() => import('@/components/shared/PrintPreviewModal').then(m => ({ default: m.PrintPreviewModal })));
 import { safeColor } from '@/utils/safeColor';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 import { formatApiError } from '@/utils/apiError';
@@ -65,7 +65,7 @@ function HeaderStatusDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[18rem] rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-0 sm:min-w-[18rem] max-w-[calc(100vw-1rem)] rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
           <div className="max-h-80 overflow-y-auto py-1">
             {statuses.map((s) => {
               // WEB-FK-001: forbid + confirm flow for dangerous transitions
@@ -185,7 +185,9 @@ function PrintButton({ ticketId, invoiceId }: { ticketId: number; invoiceId?: nu
         <Printer className="h-4 w-4" /> Print
       </button>
       {showModal && (
-        <PrintPreviewModal ticketId={ticketId} invoiceId={invoiceId} onClose={() => setShowModal(false)} />
+        <Suspense fallback={null}>
+          <PrintPreviewModal ticketId={ticketId} invoiceId={invoiceId} onClose={() => setShowModal(false)} />
+        </Suspense>
       )}
     </>
   );
@@ -253,10 +255,10 @@ export function TicketActions({
           </h1>
 
           {/* Device name pill(s) */}
-          {devices.map((d: any) => (
+          {devices.map((d: TicketDevice) => (
             <span key={d.id} className="inline-flex items-center gap-1.5 rounded-full bg-surface-100 dark:bg-surface-800 px-3 py-1 text-xs font-medium text-surface-600 dark:text-surface-300">
               {(d.imei || d.serial) && <span className="h-2 w-2 rounded-full bg-green-500" title="Has IMEI/Serial" />}
-              {d.device_name}
+              <span className="truncate max-w-[180px]">{d.device_name}</span>
             </span>
           ))}
 

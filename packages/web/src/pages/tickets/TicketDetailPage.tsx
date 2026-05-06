@@ -13,6 +13,8 @@ import { useAuthStore } from '@/stores/authStore';
 // user's sidebar. Reader is `Sidebar.RecentViews`.
 import { recentViewsKey } from '@/components/layout/Sidebar';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscClose } from '@/hooks/useEscClose';
 import { formatTicketId } from '@/utils/format';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
@@ -94,6 +96,8 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const mergeAbortRef = useRef<AbortController | null>(null);
   const dialogActiveRef = useRef(true);
+  const trapRef = useFocusTrap(true);
+  useEscClose(onClose, true);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -146,10 +150,10 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       role="presentation"
     >
       <div
+        ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="merge-ticket-title"

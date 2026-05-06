@@ -2546,13 +2546,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-478. **[MINOR] AppShell `useWebSocket()` on every render — fine in React but combined with `useQuery({queryKey:['settings-config-env']...})` on mount creates tight startup race.** L15. **[AUTOLOOP-T20 RESOLVED: useWebSocket gains `enabled` param; AppShell passes `enabled={configLoaded}` from settings-config-env query — WS deferred until config loads.]**
   `packages/web/src/components/layout/AppShell.tsx:37,63-67`
 
-- [ ] WEB-UIUX-479. **[MINOR] Sidebar `RecentViews` collapsed-mode renders `label.slice(0,6)` with no tooltip wait time — hover instantly pops 5+ tooltips on mouse-over.** L11.
+- [x] WEB-UIUX-479. **[MINOR] Sidebar `RecentViews` collapsed-mode renders `label.slice(0,6)` with no tooltip wait time — hover instantly pops 5+ tooltips on mouse-over.** L11. **[AUTOLOOP-T21 RESOLVED: SidebarTooltipWrapper adds Tailwind delay-300 to transition-opacity; tooltips wait 300 ms before appearing.]**
   `packages/web/src/components/layout/Sidebar.tsx:381-384`
 
 - [ ] WEB-UIUX-480. **[MINOR] Header `⌘K` mac shortcut shown on Mac iPad too — but iPad keyboards are physical Cmd keys, fine; iPad Safari without keyboard sees ⌘K hint that's unreachable.** L14.
   `packages/web/src/components/layout/Header.tsx:87-88`
 
-- [ ] WEB-UIUX-481. **[MINOR] Sidebar `MyQueueWidget` 30 s `refetchInterval` independent from kanban poll — same data fetched twice in different shapes.** L15.
+- [ ] WEB-UIUX-481. **[MINOR] Sidebar `MyQueueWidget` 30 s `refetchInterval` independent from kanban poll — same data fetched twice in different shapes.** L15. **[AUTOLOOP-T21 BLOCKED: STALE — MyQueueWidget hits `/tickets/my-queue`; KanbanBoard hits `/tickets/kanban`. Different endpoints, not duplicated. MyQueuePage shares cache key with widget already.]**
   `packages/web/src/components/layout/Sidebar.tsx:401-409`
 
 - [ ] WEB-UIUX-482. **[NIT] Header dev/prod role labels `'Owner'` not present in shared types but in ROLE_LABELS map — dead branch.** L4.
@@ -2560,51 +2560,51 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Tickets (KanbanBoard, TicketActions, TicketDetail, TicketNotes)
 
-- [ ] WEB-UIUX-483. **[BLOCKER] KanbanBoard relies on HTML5 drag/drop API — no keyboard alternative for status change.** Keyboard-only users cannot move cards across columns. L12.
+- [x] WEB-UIUX-483. **[BLOCKER] KanbanBoard relies on HTML5 drag/drop API — no keyboard alternative for status change.** Keyboard-only users cannot move cards across columns. L12. **[AUTOLOOP-T21 RESOLVED: KanbanCard "Move to…" dropdown wired with ArrowDown/Up + Escape + auto-focus first option + return-focus to trigger.]**
   `packages/web/src/pages/tickets/KanbanBoard.tsx:204-262`
   <!-- meta: fix=add-arrow-key-shortcuts-or-status-dropdown-fallback -->
 
 - [ ] WEB-UIUX-484. **[BLOCKER] KanbanCard `onClick={navigate}` PLUS `draggable` — on touch devices, single tap can register as drag-start before drop. Card never opens.** L13.
   `packages/web/src/pages/tickets/KanbanBoard.tsx:82-93`
 
-- [ ] WEB-UIUX-485. **[BLOCKER] MergeDialog (TicketDetailPage) no focus trap, `onKeyDown={Escape}` only on backdrop div — child focus escapes Esc.** L12.
+- [x] WEB-UIUX-485. **[BLOCKER] MergeDialog (TicketDetailPage) no focus trap, `onKeyDown={Escape}` only on backdrop div — child focus escapes Esc.** L12. **[AUTOLOOP-T21 RESOLVED: MergeDialog wired with useFocusTrap(true) + useEscClose; trapRef on inner dialog div; broken backdrop onKeyDown removed.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:114-128`
 
 - [ ] WEB-UIUX-486. **[MAJOR] KanbanCard age-coloring overlays `bg-red-50`/`bg-amber-50` on top of `bg-white` — wins specificity but darkens to `dark:bg-red-950/20` only when also dark.** Two cards red on light, ringed by `border-l` colored differently. L9, L10.
   `packages/web/src/pages/tickets/KanbanBoard.tsx:87-91`
 
-- [ ] WEB-UIUX-487. **[MAJOR] KanbanBoard `min-w-[280px] w-[300px]` per column × 8 columns = 2400 px horizontal scroll forced on every viewport.** No "compact" mode. L11, L5.
+- [x] WEB-UIUX-487. **[MAJOR] KanbanBoard `min-w-[280px] w-[300px]` per column × 8 columns = 2400 px horizontal scroll forced on every viewport.** No "compact" mode. L11, L5. **[AUTOLOOP-T21 RESOLVED: KanbanBoard column width `min-w-[280px] w-[300px] shrink-0` → `min-w-[200px] max-w-[300px] flex-1`; columns shrink on narrow viewports.]**
   `packages/web/src/pages/tickets/KanbanBoard.tsx:317-324`
 
 - [ ] WEB-UIUX-488. **[MAJOR] TicketActions sticky header `-top-6 -mx-6` relies on parent padding — breaks if `<TicketDetailPage>` ever changes wrapper padding.** L11.
   `packages/web/src/pages/tickets/TicketActions.tsx:249`
 
-- [ ] WEB-UIUX-489. **[MAJOR] TicketActions device pills (`devices.map((d:any) =>`) — `any` cast silences missing TicketDevice fields and renders unbounded long device names without truncation.** L4, L11.
+- [x] WEB-UIUX-489. **[MAJOR] TicketActions device pills (`devices.map((d:any) =>`) — `any` cast silences missing TicketDevice fields and renders unbounded long device names without truncation.** L4, L11. **[AUTOLOOP-T21 RESOLVED: TicketActions devices.map any cast → TicketDevice; device_name wrapped in truncating span max-w-[180px].]**
   `packages/web/src/pages/tickets/TicketActions.tsx:271-276`
 
 - [ ] WEB-UIUX-490. **[MAJOR] TicketActions ActionsDropdown items not keyboard-navigable as menu — buttons in plain `<div>`, no `role="menu"`, no arrow-key.** Tab between but no Up/Down. L12.
   `packages/web/src/pages/tickets/TicketActions.tsx:151-179`
 
-- [ ] WEB-UIUX-491. **[MAJOR] TicketActions HeaderStatusDropdown 80vh max + 18rem min-width on small screen overflows right edge.** L11.
+- [x] WEB-UIUX-491. **[MAJOR] TicketActions HeaderStatusDropdown 80vh max + 18rem min-width on small screen overflows right edge.** L11. **[AUTOLOOP-T21 RESOLVED: HeaderStatusDropdown `min-w-[18rem]` → `min-w-0 sm:min-w-[18rem]` + `max-w-[calc(100vw-1rem)]`; viewport-safe.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:75-76`
 
 - [ ] WEB-UIUX-492. **[MAJOR] TicketNotes `dangerouslySetInnerHTML` on system events — DOMPurify scoped to `b/i/em/strong` but description is server-supplied + may include user input.** Safe today, drift risk if event message format expands. L16.
   `packages/web/src/pages/tickets/TicketNotes.tsx:377-384`
 
-- [ ] WEB-UIUX-493. **[MAJOR] TicketNotes Save button reads `noteContent.trim()` AFTER a 0.3s autosave debounce — fast click after typing may save trimmed empty if `useDraft` write is pending.** L6.
+- [ ] WEB-UIUX-493. **[MAJOR] TicketNotes Save button reads `noteContent.trim()` AFTER a 0.3s autosave debounce — fast click after typing may save trimmed empty if `useDraft` write is pending.** L6. **[AUTOLOOP-T21 BLOCKED: STALE — noteContent is React state always current; debounce only governs localStorage write. Save button already has `disabled={!trim()}` guard + early-return.]**
   `packages/web/src/pages/tickets/TicketNotes.tsx:243-264`
 
 - [ ] WEB-UIUX-494. **[MAJOR · BLOCKED] TicketNotes SMS character counter divides by 160 for GSM-7 only — Unicode messages segment at 70.** Counter wrong for emoji/é characters. L14, L4.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/tickets/TicketNotes.tsx:291-295`
 
-- [ ] WEB-UIUX-495. **[MINOR] KanbanBoard column header title `truncate` but column width fixed 300 px — long status names truncated identically every render.** L11.
+- [x] WEB-UIUX-495. **[MINOR] KanbanBoard column header title `truncate` but column width fixed 300 px — long status names truncated identically every render.** L11. **[AUTOLOOP-T21 RESOLVED: KanbanBoard column header span gets `title={col.status.name}`; truncated names show full on hover.]**
   `packages/web/src/pages/tickets/KanbanBoard.tsx:335-337`
 
 - [ ] WEB-UIUX-496. **[MINOR] KanbanBoard "X columns · N tickets" counter not aria-live — users tracking mass move see no SR feedback.** L12.
   `packages/web/src/pages/tickets/KanbanBoard.tsx:308-310`
 
-- [ ] WEB-UIUX-497. **[MINOR] TicketActions PrintButton spawns PrintPreviewModal but mounting cost paid on `setShowModal(true)` — no `lazy` boundary.** L15.
+- [x] WEB-UIUX-497. **[MINOR] TicketActions PrintButton spawns PrintPreviewModal but mounting cost paid on `setShowModal(true)` — no `lazy` boundary.** L15. **[AUTOLOOP-T21 RESOLVED: TicketActions PrintPreviewModal becomes `React.lazy()` import wrapped in `<Suspense fallback={null}>`; bundle cost deferred until first print.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:184-198`
 
 - [ ] WEB-UIUX-498. **[MINOR] TicketActions Checkout button `bg-teal-600` not brand token — hardcoded teal across this and Breadcrumb.** L9, L10.

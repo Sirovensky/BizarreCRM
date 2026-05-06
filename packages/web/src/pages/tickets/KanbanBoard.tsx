@@ -83,6 +83,8 @@ function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: 
   const tech = assignedName(ticket);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -99,6 +101,52 @@ function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: 
       document.removeEventListener('touchstart', handleOutside);
     };
   }, [menuOpen]);
+
+  // Move focus into the listbox when it opens
+  useEffect(() => {
+    if (menuOpen && listRef.current) {
+      const first = listRef.current.querySelector<HTMLElement>('[role="option"]');
+      first?.focus();
+    }
+  }, [menuOpen]);
+
+  function closeMenu() {
+    setMenuOpen(false);
+    // Return focus to the trigger so keyboard users don't lose their place
+    triggerRef.current?.focus();
+  }
+
+  function handleTriggerKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu();
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !menuOpen) {
+      e.preventDefault();
+      setMenuOpen(true);
+    }
+  }
+
+  function handleListKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const options = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [],
+    );
+    const focused = document.activeElement as HTMLElement;
+    const idx = options.indexOf(focused);
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      options[(idx + 1) % options.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      options[(idx - 1 + options.length) % options.length]?.focus();
+    } else if (e.key === 'Tab') {
+      // Close menu on Tab so focus naturally continues past this widget
+      closeMenu();
+    }
+  }
 
   // Other statuses the ticket can be moved to (exclude current)
   const moveTargets = allColumns.filter((c) => c.status.id !== ticket.status_id);
@@ -148,10 +196,12 @@ function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: 
           onClick={(e) => e.stopPropagation()}
         >
           <button
+            ref={triggerRef}
             type="button"
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            onKeyDown={handleTriggerKeyDown}
             className={cn(
               'flex w-full items-center justify-between gap-1 rounded border px-2 py-1 text-xs transition-colors',
               'border-surface-200 dark:border-surface-600',
@@ -167,8 +217,10 @@ function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: 
           </button>
           {menuOpen && (
             <div
+              ref={listRef}
               role="listbox"
               aria-label="Move ticket to status"
+              onKeyDown={handleListKeyDown}
               className={cn(
                 'absolute bottom-full left-0 mb-1 z-50 min-w-[160px] rounded-lg border shadow-lg',
                 'border-surface-200 dark:border-surface-600',
@@ -182,7 +234,7 @@ function KanbanCard({ ticket, statusColor, onDragStart, allColumns, onMoveTo }: 
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMenuOpen(false);
+                    closeMenu();
                     onMoveTo(ticket.id, col.status.id);
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700 first:rounded-t-lg last:rounded-b-lg"
@@ -405,7 +457,7 @@ export default function KanbanBoard() {
         {Array.from({ length: 4 }).map((_, colIdx) => (
           <div
             key={colIdx}
-            className="flex flex-col rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900/50 min-w-[280px] w-[300px] shrink-0"
+            className="flex flex-col rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900/50 min-w-[200px] max-w-[300px] flex-1"
           >
             {/* Skeleton column header */}
             <div className="flex items-center gap-2 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -489,7 +541,7 @@ export default function KanbanBoard() {
           key={col.status.id}
           className={cn(
             'flex flex-col rounded-xl border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900/50',
-            'min-w-[280px] w-[300px] shrink-0',
+            'min-w-[200px] max-w-[300px] flex-1',
             dragOverStatus === col.status.id && 'ring-2 ring-primary-400 dark:ring-primary-600',
           )}
           onDragOver={(e) => handleDragOver(e, col.status.id)}
@@ -502,7 +554,7 @@ export default function KanbanBoard() {
               className="h-3 w-3 rounded-full shrink-0"
               style={{ backgroundColor: col.status.color || '#6b7280' }}
             />
-            <span className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">
+            <span className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate" title={col.status.name}>
               {col.status.name}
             </span>
             <span className="ml-auto shrink-0 rounded-full bg-surface-200 px-2 py-0.5 text-xs font-medium text-surface-600 dark:bg-surface-700 dark:text-surface-300">
