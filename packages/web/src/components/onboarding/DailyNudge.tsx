@@ -127,8 +127,8 @@ export function DailyNudge({ preloadedState }: DailyNudgeProps) {
         onClick={handleDismiss}
         disabled={dismissMutation.isPending}
         className="shrink-0 rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-        aria-label="Got it"
-        title="Got it"
+        aria-label="Dismiss notification"
+        title="Dismiss notification"
       >
         <X className="h-4 w-4" />
       </button>

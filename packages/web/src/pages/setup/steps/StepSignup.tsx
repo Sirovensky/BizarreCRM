@@ -61,13 +61,15 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
   });
 
   // Debounced slug availability check.
-  // Race-guard: drop responses that arrive after the user typed further.
+  // AbortController: cancels the in-flight request when the slug changes,
+  // so out-of-order responses never flash wrong availability.
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestSlugRef = useRef<string>('');
+  const slugAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
-    latestSlugRef.current = slug;
+    if (slugAbortRef.current) slugAbortRef.current.abort();
+    slugAbortRef.current = null;
 
     if (!slug) {
       setSlugStatus('idle');
@@ -85,15 +87,19 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     setSlugStatus('checking');
     setSlugMessage('');
 
+    const ac = new AbortController();
+    slugAbortRef.current = ac;
+
     slugTimerRef.current = setTimeout(async () => {
       try {
-        const res = await signupApi.checkSlug(slug);
-        if (latestSlugRef.current !== slug) return;
+        const res = await signupApi.checkSlug(slug, { signal: ac.signal });
         const { available, reason } = res.data.data;
         setSlugStatus(available ? 'available' : 'taken');
         setSlugMessage(available ? 'Available' : reason || 'Already taken');
-      } catch {
-        if (latestSlugRef.current !== slug) return;
+      } catch (err) {
+        // Ignore aborted requests — a newer check is already in flight.
+        if (err instanceof Error && err.name === 'CanceledError') return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         setSlugStatus('idle');
         setSlugMessage('Could not check availability');
       }
@@ -101,6 +107,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
 
     return () => {
       if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
+      ac.abort();
     };
   }, [slug]);
 
@@ -134,7 +141,13 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     const emailLocal = cleanEmail.split('@')[0];
     const derivedShopName =
       emailLocal && emailLocal.length >= 3
-        ? emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1)
+        ? emailLocal
+            .replace(/[._-]+/g, ' ')
+            .trim()
+            .split(' ')
+            .filter(Boolean)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ')
         : slugToShopName(cleanSlug) || cleanSlug;
 
     setSubmitting(true);

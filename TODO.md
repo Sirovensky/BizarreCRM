@@ -1726,31 +1726,31 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   Files: StepSignup.tsx:37-50 vs StepForcePassword.tsx:25-33
   <!-- meta: fix=extract-shared-gradePassword-helper -->
 
-- [ ] WEB-UIUX-247. **[MINOR] StepSignup slug debounce uses race-discard not AbortController.** Out-of-order responses can flash wrong availability. L1.
+- [x] WEB-UIUX-247. **[MINOR] StepSignup slug debounce uses race-discard not AbortController.** Out-of-order responses can flash wrong availability. L1. **[AUTOLOOP-T9 RESOLVED: StepSignup slug check now uses AbortController; cleanup aborts in-flight; checkSlug accepts AxiosRequestConfig.]**
   `packages/web/src/pages/setup/steps/StepSignup.tsx:88-125`
 
 - [ ] WEB-UIUX-248. **[MINOR] StepSignup `setSlug(.toLowerCase())` on every keystroke breaks IME composition.** L7.
   `packages/web/src/pages/setup/steps/StepSignup.tsx:338`
 
-- [ ] WEB-UIUX-249. **[MINOR] StepSignup derives shop name from email-local-part — "joe.smith" → "Joe.smith" on receipts.** L14.
+- [x] WEB-UIUX-249. **[MINOR] StepSignup derives shop name from email-local-part — "joe.smith" → "Joe.smith" on receipts.** L14. **[AUTOLOOP-T9 RESOLVED: shop-name derivation now splits email local-part on `.`/`_`/`-` and title-cases each word.]**
   `packages/web/src/pages/setup/steps/StepSignup.tsx:152-159`
 
 - [ ] WEB-UIUX-250. **[MINOR] StepTwoFactorSetup skip abandons in-flight TOTP secret with no server-side cancel.** L16.
   `packages/web/src/pages/setup/steps/StepTwoFactorSetup.tsx:125-131`
 
-- [ ] WEB-UIUX-251. **[MINOR] StepRepairPricing defaults not seeded into pending on mount.** Going Back loses defaults. L5.
+- [x] WEB-UIUX-251. **[MINOR] StepRepairPricing defaults not seeded into pending on mount.** Going Back loses defaults. L5. **[AUTOLOOP-T9 RESOLVED: StepRepairPricing mount-only useEffect seeds 15 absent pricing keys into pending; Back preserves defaults.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:181-194`
 
 - [ ] WEB-UIUX-252. **[MINOR] StepFirstEmployees "PIN (opt.)" no security framing.** Users pick weak PINs (1234, 0000). L14, L16.
   `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:349-372`
 
-- [ ] WEB-UIUX-253. **[MINOR] StepFirstEmployees retry button has no debounce.** L1.
+- [x] WEB-UIUX-253. **[MINOR] StepFirstEmployees retry button has no debounce.** L1. **[AUTOLOOP-T9 RESOLVED: StepFirstEmployees retry button gets per-row 1 s debounce + isSending disabled state.]**
   `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:214-218,388-396`
 
 - [ ] WEB-UIUX-254. **[MINOR] StepCashDrawer IP input no format validation.** "192.168.1.50:porty" silently saves. L7.
   `packages/web/src/pages/setup/steps/StepCashDrawer.tsx:165-176`
 
-- [ ] WEB-UIUX-255. **[MINOR] ExtrasHub.tsx is dead code from removed non-linear hub flow.** 287 lines unused. L3.
+- [x] WEB-UIUX-255. **[MINOR] ExtrasHub.tsx is dead code from removed non-linear hub flow.** 287 lines unused. L3. **[AUTOLOOP-T9 RESOLVED: orphaned ExtrasHub.tsx deleted (zero imports, zero router refs).]**
   `packages/web/src/pages/setup/ExtrasHub.tsx`
   <!-- meta: fix=delete-or-document-as-fallback -->
 
@@ -1759,27 +1759,27 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-256. **[MAJOR] SpotlightCoach tooltip `role="dialog"` without focus trap or focus restore.** Tab escapes overlay. L12.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:170-176`
 
-- [ ] WEB-UIUX-257. **[MAJOR] SpotlightCoach "Skip all tutorials" writes localStorage permanently — no UI to undo.** Stray click loses every tutorial forever. L6, L16.
+- [x] WEB-UIUX-257. **[MAJOR] SpotlightCoach "Skip all tutorials" writes localStorage permanently — no UI to undo.** Stray click loses every tutorial forever. L6, L16. **[AUTOLOOP-T9 RESOLVED: SpotlightCoach Skip-all now requires inline 2-click confirm; resetAllTutorials() exported for future Settings wiring.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:422-429`
   <!-- meta: fix=add-Re-enable-toggle-in-Settings-confirm-before-nuking -->
 
 - [ ] WEB-UIUX-258. **[MINOR] SpotlightCoach Esc dismisses entire flow permanently — should pause.** L5.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:432-439`
 
-- [ ] WEB-UIUX-259. **[MINOR] SpotlightCoach overlay `boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)'` — fails on 4K+ zoomed-out browsers.** L11.
+- [x] WEB-UIUX-259. **[MINOR] SpotlightCoach overlay `boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)'` — fails on 4K+ zoomed-out browsers.** L11. **[AUTOLOOP-T9 RESOLVED: SpotlightCoach overlay boxShadow spread bumped 9999px → 99999px to cover 4K+ zoomed-out viewports.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:99-112`
   <!-- meta: fix=use-svg-mask-with-rect-cutout -->
 
 - [ ] WEB-UIUX-260. **[MINOR] SpotlightCoach hardcodes CARD_WIDTH=320 — overflows 320px viewport.** L11.
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:138-166`
 
-- [ ] WEB-UIUX-261. **[MINOR] DailyNudge close button `aria-label="Got it"` confuses with implicit "confirm".** L14.
+- [x] WEB-UIUX-261. **[MINOR] DailyNudge close button `aria-label="Got it"` confuses with implicit "confirm".** L14. **[AUTOLOOP-T9 RESOLVED: DailyNudge close button aria-label/title changed from "Got it" to "Dismiss notification".]**
   `packages/web/src/components/onboarding/DailyNudge.tsx:130-132`
 
 - [ ] WEB-UIUX-262. **[MINOR] DailyNudge CTA dismisses + navigates — user navigates back, loses suggestion silently.** L5.
   `packages/web/src/components/onboarding/DailyNudge.tsx:100-103`
 
-- [ ] WEB-UIUX-263. **[MINOR] GettingStartedWidget reduced-motion check skips confetti but no static "Done!" badge replacement.** L13.
+- [x] WEB-UIUX-263. **[MINOR] GettingStartedWidget reduced-motion check skips confetti but no static "Done!" badge replacement.** L13. **[AUTOLOOP-T9 RESOLVED: GettingStartedWidget renders static green "Done!" pill (Check icon) in lieu of confetti when prefers-reduced-motion is set.]**
   `packages/web/src/components/onboarding/GettingStartedWidget.tsx:166-205`
 
 - [ ] WEB-UIUX-264. **[MINOR] SampleDataCard "Click again to confirm" same color/position — fat-finger destroys data.** L8.
@@ -1787,7 +1787,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Print / TV / Photo Capture
 
-- [ ] WEB-UIUX-266. **[MAJOR] PhotoCapturePage hardcodes `bg-gray-900 text-white` — no light variant.** Daylight street use blinds user. L10.
+- [x] WEB-UIUX-266. **[MAJOR] PhotoCapturePage hardcodes `bg-gray-900 text-white` — no light variant.** Daylight street use blinds user. L10. **[AUTOLOOP-T9 RESOLVED: PhotoCapturePage replaces hardcoded gray-* with surface-900/800/700/50/400/300/600 tokens; preserves dark viewfinder while honoring tenant theming.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
 
 - [ ] WEB-UIUX-267. **[MINOR] PhotoCapturePage uses raw `bg-gray-*` not `surface-*` tokens.** L4.

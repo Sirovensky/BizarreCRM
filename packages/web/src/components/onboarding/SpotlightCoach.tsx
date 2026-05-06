@@ -104,7 +104,7 @@ function SpotlightOverlay({ rect }: SpotlightOverlayProps) {
           width: rect.width + padding * 2,
           height: rect.height + padding * 2,
           borderRadius,
-          boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
+          boxShadow: '0 0 0 99999px rgba(0,0,0,0.5)',
           background: 'transparent',
         }}
       />
@@ -135,6 +135,10 @@ function TooltipCard({
   onSkipAll,
   isFallback,
 }: TooltipProps) {
+  // Guard: ask once before permanently writing localStorage.
+  // First click shows inline confirm; second click (or Enter) commits.
+  const [confirmingSkipAll, setConfirmingSkipAll] = useState(false);
+
   const CARD_WIDTH = 320;
   const CARD_EST_HEIGHT = 240;
   const PADDING = 12;
@@ -247,14 +251,41 @@ function TooltipCard({
           >
             Skip tutorial
           </button>
-          <button
-            type="button"
-            onClick={onSkipAll}
-            tabIndex={0}
-            className="rounded-md bg-surface-100 px-2 py-1 text-xs font-semibold text-surface-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-          >
-            Skip all tutorials
-          </button>
+          {confirmingSkipAll ? (
+            /* Inline confirm — requires deliberate second action */
+            <span className="flex items-center gap-1">
+              <span className="text-xs text-surface-500 dark:text-surface-400">
+                Skip all future tutorials?
+              </span>
+              <button
+                type="button"
+                onClick={onSkipAll}
+                tabIndex={0}
+                className="rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
+                aria-label="Confirm: skip all tutorials permanently"
+              >
+                Yes, skip all
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingSkipAll(false)}
+                tabIndex={0}
+                className="rounded-md px-2 py-1 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+                aria-label="Cancel skip-all"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingSkipAll(true)}
+              tabIndex={0}
+              className="rounded-md bg-surface-100 px-2 py-1 text-xs font-semibold text-surface-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+            >
+              Skip all tutorials
+            </button>
+          )}
         </div>
       </div>
     </div>

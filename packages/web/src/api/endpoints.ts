@@ -1822,8 +1822,8 @@ const publicApi = axios.create({
 });
 
 export const signupApi = {
-  checkSlug: (slug: string) =>
-    publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
+  checkSlug: (slug: string, config?: import('axios').AxiosRequestConfig) =>
+    publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`, config),
   // @audit-fixed (WEB-FN-001 / Fixer-K 2026-04-24): server destructures
   // `admin_first_name` + `admin_last_name` from the body (signup.routes.ts:478)
   // and persists them through `provisionTenant`, but the typed wrapper here

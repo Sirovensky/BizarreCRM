@@ -74,6 +74,13 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
   const queryClient = useQueryClient();
   const [sessionSkipped, setSessionSkipped] = useState(false);
 
+  // Detect reduced-motion preference once on mount (WCAG 2.1 §2.3.3).
+  // We read it eagerly so the badge renders on the very first paint that
+  // shows the completed state — no flash of the wrong content.
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
   const { data: stateResponse, isLoading } = useQuery({
     queryKey: ['onboarding-state'],
     queryFn: () => onboardingApi.getState() as Promise<AxiosResponse<{ success: boolean; data: OnboardingState }>>,
@@ -234,9 +241,22 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
             )}
           </div>
           <div>
-            <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">
-              {allDone ? 'Shop set up — nicely done!' : 'Get your shop running'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">
+                {allDone ? 'Shop set up — nicely done!' : 'Get your shop running'}
+              </h2>
+              {/* Static "Done!" badge — shown in place of confetti when the
+                  user has prefers-reduced-motion: reduce active (WCAG 2.1 §2.3.3). */}
+              {allDone && prefersReducedMotion && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                  aria-label="All steps completed"
+                >
+                  <Check className="h-3 w-3" aria-hidden="true" />
+                  Done!
+                </span>
+              )}
+            </div>
             <p className="text-xs text-surface-500 dark:text-surface-400">
               {allDone
                 ? 'You completed every starter step. This card will hide itself shortly.'

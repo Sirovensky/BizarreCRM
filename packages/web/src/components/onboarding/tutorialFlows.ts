@@ -214,11 +214,20 @@ export function firstStepKey(flowId: TutorialFlowId): string {
 
 /**
  * Dismisses every tutorial permanently. Called by the "Skip all tutorials"
- * button in SpotlightCoach and can be reused by any other surface.
+ * button in SpotlightCoach (behind a confirm dialog) and can be reused by any
+ * other surface.
  *
  * 1. Sets `localStorage['tutorial.all.dismissed'] = '1'`.
  * 2. Calls `onboardingApi.patchState({ checklist_dismissed: true })`.
  * 3. Clears tutorial URL params and navigates to `/`.
+ *
+ * HOW TO RESET TUTORIALS (DevTools workaround until a Settings UI lands):
+ *   localStorage.removeItem('tutorial.all.dismissed');
+ *   // then also clear per-flow flags if needed:
+ *   Object.keys(localStorage).filter(k => k.startsWith('tutorial.')).forEach(k => localStorage.removeItem(k));
+ *
+ * TODO (WEB-UIUX-257 follow-up): add a "Reset tutorials" button in Settings /
+ * DangerZone that calls resetAllTutorials() below and patches the server state.
  */
 export async function dismissAllTutorials(navigate: NavigateFunction): Promise<void> {
   try {
@@ -236,6 +245,32 @@ export async function dismissAllTutorials(navigate: NavigateFunction): Promise<v
   }
 
   navigate('/', { replace: true });
+}
+
+/**
+ * Resets ALL tutorial state so tutorials show again from the beginning.
+ * Removes every `tutorial.*` key from localStorage and patches the server.
+ *
+ * Ready to wire up to a "Reset tutorials" button in Settings / DangerZone
+ * (WEB-UIUX-257 follow-up). The caller is responsible for any UI feedback
+ * (toast, modal close, etc.).
+ */
+export async function resetAllTutorials(): Promise<void> {
+  try {
+    const keysToRemove = Object.keys(localStorage).filter((k) =>
+      k.startsWith('tutorial.'),
+    );
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (err) {
+    console.warn('[tutorialFlows] resetAllTutorials localStorage clear failed', err);
+  }
+
+  try {
+    await onboardingApi.patchState({ checklist_dismissed: false });
+  } catch (err) {
+    // non-fatal — local flags already cleared, server will reconcile next load.
+    console.warn('[tutorialFlows] patchState(checklist_dismissed: false) failed', err);
+  }
 }
 
 /**

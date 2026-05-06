@@ -128,10 +128,10 @@ export function PhotoCapturePage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-surface-900 flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-400 mb-4" />
-        <h1 className="text-xl font-bold text-white mb-2">Invalid Link</h1>
-        <p className="text-gray-400 text-sm">This photo link is missing authentication. Please scan the QR code again from the check-in screen.</p>
+        <h1 className="text-xl font-bold text-surface-50 mb-2">Invalid Link</h1>
+        <p className="text-surface-400 text-sm">This photo link is missing authentication. Please scan the QR code again from the check-in screen.</p>
       </div>
     );
   }
@@ -139,25 +139,25 @@ export function PhotoCapturePage() {
   // WEB-S4-028: show a clear "link expired" message instead of a generic error
   if (tokenExpired) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-surface-900 flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-amber-400 mb-4" />
-        <h1 className="text-xl font-bold text-white mb-2">Link Expired</h1>
-        <p className="text-gray-400 text-sm">This photo link has expired or is no longer valid. Please ask a staff member to generate a new QR code for your ticket.</p>
+        <h1 className="text-xl font-bold text-surface-50 mb-2">Link Expired</h1>
+        <p className="text-surface-400 text-sm">This photo link has expired or is no longer valid. Please ask a staff member to generate a new QR code for your ticket.</p>
       </div>
     );
   }
 
   if (uploaded) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-surface-900 flex flex-col items-center justify-center p-6 text-center">
         <div className="h-28 w-28 rounded-full bg-green-500/20 flex items-center justify-center mb-6">
           <CheckCircle2 className="h-14 w-14 text-green-400" />
         </div>
-        <h1 className="text-2xl font-bold text-white mb-2">Photos Saved!</h1>
-        <p className="text-gray-400 mb-1">
+        <h1 className="text-2xl font-bold text-surface-50 mb-2">Photos Saved!</h1>
+        <p className="text-surface-400 mb-1">
           {photos.length} photo{photos.length !== 1 ? 's' : ''} added to ticket #{ticketId}
         </p>
-        <p className="text-gray-600 text-sm mt-4">You can close this page now.</p>
+        <p className="text-surface-600 text-sm mt-4">You can close this page now.</p>
         <button
           onClick={() => {
             // WEB-FK-002: revoke blob URLs from the just-uploaded batch BEFORE
@@ -179,15 +179,15 @@ export function PhotoCapturePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-surface-900 flex flex-col">
       {/* Header */}
-      <div className="bg-gray-800 px-4 py-4 flex items-center gap-3 border-b border-gray-700 safe-area-top">
+      <div className="bg-surface-800 px-4 py-4 flex items-center gap-3 border-b border-surface-700 safe-area-top">
         <div className="h-10 w-10 rounded-xl bg-primary-600/20 flex items-center justify-center">
           <Camera className="h-5 w-5 text-primary-400" />
         </div>
         <div>
-          <h1 className="text-white font-semibold leading-tight">Device Photos</h1>
-          <p className="text-gray-400 text-xs">Ticket #{ticketId} — Pre-condition</p>
+          <h1 className="text-surface-50 font-semibold leading-tight">Device Photos</h1>
+          <p className="text-surface-400 text-xs">Ticket #{ticketId} — Pre-condition</p>
         </div>
       </div>
 
@@ -202,7 +202,7 @@ export function PhotoCapturePage() {
       {photos.length > 0 ? (
         <div className="p-4 grid grid-cols-2 gap-3">
           {photos.map((photo, i) => (
-            <div key={i} className="relative aspect-square rounded-2xl overflow-hidden bg-gray-800 shadow-lg">
+            <div key={i} className="relative aspect-square rounded-2xl overflow-hidden bg-surface-800 shadow-lg">
               <img src={photo.preview} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
               <button
                 onClick={() => removePhoto(i)}
@@ -217,9 +217,9 @@ export function PhotoCapturePage() {
           ))}
           {/* Add more tile — WEB-S4-029: hide when 20-photo cap reached. */}
           {photos.length < MAX_PHOTOS && (
-            <label className="aspect-square rounded-2xl border-2 border-dashed border-gray-600 flex flex-col items-center justify-center cursor-pointer active:bg-gray-800 transition-colors">
-              <Camera className="h-8 w-8 text-gray-500 mb-1" />
-              <span className="text-gray-500 text-xs">Add more</span>
+            <label className="aspect-square rounded-2xl border-2 border-dashed border-surface-600 flex flex-col items-center justify-center cursor-pointer active:bg-surface-800 transition-colors">
+              <Camera className="h-8 w-8 text-surface-500 mb-1" />
+              <span className="text-surface-500 text-xs">Add more</span>
               <input
                 type="file"
                 accept={IMAGE_UPLOAD_ACCEPT}
@@ -234,11 +234,11 @@ export function PhotoCapturePage() {
       ) : (
         /* Empty state */
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-          <div className="h-24 w-24 rounded-full bg-gray-800 flex items-center justify-center mb-5">
-            <ImageIcon className="h-12 w-12 text-gray-600" />
+          <div className="h-24 w-24 rounded-full bg-surface-800 flex items-center justify-center mb-5">
+            <ImageIcon className="h-12 w-12 text-surface-600" />
           </div>
-          <p className="text-gray-300 font-medium mb-1">No photos yet</p>
-          <p className="text-gray-600 text-sm">Tap the camera button below to photograph the device</p>
+          <p className="text-surface-300 font-medium mb-1">No photos yet</p>
+          <p className="text-surface-600 text-sm">Tap the camera button below to photograph the device</p>
         </div>
       )}
 
@@ -251,7 +251,7 @@ export function PhotoCapturePage() {
       )}
 
       {/* Bottom actions */}
-      <div className="mt-auto p-4 space-y-3 border-t border-gray-700/50 safe-area-bottom">
+      <div className="mt-auto p-4 space-y-3 border-t border-surface-700/50 safe-area-bottom">
         {/* Camera button */}
         <label className="flex items-center justify-center gap-3 w-full py-5 bg-primary-600 active:bg-primary-700 text-primary-950 rounded-2xl font-semibold text-lg cursor-pointer transition-colors select-none shadow-lg">
           <Camera className="h-6 w-6" />
@@ -282,7 +282,7 @@ export function PhotoCapturePage() {
           </button>
         )}
 
-        <p className="text-gray-600 text-xs text-center">
+        <p className="text-surface-600 text-xs text-center">
           {photos.length}/20 photos · Saved directly to the repair ticket
         </p>
       </div>

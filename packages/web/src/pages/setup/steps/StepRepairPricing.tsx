@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useState, useEffect, type JSX } from 'react';
 import { Smartphone, Wrench, Sparkles, Info, Calculator, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -193,6 +193,23 @@ export function StepRepairPricing({
   // Initialise the 15-cell grid from `pending` → fall back to per-tier defaults.
   const [values, setValues] = useState<Record<PricingKey, string>>(() => pricingValuesFromPending(pending));
   const [saving, setSaving] = useState(false);
+
+  // Seed defaults into pending on mount so navigating Back preserves the
+  // implicit defaults even if the user never touched a field. Only writes keys
+  // that are absent from pending (user edits are left intact).
+  useEffect(() => {
+    const missingKeys = (Object.keys(values) as PricingKey[]).filter(
+      (k) => pending[k] === undefined || pending[k] === null,
+    );
+    if (missingKeys.length > 0) {
+      const patch: Partial<PendingWrites> = {};
+      for (const k of missingKeys) {
+        patch[k] = values[k];
+      }
+      onUpdate(patch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Active pricing mode (segmented control at top of card). Only 'tier' is
   // wired through the same runtime APIs as Settings so the wizard can seed,

@@ -104,6 +104,7 @@ export function StepFirstEmployees({
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, RowError>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [retryDisabled, setRetryDisabled] = useState<Record<string, boolean>>({});
 
   const updateRow = (id: string, patch: Partial<EmployeeInvite>) => {
     setRows((prev) =>
@@ -223,8 +224,17 @@ export function StepFirstEmployees({
   };
 
   const handleRetry = (id: string) => {
+    if (retryDisabled[id]) return;
     const row = rows.find((r) => r.id === id);
     if (!row) return;
+    setRetryDisabled((prev) => ({ ...prev, [id]: true }));
+    setTimeout(() => {
+      setRetryDisabled((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, 1000);
     void sendOne(row);
   };
 
@@ -413,7 +423,8 @@ export function StepFirstEmployees({
                       <button
                         type="button"
                         onClick={() => handleRetry(row.id)}
-                        className="btn btn-xs font-medium underline hover:no-underline"
+                        disabled={statuses[row.id] === 'sending' || retryDisabled[row.id]}
+                        className="btn btn-xs font-medium underline hover:no-underline disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         retry
                       </button>
