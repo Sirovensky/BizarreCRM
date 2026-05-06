@@ -10,6 +10,7 @@ import { genId } from './types';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
 import { useSettings } from '@/hooks/useSettings';
+import { formatCurrency } from '@/utils/format';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Local payload shapes ──────────────────────────────────────────
@@ -583,7 +584,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           </p>
           {item.lineDiscount > 0 && (
             <p className="text-[11px] text-green-600 dark:text-green-400">
-              Discount: -${item.lineDiscount.toFixed(2)}
+              Discount: -{formatCurrency(item.lineDiscount)}
             </p>
           )}
         </div>
@@ -617,10 +618,10 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           )}
           title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
         >
-          {item.taxable ? '$' + (item.laborPrice * taxRate).toFixed(2) : 'No tax'}
+          {item.taxable ? formatCurrency(item.laborPrice * taxRate) : 'No tax'}
         </button>
         <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
-          ${lineTotal.toFixed(2)}
+          {formatCurrency(lineTotal)}
         </span>
         <button
           onClick={() => removeCartItem(item.id)}
@@ -638,7 +639,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
               <span className="flex-1 truncate">
                 {p.quantity > 1 ? `${p.quantity}x ` : ''}{p.name}
               </span>
-              <span className="w-14 text-right">${(p.quantity * p.price).toFixed(2)}</span>
+              <span className="w-14 text-right">{formatCurrency(p.quantity * p.price)}</span>
               <button
                 onClick={() => togglePartTax(p._key)}
                 aria-label={p.taxable ? `${p.name} taxable — click to remove tax` : `${p.name} non-taxable — click to add tax`}
@@ -651,7 +652,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                 )}
                 title={p.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
               >
-                {p.taxable ? '$' + (p.quantity * p.price * taxRate).toFixed(2) : 'No tax'}
+                {p.taxable ? formatCurrency(p.quantity * p.price * taxRate) : 'No tax'}
               </button>
               <span className="w-16" />
               <span className="w-6" />
@@ -706,7 +707,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                       >
                         <span className="flex-1 text-xs text-surface-900 dark:text-surface-100 truncate">{part.name}</span>
                         {part.retail_price != null && (
-                          <span className="text-xs text-surface-500 shrink-0">${part.retail_price.toFixed(2)}</span>
+                          <span className="text-xs text-surface-500 shrink-0">{formatCurrency(part.retail_price)}</span>
                         )}
                       </button>
                     </li>
@@ -766,11 +767,11 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
         {item.taxable && !item.taxInclusive
-          ? '$' + (item.quantity * item.unitPrice * taxRate).toFixed(2)
+          ? formatCurrency(item.quantity * item.unitPrice * taxRate)
           : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
-        ${(item.quantity * item.unitPrice).toFixed(2)}
+        {formatCurrency(item.quantity * item.unitPrice)}
       </span>
       <button
         onClick={() => removeCartItem(item.id)}
@@ -792,7 +793,7 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
       <span className="shrink-0 text-xs text-surface-400 w-8 text-center">{item.quantity}</span>
       <p className="min-w-0 flex-1 text-sm text-surface-900 dark:text-surface-100 truncate">{item.name}</p>
       <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400 w-14 text-right">
-        ${item.unitPrice.toFixed(2)}
+        {formatCurrency(item.unitPrice)}
       </span>
       <button
         onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<MiscCartItem>)}
@@ -806,10 +807,10 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
         )}
         title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
       >
-        {item.taxable ? '$' + (item.quantity * item.unitPrice * taxRate).toFixed(2) : 'No tax'}
+        {item.taxable ? formatCurrency(item.quantity * item.unitPrice * taxRate) : 'No tax'}
       </button>
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
-        ${(item.quantity * item.unitPrice).toFixed(2)}
+        {formatCurrency(item.quantity * item.unitPrice)}
       </span>
       <button
         onClick={() => removeCartItem(item.id)}
@@ -902,7 +903,7 @@ function DiscountEditor() {
           aria-label="Add order discount"
         >
           <Percent className="h-3 w-3" />
-          {discount > 0 ? `Discount: -$${discount.toFixed(2)}` : 'Add discount'}
+          {discount > 0 ? `Discount: -${formatCurrency(discount)}` : 'Add discount'}
         </button>
         {discount > 0 && (
           <button
@@ -941,6 +942,7 @@ function DiscountEditor() {
           pattern="[0-9.]*"
           value={draftAmount}
           onChange={(e) => setDraftAmount(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleApply()}
           placeholder="0.00"
           autoFocus
           className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
@@ -955,6 +957,7 @@ function DiscountEditor() {
             type="text"
             value={draftReason}
             onChange={(e) => setDraftReason(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleApply()}
             placeholder="e.g. Loyalty, damaged, etc."
             className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
           />
@@ -1002,7 +1005,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
         </button>
         {totals.total > 0 && (
           <span className="text-[10px] font-bold text-surface-700 dark:text-surface-300 writing-mode-vertical" style={{ writingMode: 'vertical-rl' }}>
-            ${totals.total.toFixed(2)}
+            {formatCurrency(totals.total)}
           </span>
         )}
       </div>
@@ -1098,14 +1101,14 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
         </div>
         <div className="flex justify-between text-xs text-surface-500 dark:text-surface-400">
           <span>Subtotal</span>
-          <span>${totals.subtotal.toFixed(2)}</span>
+          <span>{formatCurrency(totals.subtotal)}</span>
         </div>
         {/* WEB-W1-015: cart-wide discount entry with optional reason gate */}
         <DiscountEditor />
         {totals.discountAmount > 0 && (
           <div className="flex justify-between text-xs text-green-600 dark:text-green-400">
             <span>Discount</span>
-            <span>-${totals.discountAmount.toFixed(2)}</span>
+            <span>-{formatCurrency(totals.discountAmount)}</span>
           </div>
         )}
         <div className="flex justify-between text-xs text-surface-500 dark:text-surface-400">
@@ -1117,11 +1120,11 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
             Tax ({(taxRate * 100).toLocaleString(undefined, { maximumFractionDigits: 3 })}%)
             {totals.tax === 0 && totals.subtotal > 0 ? ' \u2014 labor exempt' : ''}
           </span>
-          <span>${totals.tax.toFixed(2)}</span>
+          <span>{formatCurrency(totals.tax)}</span>
         </div>
         <div className="flex justify-between text-sm font-bold text-surface-900 dark:text-surface-100 pt-1 border-t border-surface-200 dark:border-surface-700">
           <span>Total</span>
-          <span>${totals.total.toFixed(2)}</span>
+          <span>{formatCurrency(totals.total)}</span>
         </div>
       </div>}
     </div>

@@ -377,12 +377,12 @@
 
   .card {
     border-radius: 0.75rem;
-    border: 1px solid #e4e4e7;
+    border: 1px solid rgb(var(--surface-200));
     background-color: white;
     padding: 1rem;
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
-  .dark .card { border-color: #3f3f46; background-color: #18181b; }
+  .dark .card { border-color: rgb(var(--surface-600)); background-color: rgb(var(--surface-800)); }
 
   .badge {
     display: inline-flex;

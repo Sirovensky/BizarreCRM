@@ -494,7 +494,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     ? `${cardDeclineMessage}; ${legMsg}`
                     : legMsg;
                   toast.error(
-                    `Card leg $${legAmount.toFixed(2)} declined: ${legMsg}. Retry from the invoice page.`,
+                    `Card leg ${formatCurrency(legAmount)} declined: ${legMsg}. Retry from the invoice page.`,
                     { duration: 8000 },
                   );
                 }
@@ -504,7 +504,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                 cardDeclineMessage = cardDeclineMessage
                   ? `${cardDeclineMessage}; ${legMsg}`
                   : legMsg;
-                toast.error(`Card leg $${legAmount.toFixed(2)} failed: ${legMsg}. Retry from the invoice page.`, { duration: 8000 });
+                toast.error(`Card leg ${formatCurrency(legAmount)} failed: ${legMsg}. Retry from the invoice page.`, { duration: 8000 });
               }
             }
           }
@@ -548,21 +548,21 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           <div className="space-y-1.5 rounded-lg bg-surface-50 p-4 dark:bg-surface-800">
             <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
               <span>{totals.itemCount} item{totals.itemCount !== 1 ? 's' : ''}</span>
-              <span>Subtotal: ${totals.subtotal.toFixed(2)}</span>
+              <span>Subtotal: {formatCurrency(totals.subtotal)}</span>
             </div>
             {totals.discountAmount > 0 && (
               <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
                 <span>Discount</span>
-                <span>-${totals.discountAmount.toFixed(2)}</span>
+                <span>-{formatCurrency(totals.discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
               <span>Tax</span>
-              <span>${totals.tax.toFixed(2)}</span>
+              <span>{formatCurrency(totals.tax)}</span>
             </div>
             <div className="flex justify-between border-t border-surface-200 pt-1.5 text-base font-bold text-surface-900 dark:border-surface-600 dark:text-surface-50">
               <span>Total</span>
-              <span>${totals.total.toFixed(2)}</span>
+              <span>{formatCurrency(totals.total)}</span>
             </div>
           </div>
 
@@ -580,7 +580,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       Save {bestTier.discount_pct}% with {bestTier.name}!
                     </p>
                     <p className="text-xs text-surface-500 truncate">
-                      ${bestTier.monthly_price.toFixed(2)}/mo &mdash; {bestTier.discount_pct}% off {bestTier.discount_applies_to}
+                      {formatCurrency(bestTier.monthly_price)}/mo &mdash; {bestTier.discount_pct}% off {bestTier.discount_applies_to}
                     </p>
                   </div>
                 </div>
@@ -759,7 +759,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   </button>
                   {splitRemainingCents > 0 ? (
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                      Remaining: ${splitRemaining.toFixed(2)}
+                      Remaining: {formatCurrency(splitRemaining)}
                     </span>
                   ) : (
                     <span className="text-xs font-medium text-green-600 dark:text-green-400">
@@ -797,13 +797,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     onMouseDown={(e) => { e.preventDefault(); setCashGiven(amt.toFixed(2)); }}
                     className="btn btn-sm border border-surface-200 bg-white text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
                   >
-                    ${amt.toFixed(2)}
+                    {formatCurrency(amt)}
                   </button>
                 ))}
               </div>
               {cashAmount >= totals.total && (
                 <div className="rounded-lg bg-green-50 px-4 py-2 text-center text-lg font-bold text-green-700 dark:bg-green-500/10 dark:text-green-400">
-                  Change: ${change.toFixed(2)}
+                  Change: {formatCurrency(change)}
                 </div>
               )}
             </div>

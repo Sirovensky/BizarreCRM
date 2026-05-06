@@ -365,6 +365,20 @@ const TicketRow = memo(function TicketRow({
   const deviceName = firstDevice?.device_name || (devices[0]?.device_name) || '--';
   const issue = firstDevice?.service_name || (devices[0] as any)?.service_name || firstDevice?.additional_notes || (devices[0] as any)?.additional_notes || '';
   const assigned = ticket.assigned_user;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click / Escape
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleKey); };
+  }, [moreOpen]);
 
   return (<Fragment>
     <tr
@@ -561,24 +575,38 @@ const TicketRow = memo(function TicketRow({
               <MessageSquare className="h-3.5 w-3.5" />
             </button>
           )}
-          <div className="relative group">
-            <button aria-label="More options" className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700">
+          <div className="relative" ref={moreRef}>
+            <button
+              aria-label="More options"
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={(e) => { e.stopPropagation(); setMoreOpen((v) => !v); }}
+              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 dark:hover:bg-surface-700"
+            >
               <MoreHorizontal className="h-4 w-4" />
             </button>
-            <div className="absolute right-0 top-full z-50 mt-1 hidden w-36 rounded-lg border border-surface-200 bg-white shadow-lg group-hover:block dark:border-surface-700 dark:bg-surface-800">
-              <button
-                onClick={() => onPrint({ id: ticket.id, invoiceId: ticket.invoice_id })}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700"
+            {moreOpen && (
+              <div
+                role="menu"
+                aria-label="Ticket actions"
+                className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800"
               >
-                <Printer className="h-3.5 w-3.5" /> Print
-              </button>
-              <button
-                onClick={() => onDelete({ open: true, ticketId: ticket.id, ticketLabel: formatTicketId(ticket.order_id) })}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Delete
-              </button>
-            </div>
+                <button
+                  role="menuitem"
+                  onClick={() => { setMoreOpen(false); onPrint({ id: ticket.id, invoiceId: ticket.invoice_id }); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Print
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => { setMoreOpen(false); onDelete({ open: true, ticketId: ticket.id, ticketLabel: formatTicketId(ticket.order_id) }); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </td>

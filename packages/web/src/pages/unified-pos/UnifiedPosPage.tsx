@@ -177,6 +177,7 @@ export function UnifiedPosPage() {
   const [scanFlash, setScanFlash] = useState(false);
   const scanBufferRef = useRef('');
   const scanTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const scanFlashTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastKeyTimeRef = useRef(0);
   const scanAbortRef = useRef<AbortController | null>(null);
   const { addProduct } = useUnifiedPosStore();
@@ -205,8 +206,9 @@ export function UnifiedPosPage() {
         clearTimeout(scanTimerRef.current);
 
         // Show flash
+        clearTimeout(scanFlashTimerRef.current);
         setScanFlash(true);
-        setTimeout(() => setScanFlash(false), 1200);
+        scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1200);
 
         // Search and add to cart — cancel any in-flight lookup first
         scanAbortRef.current?.abort();
@@ -249,7 +251,10 @@ export function UnifiedPosPage() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(scanFlashTimerRef.current);
+    };
   }, [addProduct]);
   const ticketParam = searchParams.get('ticket');
   const customerParam = searchParams.get('customer') || searchParams.get('customer_id');

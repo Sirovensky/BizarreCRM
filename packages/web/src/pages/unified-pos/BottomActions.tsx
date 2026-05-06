@@ -310,7 +310,7 @@ export function BottomActions() {
 
   const handleCancel = async () => {
     if (hasItems || customer) {
-      if (!await confirm('Clear the cart and start over?')) return;
+      if (!await confirm('Clear the cart and selected customer, and start over?')) return;
     }
     resetAll();
   };
@@ -469,7 +469,7 @@ export function BottomActions() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleCancel}
-            className="btn btn-lg border border-red-300 !px-5 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+            className="btn btn-lg border border-red-300 !px-5 text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
           >
             Cancel
           </button>
@@ -482,7 +482,7 @@ export function BottomActions() {
                 toast.error('Failed to open drawer');
               }
             }}
-            className="btn btn-lg border border-surface-300 text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
+            className="btn btn-lg border border-surface-300 text-surface-600 hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-surface-400 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
             title="Open cash drawer"
           >
             <LockOpen className="h-4 w-4" />
@@ -514,10 +514,10 @@ export function BottomActions() {
             disabled={!hasRepair || creatingTicket || !!sourceTicketId}
             title={sourceTicketId ? 'Checking out existing ticket — use Checkout' : !hasRepair ? 'Add a repair to create ticket' : ''}
             className={cn(
-              'btn btn-lg !px-8 !font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              'btn btn-lg border !px-8 !font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasRepair && !sourceTicketId
-                ? 'bg-teal-600 text-white hover:bg-teal-700'
-                : 'bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
+                ? 'border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800'
+                : 'border-surface-200 text-surface-400 dark:border-surface-700 dark:text-surface-500',
             )}
           >
             {creatingTicket ? 'Creating...' : 'Create Ticket'}
@@ -543,10 +543,10 @@ export function BottomActions() {
             disabled={!hasItems}
             title={needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
-              'btn btn-lg border !px-6 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              'btn btn-lg !px-6 !font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasItems
-                ? 'border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800'
-                : 'border-surface-200 text-surface-400 dark:border-surface-700 dark:text-surface-500',
+                ? 'bg-teal-600 text-white hover:bg-teal-700'
+                : 'bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
             )}
           >
             Checkout

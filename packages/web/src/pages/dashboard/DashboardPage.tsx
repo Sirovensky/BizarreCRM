@@ -24,7 +24,7 @@ import {
   ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard, Ticket, DollarSign, Clock,
@@ -192,12 +192,8 @@ function formatTicketId(orderId: string | number) {
 function KpiCard({ label, value, tooltip, loading, href }: {
   label: string; value: string; tooltip?: string; loading?: boolean; href?: string;
 }) {
-  const navigate = useNavigate();
-  return (
-    <div
-      onClick={href ? () => navigate(href) : undefined}
-      className={cn('card p-4 flex flex-col gap-1', href && 'cursor-pointer hover:ring-2 hover:ring-primary-500/30 transition-shadow')}
-    >
+  const inner = (
+    <>
       <div className="flex items-center gap-1.5">
         <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">{label}</span>
         {tooltip && (
@@ -214,6 +210,21 @@ function KpiCard({ label, value, tooltip, loading, href }: {
       ) : (
         <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{value}</p>
       )}
+    </>
+  );
+  if (href) {
+    return (
+      <Link
+        to={href}
+        className="card p-4 flex flex-col gap-1 cursor-pointer hover:ring-2 hover:ring-primary-500/30 transition-shadow"
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div className="card p-4 flex flex-col gap-1">
+      {inner}
     </div>
   );
 }
@@ -890,7 +901,10 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               {visibleStale.map((t) => (
                 <div
                   key={`stale-${t.id}`}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/tickets/${t.id}`)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/tickets/${t.id}`); } }}
                   className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
                 >
                   <div className="h-8 w-8 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
@@ -928,7 +942,10 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               {visibleInvoices.map((inv) => (
                 <div
                   key={`inv-${inv.id}`}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/invoices/${inv.id}`)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/invoices/${inv.id}`); } }}
                   className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
                 >
                   <div className="h-8 w-8 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
@@ -960,7 +977,10 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
           {/* Low Stock section */}
           <AttentionSection title={`Low Stock`} icon={BoxSelect} iconBg="bg-yellow-50 dark:bg-yellow-900/30" iconColor="text-yellow-600" count={showLowStock ? data.low_stock_count : 0}>
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/inventory?low_stock=true')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/inventory?low_stock=true'); } }}
               className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
             >
               <div className="h-8 w-8 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 flex items-center justify-center flex-shrink-0">
@@ -983,7 +1003,10 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
           {showMissingParts && (
             <AttentionSection title="Missing Parts" icon={PackageX} iconBg="bg-orange-50 dark:bg-orange-900/30" iconColor="text-orange-500" count={data.missing_parts_count}>
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate('/catalog')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/catalog'); } }}
                 className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
               >
                 <div className="h-8 w-8 rounded-lg bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
@@ -1165,7 +1188,9 @@ function TechDashboard({ userId }: { userId: number }) {
                 {myTickets.map((t: any) => (
                   <tr
                     key={t.id}
+                    tabIndex={0}
                     onClick={() => navigate(`/tickets/${t.id}`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/tickets/${t.id}`); } }}
                     className="border-b border-surface-50 dark:border-surface-800/50 hover:bg-surface-50 dark:hover:bg-surface-800/30 cursor-pointer"
                   >
                     <td className="px-4 py-2 font-medium text-primary-600 dark:text-primary-400 text-xs">

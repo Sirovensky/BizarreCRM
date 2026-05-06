@@ -337,12 +337,12 @@ export function SuccessScreen() {
       <div className="space-y-1.5 text-center">
         {total > 0 && (
           <p className={`text-3xl font-bold ${cardDeclined ? 'text-red-700 dark:text-red-400' : 'text-surface-900 dark:text-surface-100'}`}>
-            ${total.toFixed(2)}
+            {formatCurrency(total)}
           </p>
         )}
         {change > 0 && !cardDeclined && (
           <p className="text-lg font-medium text-green-600 dark:text-green-400">
-            Change: ${change.toFixed(2)}
+            Change: {formatCurrency(change)}
           </p>
         )}
         {customerName && (

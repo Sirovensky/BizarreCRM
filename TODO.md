@@ -1120,7 +1120,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/components/shared/PinModal.tsx`
   <!-- meta: decision=do-not-add-backdrop-click-close-for-security-pin-modal; behavior=documented-in-PinModal -->
 
-- [ ] WEB-UIUX-27. **[NIT] globals.css `.card` class uses zinc palette (`#e4e4e7`, `#18181b`) instead of surface CSS vars.** L9.
+- [x] WEB-UIUX-27. **[NIT] globals.css `.card` class uses zinc palette (`#e4e4e7`, `#18181b`) instead of surface CSS vars.** L9. **[AUTOLOOP-T2 RESOLVED: zinc hex literals replaced with `rgb(var(--surface-200/600/800))` in `.card` rule.]**
   `packages/web/src/styles/globals.css`
   <!-- meta: fix=migrate-to-surface-vars -->
 
@@ -1130,7 +1130,7 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Tier 1: Dashboard + POS
 
-- [ ] WEB-UIUX-30. **[MAJOR] Hardcoded `$` in 30+ places across POS (LeftPanel, CheckoutModal, SuccessScreen).** Breaks for non-USD tenants. `formatCurrency` exists but is used inconsistently. L9, L14, L16.
+- [x] WEB-UIUX-30. **[MAJOR] Hardcoded `$` in 30+ places across POS (LeftPanel, CheckoutModal, SuccessScreen).** Breaks for non-USD tenants. `formatCurrency` exists but is used inconsistently. L9, L14, L16. **[AUTOLOOP-T2 RESOLVED: ~20 hardcoded `$` in LeftPanel/CheckoutModal/SuccessScreen replaced with `formatCurrency(...)`. One decorative `$` label preserved.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:587,621,624,642...`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:441,446,451,455,473,623,661,667`
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:340,345`
@@ -1140,7 +1140,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1288`
   <!-- meta: fix=add-focus-trap -->
 
-- [ ] WEB-UIUX-33. **[MAJOR] Clickable div rows (NeedsAttentionCard) not keyboard-focusable.** Uses `div onClick` + cursor-pointer without `role="button"` / `tabIndex="0"` / `onKeyDown`. L12.
+- [x] WEB-UIUX-33. **[MAJOR] Clickable div rows (NeedsAttentionCard) not keyboard-focusable.** Uses `div onClick` + cursor-pointer without `role="button"` / `tabIndex="0"` / `onKeyDown`. L12. **[AUTOLOOP-T2 RESOLVED: NeedsAttentionCard rows + technician table now have `role=button`, `tabIndex=0`, `onKeyDown` (Enter+Space).]**
   `packages/web/src/pages/dashboard/DashboardPage.tsx:903,941,972`
   <!-- meta: fix=convert-to-button-or-add-role-tabindex-keydown -->
 
@@ -1148,7 +1148,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:592,743,938`
   <!-- meta: fix=use-uncontrolled-input-with-onBlur-commit-pattern -->
 
-- [ ] WEB-UIUX-35. **[MAJOR] POS "Create Ticket" and "Checkout" buttons have reversed action hierarchy.** "Create Ticket" is the filled primary CTA (teal-600), while "Checkout" (the actual conversion action) is outlined secondary. L2.
+- [x] WEB-UIUX-35. **[MAJOR] POS "Create Ticket" and "Checkout" buttons have reversed action hierarchy.** "Create Ticket" is the filled primary CTA (teal-600), while "Checkout" (the actual conversion action) is outlined secondary. L2. **[AUTOLOOP-T2 RESOLVED: Checkout = filled teal-600 primary; Create Ticket = outlined secondary in BottomActions.tsx.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:457-488`
   <!-- meta: fix=swap-visual-hierarchy-checkout=primary -->
 
@@ -1156,7 +1156,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:707`, `BottomActions.tsx:459`
   <!-- meta: fix=migrate-to-primary -->
 
-- [ ] WEB-UIUX-37. **[MAJOR] Bottom action buttons (Cancel/OpenDrawer/CreateTicket/Checkout) all missing `focus-visible:ring`.** No visual focus indicator for keyboard users, violating WCAG 2.4.7. L12.
+- [x] WEB-UIUX-37. **[MAJOR] Bottom action buttons (Cancel/OpenDrawer/CreateTicket/Checkout) all missing `focus-visible:ring`.** No visual focus indicator for keyboard users, violating WCAG 2.4.7. L12. **[AUTOLOOP-T2 RESOLVED: focus-visible ring added to all 4 BottomActions buttons with role-matched ring colors. WCAG 2.4.7.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:425,438,457,482`
   <!-- meta: fix=add-focus-visible:ring-2 -->
 
@@ -1164,7 +1164,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/unified-pos/BottomActions.tsx:58-114`
   <!-- meta: fix=add-focus-trap -->
 
-- [ ] WEB-UIUX-39. **[MINOR] DashboardPage KpiCard uses clickable `div` instead of `<a>`.** Not keyboard-navigable. L12.
+- [x] WEB-UIUX-39. **[MINOR] DashboardPage KpiCard uses clickable `div` instead of `<a>`.** Not keyboard-navigable. L12. **[AUTOLOOP-T2 RESOLVED: KpiCard clickable div replaced with react-router `<Link>` when `href` present; keyboard-navigable.]**
   `packages/web/src/pages/dashboard/DashboardPage.tsx:182-184`
   <!-- meta: fix=use-Link-or-a-element -->
 
@@ -1172,7 +1172,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1631`
   <!-- meta: fix=convert-to-button-or-link -->
 
-- [ ] WEB-UIUX-43. **[MINOR] DiscountEditor does not submit on Enter key.** Inconsistent with other POS inputs that support Enter-to-submit. L7.
+- [x] WEB-UIUX-43. **[MINOR] DiscountEditor does not submit on Enter key.** Inconsistent with other POS inputs that support Enter-to-submit. L7. **[AUTOLOOP-T2 RESOLVED: Amount + Reason inputs in DiscountEditor get `onKeyDown` Enter→handleApply.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-979`
   <!-- meta: fix=add-onKeyDown-Enter-handler -->
 
@@ -1180,14 +1180,14 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1830-1914`
   <!-- meta: fix=stagger-initial-queries-or-add-suspense -->
 
-- [ ] WEB-UIUX-45. **[MINOR] Scan flash `setTimeout` not cleaned up on unmount.** Can cause state-update-on-unmounted-component warning. L15.
+- [x] WEB-UIUX-45. **[MINOR] Scan flash `setTimeout` not cleaned up on unmount.** Can cause state-update-on-unmounted-component warning. L15. **[AUTOLOOP-T2 RESOLVED: scanFlashTimerRef stores setTimeout id; cleared on unmount + on each new scan in UnifiedPosPage.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:157-158`
   <!-- meta: fix=clearTimeout-in-cleanup -->
 
 - [ ] WEB-UIUX-47. **[NIT] Cart empty state mentions "scan a barcode" — confusing if no scanner connected.** L14.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:1057`
 
-- [ ] WEB-UIUX-48. **[NIT] BottomActions cancel confirm message doesn't mention customer will also be cleared.** L14.
+- [x] WEB-UIUX-48. **[NIT] BottomActions cancel confirm message doesn't mention customer will also be cleared.** L14. **[AUTOLOOP-T2 RESOLVED: BottomActions cancel confirm now says "Clear the cart and selected customer, and start over?".]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:299-300`
 
 ### Tier 1: Tickets + Customers
@@ -1196,7 +1196,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/tickets/TicketDevices.tsx:822-828,926-930`
   <!-- meta: fix=replace-with-InlinePriceEditor-component -->
 
-- [ ] WEB-UIUX-50. **[MAJOR] TicketListPage row hover dropdown (`hidden group-hover:block`) unreachable on touch/keyboard.** L1, L11, L12.
+- [x] WEB-UIUX-50. **[MAJOR] TicketListPage row hover dropdown (`hidden group-hover:block`) unreachable on touch/keyboard.** L1, L11, L12. **[AUTOLOOP-T2 RESOLVED: TicketListPage row hover-dropdown replaced with click-toggled state, ARIA menu roles, outside-click + Escape dismissal.]**
   `packages/web/src/pages/tickets/TicketListPage.tsx:560-578`
   <!-- meta: fix=use-click-toggled-dropdown -->
 
